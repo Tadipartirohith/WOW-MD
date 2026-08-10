@@ -1,0 +1,23 @@
+# Fill in your real values here, then apply with: kubectl apply -k k8s/
+# This sets the image once for every manifest that uses it, so you do not edit
+# the deployment and job files by hand.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: wow
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.example.yaml   # replace with a real secret from your secret manager
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - migration-job.yaml
+
+images:
+  - name: <REGISTRY>/wow-backend
+    newName: your-registry.example.com/wow-backend   # e.g. 1234.dkr.ecr.ap-south-1.amazonaws.com/wow-backend
+    newTag: latest

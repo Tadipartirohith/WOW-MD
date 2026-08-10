@@ -1,0 +1,21 @@
+# Copy this file to terraform.tfvars and fill in your real values.
+# Do not commit terraform.tfvars, since it contains account specific details.
+
+region             = "ap-south-1"
+environment        = "production"
+cluster_name       = "wow-eks"
+kubernetes_version = "1.29"
+
+# The registry that holds your built backend image.
+container_registry = "123456789012.dkr.ecr.ap-south-1.amazonaws.com"
+
+# The public domain and the matching certificate from AWS Certificate Manager.
+domain_name         = "wow.example.com"
+acm_certificate_arn = "arn:aws:acm:ap-south-1:123456789012:certificate/REPLACE_ME"
+
+# Database and cache sizing.
+db_instance_class = "db.r6g.large"
+redis_node_type   = "cache.r6g.large"
+
+# Supply the database password through the environment instead of this file:
+#   export TF_VAR_db_password='a-strong-password'

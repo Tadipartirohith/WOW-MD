@@ -1,0 +1,22 @@
+# Runs DB migrations once per release, BEFORE the new Deployment rolls out.
+# Wire this as a Helm pre-upgrade hook or an Argo CD PreSync hook so schema is
+# applied exactly once (not on every pod start).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wow-migrate
+  namespace: wow
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, runAsUser: 1000 }
+      containers:
+        - name: migrate
+          image: <REGISTRY>/wow-backend:latest
+          command: ["npm", "run", "migration:run:prod"]
+          envFrom:
+            - configMapRef: { name: wow-backend-config }
+            - secretRef: { name: wow-backend-secrets }

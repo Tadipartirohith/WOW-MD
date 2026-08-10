@@ -1,0 +1,31 @@
+# Ephemeral dependencies for running e2e tests locally / in CI.
+# Postgres and Redis on NON-default ports so they don't clash with a dev stack.
+# Usage:
+#   docker compose -f docker/docker-compose.test.yml up -d
+#   (in backend/) DB_PORT=5433 REDIS_PORT=6380 npm run migration:run && npm run test:e2e
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wow_user
+      POSTGRES_PASSWORD: wow_password
+      POSTGRES_DB: wow_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wow_user -d wow_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

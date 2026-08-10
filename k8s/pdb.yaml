@@ -1,0 +1,9 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wow-backend
+  namespace: wow
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: wow-backend }

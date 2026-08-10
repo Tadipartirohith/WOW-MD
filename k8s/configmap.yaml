@@ -1,0 +1,39 @@
+# Non-secret configuration. Same variable names as backend/.env.example, the
+# app reads everything from env, so ops tune behaviour here without code changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wow-backend-config
+  namespace: wow
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  API_PREFIX: "api"
+  LOG_LEVEL: "info"
+  CORS_ORIGINS: "https://app.wow.example.com"
+  SWAGGER_ENABLED: "false"
+  DB_PORT: "5432"
+  DB_NAME: "wow_db"
+  DB_SSL: "true"
+  DB_POOL_SIZE: "20"
+  REDIS_PORT: "6379"
+  RATE_LIMIT_TTL: "60"
+  RATE_LIMIT_MAX: "120"
+  AUTH_RATE_LIMIT_MAX: "10"
+  PAGINATION_DEFAULT_LIMIT: "20"
+  PAGINATION_MAX_LIMIT: "100"
+  # Matchmaking tunables, change + rollout restart to re-weight, no rebuild.
+  MATCH_WEIGHT_AGE: "20"
+  MATCH_WEIGHT_LOCATION: "20"
+  MATCH_WEIGHT_RELIGION: "20"
+  MATCH_WEIGHT_EDUCATION: "15"
+  MATCH_WEIGHT_LIFESTYLE: "15"
+  MATCH_WEIGHT_PREFERENCES: "10"
+  MATCH_MAX_AGE_GAP: "8"
+  MATCH_MIN_SCORE: "40"
+  PAYMENT_PROVIDER: "razorpay"
+  PAYMENT_CURRENCY: "INR"
+  MEDIA_STORAGE_PROVIDER: "s3"
+  AI_PROVIDER: "mock"
+  NEO4J_ENABLED: "false"
+  KAFKA_ENABLED: "false"

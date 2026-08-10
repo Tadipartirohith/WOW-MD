@@ -1,0 +1,27 @@
+# ALB Ingress (AWS Load Balancer Controller). TLS terminated at the ALB.
+# Sticky sessions enabled so a client stays on one pod for the WebSocket
+# lifetime (Socket.io still fans out across pods via the Redis adapter).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wow-backend
+  namespace: wow
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: <ACM_CERT_ARN>
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health/live
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=3600
+spec:
+  rules:
+    - host: api.wow.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wow-backend
+                port: { number: 80 }
