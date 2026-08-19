@@ -12,8 +12,11 @@ import { EventsModule } from './platform/events/events.module';
 import { HealthModule } from './platform/health/health.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 
 import { AuthModule } from './modules/auth/auth.module';
+import { AgentsModule } from './modules/agents/agents.module';
+import { WeddingPlannersModule } from './modules/wedding-planners/wedding-planners.module';
 import { UsersModule } from './modules/users/users.module';
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -57,6 +60,8 @@ import { AiModule } from './modules/ai/ai.module';
     HealthModule,
 
     AuthModule,
+    AgentsModule,
+    WeddingPlannersModule,
     UsersModule,
     MatchmakingModule,
     ChatModule,
@@ -74,6 +79,8 @@ import { AiModule } from './modules/ai/ai.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // Capability check runs last, after authentication and coarse role checks.
+    { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
 export class AppModule {}
