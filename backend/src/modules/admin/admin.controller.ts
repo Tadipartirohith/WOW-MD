@@ -1,10 +1,16 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
-import { RaiseDisputeDto, ResolveDisputeDto } from './dto/admin.dto';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { DisputeStatus, UserRole } from '../../common/enums';
+import {
+  AdminUserQueryDto,
+  DisputeQueryDto,
+  RaiseDisputeDto,
+  ResolveDisputeDto,
+  UpdateUserStatusDto,
+} from './dto/admin.dto';
+import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/authz/permissions';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -12,45 +18,65 @@ import { DisputeStatus, UserRole } from '../../common/enums';
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
   @Get('users')
-  users() {
-    return this.admin.listUsers();
+  users(@Query() q: AdminUserQueryDto) {
+    return this.admin.listUsers(q.page, q.limit, q.role);
   }
 
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({ summary: 'Suspend or reinstate any account' })
+  @Put('users/:id/status')
+  setUserStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserStatusDto) {
+    return this.admin.setUserStatus(id, dto);
+  }
+
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
   @Get('vendors/pending')
   pendingVendors() {
     return this.admin.listPendingVendors();
   }
 
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
   @Put('vendors/:id/approve')
   approveVendor(@Param('id', ParseUUIDPipe) id: string) {
     return this.admin.approveVendor(id);
   }
 
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
+  @Get('planners/pending')
+  pendingPlanners() {
+    return this.admin.listPendingPlanners();
+  }
+
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
+  @Put('planners/:id/approve')
+  approvePlanner(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.approvePlanner(id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
   @Get('analytics')
   analytics() {
     return this.admin.analytics();
   }
 
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.ADMIN_DISPUTE_RESOLVE)
   @Get('disputes')
-  disputes(@Query('status') status?: DisputeStatus) {
-    return this.admin.listDisputes(status);
+  disputes(@Query() q: DisputeQueryDto) {
+    return this.admin.listDisputes(q.status);
   }
 
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.ADMIN_DISPUTE_RESOLVE)
   @Put('disputes/:id/resolve')
   resolve(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ResolveDisputeDto) {
     return this.admin.resolveDispute(id, dto);
   }
 
-  // Any authenticated user can raise a dispute on their booking.
+  /** Any party to a booking may raise a dispute on it. */
+  @RequirePermissions(Permission.DISPUTE_RAISE)
   @Post('disputes')
-  raise(@CurrentUser('userId') userId: string, @Body() dto: RaiseDisputeDto) {
-    return this.admin.raiseDispute(userId, dto);
+  raise(@CurrentUser() actor: AuthUser, @Body() dto: RaiseDisputeDto) {
+    return this.admin.raiseDispute(actor, dto);
   }
 }

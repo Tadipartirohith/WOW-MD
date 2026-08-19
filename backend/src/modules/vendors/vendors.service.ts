@@ -1,9 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
 import { VendorReview } from './entities/vendor-review.entity';
-import { CreateReviewDto, CreateVendorDto, VendorSearchDto } from './dto/vendor.dto';
+import {
+  CreateReviewDto,
+  CreateVendorDto,
+  UpdateVendorDto,
+  VendorSearchDto,
+} from './dto/vendor.dto';
 import { RedisService } from '../../platform/redis/redis.service';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
@@ -17,19 +22,43 @@ export class VendorsService {
   ) {}
 
   async create(ownerUserId: string, dto: CreateVendorDto): Promise<Vendor> {
-    const vendor = await this.vendors.save(this.vendors.create({ ownerUserId, ...dto }));
+    // New listings always start unapproved regardless of what the client sent;
+    // approval is an admin action.
+    const vendor = await this.vendors.save(
+      this.vendors.create({ ...dto, ownerUserId, isApproved: false, ratingAvg: 0, ratingCount: 0 }),
+    );
     await this.invalidateSearchCache();
     return vendor;
   }
 
+  /** Only the owning vendor account may edit a listing. */
+  async update(ownerUserId: string, vendorId: string, dto: UpdateVendorDto): Promise<Vendor> {
+    const vendor = await this.vendors.findOne({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+    if (vendor.ownerUserId !== ownerUserId) {
+      throw new ForbiddenException('This listing does not belong to you');
+    }
+    Object.assign(vendor, dto);
+    const saved = await this.vendors.save(vendor);
+    await this.invalidateSearchCache();
+    return saved;
+  }
+
+  listOwn(ownerUserId: string): Promise<Vendor[]> {
+    return this.vendors.find({ where: { ownerUserId }, order: { createdAt: 'DESC' } });
+  }
+
   async search(q: VendorSearchDto): Promise<PaginatedResult<Vendor>> {
-    const cacheKey = `vendors:search:${q.category ?? 'all'}:${q.city ?? 'all'}:${q.page}:${q.limit}`;
+    const cacheKey = `vendors:search:${q.category ?? 'all'}:${q.city ?? 'all'}:${q.minRating ?? 0}:${q.page}:${q.limit}`;
     return this.redis.wrap(cacheKey, 60, async () => {
       const qb = this.vendors
         .createQueryBuilder('v')
         .where('v.isApproved = :approved', { approved: true });
       if (q.category) qb.andWhere('v.category = :category', { category: q.category });
       if (q.city) qb.andWhere('LOWER(v.city) = LOWER(:city)', { city: q.city });
+      if (q.minRating !== undefined) {
+        qb.andWhere('v."ratingAvg" >= :minRating', { minRating: q.minRating });
+      }
       qb.orderBy('v.ratingAvg', 'DESC')
         .skip((q.page - 1) * q.limit)
         .take(q.limit);
@@ -44,7 +73,12 @@ export class VendorsService {
     return vendor;
   }
 
-  /** Adds/updates a review and recomputes the aggregate rating atomically. */
+  /**
+   * Adds/updates a review and recomputes the aggregate rating atomically.
+   * The caller must already have been verified as having completed a booking
+   * with this vendor (see VendorsController) — that check lives in the booking
+   * module, which owns the booking history.
+   */
   async addReview(vendorId: string, userId: string, dto: CreateReviewDto): Promise<Vendor> {
     return this.dataSource.transaction(async (manager) => {
       const vendorRepo = manager.getRepository(Vendor);
@@ -52,6 +86,9 @@ export class VendorsService {
 
       const vendor = await vendorRepo.findOne({ where: { id: vendorId } });
       if (!vendor) throw new NotFoundException('Vendor not found');
+      if (vendor.ownerUserId === userId) {
+        throw new ForbiddenException('You cannot review your own listing');
+      }
 
       await reviewRepo.upsert(
         { vendorId, userId, rating: dto.rating, comment: dto.comment ?? '' },

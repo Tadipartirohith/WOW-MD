@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WeddingEvent } from './entities/event.entity';
@@ -31,22 +31,49 @@ export class EventsService {
     return this.guests.find({ where: { userId }, order: { createdAt: 'DESC' } });
   }
 
-  async invite(eventId: string, guestId: string) {
+  /** Loads an event only if the caller is the host. */
+  private async ownedEvent(userId: string, eventId: string): Promise<WeddingEvent> {
+    const event = await this.events.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.userId !== userId) throw new ForbiddenException('This is not your event');
+    return event;
+  }
+
+  /** Loads a guest only if the caller added them. */
+  private async ownedGuest(userId: string, guestId: string): Promise<Guest> {
+    const guest = await this.guests.findOne({ where: { id: guestId } });
+    if (!guest) throw new NotFoundException('Guest not found');
+    if (guest.userId !== userId) throw new ForbiddenException('This is not your guest');
+    return guest;
+  }
+
+  async invite(userId: string, eventId: string, guestId: string) {
+    await this.ownedEvent(userId, eventId);
+    await this.ownedGuest(userId, guestId);
+
     const existing = await this.invites.findOne({ where: { eventId, guestId } });
     if (existing) return existing;
     return this.invites.save(this.invites.create({ eventId, guestId, status: RsvpStatus.INVITED }));
   }
 
-  async updateRsvp(inviteId: string, dto: UpdateRsvpDto) {
+  /**
+   * Only the host may change an RSVP through this route. Guest-facing RSVP is a
+   * separate, token-addressed flow (see the gap list in RBAC-AND-ROLES.md) so
+   * that an invite id alone is never enough to mutate someone else's event.
+   */
+  async updateRsvp(userId: string, inviteId: string, dto: UpdateRsvpDto) {
     const invite = await this.invites.findOne({ where: { id: inviteId } });
     if (!invite) throw new NotFoundException('Invite not found');
+    await this.ownedEvent(userId, invite.eventId);
+
     invite.status = dto.status;
     if (dto.seat !== undefined) invite.seat = dto.seat;
     return this.invites.save(invite);
   }
 
-  /** RSVP + seating summary for an event. */
-  async guestList(eventId: string) {
+  /** RSVP + seating summary for an event the caller hosts. */
+  async guestList(userId: string, eventId: string) {
+    await this.ownedEvent(userId, eventId);
     const invites = await this.invites.find({ where: { eventId } });
     const summary = {
       total: invites.length,

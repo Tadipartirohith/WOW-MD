@@ -3,9 +3,12 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import { CreateEventDto, CreateGuestDto, InviteDto, UpdateRsvpDto } from './dto/event.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/authz/permissions';
 
 @ApiTags('events')
 @ApiBearerAuth()
+@RequirePermissions(Permission.EVENT_MANAGE_OWN)
 @Controller('events')
 export class EventsController {
   constructor(private readonly events: EventsService) {}
@@ -31,17 +34,25 @@ export class EventsController {
   }
 
   @Post(':id/invite')
-  invite(@Param('id', ParseUUIDPipe) id: string, @Body() dto: InviteDto) {
-    return this.events.invite(id, dto.guestId);
+  invite(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: InviteDto,
+  ) {
+    return this.events.invite(userId, id, dto.guestId);
   }
 
   @Get(':id/guest-list')
-  guestList(@Param('id', ParseUUIDPipe) id: string) {
-    return this.events.guestList(id);
+  guestList(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.guestList(userId, id);
   }
 
   @Put('invites/:id/rsvp')
-  rsvp(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRsvpDto) {
-    return this.events.updateRsvp(id, dto);
+  rsvp(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRsvpDto,
+  ) {
+    return this.events.updateRsvp(userId, id, dto);
   }
 }

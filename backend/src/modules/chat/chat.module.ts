@@ -4,12 +4,16 @@ import { JwtModule } from '@nestjs/jwt';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
+import { User } from '../auth/entities/user.entity';
 import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Conversation, Message, Interest]), JwtModule.register({})],
+  imports: [
+    TypeOrmModule.forFeature([Conversation, Message, Interest, User]),
+    JwtModule.register({}),
+  ],
   providers: [ChatService, ChatGateway],
   controllers: [ChatController],
   exports: [ChatService],

@@ -1,0 +1,28 @@
+# One-shot bootstrap of the first administrator.
+#
+# ADMIN is not self-registerable through the public API by design (see
+# docs/RBAC-AND-ROLES.md), so a new environment needs this Job run once after
+# the initial migration. It is idempotent: re-running promotes and reactivates
+# the existing account rather than failing.
+#
+# ADMIN_EMAIL / ADMIN_PASSWORD must exist in the wow-backend-secrets Secret.
+# Delete the Job (and rotate the password) once the admin has signed in.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wow-seed-admin
+  namespace: wow
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      securityContext: { runAsNonRoot: true, runAsUser: 1000 }
+      containers:
+        - name: seed-admin
+          image: <REGISTRY>/wow-backend:latest
+          command: ["node", "dist/database/seed-admin.js"]
+          envFrom:
+            - configMapRef: { name: wow-backend-config }
+            - secretRef: { name: wow-backend-secrets }

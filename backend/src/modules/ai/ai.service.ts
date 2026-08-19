@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { VendorsService } from '../vendors/vendors.service';
 import { VendorCategory } from '../../common/enums';
@@ -28,8 +29,8 @@ export class AiService {
     @Inject(AI_PROVIDER) private readonly ai: AiProvider,
   ) {}
 
-  matchRecommendations(userId: string) {
-    return this.matchmaking.suggestions(userId, 1, 5);
+  matchRecommendations(actor: AuthUser) {
+    return this.matchmaking.suggestions(actor, 1, 5);
   }
 
   vendorRecommendations(category?: VendorCategory) {

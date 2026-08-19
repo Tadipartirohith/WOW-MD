@@ -95,6 +95,12 @@ export const configValidationSchema = Joi.object({
   NEO4J_USERNAME: Joi.string().allow('').optional(),
   NEO4J_PASSWORD: Joi.string().allow('').optional(),
 
+  // Admin bootstrap. Read only by src/database/seed-admin.ts, which does its own
+  // validation. Kept permissive here so a seeder-only value (including internal
+  // hostnames such as admin@wow.local) can never block the API from booting.
+  ADMIN_EMAIL: Joi.string().allow('').optional(),
+  ADMIN_PASSWORD: Joi.string().allow('').optional(),
+
   // Kafka (optional)
   KAFKA_ENABLED: Joi.string().optional(),
   KAFKA_BROKERS: Joi.string().allow('').optional(),

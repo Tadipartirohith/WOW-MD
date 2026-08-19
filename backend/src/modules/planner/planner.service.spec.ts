@@ -3,7 +3,18 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { PlannerService } from './planner.service';
 import { WeddingPlan } from './entities/wedding-plan.entity';
 import { PlanTask } from './entities/plan-task.entity';
+import { User } from '../auth/entities/user.entity';
+import { AgentsService } from '../agents/agents.service';
+import { UserRole } from '../../common/enums';
+import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { DEFAULT_TIMELINE_TEMPLATE } from './timeline.template';
+
+const host: AuthUser = {
+  userId: 'u1',
+  email: 'u1@example.com',
+  role: UserRole.BRIDE,
+  managedByAgentId: null,
+};
 
 describe('PlannerService.createPlan (auto timeline)', () => {
   let service: PlannerService;
@@ -30,6 +41,8 @@ describe('PlannerService.createPlan (auto timeline)', () => {
         PlannerService,
         { provide: getRepositoryToken(WeddingPlan), useValue: plansRepo },
         { provide: getRepositoryToken(PlanTask), useValue: tasksRepo },
+        { provide: getRepositoryToken(User), useValue: { find: jest.fn(async () => []), findOne: jest.fn() } },
+        { provide: AgentsService, useValue: { assertManages: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(PlannerService);
@@ -37,7 +50,7 @@ describe('PlannerService.createPlan (auto timeline)', () => {
 
   it('generates one task per template item, all dated before the wedding', async () => {
     const weddingDate = '2026-12-01';
-    await service.createPlan('u1', { weddingDate });
+    await service.createPlan(host, { weddingDate });
 
     expect(savedTasks).toHaveLength(DEFAULT_TIMELINE_TEMPLATE.length);
     for (const task of savedTasks) {

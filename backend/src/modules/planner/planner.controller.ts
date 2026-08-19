@@ -1,8 +1,15 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PlannerService } from './planner.service';
-import { AddTaskDto, CreatePlanDto, UpdateTaskStatusDto } from './dto/planner.dto';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import {
+  AddTaskDto,
+  CreatePlanDto,
+  EngagePlannerDto,
+  UpdateTaskStatusDto,
+} from './dto/planner.dto';
+import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/authz/permissions';
 
 @ApiTags('planner')
 @ApiBearerAuth()
@@ -10,36 +17,59 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class PlannerController {
   constructor(private readonly planner: PlannerService) {}
 
+  @RequirePermissions(Permission.PLAN_MANAGE_OWN)
   @Post('plan')
-  create(@CurrentUser('userId') userId: string, @Body() dto: CreatePlanDto) {
-    return this.planner.createPlan(userId, dto);
+  create(@CurrentUser() actor: AuthUser, @Body() dto: CreatePlanDto) {
+    return this.planner.createPlan(actor, dto);
   }
 
+  /**
+   * Reachable by hosts (PLAN_MANAGE_OWN) and by engaged planners
+   * (PLAN_MANAGE_ENGAGED); the service decides what each caller actually sees.
+   */
   @Get('plans')
-  myPlans(@CurrentUser('userId') userId: string) {
-    return this.planner.myPlans(userId);
+  @ApiOperation({ summary: 'Plans you host, represent, or are engaged on' })
+  myPlans(@CurrentUser() actor: AuthUser) {
+    return this.planner.myPlans(actor);
   }
 
   @Get('plan/:id/timeline')
-  timeline(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.planner.getTimeline(userId, id);
+  timeline(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.planner.getTimeline(actor, id);
   }
 
   @Post('plan/:id/tasks')
   addTask(
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: AddTaskDto,
   ) {
-    return this.planner.addTask(userId, id, dto);
+    return this.planner.addTask(actor, id, dto);
   }
 
   @Put('tasks/:id/status')
   updateStatus(
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTaskStatusDto,
   ) {
-    return this.planner.updateTaskStatus(userId, id, dto.status);
+    return this.planner.updateTaskStatus(actor, id, dto.status);
+  }
+
+  @RequirePermissions(Permission.PLAN_MANAGE_OWN)
+  @ApiOperation({ summary: 'Engage a wedding planner on this plan' })
+  @Put('plan/:id/planner')
+  engage(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EngagePlannerDto,
+  ) {
+    return this.planner.engagePlanner(actor, id, dto.plannerUserId);
+  }
+
+  @RequirePermissions(Permission.PLAN_MANAGE_OWN)
+  @Delete('plan/:id/planner')
+  release(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.planner.releasePlanner(actor, id);
   }
 }
