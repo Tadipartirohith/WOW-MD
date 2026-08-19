@@ -42,6 +42,10 @@ export enum Permission {
   MANAGED_PROFILE_INVITE = 'managed_profile:invite',
   /** Browse, send interests and book under a managed profile's identity. */
   ACT_ON_BEHALF = 'act_on_behalf',
+  /** Circulate a profile: to an agent, to a user, as a link, or into the pool. */
+  PROFILE_CIRCULATE = 'profile:circulate',
+  /** Search profiles other agencies have put into the shared pool. */
+  NETWORK_POOL_BROWSE = 'network_pool:browse',
 
   // --- agent (brokerage) ---
   CLIENT_CREATE = 'client:create',
@@ -116,6 +120,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MANAGED_PROFILE_MANAGE,
     Permission.MANAGED_PROFILE_INVITE,
     Permission.ACT_ON_BEHALF,
+    // A family member may pass a relative's biodata around, but has no business
+    // trawling other agencies' books.
+    Permission.PROFILE_CIRCULATE,
   ],
 
   // Agents broker on behalf of the clients they onboard. They do NOT get a
@@ -136,6 +143,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MANAGED_PROFILE_MANAGE,
     Permission.MANAGED_PROFILE_INVITE,
     Permission.ACT_ON_BEHALF,
+    Permission.PROFILE_CIRCULATE,
+    Permission.NETWORK_POOL_BROWSE,
     Permission.SESSION_MANAGE_OWN,
     Permission.MFA_MANAGE_OWN,
     Permission.PLAN_MANAGE_OWN,

@@ -22,6 +22,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { CirculationModule } from './modules/circulation/circulation.module';
 import { WeddingPlannersModule } from './modules/wedding-planners/wedding-planners.module';
 import { UsersModule } from './modules/users/users.module';
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
@@ -76,6 +77,7 @@ import { AiModule } from './modules/ai/ai.module';
 
     AuthModule,
     InvitationsModule,
+    CirculationModule,
     AgentsModule,
     WeddingPlannersModule,
     UsersModule,

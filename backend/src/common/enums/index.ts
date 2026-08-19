@@ -167,6 +167,65 @@ export enum EmailTokenType {
 }
 
 /**
+ * Consent is recorded in two scopes because they are genuinely different asks.
+ * A family walking into an agency agrees to the agency holding their details;
+ * that is not the same as agreeing to those details being passed around.
+ */
+export enum ConsentScope {
+  /** Permission for the agency to hold and use the details internally. */
+  INTAKE = 'intake',
+  /** Permission to share the profile outside the agency. Re-confirmable. */
+  CIRCULATION = 'circulation',
+}
+
+/** How the consent was obtained. Walk-ins are overwhelmingly the first two. */
+export enum ConsentMethod {
+  IN_PERSON = 'in_person',
+  PHONE = 'phone',
+  WRITTEN = 'written',
+  DIGITAL = 'digital',
+}
+
+/**
+ * Who actually gave it. In this market the subject frequently does not speak
+ * for themselves — a parent hands over the biodata — so the relationship is
+ * recorded rather than assumed.
+ */
+export enum ConsentRelation {
+  SELF = 'self',
+  FATHER = 'father',
+  MOTHER = 'mother',
+  GUARDIAN = 'guardian',
+  SIBLING = 'sibling',
+  OTHER = 'other',
+}
+
+/** Who a profile was circulated to. */
+export enum ShareAudience {
+  /** Another agent, who may propose a match from their own book. */
+  AGENT = 'agent',
+  /** A platform user with an account, shown the profile directly. */
+  USER = 'user',
+  /** A signed link, for sending to a family that has no account. */
+  LINK = 'link',
+}
+
+/** Whether the profile is discoverable by the wider vetted-agent network. */
+export enum NetworkVisibility {
+  /** Only the owning agency, plus anyone explicitly shared with. */
+  PRIVATE = 'private',
+  /** Searchable by every approved agent. */
+  POOL = 'pool',
+}
+
+/** Where a cross-agent pairing conversation has got to. */
+export enum ProposalStatus {
+  OPEN = 'open',
+  AGREED = 'agreed',
+  DECLINED = 'declined',
+}
+
+/**
  * Roles that may build and manage a profile for somebody else. Agents run a
  * book of business; family members look after one or two relatives. The
  * mechanics are identical, so both go through the same stewardship paths.

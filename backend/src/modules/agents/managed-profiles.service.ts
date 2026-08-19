@@ -19,6 +19,8 @@ import {
 import { AppConfigService } from '../../config/app-config.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { InvitationsService } from '../invitations/invitations.service';
+import { ConsentService } from '../circulation/consent.service';
+import { ConsentScope } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { ProfileClaimStatus, UserRole } from '../../common/enums';
@@ -45,6 +47,7 @@ export class ManagedProfilesService {
     private readonly cfg: AppConfigService,
     private readonly audit: AuditService,
     private readonly invitations: InvitationsService,
+    private readonly consent: ConsentService,
   ) {}
 
   /**
@@ -76,6 +79,15 @@ export class ManagedProfilesService {
     return this.cfg.stewardship.maxManagedProfiles;
   }
 
+  /**
+   * Builds a profile from what a family handed over at the desk.
+   *
+   * Phone is the identity key here, not email: the walk-in family gives a
+   * number, and a duplicate number almost always means the same person has
+   * already been taken on — by this agency or another one. That is worth
+   * catching, because the same biodata circulating twice from two agents is a
+   * real embarrassment in this market.
+   */
   async create(actor: AuthUser, dto: CreateManagedProfileDto): Promise<Profile> {
     await this.assertMaySteward(actor);
 
@@ -86,25 +98,13 @@ export class ManagedProfilesService {
       );
     }
 
-    // Refuse if that person already has an account: they should be approached,
-    // not duplicated.
-    const existingUser = await this.users.findOne({ where: { email: dto.contactEmail } });
-    if (existingUser) {
-      throw new ConflictException(
-        'Someone already uses that email address on WOW. Send them an interest instead.',
-      );
-    }
-    const existingProfile = await this.profiles.findOne({
-      where: { contactEmail: dto.contactEmail },
-    });
-    if (existingProfile) {
-      throw new ConflictException('A profile with that contact email already exists.');
-    }
+    await this.assertNotDuplicate(actor, dto.contactPhone, dto.contactEmail);
 
-    const { inviteNow, ...fields } = dto;
+    const { inviteNow, consent, ...fields } = dto;
     const profile = await this.profiles.save(
       this.profiles.create({
         ...fields,
+        contactEmail: dto.contactEmail ?? null,
         userId: null,
         managedByUserId: actor.userId,
         claimStatus: ProfileClaimStatus.UNCLAIMED,
@@ -112,16 +112,78 @@ export class ManagedProfilesService {
       }),
     );
 
+    // Consent is recorded with the profile, in the same request, so a profile
+    // can never exist without a record of who agreed to it.
+    await this.consent.record(actor, profile.id, {
+      scope: ConsentScope.INTAKE,
+      method: consent.method,
+      givenByRelation: consent.givenByRelation,
+      givenByName: consent.givenByName,
+      givenByPhone: consent.givenByPhone,
+      givenAt: consent.givenAt,
+      notes: consent.notes,
+    });
+    if (consent.allowsCirculation) {
+      await this.consent.record(actor, profile.id, {
+        scope: ConsentScope.CIRCULATION,
+        method: consent.method,
+        givenByRelation: consent.givenByRelation,
+        givenByName: consent.givenByName,
+        givenByPhone: consent.givenByPhone,
+        givenAt: consent.givenAt,
+        notes: consent.notes,
+      });
+    }
+
     await this.audit.record({
       action: AuditAction.PROFILE_CREATED_BY_STEWARD,
       actor,
       resourceType: 'profile',
       resourceId: profile.id,
-      metadata: { contactEmail: dto.contactEmail },
+      metadata: { contactPhone: dto.contactPhone, hasEmail: Boolean(dto.contactEmail) },
     });
 
     if (inviteNow) await this.invitations.invite(actor, profile.id);
     return this.findOne(actor, profile.id);
+  }
+
+  /**
+   * Catches the same person being taken on twice.
+   *
+   * Phrasing matters: if another agency already holds them, saying so outright
+   * would leak that agency's book, so the message stays neutral.
+   */
+  private async assertNotDuplicate(
+    actor: AuthUser,
+    phone: string,
+    email?: string,
+    excludeProfileId?: string,
+  ): Promise<void> {
+    if (email) {
+      const existingUser = await this.users.findOne({ where: { email } });
+      if (existingUser) {
+        throw new ConflictException(
+          'Someone already uses that email address on WOW. Send them an interest instead.',
+        );
+      }
+    }
+
+    const byPhone = await this.profiles.find({ where: { contactPhone: phone } });
+    const clash = byPhone.find((p) => p.id !== excludeProfileId);
+    if (clash) {
+      throw new ConflictException(
+        clash.managedByUserId === actor.userId
+          ? `You already have a profile for that number: ${clash.displayName}.`
+          : 'A profile already exists for that mobile number.',
+      );
+    }
+
+    if (email) {
+      const byEmail = await this.profiles.find({ where: { contactEmail: email } });
+      if (byEmail.some((p) => p.id !== excludeProfileId)) {
+        throw new ConflictException('A profile with that contact email already exists.');
+      }
+    }
   }
 
   /**
@@ -152,9 +214,15 @@ export class ManagedProfilesService {
     const { inviteNow, ...fields } = dto;
     void inviteNow; // only meaningful at creation
 
-    if (fields.contactEmail && fields.contactEmail !== profile.contactEmail) {
-      const clash = await this.users.findOne({ where: { email: fields.contactEmail } });
-      if (clash) throw new ConflictException('Someone already uses that email address on WOW.');
+    const phoneChanged = fields.contactPhone && fields.contactPhone !== profile.contactPhone;
+    const emailChanged = fields.contactEmail && fields.contactEmail !== profile.contactEmail;
+    if (phoneChanged || emailChanged) {
+      await this.assertNotDuplicate(
+        actor,
+        fields.contactPhone ?? profile.contactPhone ?? '',
+        emailChanged ? fields.contactEmail : undefined,
+        profile.id,
+      );
     }
 
     Object.assign(profile, fields);

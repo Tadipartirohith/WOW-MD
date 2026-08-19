@@ -11,7 +11,7 @@ WOW is a marketplace with four kinds of account, chosen on the sign-up screen. E
 | Account type | What they do |
 | --- | --- |
 | **Individual** (bride, groom or family member) | Build a profile, browse matches, send and accept interests, chat with accepted matches, book vendors and planners, plan the wedding. A family member can additionally look after a relative's profile |
-| **Marriage agent** | Build profiles for clients — including people who have not signed up — invite them to claim their account, browse and book on their behalf. Reviewed by an administrator before any of that opens |
+| **Marriage agent** | Take a walk-in family's details, build their profile, circulate it to other agencies and to families, propose matches, and book on their behalf. Reviewed by an administrator before any of that opens |
 | **Vendor** | Publish a service listing, respond to incoming bookings, get paid out of escrow |
 | **Wedding planner** | Publish a planning listing, respond to bookings, and co-manage the weddings they are engaged on |
 
@@ -25,28 +25,34 @@ Three rules shape the whole permission model, all enforced on the server for eve
 
 Anyone can sign up on their own at any time. A self-registered person is never tied to an agency, signs in with their own password, and may approach any user or any agent freely.
 
-### Profiles without accounts
+### How an agency actually works
 
-A profile and an account are separate records. An agent (or a family member) can build a complete, matchable profile — photos, preferences, contact details — for someone who has never heard of the site. That profile takes part in matchmaking immediately.
+In the Indian matrimony market the family walks into the agency and hands over their details in person. The agent writes them up and then **circulates** the biodata looking for a match. The platform is built around that, not around the family filling in a web form.
 
-When the agent is ready they send an invitation to the email and mobile number on file. The invitee follows the link, **chooses their own password**, and takes ownership: from that moment the profile is theirs and the agent's write access ends, though the client stays on the agency's books.
+**Intake is phone-first.** A profile and an account are separate records: an agent builds a complete, matchable profile — photos, preferences, contact details — for someone who has never heard of the site. A mobile number is required, an email address is not, because plenty of clients never want a login at all. Consent is captured at the same moment: how permission was given, by whom (very often a parent rather than the subject), and on what date.
+
+**Circulation is the agent's job**, and it happens five ways: to another agency, to a family that already has an account, as a shareable biodata link for WhatsApp, into a vetted-agent network pool, or printed. Every one of them is a revocable record, so an agency can always answer "who has seen my client's details?" — and take it back. When two agencies each hold one side of a possible match, they negotiate in a thread on that pairing, long before the families meet.
+
+None of that can happen without **circulation consent**, which is recorded separately from intake consent and expires, so the family is asked again rather than assumed.
+
+**Claiming is optional.** If the client does want to manage their own profile, the agent sends an invitation; the invitee follows the link, **chooses their own password**, and takes ownership — from that moment the profile is theirs and the agent's write access ends, though the client stays on the agency's books.
 
 ```
-agent builds profile  →  UNCLAIMED  →  invite emailed  →  INVITED  →  subject accepts  →  CLAIMED
-   (matchable now)                                                        (they own it)
+family walks in  →  UNCLAIMED  →  (optional) invite  →  INVITED  →  they accept  →  CLAIMED
+  (matchable and circulatable straight away)                          (they own it)
 ```
 
-The full model is in [docs/PROFILES-AND-INVITATIONS.md](docs/PROFILES-AND-INVITATIONS.md); the permission contract is in [docs/RBAC-AND-ROLES.md](docs/RBAC-AND-ROLES.md).
+Details: [docs/CIRCULATION.md](docs/CIRCULATION.md) for consent and sharing, [docs/PROFILES-AND-INVITATIONS.md](docs/PROFILES-AND-INVITATIONS.md) for the profile/account split, [docs/RBAC-AND-ROLES.md](docs/RBAC-AND-ROLES.md) for the permission contract.
 
 ## What is inside this repository
 
-The `backend` folder holds the API, the database migrations, the shared platform code such as configuration, authorization and health checks, and the tests. The `frontend` folder holds the React single page application. The `docker` folder holds the images and the compose files for running everything locally. The `scripts` folder holds the live verification suites. The `k8s` folder holds the Kubernetes manifests for a production deployment. The `terraform` folder holds the cloud infrastructure. The `docs` folder holds the design blueprint, the setup and testing guide, the authorization contract, the profile/invitation model, and an honest self-review of the remaining gaps.
+The `backend` folder holds the API, the database migrations, the shared platform code such as configuration, authorization and health checks, and the tests. The `frontend` folder holds the React single page application. The `docker` folder holds the images and the compose files for running everything locally. The `scripts` folder holds the live verification suites. The `k8s` folder holds the Kubernetes manifests for a production deployment. The `terraform` folder holds the cloud infrastructure. The `docs` folder holds the design blueprint, the setup and testing guide, the authorization contract, the profile/invitation model, the consent and circulation model, and an honest self-review of the remaining gaps.
 
 ## The main features
 
 A person registers, picks an account type, and the system issues a short-lived access token plus a refresh token that rides in an httpOnly cookie. Individuals build a profile with their details and preferences. The matchmaking engine scores how compatible two people are and suggests the best options, and every weight in that scoring lives in configuration so the product team can retune it without touching the code. What one person sees of another is deliberately limited: an age band rather than a date of birth, and photos only once both sides have accepted. Once two people match they can chat in real time, delivered reliably across replicas through Redis. Buyers can also open an enquiry thread with any vendor, planner or agent without a prior match.
 
-Agents and family members can build and manage profiles on behalf of others, invite them by email to claim their account, and act under those profiles for browsing and bookings. Every such action records both the profile it was for and the account that performed it.
+Agents and family members build and manage profiles on behalf of others, capture the family's consent, and circulate the biodata — to other agencies, to families with an account, as a shareable link, or into the vetted-agent pool. Every share is revocable and every action records both the profile it was for and the account that performed it. Where two agencies each hold one side, they negotiate the pairing in a thread of their own.
 
 On the marketplace side, vendors and wedding planners publish listings, and an administrator approves each one before it appears in search or accepts a booking. Bookings move from requested to paid to confirmed to completed, the payment is held in escrow until the event is done, and each side can only drive the transitions that belong to it. On completion the platform's commission is withheld and the rest released to the provider; a cancellation refunds the buyer in full. Reviews can only be written after a booking with that provider has completed.
 
@@ -111,8 +117,14 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
   sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-invites.sh"
 ```
 
+```bash
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-circulation.sh"
+```
+
 - `verify-rbac.sh` — 118 checks: privilege escalation at registration, per-persona permissions, agency vetting, profile-level scoping, booking IDOR, escrow transitions, review gating, event ownership, request validation and token handling.
 - `verify-invites.sh` — 76 checks: agency approval, profiles built for people with no account, invitation and claim, multi-device sessions, brute-force lockout, signed payment webhooks, the audit trail, two-factor and pagination bounds.
+- `verify-circulation.sh` — 73 checks: phone-first intake, duplicate detection, consent in both scopes, all five circulation paths, read-only enforcement on shares, withdrawal pulling everything back, and cross-agent proposal threads.
 
 A k6 load test lives in `backend/test/k6`.
 

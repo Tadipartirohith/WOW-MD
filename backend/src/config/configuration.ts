@@ -110,6 +110,14 @@ export default () => ({
     maxInvitationResends: toNumber(process.env.MAX_INVITATION_RESENDS, 5),
     /** Agents must be approved by an admin before they can build profiles. */
     requireAgentApproval: toBool(process.env.REQUIRE_AGENT_APPROVAL, true),
+    /**
+     * How long circulation consent stands before the family has to be asked
+     * again. Intake consent does not expire; permission to pass details around
+     * should not be assumed indefinitely.
+     */
+    circulationConsentValidityDays: toNumber(process.env.CIRCULATION_CONSENT_VALIDITY_DAYS, 365),
+    /** Default lifetime of a shared biodata link. */
+    shareLinkTtlDays: toNumber(process.env.SHARE_LINK_TTL_DAYS, 30),
   },
 
   /**

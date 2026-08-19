@@ -51,6 +51,50 @@ export class PublicProfileView {
   managed: boolean;
 }
 
+/**
+ * The fuller view a circulated profile gets: the traditional biodata sheet.
+ *
+ * Deliberately more generous than `PublicProfileView`. Somebody a profile was
+ * *deliberately* shared with — another agent assessing the match, or a family
+ * the agent sent it to — needs the photos and the detail, or circulating it
+ * achieves nothing. The gate is the sharing decision plus consent, not the
+ * projection.
+ *
+ * Contact details are still withheld: the whole point of a matrimony agent is
+ * that they broker the introduction.
+ */
+export interface BiodataView {
+  id: string;
+  displayName: string;
+  gender?: string;
+  ageRange: string | null;
+  dateOfBirth: string | null;
+  city?: string;
+  bio?: string;
+  photos: string[];
+  preferences?: ProfilePreferences;
+  claimStatus: ProfileClaimStatus;
+  managed: boolean;
+}
+
+export function toBiodata(profile: Profile): BiodataView {
+  return {
+    id: profile.id,
+    displayName: profile.displayName,
+    gender: profile.gender,
+    ageRange: ageBand(profile.dateOfBirth),
+    // Age matters enough in this market to be worth the precision, and this
+    // view is only reachable through a deliberate share.
+    dateOfBirth: profile.dateOfBirth,
+    city: profile.city,
+    bio: profile.bio,
+    photos: profile.photos ?? [],
+    preferences: profile.preferences,
+    claimStatus: profile.claimStatus,
+    managed: profile.managedByUserId !== null,
+  };
+}
+
 /** Five-year bands, which is precise enough to match on and coarse enough not to identify. */
 export function ageBand(dateOfBirth: string | null): string | null {
   if (!dateOfBirth) return null;

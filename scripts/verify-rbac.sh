@@ -44,6 +44,11 @@ check() {
 # Precise extraction; jq is present in the runner image.
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Intake now records how the family gave permission, so every profile the agent
+# builds carries a consent block. Defined once and appended to each body below.
+CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","allowsCirculation":true}'
+
+
 # Rate-limit counters live in Redis and deliberately survive restarts, so a
 # repeated run inside the same window would trip limits unrelated to what is
 # being tested. Clear only the throttle keys (never the caches).
@@ -131,7 +136,7 @@ c=$(req POST /vendors "{\"name\":\"Sneaky\",\"category\":\"venue\"}" "$PLANNER")
 check "planner cannot create a vendor listing" "$c" 403
 c=$(req GET /agents/clients "" "$BRIDE")
 check "bride cannot list agent clients" "$c" 403
-c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876500002\"}" "$VENDOR")
+c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876500002\",$CONSENT}" "$VENDOR")
 check "vendor cannot build a profile for anyone" "$c" 403
 
 echo
@@ -150,7 +155,7 @@ echo "== 5. Agent stewardship: vetting, profiles, invitations, scoping =="
 c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderabad\"}" "$AGENT")
 check "agent registers their agency" "$c" 200
 AGENCY=$(field /tmp/body id)
-c=$(req POST /agents/profiles "{\"displayName\":\"Too Early\",\"contactEmail\":\"early-$STAMP@t.com\",\"contactPhone\":\"+919876500003\"}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Too Early\",\"contactEmail\":\"early-$STAMP@t.com\",\"contactPhone\":\"+919876500003\",$CONSENT}" "$AGENT")
 check "an unapproved agency cannot build profiles" "$c" 403
 c=$(req PUT "/admin/agents/$AGENCY/approve" "" "$ADMIN")
 check "admin approves the agency" "$c" 200
@@ -161,7 +166,7 @@ c=$(req PUT "/admin/agents/$AGENCY2/approve" "" "$ADMIN")
 check "admin approves the second agency" "$c" 200
 
 # A profile for somebody with no account at all.
-c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"+919876512399\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\"}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"+919876512399\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
 check "agent builds a profile for an account-less person" "$c" 201
 MANAGED=$(field /tmp/body id)
 

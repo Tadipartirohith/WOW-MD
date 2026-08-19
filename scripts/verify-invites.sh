@@ -46,6 +46,11 @@ assert() {
 
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Intake now records how the family gave permission, so every profile the agent
+# builds carries a consent block. Defined once and appended to each body below.
+CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","allowsCirculation":true}'
+
+
 # Rate-limit counters live in Redis and deliberately survive restarts, so a
 # repeated run inside the same window would trip limits that have nothing to do
 # with what is being tested. Clear only the throttle keys (never the caches).
@@ -95,7 +100,7 @@ check "solo user browses matches unaided" "$c" 200
 
 echo
 echo "== 3. An unvetted agent cannot build profiles =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Blocked\",\"contactEmail\":\"blocked-$STAMP@t.com\",\"contactPhone\":\"+919876500000\"}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Blocked\",\"contactEmail\":\"blocked-$STAMP@t.com\",\"contactPhone\":\"+919876500000\",$CONSENT}" "$AGENT")
 check "unapproved agency cannot create a profile" "$c" 403
 c=$(req GET /agents/agency/status "" "$AGENT")
 check "agency status is readable" "$c" 200
@@ -105,7 +110,7 @@ c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderab
 check "agent registers their agency" "$c" 200
 AGENCY=$(field /tmp/body id)
 
-c=$(req POST /agents/profiles "{\"displayName\":\"Still Blocked\",\"contactEmail\":\"blocked2-$STAMP@t.com\",\"contactPhone\":\"+919876500001\"}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Still Blocked\",\"contactEmail\":\"blocked2-$STAMP@t.com\",\"contactPhone\":\"+919876500001\",$CONSENT}" "$AGENT")
 check "registered but unapproved agency still cannot create" "$c" 403
 
 c=$(req GET /admin/agents/pending "" "$SOLO")
@@ -117,7 +122,7 @@ check "admin approves the agency" "$c" 200
 
 echo
 echo "== 4. Agent builds a profile for someone with NO account =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Priya $STAMP\",\"contactEmail\":\"priya-$STAMP@t.com\",\"contactPhone\":\"+919876512345\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",\"bio\":\"Loves classical music.\",\"photos\":[\"https://cdn.example.com/a.jpg\",\"https://cdn.example.com/b.jpg\"]}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Priya $STAMP\",\"contactEmail\":\"priya-$STAMP@t.com\",\"contactPhone\":\"+919876512345\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",\"bio\":\"Loves classical music.\",\"photos\":[\"https://cdn.example.com/a.jpg\",\"https://cdn.example.com/b.jpg\"],$CONSENT}" "$AGENT")
 check "agent creates a profile with photos and details" "$c" 201
 cp /tmp/body /tmp/managed.json
 MANAGED=$(field /tmp/managed.json id)
@@ -129,11 +134,13 @@ check "agent adds another photo" "$c" 201
 c=$(req POST "/agents/profiles/$MANAGED/photos" '{"url":"not-a-url"}' "$AGENT")
 check "a non-url photo is rejected" "$c" 400
 
-c=$(req POST /agents/profiles "{\"displayName\":\"NoContact\",\"contactPhone\":\"+919876512300\"}" "$AGENT")
-check "email is required to build a managed profile" "$c" 400
-c=$(req POST /agents/profiles "{\"displayName\":\"NoPhone\",\"contactEmail\":\"nophone-$STAMP@t.com\"}" "$AGENT")
-check "mobile is required to build a managed profile" "$c" 400
-c=$(req POST /agents/profiles "{\"displayName\":\"BadPhone\",\"contactEmail\":\"badphone-$STAMP@t.com\",\"contactPhone\":\"12\"}" "$AGENT")
+# Email became optional when intake moved to phone-first: a walk-in family
+# hands over a number far more often than an address.
+c=$(req POST /agents/profiles "{\"displayName\":\"NoEmail $STAMP\",\"contactPhone\":\"+919876512300\",$CONSENT}" "$AGENT")
+check "a profile can be built with no email at all" "$c" 201
+c=$(req POST /agents/profiles "{\"displayName\":\"NoPhone\",\"contactEmail\":\"nophone-$STAMP@t.com\",$CONSENT}" "$AGENT")
+check "but the mobile number is still required" "$c" 400
+c=$(req POST /agents/profiles "{\"displayName\":\"BadPhone\",\"contactEmail\":\"badphone-$STAMP@t.com\",\"contactPhone\":\"12\",$CONSENT}" "$AGENT")
 check "a malformed mobile is rejected" "$c" 400
 
 c=$(req GET "/agents/profiles/$MANAGED" "" "$AGENT2")
@@ -230,13 +237,13 @@ fi
 
 echo
 echo "== 8. Family members steward relatives, but run no agency =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Relative $STAMP\",\"contactEmail\":\"rel-$STAMP@t.com\",\"contactPhone\":\"+919876599999\",\"gender\":\"male\"}" "$FAMILY")
+c=$(req POST /agents/profiles "{\"displayName\":\"Relative $STAMP\",\"contactEmail\":\"rel-$STAMP@t.com\",\"contactPhone\":\"+919876599999\",\"gender\":\"male\",$CONSENT}" "$FAMILY")
 check "a family account can build a relative profile" "$c" 201
 c=$(req PUT /agents/agency '{"agencyName":"Not An Agency"}' "$FAMILY")
 check "a family account cannot register an agency" "$c" 403
 c=$(req GET /agents/clients "" "$FAMILY")
 check "a family account has no client book" "$c" 403
-c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876599990\"}" "$SOLO")
+c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876599990\",$CONSENT}" "$SOLO")
 check "a plain bride account cannot steward profiles" "$c" 403
 
 echo

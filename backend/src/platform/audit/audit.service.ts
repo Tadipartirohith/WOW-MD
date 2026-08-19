@@ -21,6 +21,15 @@ export const AuditAction = {
   PROFILE_INVITED: 'profile.invited',
   PROFILE_CLAIMED: 'profile.claimed',
 
+  CONSENT_INTAKE_RECORDED: 'consent.intake_recorded',
+  CONSENT_CIRCULATION_RECORDED: 'consent.circulation_recorded',
+  CONSENT_REVOKED: 'consent.revoked',
+
+  PROFILE_SHARED: 'profile.shared',
+  PROFILE_SHARE_REVOKED: 'profile.share_revoked',
+  PROFILE_POOLED: 'profile.pooled',
+  PROFILE_UNPOOLED: 'profile.unpooled',
+
   AGENT_APPROVED: 'agent.approved',
   AGENT_REJECTED: 'agent.rejected',
 

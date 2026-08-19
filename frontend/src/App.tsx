@@ -25,6 +25,10 @@ import Admin from './pages/Admin';
 import SharedAlbum from './pages/SharedAlbum';
 import AgentClients from './pages/AgentClients';
 import ManagedProfiles from './pages/ManagedProfiles';
+import SharedWithMe from './pages/SharedWithMe';
+import NetworkPool from './pages/NetworkPool';
+import Proposals from './pages/Proposals';
+import SharedBiodata from './pages/SharedBiodata';
 import Agency from './pages/Agency';
 import Security from './pages/Security';
 import ProviderConsole from './pages/ProviderConsole';
@@ -51,6 +55,9 @@ const NAV: NavEntry[] = [
     label: 'Client Profiles',
     requires: [Permission.MANAGED_PROFILE_MANAGE],
   },
+  { to: '/shared-with-me', label: 'Shared With Me', requires: [Permission.ACT_ON_BEHALF] },
+  { to: '/pool', label: 'Network Pool', requires: [Permission.NETWORK_POOL_BROWSE] },
+  { to: '/proposals', label: 'Proposals', requires: [Permission.ACT_ON_BEHALF] },
   { to: '/clients', label: 'My Clients', requires: [Permission.CLIENT_READ] },
   { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE] },
   { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE] },
@@ -218,6 +225,7 @@ export default function App() {
       <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/verify-email/:token" element={<VerifyEmail />} />
       <Route path="/rsvp/:token" element={<GuestRsvp />} />
+      <Route path="/biodata/:token" element={<SharedBiodata />} />
       <Route path="/album/:token" element={<SharedAlbum />} />
 
       <Route
@@ -257,6 +265,30 @@ export default function App() {
         element={
           <Protected requires={[Permission.MANAGED_PROFILE_MANAGE]}>
             <ManagedProfiles />
+          </Protected>
+        }
+      />
+      <Route
+        path="/shared-with-me"
+        element={
+          <Protected requires={[Permission.ACT_ON_BEHALF]}>
+            <SharedWithMe />
+          </Protected>
+        }
+      />
+      <Route
+        path="/pool"
+        element={
+          <Protected requires={[Permission.NETWORK_POOL_BROWSE]}>
+            <NetworkPool />
+          </Protected>
+        }
+      />
+      <Route
+        path="/proposals"
+        element={
+          <Protected requires={[Permission.ACT_ON_BEHALF]}>
+            <Proposals />
           </Protected>
         }
       />

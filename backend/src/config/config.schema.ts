@@ -125,6 +125,8 @@ export const configValidationSchema = Joi.object({
   MAX_MANAGED_PROFILES_FAMILY: Joi.number().min(1).max(100).default(5),
   MAX_INVITATION_RESENDS: Joi.number().min(1).max(50).default(5),
   REQUIRE_AGENT_APPROVAL: Joi.string().optional(),
+  CIRCULATION_CONSENT_VALIDITY_DAYS: Joi.number().min(1).max(3650).default(365),
+  SHARE_LINK_TTL_DAYS: Joi.number().min(1).max(365).default(30),
 
   // Admin bootstrap. Read only by src/database/seed-admin.ts, which does its own
   // validation. Kept permissive here so a seeder-only value (including internal

@@ -90,6 +90,8 @@ Skipping the second layer is what produced the IDOR bugs listed in §6.
 | `managed_profile:manage` | family only | ● | | | ● |
 | `managed_profile:invite` | family only | ● | | | ● |
 | `act_on_behalf` | family only | ● | | | ● |
+| `profile:circulate` | family only | ● | | | ● |
+| `network_pool:browse` | | ● | | | ● |
 | `agency:manage` | | ● | | | ● |
 | `session:manage:own` | ● | ● | ● | ● | ● |
 | `mfa:manage:own` | ● | ● | ● | ● | ● |
@@ -265,4 +267,6 @@ two-factor, recovery and refresh rotation).
 
 - [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md) — profiles without
   accounts, stewardship, and the invitation/claim flow.
+- [CIRCULATION.md](CIRCULATION.md) — phone-first intake, the two consent scopes,
+  and the five ways an agent circulates a biodata.
 - [SELF-REVIEW.md](SELF-REVIEW.md) — what is still missing.

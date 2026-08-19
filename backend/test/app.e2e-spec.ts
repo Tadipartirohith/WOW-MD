@@ -52,6 +52,19 @@ describe('WOW API (e2e)', () => {
 
   const http = () => request(app.getHttpServer());
 
+  /**
+   * Intake records how the family gave permission, so every agency-built
+   * profile carries one of these. A walk-in is overwhelmingly in person, with a
+   * parent doing the talking.
+   */
+  const consent = (allowsCirculation = false) => ({
+    method: 'in_person',
+    givenByRelation: 'father',
+    givenByName: 'Ramesh Sharma',
+    givenAt: '2026-08-01',
+    allowsCirculation,
+  });
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -166,25 +179,32 @@ describe('WOW API (e2e)', () => {
         .set('Authorization', `Bearer ${agentToken}`)
         .send({
           displayName: 'Blocked',
-          contactEmail: `blocked_${unique}@test.com`,
           contactPhone: '+919876500000',
+          consent: consent(),
         })
         .expect(403);
     });
 
-    it('requires an email and a mobile number on a managed profile', async () => {
-      // Registered but still unapproved, so these fail validation before authz
-      // would matter — both fields are mandatory by design.
+    it('requires a mobile number and a consent record, but not an email', async () => {
       await http()
         .put('/api/agents/agency')
         .set('Authorization', `Bearer ${agentToken}`)
         .send({ agencyName: `E2E Agency ${unique}`, city: 'Mumbai' })
         .expect(200);
 
+      // Validation runs before the approval check, so these 400 rather than 403.
       await http()
         .post('/api/agents/profiles')
         .set('Authorization', `Bearer ${agentToken}`)
-        .send({ displayName: 'No contact details' })
+        .send({ displayName: 'No phone', consent: consent() })
+        .expect(400);
+
+      // @ValidateNested alone passes when the property is absent, so this
+      // previously reached the service and crashed. It must be a 400.
+      await http()
+        .post('/api/agents/profiles')
+        .set('Authorization', `Bearer ${agentToken}`)
+        .send({ displayName: 'No consent', contactPhone: '+919876500009' })
         .expect(400);
     });
 
@@ -194,8 +214,8 @@ describe('WOW API (e2e)', () => {
         .set('Authorization', `Bearer ${soloToken}`)
         .send({
           displayName: 'Nope',
-          contactEmail: `nope_${unique}@test.com`,
           contactPhone: '+919876500001',
+          consent: consent(),
         })
         .expect(403);
 
@@ -204,8 +224,8 @@ describe('WOW API (e2e)', () => {
         .set('Authorization', `Bearer ${vendorToken}`)
         .send({
           displayName: 'Nope',
-          contactEmail: `nope2_${unique}@test.com`,
           contactPhone: '+919876500002',
+          consent: consent(),
         })
         .expect(403);
     });
@@ -292,6 +312,15 @@ describe('WOW API (e2e)', () => {
 
   it('refuses an invalid invitation token', async () => {
     await http().get(`/api/auth/invitations/${'x'.repeat(32)}`).expect(404);
+  });
+
+  it('refuses an invalid biodata share link', async () => {
+    await http().get(`/api/circulation/biodata/${'x'.repeat(32)}`).expect(404);
+  });
+
+  it('keeps the network pool to approved agents', async () => {
+    await http().get('/api/circulation/pool').set('Authorization', `Bearer ${soloToken}`).expect(403);
+    await http().get('/api/circulation/pool').set('Authorization', `Bearer ${vendorToken}`).expect(403);
   });
 
   it('exposes public search endpoints', async () => {
