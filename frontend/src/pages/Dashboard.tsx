@@ -23,10 +23,22 @@ const TILES: Tile[] = [
     requires: [Permission.PROFILE_MANAGE_OWN],
   },
   {
+    to: '/client-profiles',
+    title: 'Client Profiles',
+    desc: 'Build a profile for someone who has not joined yet, then invite them',
+    requires: [Permission.MANAGED_PROFILE_MANAGE],
+  },
+  {
     to: '/clients',
     title: 'My Clients',
-    desc: 'Onboard and manage the clients you represent',
+    desc: 'Accounts created when a client accepted your invitation',
     requires: [Permission.CLIENT_READ],
+  },
+  {
+    to: '/agency',
+    title: 'My Agency',
+    desc: 'Your registration details and approval status',
+    requires: [Permission.AGENCY_MANAGE],
   },
   {
     to: '/matches',
@@ -77,9 +89,15 @@ const TILES: Tile[] = [
     requires: [Permission.AI_ASSIST],
   },
   {
+    to: '/security',
+    title: 'Security',
+    desc: 'Password, two-factor and signed-in devices',
+    requires: [Permission.SESSION_MANAGE_OWN],
+  },
+  {
     to: '/admin',
     title: 'Admin',
-    desc: 'Approvals, analytics and disputes',
+    desc: 'Approvals, analytics, disputes and the audit trail',
     requires: [Permission.ADMIN_ANALYTICS_READ],
   },
 ];

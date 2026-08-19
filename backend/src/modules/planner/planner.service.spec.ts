@@ -4,6 +4,8 @@ import { PlannerService } from './planner.service';
 import { WeddingPlan } from './entities/wedding-plan.entity';
 import { PlanTask } from './entities/plan-task.entity';
 import { User } from '../auth/entities/user.entity';
+import { Booking } from '../bookings/entities/booking.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { AgentsService } from '../agents/agents.service';
 import { UserRole } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -42,6 +44,8 @@ describe('PlannerService.createPlan (auto timeline)', () => {
         { provide: getRepositoryToken(WeddingPlan), useValue: plansRepo },
         { provide: getRepositoryToken(PlanTask), useValue: tasksRepo },
         { provide: getRepositoryToken(User), useValue: { find: jest.fn(async () => []), findOne: jest.fn() } },
+        { provide: getRepositoryToken(Booking), useValue: { findOne: jest.fn(async () => null) } },
+        { provide: getRepositoryToken(PlannerProfile), useValue: { find: jest.fn(async () => []) } },
         { provide: AgentsService, useValue: { assertManages: jest.fn() } },
       ],
     }).compile();

@@ -23,6 +23,7 @@ import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { PAYMENT_PROVIDER, PaymentProvider } from './payment.provider';
 import { AgentsService } from '../agents/agents.service';
+import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
@@ -52,8 +53,29 @@ export class BookingsService {
     private readonly outbox: OutboxService,
     private readonly dataSource: DataSource,
     private readonly agents: AgentsService,
+    private readonly audit: AuditService,
     @Inject(PAYMENT_PROVIDER) private readonly gateway: PaymentProvider,
   ) {}
+
+  /**
+   * Splits an escrow amount into the platform's commission and the provider's
+   * payout. PAYMENT_COMMISSION_PERCENT was previously read into config and
+   * never applied, so providers received the gross amount and the marketplace
+   * earned nothing.
+   *
+   * Rounding favours the provider: the commission is floored to whole paise so
+   * the two parts always sum back to exactly the amount held.
+   */
+  splitAmount(amount: string): { commission: string; payout: string } {
+    const gross = Math.round(parseFloat(amount) * 100); // work in minor units
+    const percent = this.cfg.payments.commissionPercent;
+    const commission = Math.floor((gross * percent) / 100);
+    const payout = gross - commission;
+    return {
+      commission: (commission / 100).toFixed(2),
+      payout: (payout / 100).toFixed(2),
+    };
+  }
 
   /** Resolves the user account that owns the provider listing on a booking. */
   private async providerOwner(
@@ -115,8 +137,27 @@ export class BookingsService {
     );
   }
 
-  /** Initiate payment: funds held in escrow, booking moves to PENDING. */
-  async pay(actor: AuthUser, bookingId: string): Promise<{ booking: Booking; payment: Payment }> {
+  /**
+   * Initiate payment: funds held in escrow, booking moves to PENDING.
+   *
+   * `idempotencyKey` makes a retried request (flaky network, double-tap) return
+   * the original payment instead of creating a second escrow hold against the
+   * same booking.
+   */
+  async pay(
+    actor: AuthUser,
+    bookingId: string,
+    idempotencyKey?: string,
+  ): Promise<{ booking: Booking; payment: Payment }> {
+    if (idempotencyKey) {
+      const prior = await this.payments.findOne({ where: { idempotencyKey } });
+      if (prior) {
+        const booking = await this.loadOrFail(prior.bookingId);
+        await this.assertBuyerSide(actor, booking);
+        return { booking, payment: prior };
+      }
+    }
+
     return this.dataSource.transaction(async (manager) => {
       const bookingRepo = manager.getRepository(Booking);
       const paymentRepo = manager.getRepository(Payment);
@@ -131,16 +172,23 @@ export class BookingsService {
       await this.assertBuyerSide(actor, booking);
       this.assertTransition(booking.status, BookingStatus.PENDING);
 
+      // Work out the split now and store it, so what the provider is owed is
+      // fixed at the moment of payment and cannot drift if the rate changes.
+      const { commission, payout } = this.splitAmount(booking.amount);
+
       const intent = await this.gateway.createEscrowHold(booking.amount, booking.currency);
       const payment = await paymentRepo.save(
         paymentRepo.create({
           bookingId: booking.id,
           userId: booking.userId,
           amount: booking.amount,
+          commissionAmount: commission,
+          payoutAmount: payout,
           currency: booking.currency,
           status: PaymentStatus.HELD_IN_ESCROW,
           provider: this.cfg.payments.provider,
           providerRef: intent.providerRef,
+          idempotencyKey: idempotencyKey ?? null,
         }),
       );
 
@@ -151,6 +199,16 @@ export class BookingsService {
           eventType: 'booking.payment_held',
           aggregateType: 'booking',
           payload: { bookingId: booking.id, userId: booking.userId, amount: booking.amount },
+        },
+        manager,
+      );
+      await this.audit.record(
+        {
+          action: AuditAction.BOOKING_ESCROW_HELD,
+          actor,
+          resourceType: 'booking',
+          resourceId: booking.id,
+          metadata: { amount: booking.amount, commission, payout },
         },
         manager,
       );
@@ -181,8 +239,26 @@ export class BookingsService {
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
     });
     if (payment?.providerRef) {
-      await this.gateway.release(payment.providerRef);
-      await this.payments.update(payment.id, { status: PaymentStatus.RELEASED });
+      // Release only the seller share; the commission stays with the platform.
+      // Recompute if the row predates the split columns.
+      const stored = parseFloat(payment.payoutAmount) > 0;
+      const split = stored
+        ? { payout: payment.payoutAmount, commission: payment.commissionAmount }
+        : this.splitAmount(payment.amount);
+
+      await this.gateway.release(payment.providerRef, split.payout, payment.currency);
+      await this.payments.update(payment.id, {
+        status: PaymentStatus.RELEASED,
+        payoutAmount: split.payout,
+        commissionAmount: split.commission,
+      });
+      await this.audit.record({
+        action: AuditAction.BOOKING_ESCROW_RELEASED,
+        actor,
+        resourceType: 'booking',
+        resourceId: bookingId,
+        metadata: { gross: payment.amount, payout: split.payout, commission: split.commission },
+      });
     }
     await this.outbox.record({
       eventType: 'booking.completed',
@@ -203,8 +279,21 @@ export class BookingsService {
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
     });
     if (payment?.providerRef) {
-      await this.gateway.refund(payment.providerRef);
-      await this.payments.update(payment.id, { status: PaymentStatus.REFUNDED });
+      // Refunds return the FULL amount to the buyer: the platform earns no
+      // commission on a booking that never happened.
+      await this.gateway.refund(payment.providerRef, payment.amount);
+      await this.payments.update(payment.id, {
+        status: PaymentStatus.REFUNDED,
+        commissionAmount: '0.00',
+        payoutAmount: '0.00',
+      });
+      await this.audit.record({
+        action: AuditAction.BOOKING_ESCROW_REFUNDED,
+        actor,
+        resourceType: 'booking',
+        resourceId: bookingId,
+        metadata: { amount: payment.amount, reason: reason ?? null },
+      });
     }
     await this.outbox.record({
       eventType: 'booking.cancelled',

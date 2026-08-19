@@ -7,6 +7,7 @@ import { PlannerProfile } from '../wedding-planners/entities/planner-profile.ent
 import { AgentsModule } from '../agents/agents.module';
 import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
+import { PaymentsController } from './payments.controller';
 import {
   MockPaymentProvider,
   RazorpayPaymentProvider,
@@ -19,7 +20,7 @@ import {
     AgentsModule,
   ],
   providers: [BookingsService, MockPaymentProvider, RazorpayPaymentProvider, paymentProviderFactory],
-  controllers: [BookingsController],
+  controllers: [BookingsController, PaymentsController],
   exports: [BookingsService],
 })
 export class BookingsModule {}

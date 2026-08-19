@@ -1,0 +1,382 @@
+import { FormEvent, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, apiMessage } from '../lib/api';
+import { useAuth } from '../store/auth';
+import { CLAIM_STATUS_LABEL, Permission, ProfileClaimStatus, can } from '../lib/permissions';
+
+interface ManagedProfile {
+  id: string;
+  displayName: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  gender: string | null;
+  dateOfBirth: string | null;
+  city: string | null;
+  bio: string | null;
+  photos: string[];
+  claimStatus: ProfileClaimStatus;
+  profileCompleted: boolean;
+  createdAt: string;
+}
+
+interface AgencyStatus {
+  registered: boolean;
+  approved: boolean;
+  rejectionReason: string | null;
+  agencyName: string | null;
+}
+
+const emptyDraft = {
+  displayName: '',
+  contactEmail: '',
+  contactPhone: '',
+  gender: 'female',
+  dateOfBirth: '',
+  city: '',
+  bio: '',
+};
+
+/**
+ * Where an agent (or a family member looking after a relative) builds a full
+ * profile for somebody who has not signed up.
+ *
+ * The profile is matchable straight away. An invitation is a separate,
+ * deliberate step: it emails the subject a link where THEY choose a password,
+ * which is why the steward never sets one here.
+ */
+export default function ManagedProfiles() {
+  const qc = useQueryClient();
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const isAgent = can(permissions, Permission.AGENCY_MANAGE);
+
+  const [draft, setDraft] = useState(emptyDraft);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const { data: agency } = useQuery({
+    queryKey: ['agency-status'],
+    queryFn: async () => (await api.get('/agents/agency/status')).data as AgencyStatus,
+    retry: false,
+    enabled: isAgent,
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['managed-profiles'],
+    queryFn: async () => (await api.get('/agents/profiles')).data,
+  });
+
+  const create = useMutation({
+    mutationFn: async (inviteNow: boolean) => {
+      const payload: Record<string, unknown> = {
+        displayName: draft.displayName,
+        contactEmail: draft.contactEmail,
+        contactPhone: draft.contactPhone,
+        gender: draft.gender,
+        inviteNow,
+      };
+      if (draft.dateOfBirth) payload.dateOfBirth = draft.dateOfBirth;
+      if (draft.city) payload.city = draft.city;
+      if (draft.bio) payload.bio = draft.bio;
+      return (await api.post('/agents/profiles', payload)).data as ManagedProfile;
+    },
+    onSuccess: (profile, inviteNow) => {
+      setDraft(emptyDraft);
+      setError('');
+      setNotice(
+        inviteNow
+          ? `Profile created and an invitation emailed to ${profile.contactEmail}.`
+          : 'Profile created. It is matchable now; invite them whenever you are ready.',
+      );
+      qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+    },
+    onError: (err) => {
+      setNotice('');
+      setError(apiMessage(err, 'Could not create that profile.'));
+    },
+  });
+
+  const invite = useMutation({
+    mutationFn: async (id: string) =>
+      (await api.post(`/agents/profiles/${id}/invite`)).data as { devUrl?: string },
+    onSuccess: (res) => {
+      setError('');
+      setNotice(
+        res.devUrl
+          ? `Invitation sent. Development link: ${res.devUrl}`
+          : 'Invitation emailed. They choose their own password when they accept.',
+      );
+      qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+    },
+    onError: (err) => setError(apiMessage(err)),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/agents/profiles/${id}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['managed-profiles'] }),
+    onError: (err) => setError(apiMessage(err)),
+  });
+
+  const profiles: ManagedProfile[] = data?.data ?? [];
+  const set = (k: keyof typeof emptyDraft) => (e: { target: { value: string } }) =>
+    setDraft((d) => ({ ...d, [k]: e.target.value }));
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    create.mutate(false);
+  }
+
+  // An agent has to be vetted before any of this works, so say so plainly
+  // rather than letting every action fail with a 403.
+  if (isAgent && agency && !agency.approved) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-bold text-brand-dark">Client Profiles</h1>
+        <div className="card border-amber-200 bg-amber-50">
+          <h2 className="font-semibold text-amber-900">
+            {agency.registered ? 'Your agency is awaiting approval' : 'Register your agency first'}
+          </h2>
+          <p className="mt-2 text-sm text-amber-900">
+            {agency.registered
+              ? 'An administrator reviews every agency before it can build profiles or invite clients. You will be emailed when yours is reviewed.'
+              : 'Before you can build client profiles, tell us who you are. An administrator reviews each agency.'}
+          </p>
+          {agency.rejectionReason && (
+            <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+              Not approved: {agency.rejectionReason}
+            </p>
+          )}
+          <a href="/agency" className="btn mt-3">
+            {agency.registered ? 'Review agency details' : 'Register agency'}
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-brand-dark">Client Profiles</h1>
+        <p className="text-sm text-gray-500">
+          Build a complete profile for someone who has not joined yet. It can be matched
+          immediately; when you invite them, they set their own password and take ownership.
+        </p>
+      </div>
+
+      {notice && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
+      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+      <form onSubmit={submit} className="card space-y-4">
+        <h2 className="font-semibold text-gray-900">New profile</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label className="label">Full name</label>
+            <input className="input" value={draft.displayName} onChange={set('displayName')} required />
+          </div>
+          <div>
+            <label className="label">Email</label>
+            <input
+              className="input"
+              type="email"
+              value={draft.contactEmail}
+              onChange={set('contactEmail')}
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500">Where their invitation is sent.</p>
+          </div>
+          <div>
+            <label className="label">Mobile number</label>
+            <input
+              className="input"
+              placeholder="+919876543210"
+              value={draft.contactPhone}
+              onChange={set('contactPhone')}
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500">International format, including country code.</p>
+          </div>
+          <div>
+            <label className="label">Gender</label>
+            <select className="input" value={draft.gender} onChange={set('gender')}>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Date of birth</label>
+            <input
+              className="input"
+              type="date"
+              value={draft.dateOfBirth}
+              onChange={set('dateOfBirth')}
+            />
+          </div>
+          <div>
+            <label className="label">City</label>
+            <input className="input" value={draft.city} onChange={set('city')} />
+          </div>
+        </div>
+        <div>
+          <label className="label">About them</label>
+          <textarea className="input" rows={3} maxLength={2000} value={draft.bio} onChange={set('bio')} />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn" disabled={create.isPending}>
+            {create.isPending ? 'Saving...' : 'Save profile'}
+          </button>
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={create.isPending}
+            onClick={() => create.mutate(true)}
+          >
+            Save and invite now
+          </button>
+        </div>
+      </form>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold text-gray-900">Profiles you manage</h2>
+        {isLoading && <p className="text-sm text-gray-500">Loading...</p>}
+        {!isLoading && profiles.length === 0 && (
+          <p className="text-sm text-gray-400">You have not built any profiles yet.</p>
+        )}
+
+        <div className="divide-y">
+          {profiles.map((p) => (
+            <div key={p.id} className="py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">
+                    {p.displayName}
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
+                        p.claimStatus === 'claimed'
+                          ? 'bg-green-50 text-green-700'
+                          : p.claimStatus === 'invited'
+                            ? 'bg-amber-50 text-amber-800'
+                            : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {CLAIM_STATUS_LABEL[p.claimStatus]}
+                    </span>
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {p.contactEmail}
+                    {p.contactPhone ? ` · ${p.contactPhone}` : ''}
+                    {p.city ? ` · ${p.city}` : ''}
+                    {` · ${p.photos?.length ?? 0} photo(s)`}
+                  </p>
+                  {p.claimStatus === 'claimed' && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      This profile belongs to its owner now, so it is read-only for you.
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {p.claimStatus !== 'claimed' && (
+                    <>
+                      <button
+                        className="btn-outline"
+                        onClick={() => setSelected(selected === p.id ? null : p.id)}
+                      >
+                        {selected === p.id ? 'Close' : 'Photos'}
+                      </button>
+                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && (
+                        <button className="btn" onClick={() => invite.mutate(p.id)}>
+                          {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
+                        </button>
+                      )}
+                      <button className="btn-outline" onClick={() => remove.mutate(p.id)}>
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {selected === p.id && <PhotoEditor profile={p} onError={setError} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhotoEditor({
+  profile,
+  onError,
+}: {
+  profile: ManagedProfile;
+  onError: (msg: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [url, setUrl] = useState('');
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api.post(`/agents/profiles/${profile.id}/photos`, { url });
+      setUrl('');
+      qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+    } catch (err) {
+      onError(apiMessage(err, 'That photo could not be added.'));
+    }
+  }
+
+  async function drop(photo: string) {
+    try {
+      await api.delete(`/agents/profiles/${profile.id}/photos`, { data: { url: photo } });
+      qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+    } catch (err) {
+      onError(apiMessage(err));
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg bg-gray-50 p-3">
+      <div className="flex flex-wrap gap-3">
+        {(profile.photos ?? []).map((photo) => (
+          <div key={photo} className="relative">
+            <img
+              src={photo}
+              alt=""
+              className="h-24 w-24 rounded object-cover"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.opacity = '0.3';
+              }}
+            />
+            <button
+              className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs"
+              onClick={() => drop(photo)}
+              aria-label="Remove photo"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+        {(profile.photos ?? []).length === 0 && (
+          <p className="text-sm text-gray-500">No photos yet.</p>
+        )}
+      </div>
+      <form onSubmit={add} className="mt-3 flex flex-wrap items-end gap-2">
+        <div className="flex-1">
+          <label className="label">Photo URL</label>
+          <input
+            className="input"
+            placeholder="https://..."
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            required
+          />
+        </div>
+        <button className="btn-outline">Add photo</button>
+      </form>
+      <p className="mt-2 text-xs text-gray-500">
+        Upload the image to your media library first, then paste its address here. Up to 20 photos.
+      </p>
+    </div>
+  );
+}

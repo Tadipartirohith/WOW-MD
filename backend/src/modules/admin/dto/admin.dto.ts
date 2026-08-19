@@ -43,6 +43,24 @@ export class AdminUserQueryDto extends PaginationDto {
   role?: UserRole;
 }
 
+export class AuditQueryDto extends PaginationDto {
+  @ApiPropertyOptional({ example: 'booking.escrow_released' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  action?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  actorUserId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  resourceId?: string;
+}
+
 export class UpdateUserStatusDto {
   @ApiProperty()
   @IsBoolean()

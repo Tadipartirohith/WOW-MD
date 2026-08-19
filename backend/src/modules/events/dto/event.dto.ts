@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { RsvpStatus } from '../../../common/enums';
 
 export class CreateEventDto {
@@ -30,6 +39,15 @@ export class InviteDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')
   guestId: string;
+}
+
+/** What a guest may set through their signed link: their attendance, nothing else. */
+export class GuestRsvpDto {
+  @ApiProperty({ enum: [RsvpStatus.ATTENDING, RsvpStatus.DECLINED, RsvpStatus.MAYBE] })
+  @IsIn([RsvpStatus.ATTENDING, RsvpStatus.DECLINED, RsvpStatus.MAYBE], {
+    message: 'Reply with attending, declined or maybe',
+  })
+  status: RsvpStatus;
 }
 
 export class UpdateRsvpDto {

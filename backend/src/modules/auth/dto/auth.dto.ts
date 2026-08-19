@@ -6,6 +6,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  Length,
   Matches,
   MaxLength,
   MinLength,
@@ -23,8 +24,20 @@ export const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 export const PASSWORD_MESSAGE =
   'Password must be at least 8 characters and include an uppercase letter, a lowercase letter and a digit';
 
-const normaliseEmail = ({ value }: { value: unknown }) =>
+/**
+ * E.164-ish: an optional +, then 8-15 digits. Deliberately permissive about
+ * country formatting but strict about shape, because agents key these in by
+ * hand and a typo means the client never gets contacted.
+ */
+export const PHONE_PATTERN = /^\+?[1-9]\d{7,14}$/;
+export const PHONE_MESSAGE =
+  'Enter a valid phone number in international format, for example +919876543210';
+
+export const normaliseEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
+
+const normalisePhone = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.replace(/[\s()-]/g, '') : value;
 
 export class RegisterDto {
   @ApiProperty({ example: 'bride@example.com' })
@@ -65,6 +78,12 @@ export class RegisterDto {
   @IsString()
   @MaxLength(120)
   displayName?: string;
+
+  @ApiPropertyOptional({ example: '+919876543210' })
+  @IsOptional()
+  @Transform(normalisePhone)
+  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  phone?: string;
 }
 
 /** Roles a self-service registration may ever produce. Exported for tests. */
@@ -81,46 +100,110 @@ export class LoginDto {
   @IsString()
   @MaxLength(128)
   password: string;
+
+  /** Required only once the account has two-factor enabled. */
+  @ApiPropertyOptional({ example: '123456', description: 'TOTP code, when MFA is enabled' })
+  @IsOptional()
+  @IsString()
+  @Length(6, 6, { message: 'The authentication code is 6 digits' })
+  @Matches(/^\d{6}$/, { message: 'The authentication code is 6 digits' })
+  mfaCode?: string;
 }
 
+/**
+ * Body fallback for clients that cannot hold cookies (tests, server-to-server).
+ * Browsers send the refresh token in an httpOnly cookie instead and omit this.
+ */
 export class RefreshDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MinLength(20)
   @MaxLength(2048)
-  refreshToken: string;
+  refreshToken?: string;
 }
 
-/** Payload an AGENT submits to onboard a client account. */
-export class CreateClientDto {
-  @ApiProperty({ example: 'client@example.com' })
+export class RequestPasswordResetDto {
+  @ApiProperty()
   @IsEmail()
   @MaxLength(254)
   @Transform(normaliseEmail)
   email: string;
+}
 
-  @ApiProperty({ example: 'StrongP@ssw0rd', minLength: 8, maxLength: 128 })
+export class ResetPasswordDto {
+  @ApiProperty({ description: 'Token from the reset email' })
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  token: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
   @IsString()
   @MinLength(8)
   @MaxLength(128)
   @Matches(PASSWORD_PATTERN, { message: PASSWORD_MESSAGE })
   password: string;
+}
 
-  @ApiProperty({ enum: INDIVIDUAL_ROLES, example: UserRole.BRIDE })
-  @IsIn(INDIVIDUAL_ROLES as UserRole[], {
-    message: `role must be one of: ${INDIVIDUAL_ROLES.join(', ')}`,
-  })
-  role: UserRole;
-
-  @ApiProperty({ example: 'Priya Sharma', maxLength: 120 })
+export class VerifyEmailDto {
+  @ApiProperty({ description: 'Token from the verification email' })
   @IsString()
-  @MinLength(2)
-  @MaxLength(120)
-  displayName: string;
+  @MinLength(20)
+  @MaxLength(512)
+  token: string;
+}
 
-  @ApiPropertyOptional({ example: 'Hyderabad', maxLength: 80 })
-  @IsOptional()
+export class ChangePasswordDto {
+  @ApiProperty()
   @IsString()
-  @MaxLength(80)
-  city?: string;
+  @MaxLength(128)
+  currentPassword: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  @Matches(PASSWORD_PATTERN, { message: PASSWORD_MESSAGE })
+  newPassword: string;
+}
+
+export class ConfirmMfaDto {
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'The authentication code is 6 digits' })
+  code: string;
+}
+
+export class DisableMfaDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(128)
+  password: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'The authentication code is 6 digits' })
+  code: string;
+}
+
+/**
+ * Accepting an invitation: the subject sets their OWN password, so the steward
+ * who created the profile never knows the credentials.
+ */
+export class AcceptInvitationDto {
+  @ApiProperty({ description: 'Token from the invitation email' })
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  token: string;
+
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  @Matches(PASSWORD_PATTERN, { message: PASSWORD_MESSAGE })
+  password: string;
 }

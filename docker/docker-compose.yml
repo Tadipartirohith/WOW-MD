@@ -62,6 +62,17 @@ services:
       # NOTE: supply real secrets via docker/.env or your secret manager.
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-min-32-characters-long}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-in-production-min-32-chars}
+      # Mail: 'log' writes invitation and reset links to this container's log.
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-log}
+      MAIL_FROM: ${MAIL_FROM:-WOW <no-reply@wow.local>}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Where the links inside emails point: the SPA, not the API.
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
       # Read only by the one-shot admin seeder, never by the running API.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

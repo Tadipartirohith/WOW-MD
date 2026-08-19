@@ -3,12 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
-import { AuthService } from '../auth/auth.service';
-import { CreateClientDto } from '../auth/dto/auth.dto';
 import { ClientSearchDto } from './dto/agent.dto';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
-/** Shape returned to agents. Never leaks password or refresh-token material. */
+/**
+ * Shape returned to agents. Never leaks password or refresh-token material.
+ *
+ * Note there is no `createClient` here any more. An agent cannot conjure an
+ * account directly: they build a managed profile (ManagedProfilesService) and
+ * email an invitation (InvitationsService), and the account only exists once
+ * the subject accepts and chooses their own password.
+ */
 export interface ClientView {
   id: string;
   email: string;
@@ -25,13 +30,7 @@ export class AgentsService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
-    private readonly auth: AuthService,
   ) {}
-
-  async createClient(agentId: string, dto: CreateClientDto): Promise<ClientView> {
-    const user = await this.auth.createManagedClient(agentId, dto);
-    return this.toView(user, await this.profiles.findOne({ where: { userId: user.id } }));
-  }
 
   /**
    * The agent's book of business, always scoped to `managedByAgentId`.

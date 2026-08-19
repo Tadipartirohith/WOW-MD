@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigModule } from './config/config.module';
 import { AppConfigService } from './config/app-config.service';
@@ -10,12 +10,18 @@ import { Neo4jModule } from './platform/neo4j/neo4j.module';
 import { KafkaModule } from './platform/messaging/kafka.module';
 import { EventsModule } from './platform/events/events.module';
 import { HealthModule } from './platform/health/health.module';
+import { MailModule } from './platform/mail/mail.module';
+import { AuditModule } from './platform/audit/audit.module';
+import { ThrottlingModule } from './platform/throttling/throttling.module';
+import { RedisThrottlerStorage } from './platform/throttling/redis-throttler.storage';
+import { AccountThrottlerGuard } from './platform/throttling/account-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { AgentsModule } from './modules/agents/agents.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 import { WeddingPlannersModule } from './modules/wedding-planners/wedding-planners.module';
 import { UsersModule } from './modules/users/users.module';
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
@@ -43,14 +49,21 @@ import { AiModule } from './modules/ai/ai.module';
         },
       }),
     }),
+    // Counters live in Redis so the limit is the configured one no matter how
+    // many replicas are running, and survives a restart.
+    ThrottlingModule,
     ThrottlerModule.forRootAsync({
-      inject: [AppConfigService],
-      useFactory: (cfg: AppConfigService) => [
-        {
-          ttl: cfg.security.rateLimitTtlSeconds * 1000,
-          limit: cfg.security.rateLimitMax,
-        },
-      ],
+      imports: [ThrottlingModule],
+      inject: [AppConfigService, RedisThrottlerStorage],
+      useFactory: (cfg: AppConfigService, storage: RedisThrottlerStorage) => ({
+        throttlers: [
+          {
+            ttl: cfg.security.rateLimitTtlSeconds * 1000,
+            limit: cfg.security.rateLimitMax,
+          },
+        ],
+        storage,
+      }),
     }),
     DatabaseModule,
     RedisModule,
@@ -58,8 +71,11 @@ import { AiModule } from './modules/ai/ai.module';
     KafkaModule,
     EventsModule,
     HealthModule,
+    MailModule,
+    AuditModule,
 
     AuthModule,
+    InvitationsModule,
     AgentsModule,
     WeddingPlannersModule,
     UsersModule,
@@ -76,7 +92,8 @@ import { AiModule } from './modules/ai/ai.module';
     AiModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Rate limits by account when signed in, by IP otherwise.
+    { provide: APP_GUARD, useClass: AccountThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     // Capability check runs last, after authentication and coarse role checks.

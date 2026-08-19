@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
+import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import {
   InterestStatus,
@@ -20,24 +21,52 @@ export class ChatService {
     @InjectRepository(Conversation) private readonly conversations: Repository<Conversation>,
     @InjectRepository(Message) private readonly messages: Repository<Message>,
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
+    @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
   ) {}
 
   private async loadPair(a: string, b: string): Promise<[User, User]> {
     const [userA, userB] = await Promise.all([
-      this.users.findOne({ where: { id: a }, select: ['id', 'role', 'isActive', 'managedByAgentId'] }),
-      this.users.findOne({ where: { id: b }, select: ['id', 'role', 'isActive', 'managedByAgentId'] }),
+      this.users.findOne({
+        where: { id: a },
+        select: ['id', 'role', 'isActive', 'managedByAgentId'],
+      }),
+      this.users.findOne({
+        where: { id: b },
+        select: ['id', 'role', 'isActive', 'managedByAgentId'],
+      }),
     ]);
     if (!userA || !userB) throw new NotFoundException('User not found');
     if (!userB.isActive) throw new ForbiddenException('That account is not available');
     return [userA, userB];
   }
 
-  private async hasAcceptedMatch(a: string, b: string): Promise<boolean> {
+  /**
+   * Match check between two ACCOUNTS.
+   *
+   * Interests live between profiles, so this resolves each account's profile
+   * first. A person who has not claimed a profile cannot chat at all — there is
+   * no account to chat with — which is why the invitation flow exists.
+   */
+  private async hasAcceptedMatch(userA: string, userB: string): Promise<boolean> {
+    const [profileA, profileB] = await Promise.all([
+      this.profiles.findOne({ where: { userId: userA } }),
+      this.profiles.findOne({ where: { userId: userB } }),
+    ]);
+    if (!profileA || !profileB) return false;
+
     const match = await this.interests.findOne({
       where: [
-        { fromUserId: a, toUserId: b, status: InterestStatus.ACCEPTED },
-        { fromUserId: b, toUserId: a, status: InterestStatus.ACCEPTED },
+        {
+          fromProfileId: profileA.id,
+          toProfileId: profileB.id,
+          status: InterestStatus.ACCEPTED,
+        },
+        {
+          fromProfileId: profileB.id,
+          toProfileId: profileA.id,
+          status: InterestStatus.ACCEPTED,
+        },
       ],
     });
     return Boolean(match);
@@ -46,7 +75,7 @@ export class ChatService {
   /**
    * Who may talk to whom. Three legitimate reasons for a thread to exist:
    *
-   *  MATCH          two individuals with an accepted interest between them
+   *  MATCH          two individuals whose profiles have an accepted interest
    *  INQUIRY        a buyer-side account contacting a vendor/planner/agent, or
    *                 that provider or agent replying
    *  REPRESENTATION a managed client and the agent who represents them
@@ -63,10 +92,7 @@ export class ChatService {
     }
 
     // The agent who represents this account, in either direction.
-    if (
-      sender.managedByAgentId === recipient.id ||
-      recipient.managedByAgentId === sender.id
-    ) {
+    if (sender.managedByAgentId === recipient.id || recipient.managedByAgentId === sender.id) {
       return ThreadKind.REPRESENTATION;
     }
 
@@ -79,8 +105,10 @@ export class ChatService {
     // A user or agent may approach any provider or agent, and be replied to.
     // This is the "approach any user/agent" path for self-registered users.
     const inquiryPair =
-      (isProvider(recipient.role) || recipient.role === UserRole.AGENT) ||
-      (isProvider(sender.role) || sender.role === UserRole.AGENT);
+      isProvider(recipient.role) ||
+      recipient.role === UserRole.AGENT ||
+      isProvider(sender.role) ||
+      sender.role === UserRole.AGENT;
     if (inquiryPair) return ThreadKind.INQUIRY;
 
     throw new ForbiddenException('You are not permitted to message this account');

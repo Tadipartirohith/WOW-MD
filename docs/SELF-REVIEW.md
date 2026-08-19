@@ -1,206 +1,205 @@
-# Self-review: what is done, and what is still missing
+# Self-review
 
-Written after the RBAC / multi-persona work. Ordered by risk, not by effort.
-Nothing here is hypothetical hand-waving — each item names the file it lives in.
+Two rounds of work are recorded here. Round 1 introduced the personas and RBAC;
+round 2 closed every gap round 1 listed and added agent-built profiles with
+email invitations. Section D is what is *still* missing.
 
 ---
 
-## A. Shipped and verified
+## A. Round 1 — personas and authorization
 
 - Seven roles across four self-registerable account types, chosen in the UI.
 - A permission matrix (`common/authz/permissions.ts`) plus a global
-  `PermissionsGuard`, applied to **all 15** controllers.
+  `PermissionsGuard`, applied to every controller.
 - Ownership checks in every service that mutates a record it did not create.
-- Agent → client linkage (`users.managedByAgentId`) with a single choke point
-  (`AgentsService.assertManages`) used by every act-on-behalf path.
-- Wedding planner as a first-class bookable provider, plus plan co-management.
-- Bookings generalised from vendor-only to any provider, with the acting user
-  recorded separately from the client.
-- Hardened DTOs across every module (bounds, URL checks, array caps, enum
-  narrowing, path-traversal guard on presign).
-- 52 unit tests + 108 live API checks (`scripts/verify-rbac.sh`), all passing
-  against the running containers.
+- Wedding planner as a first-class bookable provider.
+- Bookings generalised from vendor-only to any provider.
+- Hardened DTOs across every module.
+
+Bugs fixed: self-registration as `admin`; escrow release/refund by any
+authenticated user; cross-vendor booking confirmation; event guest-list and RSVP
+IDOR; disputes on strangers' bookings; ungated reviews; refresh sitting behind
+the access-token guard; `JwtStrategy` trusting the token body for `role`; login
+timing enumeration.
 
 ---
 
-## B. Security gaps that remain
+## B. Round 2 — profiles without accounts, and the gap list
 
-### B1. Agent accounts are not vetted — **highest residual risk**
+### B1. Agent-built profiles (new requirement)
 
-Anyone can self-register as `agent` and immediately onboard client accounts,
-which creates real user records with real credentials. Vendors and planners are
-gated behind admin approval before their listing is visible; agents are not
-gated at all.
+`profiles.userId` is now nullable. An agent or family member builds a complete,
+matchable profile — photos, preferences, contact details — for somebody who has
+never signed up. Interests moved from user ids to **profile ids**, which is what
+makes an unclaimed profile a first-class matchmaking citizen.
 
-*Fix:* add `isApproved` to agent accounts (or an `AgentProfile` mirroring
-`PlannerProfile`), and gate `Permission.CLIENT_CREATE` on it. `AdminService`
-already has the approval plumbing to copy.
+See [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md).
 
-### B2. Agent-created clients get a password the agent chose
+### B2. Email invitations (new requirement)
 
-`POST /agents/clients` takes a password the agent types and shares out-of-band.
-The agent therefore knows the client's credentials and can impersonate them
-fully — outside the audit trail that `bookedByUserId` provides.
+A steward supplies an email **and a mobile number** — both mandatory — and sends
+an invitation. The subject follows the link, sets **their own** password, and
+takes ownership; the steward's write access ends at that moment. There is no
+"create client account" endpoint any more, which is what closes the old hole
+where an agent knew their client's credentials.
 
-*Fix:* generate a random password server-side, never return it, and email the
-client an activation link. Depends on B3.
+### B3. Solo users are unaffected
 
-### B3. No email verification, and no password reset
+Self-registration remains fully open. A person who signs up directly has
+`managedByAgentId = null`, signs in with their own password, browses and books
+without any agent involvement, and may approach any user or agent. Covered by
+its own section in `scripts/verify-invites.sh`.
 
-`users.isVerified` exists and is never set. There is no mail transport wired at
-all, so there is no "forgot password" flow, no email confirmation, and no way
-for an agent-created client to claim their own account.
+### B4. Every gap round 1 listed
 
-*Fix:* add a transactional mail provider behind an interface (the codebase
-already uses this pattern for payments, media and AI), plus a signed
-single-use-token table for verify/reset.
+| Was | Now |
+| --- | --- |
+| Agents unvetted | `agent_profiles.isApproved`; admin approves before any stewardship |
+| Agent chose the client's password | Invitation flow; the subject sets it |
+| No email at all | `MailService` + `log`/`smtp` providers; verification, reset, invites, RSVP |
+| One refresh token per user | `refresh_sessions`: per-device, rotated, with reuse detection |
+| Tokens in `localStorage` | Refresh token in an httpOnly cookie; access token in memory only |
+| Commission never applied | `splitAmount`; escrow releases the payout, platform keeps the fee |
+| No payment webhooks | Signed webhook endpoint, HMAC over the raw body, replay-protected |
+| Planner engagement free | Requires a confirmed or completed booking |
+| No guest RSVP | Signed single-purpose RSVP links |
+| Full profiles leaked in search | `toPublicProfile`: age band, photos gated on a match |
+| `family` a duplicate of `bride` | Family members steward relatives, capped separately |
+| `PAGINATION_MAX_LIMIT` ignored | Bounds read from config |
+| No audit log | Append-only `audit_events` on every privileged/money-moving action |
+| No admin MFA | TOTP, mandatory for admins by config |
+| No brute-force lockout | Per-account lockout after `MAX_FAILED_LOGINS` |
+| Rate limits per process | Redis-backed, keyed per account when signed in |
 
-### B4. One refresh token per user
+### B5. Bugs found during round 2
 
-`users.refreshTokenHash` is a single column, so signing in on a second device
-silently invalidates the first. There is also no refresh-token **reuse
-detection**, which is the standard way to spot a stolen token.
+Three real defects, all caught by the live suites rather than by review:
 
-*Fix:* a `refresh_tokens` table keyed by device/session with issued/revoked
-timestamps and a reuse-detection rule that revokes the whole family.
-
-### B5. Tokens live in `localStorage`
-
-`frontend/src/store/auth.ts` persists tokens via zustand. Any XSS becomes full
-account takeover.
-
-*Fix:* move the refresh token to an `httpOnly; Secure; SameSite=Strict` cookie
-and keep only the short-lived access token in memory. Needs a CSRF token on
-state-changing routes once cookies are in play.
-
-### B6. Rate limiting is per-instance
-
-`ThrottlerModule` uses in-memory storage. The k8s manifests run multiple
-replicas, so the effective limit is `configured × replicas`, and it resets on
-every pod restart.
-
-*Fix:* `@nest-lab/throttler-storage-redis` against the Redis that is already a
-dependency. There is also no per-account limit — only per-IP — so a single
-account can spread abuse across addresses.
-
-### B7. No admin MFA and no audit log
-
-Nothing records who released escrow, who suspended an account, or who approved a
-listing. `AdminService.setUserStatus` and `BookingsService.complete` are
-unlogged. Admin accounts have no second factor.
-
-*Fix:* an append-only `audit_events` table written in the same transaction as
-the privileged action, plus TOTP for `admin`.
-
-### B8. No brute-force lockout
-
-Login is rate-limited by IP (10/min) but an account is never locked after
-repeated failures, and there is no CAPTCHA. Login timing was equalised, so
-enumeration is closed, but sustained distributed guessing is not.
+1. **`AgentsService.listClients` returned 500.** A raw join alias combined with
+   `orderBy` + `skip/take` made TypeORM build an ORDER BY over columns it had no
+   metadata for. Rewritten as a scoped query plus a second profile lookup.
+2. **Two logins in the same second produced byte-identical JWTs** (same claims,
+   same `iat`), colliding on the session table's unique token hash. Refresh and
+   access tokens now carry a random `jti` — which also means a refresh token is
+   genuinely unpredictable.
+3. **Container healthchecks probed the wrong loopback family.** nginx listens on
+   IPv4 only, `localhost` resolves to `::1` inside the container, so the
+   frontend reported unhealthy while serving traffic correctly.
 
 ---
 
-## C. Correctness and business-logic gaps
+## C. Verification
 
-### C1. Marketplace commission is configured but never applied
+- **90 unit tests** — permission matrix, guard, booking authorization and the
+  commission split, auth (registration, lockout, MFA, recovery, refresh).
+- **118 live checks** (`scripts/verify-rbac.sh`) — the RBAC matrix end to end.
+- **76 live checks** (`scripts/verify-invites.sh`) — stewardship, invitations,
+  claiming, sessions, lockout, webhooks, audit, 2FA, pagination.
 
-`PAYMENT_COMMISSION_PERCENT` is read into config and used nowhere.
-`BookingsService.complete` releases the **full** escrow amount to the provider,
-so the platform earns nothing.
-
-*Fix:* split the release into provider payout and platform fee, and record both
-on the `Payment` row.
-
-### C2. Payment provider is a mock, with no webhooks
-
-`payment.provider.ts` has a Razorpay class, but there is no webhook endpoint, no
-signature verification, and no idempotency key. Escrow state is whatever the API
-call returned; a provider-side change never reaches us, and a retried request
-can double-charge.
-
-### C3. Planner engagement is not tied to payment
-
-`PUT /planner/plan/:id/planner` lets a host engage any approved planner and hand
-them write access to the plan, with no booking or payment involved. A planner
-also cannot decline. This is a deliberate simplification, but it is a hole in
-the commercial model.
-
-### C4. Guest-facing RSVP was removed, not replaced
-
-I locked `PUT /events/invites/:id/rsvp` to the event host, which closes the IDOR
-(previously anyone could rewrite any RSVP from an invite id). But guests are not
-platform users, so there is now **no way for a guest to RSVP themselves**.
-
-*Fix:* a signed, single-use RSVP link (`GET /events/rsvp/:token`) — the same
-pattern `media.getShared` already uses for album sharing.
-
-### C5. Match suggestions leak full profiles
-
-`MatchmakingService.suggestions` returns the whole `Profile` entity, including
-`dateOfBirth` and every photo, for every candidate — before any interest is
-accepted. `ProfileVisibility.MATCHES_ONLY` is only used to exclude `PRIVATE`
-profiles from the pool; it does not actually restrict *fields*.
-
-*Fix:* a `PublicProfileDto` that returns an age band rather than a date of
-birth, and withholds photos until the match is accepted.
-
-### C6. The `family` role is a duplicate
-
-`family` currently has exactly the same permissions as `bride`/`groom`. The
-whole point of the persona — a parent or sibling searching *on behalf of*
-someone — is not modelled: there is no link between a family account and the
-person they represent.
-
-*Fix:* reuse the agent pattern (`managedByAgentId` generalised to a
-`representedBy` relationship) so a family member manages a linked profile.
-
-### C7. `PAGINATION_MAX_LIMIT` is ignored
-
-`PaginationDto` hardcodes `@Max(100)` while config exposes a tunable limit. The
-config value has no effect.
+All passing against the running containers, from an empty database.
 
 ---
 
-## D. Operational gaps
+## D. What is STILL missing
 
-- **No audit of the optional integrations.** Neo4j and Kafka are wired and
-  default-off. Nothing exercises the `--profile full` path; it is unverified.
-- **No image scanning.** The CI `docker-build` job builds but does not scan
-  (Trivy is mentioned in a comment only) and does not push.
-- **No structured backup/restore runbook** for Postgres, and no PITR config.
-- **No GDPR/DPDP surface.** No data export, no account deletion, no soft-delete
-  and no retention policy. `users` rows are never removed.
-- **No observability.** Pino logs to stdout; there is no tracing, no metrics
-  endpoint, and no alerting on escrow failures — the highest-value thing to
-  alert on.
-- **Frontend has no test suite at all.** The permission mirror in
-  `frontend/src/lib/permissions.ts` can drift from the backend matrix and
-  nothing would catch it.
-  *Cheap fix:* generate the client constants from the backend enum at build
-  time, or add a test that fetches `/auth/me/permissions` and diffs.
+Honest list, in the order I would tackle it.
+
+### D1. SMS is not wired
+
+Mobile numbers are collected and validated but never used. The invitation goes
+by email only, so a client with a stale email address is unreachable even though
+we hold their phone number.
+
+*Fix:* an `SmsProvider` alongside `MailProvider` (the pattern is already there),
+and send the invite by both channels. Also enables phone-number verification,
+which matters more than email in this market.
+
+### D2. No re-linking when the subject self-registers first
+
+If an agent builds a profile for someone who then signs up on their own, the
+invitation is refused (`ConflictException`) and there is no way to connect the
+two. The agent's work is stranded.
+
+*Fix:* a claim-request flow — the agent asks, the existing account approves, and
+the profile transfers.
+
+### D3. Escrow release is still a log line for real money
+
+`RazorpayPaymentProvider.release` logs rather than transferring. Real
+hold-and-release needs Razorpay Route with linked accounts and a KYC flow for
+every vendor and planner. The commission split is computed and recorded
+correctly, but nothing moves until Route is configured.
+
+### D4. Webhooks record but never reconcile
+
+The webhook endpoint verifies the signature, drops replays and stores the
+provider's status — deliberately without touching the booking state machine. But
+nothing reconciles a divergence: if the gateway says refunded and we say held,
+no alert fires.
+
+*Fix:* a scheduled reconciliation job over payments where `providerStatus`
+disagrees with `status`.
+
+### D5. MFA has no recovery codes
+
+If an admin loses their authenticator they are locked out, and admins cannot
+disable 2FA on themselves by design. The only way back is a database edit.
+
+*Fix:* single-use recovery codes issued at setup.
+
+### D6. Photos are URLs, not uploads
+
+The managed-profile editor takes a URL. There is a media module with S3 presign,
+but the two are not connected, so an agent must upload elsewhere first.
+
+*Fix:* wire `POST /media/albums/:id/presign` into the profile photo editor.
+
+### D7. Still no frontend tests
+
+`frontend/src/lib/permissions.ts` mirrors the backend matrix by hand and can
+drift silently. There is no component or e2e test of any kind.
+
+*Fix (cheap):* a test that fetches `/auth/me/permissions` per persona and diffs
+against the mirror. Generating the client constants from the backend enum at
+build time would be better.
+
+### D8. No data-subject rights
+
+No export, no deletion, no retention policy. Worse now than before: an unclaimed
+profile holds a real person's name, photo and phone number without them ever
+having agreed to anything.
+
+*Fix:* a documented lawful basis for steward-created profiles, an unsubscribe
+link on the invitation, and automatic purge of unclaimed profiles that are never
+invited or never accepted.
+
+### D9. Audit trail is write-only in practice
+
+Events are recorded and readable by admins, but nothing alerts on them. Escrow
+release and account suspension are the two worth paging on.
+
+### D10. Session cleanup is manual
+
+`SessionsService.pruneExpired` exists and nothing calls it, so
+`refresh_sessions` grows without bound.
+
+*Fix:* a scheduled job, or a `ttlSecondsAfterFinished`-style cleanup task.
+
+### D11. `RolesGuard` is now dead code
+
+The permission guard replaced it everywhere. It is still registered, still
+tested, and still harmless — but it is a second authorization mechanism nobody
+uses, which is a trap for the next person.
 
 ---
 
-## E. Things I deliberately did not change
+## E. Deliberate non-goals
 
-- **Kept the modulith.** The brief was to fix authorization, not to split
-  services. Module boundaries are already clean enough to extract later.
-- **Kept `@Roles`/`RolesGuard` alongside the new permission guard.** Removing it
-  would have touched files unrelated to this work; it is now unused by
-  application code but still tested and harmless.
+- **Kept the modulith.** Module boundaries are clean enough to extract later.
 - **Kept the mock payment/AI/media providers.** Swapping them needs real
   credentials and is an environment decision.
-- **Did not renumber the existing migrations.** `Phase3RbacSchema` is additive
-  and reversible, so existing environments migrate forward cleanly.
-
----
-
-## F. What I would do next, in order
-
-1. **B1** — gate agent accounts behind approval. Cheapest fix for the largest
-   remaining hole, and the plumbing already exists.
-2. **B3** — email transport, which unblocks B2 and C4.
-3. **C1** — apply the commission; the platform currently earns zero revenue.
-4. **B4 + B5** — session table and cookie-based refresh.
-5. **B7** — audit log, before the first real money moves.
-6. **C5** — profile field-level privacy.
+- **Did not renumber migrations.** Phase 3 and Phase 4 are additive and
+  reversible, so existing environments migrate forward cleanly.
+- **`interests` migration drops unresolvable rows.** Moving from user ids to
+  profile ids, any interest whose profile could not be resolved is deleted
+  rather than guessed at. On a real deployment, check the row count first.

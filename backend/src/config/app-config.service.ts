@@ -33,6 +33,12 @@ export class AppConfigService {
   get pagination() {
     return this.section('pagination');
   }
+  get stewardship() {
+    return this.section('stewardship');
+  }
+  get mail() {
+    return this.section('mail');
+  }
   get matchmaking() {
     return this.section('matchmaking');
   }

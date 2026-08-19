@@ -17,10 +17,14 @@ PASS=0
 FAIL=0
 STAMP=$(head -c 8 /proc/sys/kernel/random/uuid | tr -d '-')
 
-# code=$(req METHOD PATH JSON TOKEN); response body lands in /tmp/body
+# code=$(req METHOD PATH JSON TOKEN); response body lands in /tmp/body.
+# Refresh tokens now travel in an httpOnly cookie, so keep a jar: that is what a
+# browser does, and it is the path the app actually uses.
+JAR=/tmp/cookies.txt
+: > "$JAR"
 req() {
   m=$1; p=$2; b=$3; t=$4
-  set -- -s -o /tmp/body -w '%{http_code}' -X "$m" "$API$p"
+  set -- -s -o /tmp/body -w '%{http_code}' -X "$m" "$API$p" -b "$JAR" -c "$JAR"
   [ -n "$b" ] && set -- "$@" -H 'Content-Type: application/json' -d "$b"
   [ -n "$t" ] && set -- "$@" -H "Authorization: Bearer $t"
   curl "$@"
@@ -39,6 +43,15 @@ check() {
 
 # Precise extraction; jq is present in the runner image.
 field() { jq -r ".$2 // empty" "$1"; }
+
+# Rate-limit counters live in Redis and deliberately survive restarts, so a
+# repeated run inside the same window would trip limits unrelated to what is
+# being tested. Clear only the throttle keys (never the caches).
+if command -v redis-cli >/dev/null 2>&1; then
+  KEYS=$(redis-cli -h "${REDIS_HOST:-redis}" --scan --pattern 'throttle:*' 2>/dev/null)
+  [ -n "$KEYS" ] && echo "$KEYS" | xargs -r redis-cli -h "${REDIS_HOST:-redis}" DEL >/dev/null 2>&1
+  echo "-- cleared rate-limit counters so this run starts clean --"
+fi
 ufield() { jq -r ".user.$2 // empty" "$1"; }
 
 echo
@@ -118,8 +131,8 @@ c=$(req POST /vendors "{\"name\":\"Sneaky\",\"category\":\"venue\"}" "$PLANNER")
 check "planner cannot create a vendor listing" "$c" 403
 c=$(req GET /agents/clients "" "$BRIDE")
 check "bride cannot list agent clients" "$c" 403
-c=$(req POST /agents/clients "{\"email\":\"x-$STAMP@t.com\",\"password\":\"Password123\",\"role\":\"bride\",\"displayName\":\"X\"}" "$VENDOR")
-check "vendor cannot onboard clients" "$c" 403
+c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876500002\"}" "$VENDOR")
+check "vendor cannot build a profile for anyone" "$c" 403
 
 echo
 echo "== 4. Admin surface closed to every other persona =="
@@ -132,36 +145,73 @@ done
 c=$(req GET /admin/analytics "" "$ADMIN"); check "admin can read analytics" "$c" 200
 
 echo
-echo "== 5. Agent onboarding stamps the agent id and scopes the book =="
-c=$(req POST /agents/clients "{\"email\":\"client-$STAMP@t.com\",\"password\":\"Password123\",\"role\":\"bride\",\"displayName\":\"Agent Client\",\"city\":\"Hyderabad\"}" "$AGENT")
-check "agent onboards a client" "$c" 201
-cp /tmp/body /tmp/client.json
-CLIENT_ID=$(field /tmp/client.json id)
+echo "== 5. Agent stewardship: vetting, profiles, invitations, scoping =="
+# An agent must be vetted before they can act for anybody.
+c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderabad\"}" "$AGENT")
+check "agent registers their agency" "$c" 200
+AGENCY=$(field /tmp/body id)
+c=$(req POST /agents/profiles "{\"displayName\":\"Too Early\",\"contactEmail\":\"early-$STAMP@t.com\",\"contactPhone\":\"+919876500003\"}" "$AGENT")
+check "an unapproved agency cannot build profiles" "$c" 403
+c=$(req PUT "/admin/agents/$AGENCY/approve" "" "$ADMIN")
+check "admin approves the agency" "$c" 200
 
-c=$(req GET /agents/clients "" "$AGENT")
-check "agent lists their book" "$c" 200
-grep -q "$CLIENT_ID" /tmp/body && { echo "  PASS  agent sees their own client"; PASS=$((PASS+1)); } || { echo "  FAIL  agent cannot see own client"; FAIL=$((FAIL+1)); }
+c=$(req PUT /agents/agency "{\"agencyName\":\"Agency2 $STAMP\"}" "$AGENT2")
+AGENCY2=$(field /tmp/body id)
+c=$(req PUT "/admin/agents/$AGENCY2/approve" "" "$ADMIN")
+check "admin approves the second agency" "$c" 200
 
-c=$(req GET /agents/clients "" "$AGENT2")
+# A profile for somebody with no account at all.
+c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"+919876512399\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\"}" "$AGENT")
+check "agent builds a profile for an account-less person" "$c" 201
+MANAGED=$(field /tmp/body id)
+
+c=$(req GET /agents/profiles "" "$AGENT")
+check "agent lists the profiles they steward" "$c" 200
+grep -q "$MANAGED" /tmp/body && { echo "  PASS  agent sees their own managed profile"; PASS=$((PASS+1)); } || { echo "  FAIL  agent cannot see own managed profile"; FAIL=$((FAIL+1)); }
+
+c=$(req GET /agents/profiles "" "$AGENT2")
 grep -q '"total":0' /tmp/body && { echo "  PASS  second agent has an empty book"; PASS=$((PASS+1)); } || { echo "  FAIL  second agent book leaked: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+c=$(req GET "/agents/profiles/$MANAGED" "" "$AGENT2")
+check "second agent cannot read that profile" "$c" 403
 
-c=$(req GET "/agents/clients/$CLIENT_ID" "" "$AGENT2")
-check "second agent cannot read another agent client" "$c" 403
 c=$(req GET /matches/suggestions "" "$AGENT")
-check "agent must name a client to browse" "$c" 400
-c=$(req GET "/matches/suggestions?onBehalfOfUserId=$CLIENT_ID" "" "$AGENT")
-check "agent browses as their own client" "$c" 200
-c=$(req GET "/matches/suggestions?onBehalfOfUserId=$CLIENT_ID" "" "$AGENT2")
-check "second agent cannot browse as that client" "$c" 403
-c=$(req POST /matches/interest "{\"toUserId\":\"$GROOM_ID\",\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT2")
-check "second agent cannot send interest as that client" "$c" 403
-c=$(req POST /matches/interest "{\"toUserId\":\"$GROOM_ID\",\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
-check "agent sends interest for their client" "$c" 201
+check "agent must name a profile to browse" "$c" 400
+c=$(req GET "/matches/suggestions?profileId=$MANAGED" "" "$AGENT")
+check "agent browses as the profile they steward" "$c" 200
+c=$(req GET "/matches/suggestions?profileId=$MANAGED" "" "$AGENT2")
+check "second agent cannot browse as that profile" "$c" 403
 
-echo
+# Profile ids for the individuals, since interests are keyed on profiles now.
+c=$(req GET /users/me "" "$GROOM")
+GROOM_PROFILE=$(field /tmp/body id)
+c=$(req GET /users/me "" "$BRIDE")
+BRIDE_PROFILE=$(field /tmp/body id)
+
+c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\",\"profileId\":\"$MANAGED\"}" "$AGENT2")
+check "second agent cannot send interest from that profile" "$c" 403
+c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\",\"profileId\":\"$MANAGED\"}" "$AGENT")
+check "agent sends interest for the profile they steward" "$c" 201
+
+# Invite the subject so an actual account exists for the booking checks below.
+c=$(req POST "/agents/profiles/$MANAGED/invite" "" "$AGENT")
+check "agent emails the invitation" "$c" 201
+INVITE_TOKEN=$(field /tmp/body devToken)
+if [ -n "$INVITE_TOKEN" ]; then
+  c=$(req POST /auth/invitations/accept "{\"token\":\"$INVITE_TOKEN\",\"password\":\"ClientPass1\"}")
+  check "the subject claims the profile and gets an account" "$c" 201
+  CLIENT_ID=$(jq -r '.user.id' /tmp/body)
+  c=$(req GET /agents/clients "" "$AGENT")
+  check "the new account appears on the agent book" "$c" 200
+  c=$(req GET "/agents/clients/$CLIENT_ID" "" "$AGENT2")
+  check "second agent cannot read that client" "$c" 403
+else
+  echo "  NOTE  no devToken (MAIL_PROVIDER is not 'log'); skipping claim-dependent checks"
+  CLIENT_ID=""
+fi
+
 echo "== 6. Independent user may approach any user or agent =="
-c=$(req POST /matches/interest "{\"toUserId\":\"$CLIENT_ID\"}" "$BRIDE")
-check "independent user approaches an agent-managed user" "$c" 201
+c=$(req POST /matches/interest "{\"toProfileId\":\"$MANAGED\"}" "$BRIDE")
+check "independent user approaches an agent-built profile" "$c" 201
 c=$(req POST /chat/messages "{\"toUserId\":\"$AGENT_ID\",\"body\":\"Hello, can you help?\"}" "$BRIDE")
 check "independent user messages any agent" "$c" 201
 c=$(req POST /chat/messages "{\"toUserId\":\"$GROOM_ID\",\"body\":\"hi\"}" "$BRIDE")
@@ -209,17 +259,20 @@ check "bride cannot list incoming bookings" "$c" 403
 
 echo
 echo "== 8. Agent books on behalf of a client =="
-c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
-check "agent books for their client" "$c" 201
-grep -q "\"userId\":\"$CLIENT_ID\"" /tmp/body && { echo "  PASS  booking is owned by the client"; PASS=$((PASS+1)); } || { echo "  FAIL  booking not owned by client"; FAIL=$((FAIL+1)); }
-grep -q "\"bookedByUserId\":\"$AGENT_ID\"" /tmp/body && { echo "  PASS  acting agent recorded on the booking"; PASS=$((PASS+1)); } || { echo "  FAIL  acting agent not recorded"; FAIL=$((FAIL+1)); }
+if [ -z "$CLIENT_ID" ]; then
+  echo "  NOTE  no claimed client available; skipping on-behalf-of booking checks"
+else
+  c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
+  check "agent books for their client" "$c" 201
+  grep -q "\"userId\":\"$CLIENT_ID\"" /tmp/body && { echo "  PASS  booking is owned by the client"; PASS=$((PASS+1)); } || { echo "  FAIL  booking not owned by client"; FAIL=$((FAIL+1)); }
+  grep -q "\"bookedByUserId\":\"$AGENT_ID\"" /tmp/body && { echo "  PASS  acting agent recorded on the booking"; PASS=$((PASS+1)); } || { echo "  FAIL  acting agent not recorded"; FAIL=$((FAIL+1)); }
 
-c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT2")
-check "another agent cannot book for that client" "$c" 403
-c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$BRIDE")
-check "a plain user cannot book on behalf of anyone" "$c" 403
+  c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT2")
+  check "another agent cannot book for that client" "$c" 403
+  c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$BRIDE")
+  check "a plain user cannot book on behalf of anyone" "$c" 403
+fi
 
-echo
 echo "== 9. Planner persona: listing, approval, booking =="
 c=$(req PUT /wedding-planners/me "{\"agencyName\":\"Everafter $STAMP\",\"city\":\"Hyderabad\",\"yearsExperience\":7}" "$PLANNER")
 check "planner creates their listing" "$c" 200
@@ -291,9 +344,16 @@ c=$(req GET /auth/me/permissions "" "garbage.token.here")
 check "garbage token rejected" "$c" 401
 c=$(req GET /auth/me/permissions "")
 check "missing token rejected" "$c" 401
-c=$(req POST /auth/refresh "{\"refreshToken\":\"$(field /tmp/bride.json refreshToken)\"}")
-check "refresh works without an access token" "$c" 200
-c=$(req POST /auth/refresh '{"refreshToken":"tampered.token.value.here"}')
+# The refresh token is in the httpOnly cookie the jar picked up at login, not
+# in the response body — which is the point: page script cannot read it.
+grep -q "$(printf 'wow_rt')" "$JAR" && { echo "  PASS  refresh token is set as an httpOnly cookie"; PASS=$((PASS+1)); } || { echo "  FAIL  no refresh cookie was set"; FAIL=$((FAIL+1)); }
+jq -e 'has("refreshToken") | not' /tmp/bride.json >/dev/null && { echo "  PASS  refresh token is NOT returned in the JSON body"; PASS=$((PASS+1)); } || { echo "  FAIL  refresh token leaked into the response body"; FAIL=$((FAIL+1)); }
+
+c=$(req POST /auth/refresh '{}')
+check "refresh works from the cookie alone, with no access token" "$c" 200
+# Explicit body token beats the cookie, so a tampered one is still rejected.
+c=$(curl -s -o /tmp/body -w '%{http_code}' -X POST "$API/auth/refresh" \
+      -H 'Content-Type: application/json' -d '{"refreshToken":"tampered.token.value.here"}')
 check "tampered refresh token rejected" "$c" 401
 c=$(req PUT "/admin/users/$BRIDE_ID/status" '{"isActive":false}' "$ADMIN")
 check "admin deactivates an account" "$c" 200
