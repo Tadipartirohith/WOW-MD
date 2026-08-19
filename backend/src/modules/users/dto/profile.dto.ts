@@ -1,35 +1,80 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
+  MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { ProfileVisibility } from '../../../common/enums';
 
 export class PreferencesDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() religion?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() community?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() education?: string;
-  @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() lifestyle?: string[];
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(18) @Max(100) preferredAgeMin?: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(18) @Max(100) preferredAgeMax?: number;
-  @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() preferredLocations?: string[];
+  @ApiPropertyOptional({ maxLength: 60 })
+  @IsOptional() @IsString() @MaxLength(60)
+  religion?: string;
+
+  @ApiPropertyOptional({ maxLength: 60 })
+  @IsOptional() @IsString() @MaxLength(60)
+  community?: string;
+
+  @ApiPropertyOptional({ maxLength: 80 })
+  @IsOptional() @IsString() @MaxLength(80)
+  education?: string;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 20 })
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(40, { each: true })
+  lifestyle?: string[];
+
+  @ApiPropertyOptional({ minimum: 18, maximum: 100 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(18) @Max(100)
+  preferredAgeMin?: number;
+
+  @ApiPropertyOptional({ minimum: 18, maximum: 100 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(18) @Max(100)
+  preferredAgeMax?: number;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 25 })
+  @IsOptional() @IsArray() @ArrayMaxSize(25) @IsString({ each: true }) @MaxLength(80, { each: true })
+  preferredLocations?: string[];
 }
 
 export class CreateProfileDto {
-  @ApiProperty() @IsString() displayName: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() gender?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() dateOfBirth?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() city?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() bio?: string;
-  @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() photos?: string[];
+  @ApiProperty({ minLength: 2, maxLength: 120 })
+  @IsString() @MinLength(2) @MaxLength(120)
+  displayName: string;
+
+  @ApiPropertyOptional({ maxLength: 30 })
+  @IsOptional() @IsString() @MaxLength(30)
+  gender?: string;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional() @IsDateString()
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ maxLength: 80 })
+  @IsOptional() @IsString() @MaxLength(80)
+  city?: string;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional() @IsString() @MaxLength(2000)
+  bio?: string;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 20, description: 'Absolute media URLs' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUrl({ require_protocol: true }, { each: true })
+  @MaxLength(2048, { each: true })
+  photos?: string[];
 
   @ApiPropertyOptional({ type: PreferencesDto })
   @IsOptional()

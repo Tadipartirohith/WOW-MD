@@ -1,42 +1,104 @@
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
-import { useAuth } from '../store/auth';
+import { api, apiMessage } from '../lib/api';
 
-interface Vendor { id: string; name: string; category: string; city?: string }
-interface Analytics { totalUsers: number; totalVendors: number; pendingVendors: number; totalBookings: number; openDisputes: number }
+interface Vendor {
+  id: string;
+  name: string;
+  category: string;
+  city?: string;
+}
+interface Planner {
+  id: string;
+  agencyName: string;
+  city?: string;
+}
+interface AgentProfile {
+  id: string;
+  agencyName: string;
+  city?: string;
+  registrationNumber: string | null;
+  contactPhone: string | null;
+  about: string | null;
+  createdAt: string;
+}
+interface AuditEvent {
+  id: string;
+  action: string;
+  actorUserId: string | null;
+  actorRole: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  metadata: Record<string, unknown>;
+  ip: string | null;
+  createdAt: string;
+}
+interface Analytics {
+  totalUsers: number;
+  totalVendors: number;
+  pendingVendors: number;
+  totalPlanners: number;
+  pendingPlanners: number;
+  totalAgents: number;
+  totalBookings: number;
+  openDisputes: number;
+  usersByRole: { role: string; count: number }[];
+}
 
 export default function Admin() {
   const qc = useQueryClient();
-  const role = useAuth((s) => s.user?.role);
+  const [error, setError] = useState('');
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
 
-  const { data: analytics } = useQuery({ queryKey: ['analytics'], queryFn: async () => (await api.get('/admin/analytics')).data as Analytics, retry: false });
-  const { data: pending } = useQuery({ queryKey: ['pending-vendors'], queryFn: async () => (await api.get('/admin/vendors/pending')).data as Vendor[], retry: false });
+  const q = <T,>(key: string, url: string) =>
+    useQuery({
+      queryKey: [key],
+      queryFn: async () => (await api.get(url)).data as T,
+      retry: false,
+    });
 
-  async function approve(id: string) {
-    await api.put(`/admin/vendors/${id}/approve`);
-    qc.invalidateQueries({ queryKey: ['pending-vendors'] });
-    qc.invalidateQueries({ queryKey: ['analytics'] });
-  }
+  const { data: analytics } = q<Analytics>('analytics', '/admin/analytics');
+  const { data: pendingVendors } = q<Vendor[]>('pending-vendors', '/admin/vendors/pending');
+  const { data: pendingPlanners } = q<Planner[]>('pending-planners', '/admin/planners/pending');
+  const { data: pendingAgents } = q<AgentProfile[]>('pending-agents', '/admin/agents/pending');
+  const { data: audit } = useQuery({
+    queryKey: ['audit'],
+    queryFn: async () => (await api.get('/admin/audit', { params: { limit: 25 } })).data,
+    retry: false,
+  });
 
-  if (role !== 'admin') {
-    return <p className="text-gray-600">This area is for administrators. Sign in with an admin account to view it.</p>;
+  async function act(url: string, keys: string[], body?: unknown) {
+    setError('');
+    try {
+      await api.put(url, body ?? undefined);
+      for (const k of [...keys, 'analytics', 'audit']) {
+        qc.invalidateQueries({ queryKey: [k] });
+      }
+    } catch (err) {
+      setError(apiMessage(err));
+    }
   }
 
   const cards = analytics
     ? [
         { label: 'Users', value: analytics.totalUsers },
+        { label: 'Agents', value: analytics.totalAgents },
         { label: 'Vendors', value: analytics.totalVendors },
-        { label: 'Pending vendors', value: analytics.pendingVendors },
+        { label: 'Planners', value: analytics.totalPlanners },
         { label: 'Bookings', value: analytics.totalBookings },
         { label: 'Open disputes', value: analytics.openDisputes },
       ]
     : [];
 
+  const events: AuditEvent[] = audit?.data ?? [];
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-brand-dark">Admin</h1>
+      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
         {cards.map((c) => (
           <div key={c.label} className="card text-center">
             <p className="text-2xl font-bold text-brand">{c.value}</p>
@@ -45,15 +107,158 @@ export default function Admin() {
         ))}
       </div>
 
+      {analytics?.usersByRole && (
+        <div className="card">
+          <h2 className="mb-2 font-semibold">Accounts by type</h2>
+          <div className="flex flex-wrap gap-2">
+            {analytics.usersByRole.map((r) => (
+              <span key={r.role} className="rounded-full bg-gray-100 px-3 py-1 text-sm">
+                {r.role}: <strong>{r.count}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Agencies first: an agent can create real accounts for other people, so
+          this is the highest-leverage approval on the platform. */}
       <div className="card">
-        <h2 className="mb-2 font-semibold">Vendors awaiting approval</h2>
-        {(pending ?? []).map((v) => (
-          <div key={v.id} className="flex items-center justify-between border-b py-2 text-sm last:border-0">
-            <span>{v.name} ({v.category}){v.city ? `, ${v.city}` : ''}</span>
-            <button className="btn-outline" onClick={() => approve(v.id)}>Approve</button>
+        <h2 className="mb-1 font-semibold">Agencies awaiting approval</h2>
+        <p className="mb-3 text-sm text-gray-500">
+          An approved agent can build profiles for people who have not joined and invite them to
+          create accounts. Check the registration details before approving.
+        </p>
+        {(pendingAgents ?? []).map((a) => (
+          <div key={a.id} className="border-b py-3 last:border-0">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-medium">{a.agencyName}</p>
+                <p className="text-sm text-gray-500">
+                  {[a.city, a.registrationNumber, a.contactPhone].filter(Boolean).join(' · ') ||
+                    'No further details supplied'}
+                </p>
+                {a.about && <p className="mt-1 text-sm text-gray-600">{a.about}</p>}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="btn"
+                  onClick={() => act(`/admin/agents/${a.id}/approve`, ['pending-agents'])}
+                >
+                  Approve
+                </button>
+                <button
+                  className="btn-outline"
+                  onClick={() => setRejecting(rejecting === a.id ? null : a.id)}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+            {rejecting === a.id && (
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div className="flex-1">
+                  <label className="label">Reason (sent to the agency)</label>
+                  <input
+                    className="input"
+                    minLength={5}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+                </div>
+                <button
+                  className="btn-outline"
+                  onClick={async () => {
+                    await act(`/admin/agents/${a.id}/reject`, ['pending-agents'], { reason });
+                    setRejecting(null);
+                    setReason('');
+                  }}
+                >
+                  Send rejection
+                </button>
+              </div>
+            )}
           </div>
         ))}
-        {!pending?.length && <p className="text-sm text-gray-400">Nothing pending.</p>}
+        {!pendingAgents?.length && <p className="text-sm text-gray-400">Nothing pending.</p>}
+      </div>
+
+      <div className="card">
+        <h2 className="mb-2 font-semibold">Vendors awaiting approval</h2>
+        {(pendingVendors ?? []).map((v) => (
+          <div
+            key={v.id}
+            className="flex items-center justify-between border-b py-2 text-sm last:border-0"
+          >
+            <span>
+              {v.name} ({v.category}){v.city ? `, ${v.city}` : ''}
+            </span>
+            <button
+              className="btn-outline"
+              onClick={() => act(`/admin/vendors/${v.id}/approve`, ['pending-vendors'])}
+            >
+              Approve
+            </button>
+          </div>
+        ))}
+        {!pendingVendors?.length && <p className="text-sm text-gray-400">Nothing pending.</p>}
+      </div>
+
+      <div className="card">
+        <h2 className="mb-2 font-semibold">Wedding planners awaiting approval</h2>
+        {(pendingPlanners ?? []).map((p) => (
+          <div
+            key={p.id}
+            className="flex items-center justify-between border-b py-2 text-sm last:border-0"
+          >
+            <span>
+              {p.agencyName}
+              {p.city ? `, ${p.city}` : ''}
+            </span>
+            <button
+              className="btn-outline"
+              onClick={() => act(`/admin/planners/${p.id}/approve`, ['pending-planners'])}
+            >
+              Approve
+            </button>
+          </div>
+        ))}
+        {!pendingPlanners?.length && <p className="text-sm text-gray-400">Nothing pending.</p>}
+      </div>
+
+      <div className="card">
+        <h2 className="mb-1 font-semibold">Audit trail</h2>
+        <p className="mb-3 text-sm text-gray-500">
+          Append-only record of privileged and money-moving actions. Most recent 25.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase tracking-wide text-gray-400">
+              <tr>
+                <th className="py-2 pr-3">When</th>
+                <th className="py-2 pr-3">Action</th>
+                <th className="py-2 pr-3">Actor</th>
+                <th className="py-2">Detail</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <td className="whitespace-nowrap py-2 pr-3 text-gray-500">
+                    {new Date(e.createdAt).toLocaleString()}
+                  </td>
+                  <td className="whitespace-nowrap py-2 pr-3 font-medium">{e.action}</td>
+                  <td className="whitespace-nowrap py-2 pr-3 text-gray-500">
+                    {e.actorRole ?? 'system'}
+                  </td>
+                  <td className="py-2 text-gray-500">
+                    {Object.keys(e.metadata ?? {}).length > 0 ? JSON.stringify(e.metadata) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {events.length === 0 && <p className="text-sm text-gray-400">No events recorded yet.</p>}
       </div>
     </div>
   );

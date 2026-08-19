@@ -1,30 +1,50 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import type { PermissionValue, UserRole } from '../lib/permissions';
 
 export interface AuthUser {
   id: string;
   email: string;
-  role: string;
+  role: UserRole;
+  /** Set when an agent onboarded this account. */
+  managedByAgentId: string | null;
+  isVerified: boolean;
+  mfaEnabled: boolean;
+  permissions: PermissionValue[];
 }
 
 interface AuthState {
   user: AuthUser | null;
+  /** In memory only — see the note below. */
   accessToken: string | null;
-  refreshToken: string | null;
-  setAuth: (data: { user: AuthUser; accessToken: string; refreshToken: string }) => void;
-  logout: () => void;
+  /** False until the boot-time refresh has settled, so routes do not flash. */
+  ready: boolean;
+  setAuth: (data: { user: AuthUser; accessToken: string }) => void;
+  setPermissions: (permissions: PermissionValue[]) => void;
+  setUser: (patch: Partial<AuthUser>) => void;
+  setReady: (ready: boolean) => void;
+  clear: () => void;
 }
 
-export const useAuth = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      accessToken: null,
-      refreshToken: null,
-      setAuth: (data) =>
-        set({ user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken }),
-      logout: () => set({ user: null, accessToken: null, refreshToken: null }),
-    }),
-    { name: 'wow-auth' },
-  ),
-);
+/**
+ * Deliberately NOT persisted.
+ *
+ * Tokens used to be written to localStorage, which meant any XSS bug walked off
+ * with a 30-day refresh token. Now the refresh token lives in an httpOnly
+ * cookie the page cannot read, and the short-lived access token is held in
+ * memory only. On reload we silently call /auth/refresh, and the cookie
+ * re-establishes the session (see `bootstrapSession`).
+ */
+export const useAuth = create<AuthState>()((set) => ({
+  user: null,
+  accessToken: null,
+  ready: false,
+  setAuth: (data) => set({ user: data.user, accessToken: data.accessToken, ready: true }),
+  setPermissions: (permissions) =>
+    set((s) => (s.user ? { user: { ...s.user, permissions } } : s)),
+  setUser: (patch) => set((s) => (s.user ? { user: { ...s.user, ...patch } } : s)),
+  setReady: (ready) => set({ ready }),
+  clear: () => set({ user: null, accessToken: null, ready: true }),
+}));
+
+/** Convenience selector for the capability checks used across the UI. */
+export const usePermissions = (): PermissionValue[] => useAuth((s) => s.user?.permissions ?? []);

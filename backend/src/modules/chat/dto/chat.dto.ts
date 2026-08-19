@@ -1,25 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, IsUrl, MaxLength, MinLength } from 'class-validator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class SendMessageDto {
   @ApiProperty({ format: 'uuid' })
-  @IsUUID()
+  @IsUUID('4')
   toUserId: string;
 
-  @ApiProperty({ maxLength: 4000 })
+  @ApiProperty({ minLength: 1, maxLength: 4000 })
   @IsString()
+  @MinLength(1)
   @MaxLength(4000)
   body: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ maxLength: 2048 })
   @IsOptional()
-  @IsString()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(2048)
   mediaUrl?: string;
 }
 
 export class MessageHistoryQueryDto extends PaginationDto {
   @ApiProperty({ format: 'uuid' })
-  @IsUUID()
+  @IsUUID('4')
   withUserId: string;
 }

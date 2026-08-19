@@ -29,7 +29,7 @@ EXPOSE 3000
 
 # Liveness for orchestrators / compose.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
-  CMD wget -qO- http://localhost:3000/api/health/live > /dev/null 2>&1 || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/api/health/live > /dev/null 2>&1 || exit 1
 
 # Apply migrations, then start the compiled server.
 CMD ["sh", "-c", "npm run migration:run:prod && node dist/main"]

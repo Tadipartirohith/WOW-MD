@@ -1,5 +1,8 @@
-# Full local stack: PostgreSQL + Redis + backend (production image).
+# Full local stack: PostgreSQL + Redis + backend (production image) + frontend.
 # Usage:  docker compose -f docker/docker-compose.yml up --build
+#
+# Secrets come from docker/.env (copy docker/.env.example). The defaults below
+# are development-only; the backend refuses to boot in production with them.
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,7 +12,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-wow_password}
       POSTGRES_DB: ${DB_NAME:-wow_db}
     ports:
-      - "5432:5432"
+      - "${DB_PORT_HOST:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +26,7 @@ services:
     image: redis:7-alpine
     container_name: wow-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT_HOST:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -37,14 +40,18 @@ services:
     build:
       context: ../backend
       dockerfile: ../docker/Dockerfile
+    image: wow-backend:local
     container_name: wow-backend
     ports:
-      - "3000:3000"
+      # Host port is configurable so the stack can coexist with other projects.
+      - "${BACKEND_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
       API_PREFIX: api
-      CORS_ORIGINS: http://localhost:5173
+      # The frontend is served same-origin through nginx, so the browser calls
+      # /api and never crosses an origin. Keep both entries for direct dev use.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-wow_user}
@@ -52,9 +59,23 @@ services:
       DB_NAME: ${DB_NAME:-wow_db}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      # NOTE: supply real secrets via an env file or your secret manager.
+      # NOTE: supply real secrets via docker/.env or your secret manager.
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-min-32-characters-long}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-in-production-min-32-chars}
+      # Mail: 'log' writes invitation and reset links to this container's log.
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-log}
+      MAIL_FROM: ${MAIL_FROM:-WOW <no-reply@wow.local>}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # Where the links inside emails point: the SPA, not the API.
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
+      # Read only by the one-shot admin seeder, never by the running API.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # Optional integrations. Off by default; start them with `--profile full`
       # and set the ENABLED flags to true to activate.
       NEO4J_ENABLED: ${NEO4J_ENABLED:-false}
@@ -70,13 +91,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # One-shot: creates or promotes the bootstrap administrator, then exits.
+  # ADMIN is not self-registerable through the API by design, so this is the
+  # supported way to get the first admin account.
+  #   docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
+  seed-admin:
+    image: wow-backend:local
+    container_name: wow-seed-admin
+    profiles: ["seed"]
+    command: ["node", "dist/database/seed-admin.js"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-wow_user}
+      DB_PASSWORD: ${DB_PASSWORD:-wow_password}
+      DB_NAME: ${DB_NAME:-wow_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-min-32-characters-long}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-in-production-min-32-chars}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   frontend:
     build:
       context: ../frontend
       dockerfile: ../docker/Dockerfile.frontend
     container_name: wow-frontend
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8080}:80"
     depends_on:
       - backend
     restart: unless-stopped

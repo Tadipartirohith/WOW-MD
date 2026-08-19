@@ -1,22 +1,61 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
-import { CreateReviewDto, CreateVendorDto, VendorSearchDto } from './dto/vendor.dto';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { BookingsService } from '../bookings/bookings.service';
+import {
+  CreateReviewDto,
+  CreateVendorDto,
+  UpdateVendorDto,
+  VendorSearchDto,
+} from './dto/vendor.dto';
+import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '../../common/enums';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/authz/permissions';
+import { ProviderType, UserRole } from '../../common/enums';
 
 @ApiTags('vendors')
 @Controller('vendors')
 export class VendorsController {
-  constructor(private readonly vendors: VendorsService) {}
+  constructor(
+    private readonly vendors: VendorsService,
+    private readonly bookings: BookingsService,
+  ) {}
 
   @ApiBearerAuth()
-  @Roles(UserRole.VENDOR, UserRole.ADMIN)
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @Post()
   create(@CurrentUser('userId') userId: string, @Body() dto: CreateVendorDto) {
     return this.vendors.create(userId, dto);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({ summary: 'Your own vendor listings' })
+  @Get('me')
+  listOwn(@CurrentUser('userId') userId: string) {
+    return this.vendors.listOwn(userId);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @Put(':id')
+  update(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateVendorDto,
+  ) {
+    return this.vendors.update(userId, id, dto);
   }
 
   @Public()
@@ -31,13 +70,31 @@ export class VendorsController {
     return this.vendors.findOne(id);
   }
 
+  /**
+   * Reviews are gated on a completed booking so the rating signal reflects real
+   * transactions. Agents review on behalf of the client whose booking it was,
+   * which is why the check runs against the agent's own completed bookings too.
+   */
   @ApiBearerAuth()
+  @RequirePermissions(Permission.REVIEW_WRITE)
   @Post(':id/reviews')
-  review(
-    @CurrentUser('userId') userId: string,
+  async review(
+    @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateReviewDto,
   ) {
-    return this.vendors.addReview(id, userId, dto);
+    if (actor.role !== UserRole.ADMIN) {
+      const eligible = await this.bookings.hasCompletedBookingWith(
+        actor.userId,
+        ProviderType.VENDOR,
+        id,
+      );
+      if (!eligible) {
+        throw new ForbiddenException(
+          'You can only review a vendor after a booking with them is completed',
+        );
+      }
+    }
+    return this.vendors.addReview(id, actor.userId, dto);
   }
 }

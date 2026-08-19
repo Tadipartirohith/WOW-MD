@@ -80,6 +80,7 @@ export const configValidationSchema = Joi.object({
   PAYMENT_PROVIDER: Joi.string().valid('mock', 'razorpay').default('mock'),
   PAYMENT_CURRENCY: Joi.string().default('INR'),
   PAYMENT_COMMISSION_PERCENT: Joi.number().min(0).max(100).default(10),
+  PAYMENT_WEBHOOK_SECRET: Joi.string().allow('').optional(),
   RAZORPAY_KEY_ID: Joi.string().allow('').optional(),
   RAZORPAY_KEY_SECRET: Joi.string().allow('').optional(),
 
@@ -94,6 +95,44 @@ export const configValidationSchema = Joi.object({
   NEO4J_URI: Joi.string().allow('').optional(),
   NEO4J_USERNAME: Joi.string().allow('').optional(),
   NEO4J_PASSWORD: Joi.string().allow('').optional(),
+
+  // Auth hardening
+  REFRESH_COOKIE_NAME: Joi.string().optional(),
+  COOKIE_SECURE: Joi.string().optional(),
+  COOKIE_SAME_SITE: Joi.string().valid('lax', 'strict', 'none').optional(),
+  COOKIE_DOMAIN: Joi.string().allow('').optional(),
+  MAX_FAILED_LOGINS: Joi.number().min(3).max(100).default(8),
+  LOCKOUT_MINUTES: Joi.number().min(1).max(1440).default(15),
+  INVITATION_TTL_HOURS: Joi.number().min(1).max(2160).default(168),
+  EMAIL_VERIFY_TTL_HOURS: Joi.number().min(1).max(720).default(48),
+  PASSWORD_RESET_TTL_MINUTES: Joi.number().min(5).max(1440).default(30),
+  RSVP_TOKEN_TTL_DAYS: Joi.number().min(1).max(730).default(120),
+  MFA_ISSUER: Joi.string().allow('').optional(),
+  MFA_REQUIRED_FOR_ADMIN: Joi.string().optional(),
+
+  // Mail
+  MAIL_PROVIDER: Joi.string().valid('log', 'smtp').default('log'),
+  MAIL_FROM: Joi.string().allow('').optional(),
+  SMTP_HOST: Joi.string().allow('').optional(),
+  SMTP_PORT: Joi.number().default(587),
+  SMTP_SECURE: Joi.string().optional(),
+  SMTP_USER: Joi.string().allow('').optional(),
+  SMTP_PASSWORD: Joi.string().allow('').optional(),
+  APP_BASE_URL: Joi.string().uri().default('http://localhost:8080'),
+
+  // Stewardship (agents and family members managing other people's profiles)
+  MAX_MANAGED_PROFILES: Joi.number().min(1).max(100000).default(200),
+  MAX_MANAGED_PROFILES_FAMILY: Joi.number().min(1).max(100).default(5),
+  MAX_INVITATION_RESENDS: Joi.number().min(1).max(50).default(5),
+  REQUIRE_AGENT_APPROVAL: Joi.string().optional(),
+  CIRCULATION_CONSENT_VALIDITY_DAYS: Joi.number().min(1).max(3650).default(365),
+  SHARE_LINK_TTL_DAYS: Joi.number().min(1).max(365).default(30),
+
+  // Admin bootstrap. Read only by src/database/seed-admin.ts, which does its own
+  // validation. Kept permissive here so a seeder-only value (including internal
+  // hostnames such as admin@wow.local) can never block the API from booting.
+  ADMIN_EMAIL: Joi.string().allow('').optional(),
+  ADMIN_PASSWORD: Joi.string().allow('').optional(),
 
   // Kafka (optional)
   KAFKA_ENABLED: Joi.string().optional(),

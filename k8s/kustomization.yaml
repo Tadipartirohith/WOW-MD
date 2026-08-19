@@ -16,6 +16,7 @@ resources:
   - hpa.yaml
   - pdb.yaml
   - migration-job.yaml
+  - seed-admin-job.yaml   # run once per new environment, then delete
 
 images:
   - name: <REGISTRY>/wow-backend
