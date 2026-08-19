@@ -3,12 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { CLAIM_STATUS_LABEL, Permission, ProfileClaimStatus, can } from '../lib/permissions';
+import ConsentFields, { ConsentDraft, consentPayload, emptyConsent } from '../components/ConsentFields';
+import ShareProfileDialog from '../components/ShareProfileDialog';
 
 interface ManagedProfile {
   id: string;
   displayName: string;
   contactEmail: string | null;
   contactPhone: string | null;
+  networkVisibility: 'private' | 'pool';
   gender: string | null;
   dateOfBirth: string | null;
   city: string | null;
@@ -28,8 +31,8 @@ interface AgencyStatus {
 
 const emptyDraft = {
   displayName: '',
-  contactEmail: '',
   contactPhone: '',
+  contactEmail: '',
   gender: 'female',
   dateOfBirth: '',
   city: '',
@@ -50,9 +53,11 @@ export default function ManagedProfiles() {
   const isAgent = can(permissions, Permission.AGENCY_MANAGE);
 
   const [draft, setDraft] = useState(emptyDraft);
+  const [consent, setConsent] = useState<ConsentDraft>(emptyConsent());
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<string | null>(null);
 
   const { data: agency } = useQuery({
     queryKey: ['agency-status'],
@@ -70,11 +75,13 @@ export default function ManagedProfiles() {
     mutationFn: async (inviteNow: boolean) => {
       const payload: Record<string, unknown> = {
         displayName: draft.displayName,
-        contactEmail: draft.contactEmail,
         contactPhone: draft.contactPhone,
         gender: draft.gender,
+        consent: consentPayload(consent),
         inviteNow,
       };
+      // Email is optional: a walk-in family often gives only a number.
+      if (draft.contactEmail) payload.contactEmail = draft.contactEmail;
       if (draft.dateOfBirth) payload.dateOfBirth = draft.dateOfBirth;
       if (draft.city) payload.city = draft.city;
       if (draft.bio) payload.bio = draft.bio;
@@ -82,11 +89,12 @@ export default function ManagedProfiles() {
     },
     onSuccess: (profile, inviteNow) => {
       setDraft(emptyDraft);
+      setConsent(emptyConsent());
       setError('');
       setNotice(
         inviteNow
           ? `Profile created and an invitation emailed to ${profile.contactEmail}.`
-          : 'Profile created. It is matchable now; invite them whenever you are ready.',
+          : 'Profile saved. It is matchable now — circulate it, or invite them to claim it later.',
       );
       qc.invalidateQueries({ queryKey: ['managed-profiles'] });
     },
@@ -175,17 +183,6 @@ export default function ManagedProfiles() {
             <input className="input" value={draft.displayName} onChange={set('displayName')} required />
           </div>
           <div>
-            <label className="label">Email</label>
-            <input
-              className="input"
-              type="email"
-              value={draft.contactEmail}
-              onChange={set('contactEmail')}
-              required
-            />
-            <p className="mt-1 text-xs text-gray-500">Where their invitation is sent.</p>
-          </div>
-          <div>
             <label className="label">Mobile number</label>
             <input
               className="input"
@@ -194,7 +191,23 @@ export default function ManagedProfiles() {
               onChange={set('contactPhone')}
               required
             />
-            <p className="mt-1 text-xs text-gray-500">International format, including country code.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              International format. This is how you reach the family.
+            </p>
+          </div>
+          <div>
+            <label className="label">
+              Email <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <input
+              className="input"
+              type="email"
+              value={draft.contactEmail}
+              onChange={set('contactEmail')}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Only needed if you want to invite them to manage it themselves.
+            </p>
           </div>
           <div>
             <label className="label">Gender</label>
@@ -221,6 +234,9 @@ export default function ManagedProfiles() {
           <label className="label">About them</label>
           <textarea className="input" rows={3} maxLength={2000} value={draft.bio} onChange={set('bio')} />
         </div>
+
+        <ConsentFields value={consent} onChange={setConsent} />
+
         <div className="flex flex-wrap gap-2">
           <button className="btn" disabled={create.isPending}>
             {create.isPending ? 'Saving...' : 'Save profile'}
@@ -228,7 +244,8 @@ export default function ManagedProfiles() {
           <button
             type="button"
             className="btn-outline"
-            disabled={create.isPending}
+            disabled={create.isPending || !draft.contactEmail}
+            title={draft.contactEmail ? undefined : 'An email address is needed to send an invitation'}
             onClick={() => create.mutate(true)}
           >
             Save and invite now
@@ -263,10 +280,11 @@ export default function ManagedProfiles() {
                     </span>
                   </p>
                   <p className="text-sm text-gray-500">
-                    {p.contactEmail}
-                    {p.contactPhone ? ` · ${p.contactPhone}` : ''}
+                    {p.contactPhone}
+                    {p.contactEmail ? ` · ${p.contactEmail}` : ' · no email on file'}
                     {p.city ? ` · ${p.city}` : ''}
                     {` · ${p.photos?.length ?? 0} photo(s)`}
+                    {p.networkVisibility === 'pool' ? ' · in network pool' : ''}
                   </p>
                   {p.claimStatus === 'claimed' && (
                     <p className="mt-1 text-xs text-gray-500">
@@ -283,8 +301,16 @@ export default function ManagedProfiles() {
                       >
                         {selected === p.id ? 'Close' : 'Photos'}
                       </button>
-                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && (
-                        <button className="btn" onClick={() => invite.mutate(p.id)}>
+                      {can(permissions, Permission.PROFILE_CIRCULATE) && (
+                        <button
+                          className="btn"
+                          onClick={() => setSharing(sharing === p.id ? null : p.id)}
+                        >
+                          {sharing === p.id ? 'Done' : 'Circulate'}
+                        </button>
+                      )}
+                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && p.contactEmail && (
+                        <button className="btn-outline" onClick={() => invite.mutate(p.id)}>
                           {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
                         </button>
                       )}
@@ -297,6 +323,14 @@ export default function ManagedProfiles() {
               </div>
 
               {selected === p.id && <PhotoEditor profile={p} onError={setError} />}
+              {sharing === p.id && (
+                <ShareProfileDialog
+                  profileId={p.id}
+                  profileName={p.displayName}
+                  pooled={p.networkVisibility === 'pool'}
+                  onClose={() => setSharing(null)}
+                />
+              )}
             </div>
           ))}
         </div>

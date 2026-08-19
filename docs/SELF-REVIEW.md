@@ -1,8 +1,10 @@
 # Self-review
 
-Two rounds of work are recorded here. Round 1 introduced the personas and RBAC;
-round 2 closed every gap round 1 listed and added agent-built profiles with
-email invitations. Section D is what is *still* missing.
+Three rounds of work are recorded here. Round 1 introduced the personas and
+RBAC; round 2 closed every gap round 1 listed and added agent-built profiles
+with email invitations; round 3 reworked intake and built circulation after the
+domain correction below. The last two sections are what is *still* missing,
+and what was left undone on purpose.
 
 ---
 
@@ -88,31 +90,80 @@ Three real defects, all caught by the live suites rather than by review:
 
 ---
 
-## C. Verification
+## C. Round 3 — how an agency actually works
 
-- **90 unit tests** — permission matrix, guard, booking authorization and the
-  commission split, auth (registration, lockout, MFA, recovery, refresh).
-- **118 live checks** (`scripts/verify-rbac.sh`) — the RBAC matrix end to end.
-- **76 live checks** (`scripts/verify-invites.sh`) — stewardship, invitations,
-  claiming, sessions, lockout, webhooks, audit, 2FA, pagination.
+A domain correction: in the Indian matrimony market the family hands their
+details to the agent **directly**, and the agent then **circulates** the
+biodata. Two things in round 2 were wrong as a result.
 
-All passing against the running containers, from an empty database.
+### What was wrong
+
+1. **Email was mandatory on an agency-built profile.** I had treated the
+   invitation as the point of the flow. A walk-in family gives a phone number
+   far more often than an email address, and many clients never want a login at
+   all — the agent is their whole interface. Phone is now the required
+   identifier and the practical identity key (with duplicate detection on it);
+   email is optional, and only needed to send an invitation. Claiming is a
+   feature, not the destination.
+2. **Circulation did not exist.** `assertManages` walled every agent off from
+   every other one, which is right for access control but left the agent's
+   actual job with nowhere to happen.
+
+### What was built
+
+- **Consent in two scopes.** Intake (the agency may hold the details) is
+  separate from circulation (they may leave the agency); the second expires and
+  must be re-confirmed; records are append-only. Method, who gave it and their
+  relationship to the subject, callback number, date, capturing agent and notes
+  are all captured — a parent very often speaks for the person here.
+- **Five circulation paths**, all consent-gated, all revocable, all read-only:
+  to another agency, to a platform user, as a signed biodata link, into a
+  vetted-agent pool, and as a printable sheet.
+- **Cross-agent proposal threads** hanging off the existing interest record,
+  because a pairing is negotiated agent-to-agent before the families meet.
+- **Withdrawal that actually withdraws**: revoking consent pulls the profile out
+  of the pool immediately and kills links already in circulation, because
+  consent is re-checked when a link is opened, not only when it is created.
+
+### Bug found while verifying
+
+`@ValidateNested()` does not reject a **missing** nested object, so a request
+with no consent block passed validation and then crashed the service. Fixed with
+`@IsDefined()` — worth remembering wherever a required nested DTO appears.
 
 ---
 
-## D. What is STILL missing
+## Verification
+
+- **84 unit tests** — permission matrix, guards, booking authorization and the
+  commission split, auth (registration, lockout, MFA, recovery, refresh), and
+  the consent state machine.
+- **118 live checks** (`scripts/verify-rbac.sh`) — the RBAC matrix end to end.
+- **76 live checks** (`scripts/verify-invites.sh`) — stewardship, invitations,
+  claiming, sessions, lockout, webhooks, audit, 2FA, pagination.
+- **73 live checks** (`scripts/verify-circulation.sh`) — phone-first intake,
+  duplicate detection, both consent scopes, all five circulation paths,
+  read-only enforcement, withdrawal, and cross-agent threads.
+
+267 live assertions in total, all passing against the running containers from an
+empty database.
+
+---
+
+## What is still missing
 
 Honest list, in the order I would tackle it.
 
-### D1. SMS is not wired
+### D1. SMS is not wired — now the biggest gap
 
-Mobile numbers are collected and validated but never used. The invitation goes
-by email only, so a client with a stale email address is unreachable even though
-we hold their phone number.
+Mobile numbers are collected, validated, and treated as the identity key, but
+never actually used. Since intake went phone-first this is worse than it was: an
+agent can build a profile with no email at all, and then has **no** way to reach
+that family through the platform. Invitations still go by email only.
 
 *Fix:* an `SmsProvider` alongside `MailProvider` (the pattern is already there),
-and send the invite by both channels. Also enables phone-number verification,
-which matters more than email in this market.
+invitations over both channels, and phone-number verification — which matters
+more than email verification in this market.
 
 ### D2. No re-linking when the subject self-registers first
 
@@ -163,15 +214,15 @@ drift silently. There is no component or e2e test of any kind.
 against the mirror. Generating the client constants from the backend enum at
 build time would be better.
 
-### D8. No data-subject rights
+### D8. Data-subject rights are half-built
 
-No export, no deletion, no retention policy. Worse now than before: an unclaimed
-profile holds a real person's name, photo and phone number without them ever
-having agreed to anything.
+Consent is now recorded properly — who gave it, how, when, and in which scope —
+and it can be withdrawn, which was the biggest part of the gap round 2 flagged.
+Still missing: no data export, no deletion endpoint, no retention policy, no
+automatic purge of unclaimed profiles that are never invited or never accepted,
+and no unsubscribe link on an invitation.
 
-*Fix:* a documented lawful basis for steward-created profiles, an unsubscribe
-link on the invitation, and automatic purge of unclaimed profiles that are never
-invited or never accepted.
+*Fix:* an export and erasure path, plus a scheduled purge keyed on consent age.
 
 ### D9. Audit trail is write-only in practice
 
@@ -185,7 +236,20 @@ release and account suspension are the two worth paging on.
 
 *Fix:* a scheduled job, or a `ttlSecondsAfterFinished`-style cleanup task.
 
-### D11. `RolesGuard` is now dead code
+### D11. Circulation has no reach analytics
+
+An agency can see who holds a profile and whether a link was opened, but not
+which shares led anywhere. There is no "3 of your 12 shares produced a proposal"
+view, which is exactly what an agent would want.
+
+### D12. The pool has no quality control
+
+Any approved agency can put any consented profile into the network pool; nothing
+rate-limits it or flags stale listings, so one agency could flood it.
+
+*Fix:* a per-agency pool quota, and automatic de-listing as consent nears expiry.
+
+### D13. `RolesGuard` is now dead code
 
 The permission guard replaced it everywhere. It is still registered, still
 tested, and still harmless — but it is a second authorization mechanism nobody
@@ -193,7 +257,7 @@ uses, which is a trap for the next person.
 
 ---
 
-## E. Deliberate non-goals
+## Deliberate non-goals
 
 - **Kept the modulith.** Module boundaries are clean enough to extract later.
 - **Kept the mock payment/AI/media providers.** Swapping them needs real

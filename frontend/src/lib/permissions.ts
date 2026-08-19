@@ -32,6 +32,8 @@ export const Permission = {
   MANAGED_PROFILE_MANAGE: 'managed_profile:manage',
   MANAGED_PROFILE_INVITE: 'managed_profile:invite',
   ACT_ON_BEHALF: 'act_on_behalf',
+  PROFILE_CIRCULATE: 'profile:circulate',
+  NETWORK_POOL_BROWSE: 'network_pool:browse',
   CLIENT_CREATE: 'client:create',
   CLIENT_READ: 'client:read',
   CLIENT_ACT_ON_BEHALF: 'client:act_on_behalf',
@@ -65,6 +67,26 @@ export const isSteward = (role?: string) => role === 'agent' || role === 'family
 
 /** Lifecycle of a profile built for someone who may have no account yet. */
 export type ProfileClaimStatus = 'unclaimed' | 'invited' | 'claimed' | 'self';
+
+/** How a family gave permission, and who gave it. */
+export type ConsentMethod = 'in_person' | 'phone' | 'written' | 'digital';
+export type ConsentRelation = 'self' | 'father' | 'mother' | 'guardian' | 'sibling' | 'other';
+
+export const CONSENT_METHOD_LABEL: Record<ConsentMethod, string> = {
+  in_person: 'In person, at the office',
+  phone: 'Over the phone',
+  written: 'Signed form',
+  digital: 'Online',
+};
+
+export const CONSENT_RELATION_LABEL: Record<ConsentRelation, string> = {
+  self: 'The person themselves',
+  father: 'Father',
+  mother: 'Mother',
+  guardian: 'Guardian',
+  sibling: 'Brother or sister',
+  other: 'Other relative',
+};
 
 export const CLAIM_STATUS_LABEL: Record<ProfileClaimStatus, string> = {
   unclaimed: 'Not yet invited',

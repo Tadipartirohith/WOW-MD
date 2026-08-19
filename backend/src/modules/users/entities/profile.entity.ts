@@ -9,7 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ProfileClaimStatus, ProfileVisibility } from '../../../common/enums';
+import { NetworkVisibility, ProfileClaimStatus, ProfileVisibility } from '../../../common/enums';
 import { User } from '../../auth/entities/user.entity';
 
 export interface ProfilePreferences {
@@ -69,16 +69,35 @@ export class Profile {
   claimStatus: ProfileClaimStatus;
 
   /**
-   * Where an invitation is sent for an unclaimed profile. Required when a
-   * steward creates one, because that is the only route to an account.
+   * Where an invitation would be sent, if the subject ever wants an account.
+   * Optional on purpose: a family walking into an agency hands over a phone
+   * number far more often than an email address, and plenty of clients never
+   * want a login at all — the agent is their entire interface.
+   *
    * Kept separate from `users.email`: the subject may claim with it and later
    * change their account email without breaking the agency's records.
    */
   @Column({ type: 'varchar', nullable: true })
   contactEmail: string | null;
 
+  /**
+   * The primary way to reach this person, and the practical identity key for a
+   * walk-in client. Required when a steward builds the profile.
+   */
+  @Index()
   @Column({ type: 'varchar', nullable: true })
   contactPhone: string | null;
+
+  /**
+   * Whether the wider vetted-agent network can find this profile. Moving to
+   * POOL is circulation, so it requires live circulation consent.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: NetworkVisibility, default: NetworkVisibility.PRIVATE })
+  networkVisibility: NetworkVisibility;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  pooledAt: Date | null;
 
   @Column()
   displayName: string;

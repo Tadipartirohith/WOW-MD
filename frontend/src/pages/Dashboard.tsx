@@ -29,6 +29,24 @@ const TILES: Tile[] = [
     requires: [Permission.MANAGED_PROFILE_MANAGE],
   },
   {
+    to: '/shared-with-me',
+    title: 'Shared With Me',
+    desc: 'Biodata other agencies have circulated to you',
+    requires: [Permission.ACT_ON_BEHALF],
+  },
+  {
+    to: '/pool',
+    title: 'Network Pool',
+    desc: 'Profiles other approved agencies have opened to the network',
+    requires: [Permission.NETWORK_POOL_BROWSE],
+  },
+  {
+    to: '/proposals',
+    title: 'Proposals',
+    desc: 'Talk through a pairing with the agent on the other side',
+    requires: [Permission.ACT_ON_BEHALF],
+  },
+  {
     to: '/clients',
     title: 'My Clients',
     desc: 'Accounts created when a client accepted your invitation',
