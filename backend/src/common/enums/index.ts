@@ -137,6 +137,45 @@ export enum MediaType {
   VIDEO = 'video',
 }
 
+/**
+ * Lifecycle of a profile that an agent or family member built on someone
+ * else's behalf. A profile can exist, be searchable and be matched long before
+ * the person it describes has an account.
+ */
+export enum ProfileClaimStatus {
+  /** Built by a steward; the subject has no account and has not been invited. */
+  UNCLAIMED = 'unclaimed',
+  /** An email invitation is outstanding. */
+  INVITED = 'invited',
+  /** The subject accepted the invitation and now owns the profile. */
+  CLAIMED = 'claimed',
+  /** Self-registered: the profile was created by its own owner. */
+  SELF = 'self',
+}
+
+export enum InvitationStatus {
+  PENDING = 'pending',
+  ACCEPTED = 'accepted',
+  REVOKED = 'revoked',
+  EXPIRED = 'expired',
+}
+
+/** Single-use email tokens that are not profile invitations. */
+export enum EmailTokenType {
+  VERIFY_EMAIL = 'verify_email',
+  RESET_PASSWORD = 'reset_password',
+}
+
+/**
+ * Roles that may build and manage a profile for somebody else. Agents run a
+ * book of business; family members look after one or two relatives. The
+ * mechanics are identical, so both go through the same stewardship paths.
+ */
+export const STEWARD_ROLES: readonly UserRole[] = [UserRole.AGENT, UserRole.FAMILY] as const;
+
+export const isSteward = (role: UserRole | string): boolean =>
+  STEWARD_ROLES.includes(role as UserRole);
+
 /** Why a user is allowed to talk to another user outside of a match. */
 export enum ThreadKind {
   MATCH = 'match',

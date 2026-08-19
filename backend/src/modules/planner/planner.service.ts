@@ -10,9 +10,11 @@ import { WeddingPlan } from './entities/wedding-plan.entity';
 import { PlanTask } from './entities/plan-task.entity';
 import { User } from '../auth/entities/user.entity';
 import { AddTaskDto, CreatePlanDto } from './dto/planner.dto';
-import { TaskStatus, UserRole } from '../../common/enums';
+import { BookingStatus, ProviderType, TaskStatus, UserRole } from '../../common/enums';
 import { DEFAULT_TIMELINE_TEMPLATE } from './timeline.template';
 import { AgentsService } from '../agents/agents.service';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
@@ -21,6 +23,8 @@ export class PlannerService {
     @InjectRepository(WeddingPlan) private readonly plans: Repository<WeddingPlan>,
     @InjectRepository(PlanTask) private readonly tasks: Repository<PlanTask>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
+    @InjectRepository(PlannerProfile) private readonly plannerProfiles: Repository<PlannerProfile>,
     private readonly agents: AgentsService,
   ) {}
 
@@ -160,7 +164,18 @@ export class PlannerService {
       throw new BadRequestException('That account is not a wedding planner');
     }
 
+    // Engagement must sit on a paid contract. Previously a host could hand any
+    // approved planner write access to their plan with no booking at all, which
+    // meant planner access existed outside the commercial model entirely.
+    const booking = await this.findEngagementBooking(plan.userId, plannerUserId);
+    if (!booking) {
+      throw new BadRequestException(
+        'Book this planner and have them confirm the booking before engaging them on a plan.',
+      );
+    }
+
     plan.plannerUserId = plannerUserId;
+    plan.plannerBookingId = booking.id;
     return this.plans.save(plan);
   }
 
@@ -170,7 +185,33 @@ export class PlannerService {
       throw new ForbiddenException('Only the host can release a planner');
     }
     plan.plannerUserId = null;
+    plan.plannerBookingId = null;
     return this.plans.save(plan);
+  }
+
+  /**
+   * A confirmed or completed booking between the host and one of this planner's
+   * listings. Cancelled and unpaid bookings do not grant access.
+   */
+  private async findEngagementBooking(
+    hostUserId: string,
+    plannerUserId: string,
+  ): Promise<Booking | null> {
+    const listings = await this.plannerProfiles.find({ where: { ownerUserId: plannerUserId } });
+    if (listings.length === 0) return null;
+
+    for (const status of [BookingStatus.CONFIRMED, BookingStatus.COMPLETED]) {
+      const booking = await this.bookings.findOne({
+        where: listings.map((l) => ({
+          userId: hostUserId,
+          providerType: ProviderType.PLANNER,
+          providerId: l.id,
+          status,
+        })),
+      });
+      if (booking) return booking;
+    }
+    return null;
   }
 
   private async canAgentManage(agentId: string, clientId: string): Promise<boolean> {

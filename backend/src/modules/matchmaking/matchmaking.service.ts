@@ -14,17 +14,40 @@ import { AppConfigService } from '../../config/app-config.service';
 import { RedisService } from '../../platform/redis/redis.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { Neo4jService } from '../../platform/neo4j/neo4j.service';
-import { AgentsService } from '../agents/agents.service';
-import { InterestStatus, ProfileVisibility, UserRole, isIndividual } from '../../common/enums';
+import {
+  InterestStatus,
+  ProfileClaimStatus,
+  ProfileVisibility,
+  UserRole,
+  isIndividual,
+} from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+import { PublicProfileView, toPublicProfile } from '../users/dto/public-profile.dto';
 
 export interface Suggestion {
-  profile: Profile;
+  profile: PublicProfileView;
   score: number;
   breakdown: Record<string, number>;
 }
 
+export interface InterestView {
+  id: string;
+  status: InterestStatus;
+  createdAt: Date;
+  /** The other side of the interest, in public form. */
+  counterpart: PublicProfileView;
+  direction: 'incoming' | 'outgoing';
+}
+
+/**
+ * Matchmaking operates on PROFILES, not accounts.
+ *
+ * A profile an agent built is matchable the moment it is saved, long before its
+ * subject has an account. Keying interests on profile ids is what makes that
+ * possible; `sentByUserId` records which account actually clicked, so an
+ * agent's activity on a client's behalf stays attributable.
+ */
 @Injectable()
 export class MatchmakingService {
   constructor(
@@ -36,73 +59,103 @@ export class MatchmakingService {
     private readonly redis: RedisService,
     private readonly outbox: OutboxService,
     private readonly neo4j: Neo4jService,
-    private readonly agents: AgentsService,
   ) {}
 
   /**
-   * Resolves whose matchmaking identity an action runs under.
+   * Resolves which profile an action runs under, and proves the caller controls
+   * it. Exactly one of three things is true:
    *
-   * An individual always acts as themselves. An agent must name a client, and
-   * may only name one on their own books — this is what stops an agent from
-   * sending interests from arbitrary accounts.
+   *  - they own the profile (`profile.userId === actor.userId`);
+   *  - they steward it (`profile.managedByUserId === actor.userId`) — an agent
+   *    or family member acting for someone, claimed or not;
+   *  - they are an admin.
+   *
+   * Everything else is refused, which is the single ownership rule the whole
+   * module leans on.
    */
-  private async resolveSubject(actor: AuthUser, onBehalfOfUserId?: string): Promise<string> {
-    if (actor.role === UserRole.AGENT) {
-      if (!onBehalfOfUserId) {
-        throw new BadRequestException(
-          'Agents must specify onBehalfOfUserId — matchmaking runs under a client identity',
-        );
+  async resolveSubject(actor: AuthUser, profileId?: string): Promise<Profile> {
+    if (profileId) {
+      const profile = await this.profiles.findOne({ where: { id: profileId } });
+      if (!profile) throw new NotFoundException('Profile not found');
+
+      const owns = profile.userId !== null && profile.userId === actor.userId;
+      const stewards = profile.managedByUserId === actor.userId;
+      if (!owns && !stewards && actor.role !== UserRole.ADMIN) {
+        throw new ForbiddenException('That profile is not yours to act for');
       }
-      await this.agents.assertManages(actor.userId, onBehalfOfUserId);
-      return onBehalfOfUserId;
+      return profile;
     }
-    if (onBehalfOfUserId && onBehalfOfUserId !== actor.userId) {
-      throw new ForbiddenException('Only agents can act on behalf of another account');
+
+    // No profile named: fall back to the caller's own.
+    //
+    // Order matters. An agent gets a profile row at sign-up (it carries their
+    // agency name), but they never take part in matchmaking as themselves, so
+    // the role is checked BEFORE the lookup — otherwise they would fall through
+    // to a misleading "does not take part in matchmaking" refusal instead of
+    // being told to name a client.
+    if (actor.role === UserRole.AGENT) {
+      throw new BadRequestException(
+        'Agents act under a client profile — pass profileId (see GET /agents/profiles/actable).',
+      );
     }
     if (!isIndividual(actor.role) && actor.role !== UserRole.ADMIN) {
       throw new ForbiddenException('This account type does not take part in matchmaking');
     }
-    return actor.userId;
+
+    const own = await this.profiles.findOne({ where: { userId: actor.userId } });
+    if (!own) throw new NotFoundException('Complete your profile first');
+    return own;
   }
 
-  /** Only individual accounts are ever surfaced as match candidates. */
-  private async individualUserIds(candidateIds: string[]): Promise<Set<string>> {
-    if (candidateIds.length === 0) return new Set();
-    const rows = await this.users.find({
-      where: { id: In(candidateIds), isActive: true },
-      select: ['id', 'role'],
+  /**
+   * Profiles eligible to appear as candidates. Unclaimed profiles ARE eligible
+   * (that is the whole point of an agency building them); what gets excluded is
+   * anything attached to a non-individual account, or to a suspended one.
+   */
+  private async eligibleProfileIds(candidates: Profile[]): Promise<Set<string>> {
+    const withAccounts = candidates.filter((c) => c.userId).map((c) => c.userId as string);
+    if (withAccounts.length === 0) {
+      return new Set(candidates.map((c) => c.id));
+    }
+    const owners = await this.users.find({
+      where: { id: In(withAccounts) },
+      select: ['id', 'role', 'isActive'],
     });
-    return new Set(rows.filter((u) => isIndividual(u.role)).map((u) => u.id));
+    const allowedUserIds = new Set(
+      owners.filter((u) => u.isActive && isIndividual(u.role)).map((u) => u.id),
+    );
+    return new Set(
+      candidates
+        .filter((c) => (c.userId ? allowedUserIds.has(c.userId) : true))
+        .map((c) => c.id),
+    );
   }
 
   async suggestions(
     actor: AuthUser,
     page: number,
     limit: number,
-    onBehalfOfUserId?: string,
+    profileId?: string,
   ): Promise<PaginatedResult<Suggestion>> {
-    const subjectId = await this.resolveSubject(actor, onBehalfOfUserId);
-    const cacheKey = `match:suggestions:${subjectId}:${page}:${limit}`;
+    const me = await this.resolveSubject(actor, profileId);
+    const cacheKey = `match:suggestions:${me.id}:${page}:${limit}`;
 
     return this.redis.wrap(cacheKey, this.cfg.matchmaking.suggestionsCacheTtlSeconds, async () => {
-      const me = await this.profiles.findOne({ where: { userId: subjectId } });
-      if (!me) throw new NotFoundException('Complete your profile first');
-
       // Prefer graph-ranked candidates when Neo4j is enabled and returns any;
       // otherwise fall back to a Postgres candidate pool.
       let candidates: Profile[] = [];
       if (this.neo4j.ready) {
-        const ids = await this.neo4j.suggestions(subjectId, this.cfg.matchmaking.maxSuggestions);
+        const ids = await this.neo4j.suggestions(me.id, this.cfg.matchmaking.maxSuggestions);
         if (ids.length) {
           candidates = await this.profiles.find({
-            where: { userId: In(ids), visibility: Not(ProfileVisibility.PRIVATE) },
+            where: { id: In(ids), visibility: Not(ProfileVisibility.PRIVATE) },
           });
         }
       }
       if (candidates.length === 0) {
         candidates = await this.profiles.find({
           where: {
-            userId: Not(subjectId),
+            id: Not(me.id),
             visibility: Not(ProfileVisibility.PRIVATE),
             ...(me.gender ? { gender: Not(me.gender) } : {}),
           },
@@ -110,9 +163,12 @@ export class MatchmakingService {
         });
       }
 
-      // Drop vendor/planner/agent accounts and deactivated users from the pool.
-      const allowed = await this.individualUserIds(candidates.map((c) => c.userId));
-      candidates = candidates.filter((c) => allowed.has(c.userId));
+      const eligible = await this.eligibleProfileIds(candidates);
+      candidates = candidates.filter((c) => eligible.has(c.id));
+
+      // What the viewer may see of each candidate depends on whether the two
+      // sides have already matched.
+      const acceptedWith = await this.acceptedCounterpartIds(me.id);
 
       const scored = candidates
         .map((profile) => {
@@ -123,59 +179,90 @@ export class MatchmakingService {
         .sort((a, b) => b.score - a.score);
 
       const start = (page - 1) * limit;
-      return paginate(scored.slice(start, start + limit), scored.length, page, limit);
+      const pageItems = scored.slice(start, start + limit).map((s) => ({
+        profile: toPublicProfile(s.profile, { matched: acceptedWith.has(s.profile.id) }),
+        score: s.score,
+        breakdown: s.breakdown,
+      }));
+      return paginate(pageItems, scored.length, page, limit);
     });
+  }
+
+  private async acceptedCounterpartIds(profileId: string): Promise<Set<string>> {
+    const rows = await this.interests.find({
+      where: [
+        { fromProfileId: profileId, status: InterestStatus.ACCEPTED },
+        { toProfileId: profileId, status: InterestStatus.ACCEPTED },
+      ],
+    });
+    return new Set(
+      rows.map((r) => (r.fromProfileId === profileId ? r.toProfileId : r.fromProfileId)),
+    );
   }
 
   async sendInterest(
     actor: AuthUser,
-    toUserId: string,
-    onBehalfOfUserId?: string,
+    toProfileId: string,
+    fromProfileId?: string,
   ): Promise<Interest> {
-    const fromUserId = await this.resolveSubject(actor, onBehalfOfUserId);
-    if (fromUserId === toUserId) throw new BadRequestException('Cannot send interest to yourself');
+    const from = await this.resolveSubject(actor, fromProfileId);
+    if (from.id === toProfileId) throw new BadRequestException('Cannot send interest to yourself');
 
-    const target = await this.users.findOne({ where: { id: toUserId } });
-    if (!target || !target.isActive) throw new NotFoundException('That profile is unavailable');
-    if (!isIndividual(target.role)) {
-      throw new BadRequestException('Interests can only be sent to individual profiles');
+    const target = await this.profiles.findOne({ where: { id: toProfileId } });
+    if (!target) throw new NotFoundException('That profile is unavailable');
+    if (target.visibility === ProfileVisibility.PRIVATE) {
+      throw new ForbiddenException('That profile is not accepting interests');
+    }
+    if (target.userId) {
+      const owner = await this.users.findOne({ where: { id: target.userId } });
+      if (!owner || !owner.isActive) throw new NotFoundException('That profile is unavailable');
+      if (!isIndividual(owner.role)) {
+        throw new BadRequestException('Interests can only be sent to individual profiles');
+      }
     }
 
-    const existing = await this.interests.findOne({ where: { fromUserId, toUserId } });
+    const existing = await this.interests.findOne({
+      where: { fromProfileId: from.id, toProfileId },
+    });
     if (existing) return existing;
 
     const interest = await this.interests.save(
-      this.interests.create({ fromUserId, toUserId, status: InterestStatus.PENDING }),
+      this.interests.create({
+        fromProfileId: from.id,
+        toProfileId,
+        sentByUserId: actor.userId,
+        status: InterestStatus.PENDING,
+      }),
     );
     await this.outbox.record({
       eventType: 'match.interest_sent',
       aggregateType: 'interest',
-      payload: { interestId: interest.id, fromUserId, toUserId, sentByUserId: actor.userId },
+      payload: {
+        interestId: interest.id,
+        fromProfileId: from.id,
+        toProfileId,
+        sentByUserId: actor.userId,
+      },
     });
-    await this.neo4j.recordInterest(fromUserId, toUserId, 'INTERESTED');
+    await this.neo4j.recordInterest(from.id, toProfileId, 'INTERESTED');
     return interest;
   }
 
   /**
-   * Accept/reject. Only the recipient may respond — or their agent, since an
-   * agent-managed client may have their agent handling the inbox for them.
+   * Accept or reject. The responder must control the receiving profile — its
+   * owner, or the steward who manages it while it is still unclaimed.
    */
   async respond(actor: AuthUser, interestId: string, accept: boolean): Promise<Interest> {
     const interest = await this.interests.findOne({ where: { id: interestId } });
     if (!interest) throw new NotFoundException('Interest not found');
 
-    if (interest.toUserId !== actor.userId) {
-      if (actor.role !== UserRole.AGENT) {
-        throw new ForbiddenException('Only the recipient can respond to this interest');
-      }
-      await this.agents.assertManages(actor.userId, interest.toUserId);
-    }
+    // Throws unless the caller controls the recipient profile.
+    await this.resolveSubject(actor, interest.toProfileId);
 
     interest.status = accept ? InterestStatus.ACCEPTED : InterestStatus.REJECTED;
+    interest.respondedByUserId = actor.userId;
     const saved = await this.interests.save(interest);
-    await this.redis.del(
-      `match:suggestions:${interest.toUserId}:1:${this.cfg.pagination.defaultLimit}`,
-    );
+    await this.invalidateSuggestions(interest.toProfileId, interest.fromProfileId);
 
     if (accept) {
       await this.outbox.record({
@@ -183,31 +270,102 @@ export class MatchmakingService {
         aggregateType: 'interest',
         payload: {
           interestId: interest.id,
-          userA: interest.fromUserId,
-          userB: interest.toUserId,
+          profileA: interest.fromProfileId,
+          profileB: interest.toProfileId,
         },
       });
-      await this.neo4j.recordInterest(interest.fromUserId, interest.toUserId, 'ACCEPTED');
+      await this.neo4j.recordInterest(interest.fromProfileId, interest.toProfileId, 'ACCEPTED');
     }
     return saved;
   }
 
-  async accepted(actor: AuthUser, onBehalfOfUserId?: string): Promise<Interest[]> {
-    const subjectId = await this.resolveSubject(actor, onBehalfOfUserId);
-    return this.interests.find({
+  private async invalidateSuggestions(...profileIds: string[]): Promise<void> {
+    const keys: string[] = [];
+    for (const id of profileIds) {
+      const found = await this.redis.raw.keys(`match:suggestions:${id}:*`);
+      keys.push(...found);
+    }
+    if (keys.length) await this.redis.del(...keys);
+  }
+
+  async accepted(actor: AuthUser, profileId?: string): Promise<InterestView[]> {
+    const me = await this.resolveSubject(actor, profileId);
+    const rows = await this.interests.find({
       where: [
-        { fromUserId: subjectId, status: InterestStatus.ACCEPTED },
-        { toUserId: subjectId, status: InterestStatus.ACCEPTED },
+        { fromProfileId: me.id, status: InterestStatus.ACCEPTED },
+        { toProfileId: me.id, status: InterestStatus.ACCEPTED },
       ],
+      order: { updatedAt: 'DESC' },
     });
+    return this.decorate(me.id, rows, true);
   }
 
   /** Incoming pending interests for the subject, for the inbox view. */
-  async incoming(actor: AuthUser, onBehalfOfUserId?: string): Promise<Interest[]> {
-    const subjectId = await this.resolveSubject(actor, onBehalfOfUserId);
-    return this.interests.find({
-      where: { toUserId: subjectId, status: InterestStatus.PENDING },
+  async incoming(actor: AuthUser, profileId?: string): Promise<InterestView[]> {
+    const me = await this.resolveSubject(actor, profileId);
+    const rows = await this.interests.find({
+      where: { toProfileId: me.id, status: InterestStatus.PENDING },
       order: { createdAt: 'DESC' },
     });
+    return this.decorate(me.id, rows, false);
+  }
+
+  /** Interests this profile has sent and is waiting on. */
+  async outgoing(actor: AuthUser, profileId?: string): Promise<InterestView[]> {
+    const me = await this.resolveSubject(actor, profileId);
+    const rows = await this.interests.find({
+      where: { fromProfileId: me.id, status: InterestStatus.PENDING },
+      order: { createdAt: 'DESC' },
+    });
+    return this.decorate(me.id, rows, false);
+  }
+
+  /** Attaches the counterpart profile in public (privacy-filtered) form. */
+  private async decorate(
+    myProfileId: string,
+    rows: Interest[],
+    matched: boolean,
+  ): Promise<InterestView[]> {
+    if (rows.length === 0) return [];
+    const otherIds = rows.map((r) =>
+      r.fromProfileId === myProfileId ? r.toProfileId : r.fromProfileId,
+    );
+    const others = await this.profiles.find({ where: { id: In(otherIds) } });
+    const byId = new Map(others.map((p) => [p.id, p]));
+
+    return rows.flatMap((r) => {
+      const otherId = r.fromProfileId === myProfileId ? r.toProfileId : r.fromProfileId;
+      const other = byId.get(otherId);
+      if (!other) return [];
+      return [
+        {
+          id: r.id,
+          status: r.status,
+          createdAt: r.createdAt,
+          counterpart: toPublicProfile(other, { matched }),
+          direction: r.toProfileId === myProfileId ? ('incoming' as const) : ('outgoing' as const),
+        },
+      ];
+    });
+  }
+
+  /**
+   * Do these two profiles have an accepted match? Used by chat to decide
+   * whether two accounts may talk.
+   */
+  async hasAcceptedMatch(profileA: string, profileB: string): Promise<boolean> {
+    const found = await this.interests.findOne({
+      where: [
+        { fromProfileId: profileA, toProfileId: profileB, status: InterestStatus.ACCEPTED },
+        { fromProfileId: profileB, toProfileId: profileA, status: InterestStatus.ACCEPTED },
+      ],
+    });
+    return Boolean(found);
+  }
+
+  /** Profiles a steward may still act for once claimed, for the UI selector. */
+  async claimStatusOf(profileId: string): Promise<ProfileClaimStatus | null> {
+    const p = await this.profiles.findOne({ where: { id: profileId } });
+    return p?.claimStatus ?? null;
   }
 }

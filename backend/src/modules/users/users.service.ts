@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Profile } from './entities/profile.entity';
 import { CreateProfileDto, UpdateProfileDto } from './dto/profile.dto';
 import { RedisService } from '../../platform/redis/redis.service';
+import { ProfileClaimStatus } from '../../common/enums';
 
 const profileCacheKey = (userId: string) => `profile:${userId}`;
 
@@ -17,7 +18,13 @@ export class UsersService {
   async upsert(userId: string, dto: CreateProfileDto | UpdateProfileDto): Promise<Profile> {
     let profile = await this.profiles.findOne({ where: { userId } });
     if (!profile) {
-      profile = this.profiles.create({ userId, ...dto } as Partial<Profile>);
+      profile = this.profiles.create({
+        userId,
+        ...dto,
+        // Self-managed from the outset; stewardship is set only by the agent
+        // paths in ManagedProfilesService.
+        claimStatus: ProfileClaimStatus.SELF,
+      } as Partial<Profile>);
     } else {
       Object.assign(profile, dto);
     }

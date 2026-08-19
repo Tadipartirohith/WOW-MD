@@ -35,10 +35,20 @@ export enum Permission {
   PLANNER_LISTING_MANAGE = 'planner_listing:manage',
   REVIEW_WRITE = 'review:write',
 
+  // --- stewardship: managing a profile for somebody else ---
+  /** Build and edit a profile for a person who may have no account yet. */
+  MANAGED_PROFILE_MANAGE = 'managed_profile:manage',
+  /** Email an invitation so the subject can claim the profile. */
+  MANAGED_PROFILE_INVITE = 'managed_profile:invite',
+  /** Browse, send interests and book under a managed profile's identity. */
+  ACT_ON_BEHALF = 'act_on_behalf',
+
   // --- agent (brokerage) ---
   CLIENT_CREATE = 'client:create',
   CLIENT_READ = 'client:read',
   CLIENT_ACT_ON_BEHALF = 'client:act_on_behalf',
+  /** Maintain the agency's own registration record. */
+  AGENCY_MANAGE = 'agency:manage',
 
   // --- wedding planning workspace ---
   PLAN_MANAGE_OWN = 'plan:manage:own',
@@ -53,8 +63,14 @@ export enum Permission {
   DISPUTE_RAISE = 'dispute:raise',
   AI_ASSIST = 'ai:assist',
 
+  // --- account self-service ---
+  SESSION_MANAGE_OWN = 'session:manage:own',
+  MFA_MANAGE_OWN = 'mfa:manage:own',
+
   // --- administration ---
   ADMIN_USERS_READ = 'admin:users:read',
+  ADMIN_AGENT_APPROVE = 'admin:agent:approve',
+  ADMIN_AUDIT_READ = 'admin:audit:read',
   ADMIN_VENDOR_APPROVE = 'admin:vendor:approve',
   ADMIN_ANALYTICS_READ = 'admin:analytics:read',
   ADMIN_DISPUTE_RESOLVE = 'admin:dispute:resolve',
@@ -79,6 +95,8 @@ const INDIVIDUAL_PERMISSIONS: Permission[] = [
   Permission.TRAVEL_BOOK,
   Permission.DISPUTE_RAISE,
   Permission.AI_ASSIST,
+  Permission.SESSION_MANAGE_OWN,
+  Permission.MFA_MANAGE_OWN,
 ];
 
 /**
@@ -88,7 +106,17 @@ const INDIVIDUAL_PERMISSIONS: Permission[] = [
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   [UserRole.BRIDE]: INDIVIDUAL_PERMISSIONS,
   [UserRole.GROOM]: INDIVIDUAL_PERMISSIONS,
-  [UserRole.FAMILY]: INDIVIDUAL_PERMISSIONS,
+
+  // A family member is an individual who may ALSO look after a relative's
+  // profile: a parent searching for their son, say. Mechanically that is the
+  // same stewardship an agent does, so it reuses the same permissions — minus
+  // the agency surface (no client accounts, no book of business).
+  [UserRole.FAMILY]: [
+    ...INDIVIDUAL_PERMISSIONS,
+    Permission.MANAGED_PROFILE_MANAGE,
+    Permission.MANAGED_PROFILE_INVITE,
+    Permission.ACT_ON_BEHALF,
+  ],
 
   // Agents broker on behalf of the clients they onboard. They do NOT get a
   // matchmaking profile of their own, but they can browse and act for clients.
@@ -104,6 +132,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CLIENT_CREATE,
     Permission.CLIENT_READ,
     Permission.CLIENT_ACT_ON_BEHALF,
+    Permission.AGENCY_MANAGE,
+    Permission.MANAGED_PROFILE_MANAGE,
+    Permission.MANAGED_PROFILE_INVITE,
+    Permission.ACT_ON_BEHALF,
+    Permission.SESSION_MANAGE_OWN,
+    Permission.MFA_MANAGE_OWN,
     Permission.PLAN_MANAGE_OWN,
     Permission.EVENT_MANAGE_OWN,
     Permission.MEDIA_MANAGE_OWN,
@@ -124,6 +158,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
     Permission.AI_ASSIST,
+    Permission.SESSION_MANAGE_OWN,
+    Permission.MFA_MANAGE_OWN,
   ],
 
   // Wedding planners sell services AND co-manage the plans they are engaged on.
@@ -139,6 +175,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
     Permission.AI_ASSIST,
+    Permission.SESSION_MANAGE_OWN,
+    Permission.MFA_MANAGE_OWN,
   ],
 
   // Admin gets every permission, computed rather than listed so new

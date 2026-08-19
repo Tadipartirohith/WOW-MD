@@ -55,6 +55,40 @@ export default () => ({
     jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
     bcryptRounds: toNumber(process.env.BCRYPT_ROUNDS, 12),
     otpTtlSeconds: toNumber(process.env.OTP_TTL_SECONDS, 300),
+
+    // Refresh tokens ride in an httpOnly cookie so page script cannot read
+    // them. `cookieSecure` must be true anywhere the site is served over TLS.
+    refreshCookieName: process.env.REFRESH_COOKIE_NAME || 'wow_rt',
+    cookieSecure: toBool(process.env.COOKIE_SECURE, false),
+    cookieSameSite: (process.env.COOKIE_SAME_SITE || 'lax') as 'lax' | 'strict' | 'none',
+    cookieDomain: process.env.COOKIE_DOMAIN || undefined,
+
+    // Brute-force protection.
+    maxFailedLogins: toNumber(process.env.MAX_FAILED_LOGINS, 8),
+    lockoutMinutes: toNumber(process.env.LOCKOUT_MINUTES, 15),
+
+    // Single-use email token lifetimes.
+    invitationTtlHours: toNumber(process.env.INVITATION_TTL_HOURS, 168),
+    emailVerifyTtlHours: toNumber(process.env.EMAIL_VERIFY_TTL_HOURS, 48),
+    passwordResetTtlMinutes: toNumber(process.env.PASSWORD_RESET_TTL_MINUTES, 30),
+    rsvpTokenTtlDays: toNumber(process.env.RSVP_TOKEN_TTL_DAYS, 120),
+
+    // Two-factor. Required for admins by default: they can release escrow and
+    // suspend accounts, so a stolen password must not be enough.
+    mfaIssuer: process.env.MFA_ISSUER || 'WOW Weddings',
+    mfaRequiredForAdmin: toBool(process.env.MFA_REQUIRED_FOR_ADMIN, true),
+  },
+
+  mail: {
+    provider: process.env.MAIL_PROVIDER || 'log', // log | smtp
+    from: process.env.MAIL_FROM || 'WOW <no-reply@wow.local>',
+    host: process.env.SMTP_HOST || '',
+    port: toNumber(process.env.SMTP_PORT, 587),
+    secure: toBool(process.env.SMTP_SECURE, false),
+    user: process.env.SMTP_USER || '',
+    password: process.env.SMTP_PASSWORD || '',
+    /** Base URL the action links in emails point at (the SPA, not the API). */
+    appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:8080',
   },
 
   security: {
@@ -66,6 +100,16 @@ export default () => ({
   pagination: {
     defaultLimit: toNumber(process.env.PAGINATION_DEFAULT_LIMIT, 20),
     maxLimit: toNumber(process.env.PAGINATION_MAX_LIMIT, 100),
+  },
+
+  stewardship: {
+    /** How many unclaimed profiles one steward may hold at once. */
+    maxManagedProfiles: toNumber(process.env.MAX_MANAGED_PROFILES, 200),
+    /** Family accounts look after relatives, not a book of business. */
+    maxManagedProfilesFamily: toNumber(process.env.MAX_MANAGED_PROFILES_FAMILY, 5),
+    maxInvitationResends: toNumber(process.env.MAX_INVITATION_RESENDS, 5),
+    /** Agents must be approved by an admin before they can build profiles. */
+    requireAgentApproval: toBool(process.env.REQUIRE_AGENT_APPROVAL, true),
   },
 
   /**
@@ -103,6 +147,8 @@ export default () => ({
     provider: process.env.PAYMENT_PROVIDER || 'mock',
     currency: process.env.PAYMENT_CURRENCY || 'INR',
     commissionPercent: toNumber(process.env.PAYMENT_COMMISSION_PERCENT, 10),
+    /** HMAC secret the gateway signs webhook bodies with. */
+    webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || '',
     razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
     razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
   },

@@ -16,24 +16,31 @@ export class MatchmakingController {
   @ApiOperation({
     summary: 'Ranked match suggestions',
     description:
-      'Individual accounts browse their own suggestions. Agents pass onBehalfOfUserId to browse ' +
-      'as one of their clients. Vendor and planner accounts cannot reach this route.',
+      'Acts as the caller\'s own profile by default. Agents and family members pass profileId to ' +
+      'browse as a profile they manage, including one whose subject has not signed up yet. ' +
+      'Vendor and planner accounts cannot reach this route.',
   })
   @Get('suggestions')
   suggestions(@CurrentUser() actor: AuthUser, @Query() q: SuggestionsQueryDto) {
-    return this.matchmaking.suggestions(actor, q.page, q.limit, q.onBehalfOfUserId);
+    return this.matchmaking.suggestions(actor, q.page, q.limit, q.profileId);
   }
 
   @RequirePermissions(Permission.MATCH_SEND_INTEREST)
   @Post('interest')
   sendInterest(@CurrentUser() actor: AuthUser, @Body() dto: SendInterestDto) {
-    return this.matchmaking.sendInterest(actor, dto.toUserId, dto.onBehalfOfUserId);
+    return this.matchmaking.sendInterest(actor, dto.toProfileId, dto.profileId);
   }
 
   @RequirePermissions(Permission.MATCH_BROWSE)
   @Get('incoming')
   incoming(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
-    return this.matchmaking.incoming(actor, q.onBehalfOfUserId);
+    return this.matchmaking.incoming(actor, q.profileId);
+  }
+
+  @RequirePermissions(Permission.MATCH_BROWSE)
+  @Get('outgoing')
+  outgoing(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
+    return this.matchmaking.outgoing(actor, q.profileId);
   }
 
   @RequirePermissions(Permission.MATCH_RESPOND_INTEREST)
@@ -51,6 +58,6 @@ export class MatchmakingController {
   @RequirePermissions(Permission.MATCH_BROWSE)
   @Get('accepted')
   accepted(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
-    return this.matchmaking.accepted(actor, q.onBehalfOfUserId);
+    return this.matchmaking.accepted(actor, q.profileId);
   }
 }

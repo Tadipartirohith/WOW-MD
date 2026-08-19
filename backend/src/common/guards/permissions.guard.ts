@@ -1,19 +1,30 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { Permission, permissionsFor } from '../authz/permissions';
 import { AuthUser } from '../decorators/current-user.decorator';
 
 /**
  * Capability check. Runs after JwtAuthGuard, so `request.user` is populated for
- * every non-public route. Public routes carry no permission metadata and are
- * waved through by the early return.
+ * every non-public route.
+ *
+ * `@Public()` wins over any permission metadata, including a class-level
+ * `@RequirePermissions`. That matters for routes such as the guest RSVP link
+ * and the invitation landing page, which live on otherwise-guarded controllers
+ * but are addressed by a signed token rather than a session.
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) return true;
+
     const required = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, [
       context.getHandler(),
       context.getClass(),

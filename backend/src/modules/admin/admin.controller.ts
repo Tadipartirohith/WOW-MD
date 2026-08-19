@@ -1,6 +1,10 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { AgencyService } from '../agents/agency.service';
+import { AuditService } from '../../platform/audit/audit.service';
+import { RejectAgencyDto } from '../agents/dto/agency.dto';
+import { AuditQueryDto } from './dto/admin.dto';
 import {
   AdminUserQueryDto,
   DisputeQueryDto,
@@ -16,7 +20,53 @@ import { Permission } from '../../common/authz/permissions';
 @ApiBearerAuth()
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly agency: AgencyService,
+    private readonly audit: AuditService,
+  ) {}
+
+  // -------------------------------------------------------- agency vetting
+
+  /**
+   * Agents can build profiles and invite real people to create accounts, so an
+   * unvetted agent is the highest-leverage account type on the platform. These
+   * two routes are the gate.
+   */
+  @RequirePermissions(Permission.ADMIN_AGENT_APPROVE)
+  @Get('agents/pending')
+  pendingAgents() {
+    return this.agency.listPending();
+  }
+
+  @RequirePermissions(Permission.ADMIN_AGENT_APPROVE)
+  @Put('agents/:id/approve')
+  approveAgent(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.agency.approve(actor, id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_AGENT_APPROVE)
+  @Put('agents/:id/reject')
+  rejectAgent(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectAgencyDto,
+  ) {
+    return this.agency.reject(actor, id, dto.reason);
+  }
+
+  // ------------------------------------------------------------- audit trail
+
+  @RequirePermissions(Permission.ADMIN_AUDIT_READ)
+  @ApiOperation({ summary: 'Append-only trail of privileged and money-moving actions' })
+  @Get('audit')
+  auditLog(@Query() q: AuditQueryDto) {
+    return this.audit.list(q.page, q.limit, {
+      action: q.action,
+      actorUserId: q.actorUserId,
+      resourceId: q.resourceId,
+    });
+  }
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
   @Get('users')

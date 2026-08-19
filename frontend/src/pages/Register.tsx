@@ -34,7 +34,8 @@ const ACCOUNT_TYPES: AccountTypeOption[] = [
   {
     type: 'agent',
     label: 'Marriage agent',
-    blurb: 'Onboard and represent clients, and book services on their behalf.',
+    blurb:
+      'Build profiles for clients, invite them to claim their account, and book on their behalf. Reviewed before activation.',
     icon: '🤝',
   },
   {
@@ -59,6 +60,7 @@ export default function Register() {
   const [role, setRole] = useState('bride');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -71,13 +73,17 @@ export default function Register() {
     setLoading(true);
     try {
       const payload: Record<string, unknown> = { email, password, accountType, displayName };
+      if (phone) payload.phone = phone;
       // `role` is only meaningful for individual sign-ups; the server derives it
       // from accountType for every other persona.
       if (accountType === 'individual') payload.role = role;
 
       const { data } = await api.post('/auth/register', payload);
       setAuth(data);
-      nav(accountType === 'individual' ? '/profile' : '/');
+      // Agents land on agency registration: nothing else works until an
+      // administrator has approved them.
+      if (accountType === 'agent') nav('/agency');
+      else nav(accountType === 'individual' ? '/profile' : '/');
     } catch (err) {
       const res = (err as AxiosError<{ message?: string | string[] }>).response;
       const msg = res?.data?.message;
@@ -179,6 +185,19 @@ export default function Register() {
               required
             />
           </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="phone">
+            Mobile number <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <input
+            id="phone"
+            className="input"
+            placeholder="+919876543210"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
         </div>
 
         <div>

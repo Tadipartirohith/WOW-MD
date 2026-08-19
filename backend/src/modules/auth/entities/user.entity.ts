@@ -21,6 +21,9 @@ export class User {
   @Column()
   email: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  phone: string | null;
+
   @Column({ select: false })
   passwordHash: string;
 
@@ -30,7 +33,10 @@ export class User {
   @Column({ default: false })
   isVerified: boolean;
 
-  /** Soft disable: an agent can deactivate a client, admin can suspend anyone. */
+  @Column({ type: 'timestamptz', nullable: true })
+  emailVerifiedAt: Date | null;
+
+  /** Soft disable: a steward can deactivate a client, admin can suspend anyone. */
   @Column({ default: true })
   isActive: boolean;
 
@@ -47,8 +53,27 @@ export class User {
   @JoinColumn({ name: 'managedByAgentId' })
   managedByAgent: User | null;
 
+  // ---- brute-force protection -------------------------------------------
+  @Column({ type: 'int', default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  lockedUntil: Date | null;
+
+  // ---- two-factor (TOTP) -------------------------------------------------
+  @Column({ default: false })
+  mfaEnabled: boolean;
+
+  /** Base32 TOTP secret. Never selected unless explicitly requested. */
   @Column({ type: 'varchar', nullable: true, select: false })
-  refreshTokenHash: string | null;
+  mfaSecret: string | null;
+
+  /**
+   * Password changes invalidate every access token issued before this instant,
+   * which is what makes "sign out everywhere" actually immediate.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  passwordChangedAt: Date | null;
 
   @OneToOne(() => Profile, (profile) => profile.user)
   profile: Profile;

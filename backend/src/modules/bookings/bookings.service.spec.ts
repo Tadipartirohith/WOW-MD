@@ -10,6 +10,7 @@ import { PlannerProfile } from '../wedding-planners/entities/planner-profile.ent
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { AgentsService } from '../agents/agents.service';
+import { AuditService } from '../../platform/audit/audit.service';
 import { PAYMENT_PROVIDER } from './payment.provider';
 import { BookingStatus, ProviderType, UserRole } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -45,7 +46,9 @@ describe('BookingsService', () => {
     count: jest.fn(async () => 0),
   };
   const paymentsRepo = { findOne: jest.fn(async () => null), update: jest.fn() };
-  const cfg = { payments: { currency: 'INR', provider: 'mock' } } as unknown as AppConfigService;
+  const cfg = {
+    payments: { currency: 'INR', provider: 'mock', commissionPercent: 10 },
+  } as unknown as AppConfigService;
   const outbox = { record: jest.fn() } as unknown as OutboxService;
   const dataSource = {} as DataSource;
   const gateway = { createEscrowHold: jest.fn(), release: jest.fn(), refund: jest.fn() };
@@ -83,6 +86,7 @@ describe('BookingsService', () => {
         { provide: OutboxService, useValue: outbox },
         { provide: DataSource, useValue: dataSource },
         { provide: AgentsService, useValue: agents },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: PAYMENT_PROVIDER, useValue: gateway },
       ],
     }).compile();
@@ -140,6 +144,29 @@ describe('BookingsService', () => {
     it('lets the provider cancel a booking on their listing', async () => {
       const result = await service.cancel(asUser('vendor-owner', UserRole.VENDOR), 'b1');
       expect(result.status).toBe(BookingStatus.CANCELLED);
+    });
+  });
+
+  describe('commission split', () => {
+    // PAYMENT_COMMISSION_PERCENT used to be read into config and never applied,
+    // so providers were paid the gross amount and the platform earned nothing.
+    it('withholds the configured percentage from the payout', () => {
+      const { commission, payout } = service.splitAmount('1000.00');
+      expect(commission).toBe('100.00');
+      expect(payout).toBe('900.00');
+    });
+
+    it('always sums back to exactly the amount held', () => {
+      for (const amount of ['0.01', '33.33', '999.99', '12345.67']) {
+        const { commission, payout } = service.splitAmount(amount);
+        const total = (parseFloat(commission) + parseFloat(payout)).toFixed(2);
+        expect(total).toBe(parseFloat(amount).toFixed(2));
+      }
+    });
+
+    it('rounds in the seller favour, never overcharging commission', () => {
+      const { commission } = service.splitAmount('0.05'); // 10% of 5 paise
+      expect(parseFloat(commission)).toBeLessThanOrEqual(0.01);
     });
   });
 

@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 
@@ -16,12 +17,12 @@ describe('WOW API (e2e)', () => {
   let app: INestApplication;
   const unique = Date.now();
 
-  const bride = {
-    email: `bride_${unique}@test.com`,
+  const solo = {
+    email: `solo_${unique}@test.com`,
     password: 'Password123',
     accountType: 'individual',
     role: 'bride',
-    displayName: 'E2E Bride',
+    displayName: 'E2E Solo',
   };
   const groom = {
     email: `groom_${unique}@test.com`,
@@ -43,12 +44,11 @@ describe('WOW API (e2e)', () => {
     displayName: 'E2E Venue Co',
   };
 
-  let brideToken: string;
+  let soloToken: string;
   let groomToken: string;
   let agentToken: string;
   let vendorToken: string;
-  let groomUserId: string;
-  let clientUserId: string;
+  let groomProfileId: string;
 
   const http = () => request(app.getHttpServer());
 
@@ -56,6 +56,7 @@ describe('WOW API (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api');
+    app.use(cookieParser());
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
@@ -68,20 +69,23 @@ describe('WOW API (e2e)', () => {
   });
 
   it('registers one account of each persona', async () => {
-    const r1 = await http().post('/api/auth/register').send(bride).expect(201);
-    brideToken = r1.body.accessToken;
+    const r1 = await http().post('/api/auth/register').send(solo).expect(201);
+    soloToken = r1.body.accessToken;
     expect(r1.body.user.role).toBe('bride');
+    // A self-registered user is never tied to an agency.
     expect(r1.body.user.managedByAgentId).toBeNull();
     expect(r1.body.user.permissions).toContain('booking:create');
+    // The refresh token is an httpOnly cookie now, not a field in the body.
+    expect(r1.body.refreshToken).toBeUndefined();
+    expect(String(r1.headers['set-cookie'])).toContain('HttpOnly');
 
     const r2 = await http().post('/api/auth/register').send(groom).expect(201);
     groomToken = r2.body.accessToken;
-    groomUserId = r2.body.user.id;
 
     const r3 = await http().post('/api/auth/register').send(agent).expect(201);
     agentToken = r3.body.accessToken;
     expect(r3.body.user.role).toBe('agent');
-    expect(r3.body.user.permissions).toContain('client:create');
+    expect(r3.body.user.permissions).toContain('managed_profile:manage');
 
     const r4 = await http().post('/api/auth/register').send(vendor).expect(201);
     vendorToken = r4.body.accessToken;
@@ -91,10 +95,19 @@ describe('WOW API (e2e)', () => {
     expect(r4.body.user.permissions).not.toContain('match:browse');
   });
 
+  it('lets a solo user sign in on their own, with no agent involved', async () => {
+    const res = await http()
+      .post('/api/auth/login')
+      .send({ email: solo.email, password: solo.password })
+      .expect(200);
+    soloToken = res.body.accessToken;
+    expect(res.body.user.managedByAgentId).toBeNull();
+  });
+
   it('refuses to mint privileged roles through registration', async () => {
     await http()
       .post('/api/auth/register')
-      .send({ ...bride, email: `esc1_${unique}@test.com`, role: 'admin' })
+      .send({ ...solo, email: `esc1_${unique}@test.com`, role: 'admin' })
       .expect(400);
 
     await http()
@@ -104,7 +117,7 @@ describe('WOW API (e2e)', () => {
 
     await http()
       .post('/api/auth/register')
-      .send({ ...bride, email: `esc3_${unique}@test.com`, role: 'vendor' })
+      .send({ ...solo, email: `esc3_${unique}@test.com`, role: 'vendor' })
       .expect(400);
   });
 
@@ -117,7 +130,13 @@ describe('WOW API (e2e)', () => {
     // whitelist + forbidNonWhitelisted: server-owned fields cannot be injected.
     await http()
       .post('/api/auth/register')
-      .send({ ...bride, email: `extra_${unique}@test.com`, isVerified: true })
+      .send({ ...solo, email: `extra_${unique}@test.com`, isVerified: true })
+      .expect(400);
+
+    // Weak passwords are refused everywhere, not just at the client.
+    await http()
+      .post('/api/auth/register')
+      .send({ ...solo, email: `weak_${unique}@test.com`, password: 'alllowercase' })
       .expect(400);
   });
 
@@ -128,22 +147,82 @@ describe('WOW API (e2e)', () => {
   it('creates profiles for both individuals', async () => {
     await http()
       .put('/api/users/me/profile')
-      .set('Authorization', `Bearer ${brideToken}`)
-      .send({ displayName: 'Bride', gender: 'Female', dateOfBirth: '1996-01-01', city: 'Mumbai' })
+      .set('Authorization', `Bearer ${soloToken}`)
+      .send({ displayName: 'Solo', gender: 'Female', dateOfBirth: '1996-01-01', city: 'Mumbai' })
       .expect(200);
 
-    await http()
+    const res = await http()
       .put('/api/users/me/profile')
       .set('Authorization', `Bearer ${groomToken}`)
       .send({ displayName: 'Groom', gender: 'Male', dateOfBirth: '1994-01-01', city: 'Mumbai' })
       .expect(200);
+    groomProfileId = res.body.id;
   });
 
-  it('runs the interest to accept flow', async () => {
+  describe('agent stewardship', () => {
+    it('blocks an unvetted agency from building profiles', async () => {
+      await http()
+        .post('/api/agents/profiles')
+        .set('Authorization', `Bearer ${agentToken}`)
+        .send({
+          displayName: 'Blocked',
+          contactEmail: `blocked_${unique}@test.com`,
+          contactPhone: '+919876500000',
+        })
+        .expect(403);
+    });
+
+    it('requires an email and a mobile number on a managed profile', async () => {
+      // Registered but still unapproved, so these fail validation before authz
+      // would matter — both fields are mandatory by design.
+      await http()
+        .put('/api/agents/agency')
+        .set('Authorization', `Bearer ${agentToken}`)
+        .send({ agencyName: `E2E Agency ${unique}`, city: 'Mumbai' })
+        .expect(200);
+
+      await http()
+        .post('/api/agents/profiles')
+        .set('Authorization', `Bearer ${agentToken}`)
+        .send({ displayName: 'No contact details' })
+        .expect(400);
+    });
+
+    it('keeps stewardship away from ordinary individuals and providers', async () => {
+      await http()
+        .post('/api/agents/profiles')
+        .set('Authorization', `Bearer ${soloToken}`)
+        .send({
+          displayName: 'Nope',
+          contactEmail: `nope_${unique}@test.com`,
+          contactPhone: '+919876500001',
+        })
+        .expect(403);
+
+      await http()
+        .post('/api/agents/profiles')
+        .set('Authorization', `Bearer ${vendorToken}`)
+        .send({
+          displayName: 'Nope',
+          contactEmail: `nope2_${unique}@test.com`,
+          contactPhone: '+919876500002',
+        })
+        .expect(403);
+    });
+
+    it('requires an agent to name a profile before browsing matches', async () => {
+      await http()
+        .get('/api/matches/suggestions')
+        .set('Authorization', `Bearer ${agentToken}`)
+        .expect(400);
+    });
+  });
+
+  it('runs the interest to accept flow between two individuals', async () => {
     const sent = await http()
       .post('/api/matches/interest')
-      .set('Authorization', `Bearer ${brideToken}`)
-      .send({ toUserId: groomUserId })
+      .set('Authorization', `Bearer ${soloToken}`)
+      .send({ toProfileId: groomProfileId })
       .expect(201);
 
     await http()
@@ -152,94 +231,77 @@ describe('WOW API (e2e)', () => {
       .expect(200);
   });
 
+  it('never returns an exact date of birth to another user', async () => {
+    const res = await http()
+      .get('/api/matches/suggestions')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .expect(200);
+    for (const item of res.body.data ?? []) {
+      expect(item.profile.dateOfBirth).toBeUndefined();
+      expect(item.profile).toHaveProperty('ageRange');
+    }
+  });
+
   it('keeps provider personas out of the buy side and matchmaking', async () => {
     await http().get('/api/matches/suggestions').set('Authorization', `Bearer ${vendorToken}`).expect(403);
 
     await http()
       .post('/api/bookings')
       .set('Authorization', `Bearer ${vendorToken}`)
-      .send({ providerType: 'vendor', providerId: groomUserId, amount: 100 })
+      .send({ providerType: 'vendor', providerId: groomProfileId, amount: 100 })
       .expect(403);
 
     await http()
       .post('/api/vendors')
-      .set('Authorization', `Bearer ${brideToken}`)
+      .set('Authorization', `Bearer ${soloToken}`)
       .send({ name: 'Not mine', category: 'venue' })
       .expect(403);
   });
 
   it('closes the admin surface to every non-admin persona', async () => {
-    for (const token of [brideToken, groomToken, agentToken, vendorToken]) {
+    for (const token of [soloToken, groomToken, agentToken, vendorToken]) {
       await http().get('/api/admin/analytics').set('Authorization', `Bearer ${token}`).expect(403);
       await http().get('/api/admin/users').set('Authorization', `Bearer ${token}`).expect(403);
+      await http().get('/api/admin/audit').set('Authorization', `Bearer ${token}`).expect(403);
+      await http().get('/api/admin/agents/pending').set('Authorization', `Bearer ${token}`).expect(403);
     }
   });
 
-  it('stamps the agent id on an agent-created client and scopes the book', async () => {
-    const created = await http()
-      .post('/api/agents/clients')
-      .set('Authorization', `Bearer ${agentToken}`)
-      .send({
-        email: `client_${unique}@test.com`,
-        password: 'Password123',
-        role: 'bride',
-        displayName: 'E2E Client',
-        city: 'Pune',
-      })
-      .expect(201);
-    clientUserId = created.body.id;
+  describe('password recovery', () => {
+    it('never reveals whether an address is registered', async () => {
+      await http()
+        .post('/api/auth/password/forgot')
+        .send({ email: `nobody_${unique}@test.com` })
+        .expect(200);
+    });
 
-    const list = await http()
-      .get('/api/agents/clients')
-      .set('Authorization', `Bearer ${agentToken}`)
-      .expect(200);
-    expect(list.body.data.map((c: { id: string }) => c.id)).toContain(clientUserId);
-
-    // An individual cannot reach the agent surface at all.
-    await http().get('/api/agents/clients').set('Authorization', `Bearer ${brideToken}`).expect(403);
-
-    // Matchmaking for an agent must name a client they manage.
-    await http()
-      .get('/api/matches/suggestions')
-      .set('Authorization', `Bearer ${agentToken}`)
-      .expect(400);
-    await http()
-      .get(`/api/matches/suggestions?onBehalfOfUserId=${clientUserId}`)
-      .set('Authorization', `Bearer ${agentToken}`)
-      .expect(200);
-    await http()
-      .get(`/api/matches/suggestions?onBehalfOfUserId=${groomUserId}`)
-      .set('Authorization', `Bearer ${agentToken}`)
-      .expect(403);
+    it('refuses an invalid reset token', async () => {
+      await http()
+        .post('/api/auth/password/reset')
+        .send({ token: 'x'.repeat(32), password: 'Password123' })
+        .expect(400);
+    });
   });
 
-  it('lets a self-registered user approach an agent-managed user', async () => {
+  it('refuses an unsigned payment webhook', async () => {
     await http()
-      .post('/api/matches/interest')
-      .set('Authorization', `Bearer ${groomToken}`)
-      .send({ toUserId: clientUserId })
-      .expect(201);
+      .post('/api/payments/webhook')
+      .send({ id: 'evt_1', event: 'payment.captured' })
+      .expect(400);
   });
 
-  it('refuses booking state changes from users who are not party to the booking', async () => {
-    const listing = await http()
-      .post('/api/vendors')
-      .set('Authorization', `Bearer ${vendorToken}`)
-      .send({ name: `E2E Venue ${unique}`, category: 'venue', city: 'Mumbai' })
-      .expect(201);
-
-    // Unapproved listings are not bookable.
-    await http()
-      .post('/api/bookings')
-      .set('Authorization', `Bearer ${brideToken}`)
-      .send({ providerType: 'vendor', providerId: listing.body.id, amount: 1000 })
-      .expect(400);
+  it('refuses an invalid invitation token', async () => {
+    await http().get(`/api/auth/invitations/${'x'.repeat(32)}`).expect(404);
   });
 
   it('exposes public search endpoints', async () => {
     await http().get('/api/vendors/search').expect(200);
     await http().get('/api/wedding-planners/search').expect(200);
     await http().get('/api/auth/account-types').expect(200);
+  });
+
+  it('enforces the configured pagination ceiling', async () => {
+    await http().get('/api/vendors/search?limit=100000').expect(400);
   });
 
   it('serves health readiness', async () => {

@@ -25,6 +25,16 @@ docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
 The seeder reads `ADMIN_EMAIL` / `ADMIN_PASSWORD` and is idempotent — re-running
 promotes and reactivates an existing account instead of failing.
 
+### Stewardship
+
+`agent` and `family` may act for **other people**, including people who have no
+account at all. That is a distinct axis from the buy/sell split, and it is
+documented separately in [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md).
+
+An agent must be approved by an administrator (`agent_profiles.isApproved`)
+before any stewardship path opens. A family member is capped at a handful of
+relatives instead.
+
 ### Role groupings
 
 Defined once in `backend/src/common/enums/index.ts` and reused everywhere:
@@ -77,6 +87,12 @@ Skipping the second layer is what produced the IDOR bugs listed in §6.
 | `match:browse` | ● | ● | | | ● |
 | `match:send_interest` | ● | ● | | | ● |
 | `match:respond_interest` | ● | | | | ● |
+| `managed_profile:manage` | family only | ● | | | ● |
+| `managed_profile:invite` | family only | ● | | | ● |
+| `act_on_behalf` | family only | ● | | | ● |
+| `agency:manage` | | ● | | | ● |
+| `session:manage:own` | ● | ● | ● | ● | ● |
+| `mfa:manage:own` | ● | ● | ● | ● | ● |
 | `chat:match` | ● | | | | ● |
 | `chat:inquire` | ● | ● | ● | ● | ● |
 | `booking:create` | ● | ● | | | ● |
@@ -88,7 +104,7 @@ Skipping the second layer is what produced the IDOR bugs listed in §6.
 | `vendor_listing:manage` | | | ● | | ● |
 | `planner_listing:manage` | | | | ● | ● |
 | `review:write` | ● | ● | | | ● |
-| `client:create` / `client:read` / `client:act_on_behalf` | | ● | | | ● |
+| `client:read` / `client:create` / `client:act_on_behalf` | | ● | | | ● |
 | `plan:manage:own` | ● | ● | | | ● |
 | `plan:manage:engaged` | | | | ● | ● |
 | `event:manage:own` | ● | ● | | ● | ● |
@@ -96,25 +112,31 @@ Skipping the second layer is what produced the IDOR bugs listed in §6.
 | `travel:book` | ● | ● | | | ● |
 | `dispute:raise` | ● | ● | ● | ● | ● |
 | `ai:assist` | ● | ● | ● | ● | ● |
-| `admin:*` | | | | | ● |
+| `admin:*` (users, agents, vendors, analytics, disputes, audit) | | | | | ● |
 
 Admin permissions are computed as `Object.values(Permission)`, so a new
 capability is never accidentally withheld from support staff.
 
 ## 3. Agents and their clients
 
-An agent creates a client account through `POST /agents/clients`. The server
-stamps `users.managedByAgentId` with the calling agent's id. That single column
-scopes everything downstream.
+An agent cannot create an account directly. They build a **profile** for the
+person (`POST /agents/profiles`), email an **invitation**, and the account only
+exists once the subject accepts and chooses their own password — see
+[PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md).
 
-`AgentsService.assertManages(agentId, clientUserId)` is the **only** place the
-ownership rule is written. Every act-on-behalf path calls it:
+Two ownership rules, each written in exactly one place:
 
-- `POST /bookings` with `onBehalfOfUserId`
-- `GET /matches/suggestions?onBehalfOfUserId=…`
-- `POST /matches/interest` with `onBehalfOfUserId`
-- `POST /planner/plan` with `onBehalfOfUserId`
-- `GET /bookings?clientId=…`
+- **Profiles.** `MatchmakingService.resolveSubject(actor, profileId)` — the
+  caller owns the profile, stewards it, or is an admin. Used by every
+  matchmaking path.
+- **Accounts.** `AgentsService.assertManages(agentId, clientUserId)` — used by
+  every path that needs a real account:
+  - `POST /bookings` with `onBehalfOfUserId`
+  - `POST /planner/plan` with `onBehalfOfUserId`
+  - `GET /bookings?clientId=…`
+
+Matchmaking keys on **profiles** so an unclaimed profile can take part;
+bookings key on **accounts** because escrow needs somewhere to refund to.
 
 An agent-placed booking records both parties: `userId` is the client (escrow
 refunds go there), `bookedByUserId` is the agent (audit trail).
@@ -159,6 +181,17 @@ REQUESTED --(buyer pays)--> PENDING[escrow held]
   review your own listing.
 - Listings start `isApproved = false` and are not bookable until an admin
   approves them.
+- **Commission.** `PAYMENT_COMMISSION_PERCENT` is applied at payment time and
+  stored on the payment row, so what the provider is owed is fixed then and
+  cannot drift if the rate changes. Completion releases the payout only;
+  cancellation refunds the buyer in full and earns nothing.
+- **Idempotency.** `PUT /bookings/:id/pay` accepts an `idempotencyKey`, so a
+  retried request returns the original payment rather than opening a second
+  escrow hold.
+- **Webhooks.** `POST /payments/webhook` verifies an HMAC over the raw body and
+  drops replays, but never drives the state machine — that stays under the rules
+  above, where authorization is enforced.
+- Escrow held, released and refunded are all written to the audit trail.
 
 ## 6. Bugs this replaced
 
@@ -180,22 +213,56 @@ Found in the original code and fixed here:
 | 12 | WebSocket messages bypassed the global `ValidationPipe` | Unvalidated input on the realtime path |
 | 13 | Frontend showed every nav item, including Admin, to every user | Confusing UX and needless 403s |
 
+Found and fixed in the second round:
+
+| # | Problem | Impact |
+| - | ------- | ------ |
+| 14 | Anyone could self-register as an agent and immediately create accounts for other people | The highest-leverage account type was unvetted |
+| 15 | The agent chose their client's password | An agent could sign in as their own client, outside the audit trail |
+| 16 | One refresh-token hash per user | Signing in anywhere silently signed you out everywhere else; no way to spot a stolen token |
+| 17 | Tokens persisted to `localStorage` | Any XSS bug walked off with a 30-day credential |
+| 18 | `PAYMENT_COMMISSION_PERCENT` was read into config and never applied | Providers were paid the gross amount; the platform earned nothing |
+| 19 | No webhook endpoint or signature check | Gateway state changes never reached us; a retried payment could double-charge |
+| 20 | A host could hand any planner write access with no booking | Planner access existed outside the commercial model |
+| 21 | Match suggestions returned the whole profile entity | Exact dates of birth and full photo sets exposed before any match |
+| 22 | No brute-force lockout, and rate limits were per process | Distributed password guessing; effective limit multiplied by replica count |
+| 23 | No audit trail and no admin MFA | Escrow release and account suspension were untraceable and password-only |
+| 24 | `AgentsService.listClients` 500'd | A raw join alias with `orderBy` + `skip/take` made TypeORM order by columns it had no metadata for |
+| 25 | Two logins in the same second produced identical JWTs | Session-hash collision, and a refresh token that was not unpredictable |
+| 26 | Healthchecks probed `localhost` against IPv4-only listeners | The frontend reported unhealthy while serving traffic correctly |
+
 ## 7. Verifying
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d --build
 docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
+
 docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
-  sh -c "apk add --no-cache curl jq >/dev/null && sh /scripts/verify-rbac.sh"
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-rbac.sh"
+
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-invites.sh"
 ```
 
-108 checks covering privilege escalation, per-persona permissions, agent
-scoping, booking IDOR, escrow transitions, review gating, event ownership,
-schema validation and token handling. The script exits non-zero on any failure.
+- `verify-rbac.sh` — **118 checks**: privilege escalation, per-persona
+  permissions, agency vetting, profile-level scoping, booking IDOR, escrow
+  transitions, review gating, event ownership, schema validation, cookie-borne
+  refresh and token handling.
+- `verify-invites.sh` — **76 checks**: agency approval, profiles built for
+  people with no account, invitation and claim, multi-device sessions,
+  brute-force lockout, signed payment webhooks, the audit trail, two-factor and
+  pagination bounds.
+
+Both exit non-zero on any failure, so either can gate a deploy. Each clears its
+own rate-limit counters first: those live in Redis now and deliberately survive
+restarts, so a repeated run would otherwise trip limits unrelated to the checks.
 
 Unit tests (`npm test`) additionally cover the permission matrix itself, the
-guard, and the booking authorization paths.
+guards, the commission split, and the auth service (registration, lockout,
+two-factor, recovery and refresh rotation).
 
-## 8. Known gaps
+## 8. Related documents
 
-See `docs/SELF-REVIEW.md`.
+- [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md) — profiles without
+  accounts, stewardship, and the invitation/claim flow.
+- [SELF-REVIEW.md](SELF-REVIEW.md) — what is still missing.
