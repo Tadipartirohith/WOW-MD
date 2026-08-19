@@ -6,7 +6,8 @@ both halves — intake, and getting the profile in front of people.
 
 Read it with [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md), which
 covers the profile/account split, and [RBAC-AND-ROLES.md](RBAC-AND-ROLES.md) for
-the permission contract.
+the permission contract. [ARCHITECTURE.md](ARCHITECTURE.md) puts both in the
+context of the whole system.
 
 ## 1. Intake is phone-first
 

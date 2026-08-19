@@ -265,6 +265,9 @@ two-factor, recovery and refresh rotation).
 
 ## 8. Related documents
 
+- [ARCHITECTURE.md](ARCHITECTURE.md) — the combined HLD/SLD/LLD
+  reference for the whole repository.
+
 - [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md) — profiles without
   accounts, stewardship, and the invitation/claim flow.
 - [CIRCULATION.md](CIRCULATION.md) — phone-first intake, the two consent scopes,
