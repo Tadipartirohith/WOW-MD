@@ -1,0 +1,9 @@
+# Normalise text in the repository.
+* text=auto
+
+# Anything executed inside a Linux container must keep LF endings; CRLF makes
+# the shebang unparseable and the script fails with "not found".
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
