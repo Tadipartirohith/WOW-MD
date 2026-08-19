@@ -42,11 +42,11 @@ family walks in  →  UNCLAIMED  →  (optional) invite  →  INVITED  →  they
   (matchable and circulatable straight away)                          (they own it)
 ```
 
-Details: [docs/CIRCULATION.md](docs/CIRCULATION.md) for consent and sharing, [docs/PROFILES-AND-INVITATIONS.md](docs/PROFILES-AND-INVITATIONS.md) for the profile/account split, [docs/RBAC-AND-ROLES.md](docs/RBAC-AND-ROLES.md) for the permission contract.
+Details: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** is the single combined reference (high-level, system-level and low-level design in one document, with diagrams). Narrower contracts live in [docs/CIRCULATION.md](docs/CIRCULATION.md) for consent and sharing, [docs/PROFILES-AND-INVITATIONS.md](docs/PROFILES-AND-INVITATIONS.md) for the profile/account split, and [docs/RBAC-AND-ROLES.md](docs/RBAC-AND-ROLES.md) for the permission contract.
 
 ## What is inside this repository
 
-The `backend` folder holds the API, the database migrations, the shared platform code such as configuration, authorization and health checks, and the tests. The `frontend` folder holds the React single page application. The `docker` folder holds the images and the compose files for running everything locally. The `scripts` folder holds the live verification suites. The `k8s` folder holds the Kubernetes manifests for a production deployment. The `terraform` folder holds the cloud infrastructure. The `docs` folder holds the design blueprint, the setup and testing guide, the authorization contract, the profile/invitation model, the consent and circulation model, and an honest self-review of the remaining gaps.
+The `backend` folder holds the API, the database migrations, the shared platform code such as configuration, authorization and health checks, and the tests. The `frontend` folder holds the React single page application. The `docker` folder holds the images and the compose files for running everything locally. The `scripts` folder holds the live verification suites. The `k8s` folder holds the Kubernetes manifests for a production deployment. The `terraform` folder holds the cloud infrastructure. The `docs` folder holds the combined architecture reference, the design blueprint, the setup and testing guide, the authorization contract, the profile/invitation model, the consent and circulation model, and an honest self-review of the remaining gaps.
 
 ## The main features
 
