@@ -13,6 +13,8 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AgentsService } from './agents.service';
 import { AgencyService } from './agency.service';
 import { ManagedProfilesService } from './managed-profiles.service';
+import { AgentBillingService } from './agent-billing.service';
+import { EndEngagementDto } from './dto/lifecycle.dto';
 import { InvitationsService } from '../invitations/invitations.service';
 import { ClientSearchDto, UpdateClientStatusDto } from './dto/agent.dto';
 import { UpsertAgencyDto } from './dto/agency.dto';
@@ -34,6 +36,7 @@ export class AgentsController {
     private readonly agents: AgentsService,
     private readonly agency: AgencyService,
     private readonly managed: ManagedProfilesService,
+    private readonly agentBilling: AgentBillingService,
     private readonly invitations: InvitationsService,
   ) {}
 
@@ -132,6 +135,72 @@ export class AgentsController {
     @Body() dto: AddProfilePhotoDto,
   ) {
     return this.managed.removePhoto(actor, id, dto.url);
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
+  @ApiOperation({
+    summary: 'Pause a profile',
+    description: 'Reversible. It stops matching and circulating; nothing is deleted or refunded.',
+  })
+  @Put('profiles/:id/deactivate')
+  deactivateProfile(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EndEngagementDto,
+  ) {
+    return this.managed.deactivate(actor, id, dto.reason);
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
+  @Put('profiles/:id/reactivate')
+  reactivateProfile(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.managed.reactivate(actor, id);
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
+  @ApiOperation({
+    summary: 'Close the engagement',
+    description:
+      'A soft delete: the profile stops matching for good, the record survives for consent and ' +
+      'audit, and any fee still in escrow is refunded.',
+  })
+  @Put('profiles/:id/archive')
+  archiveProfile(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EndEngagementDto,
+  ) {
+    return this.managed.archive(actor, id, dto.reason);
+  }
+
+  // ---------------------------------------------------------------- billing
+
+  @RequirePermissions(Permission.CLIENT_READ)
+  @ApiOperation({ summary: 'The agency ledger: what is owed, held and earned' })
+  @Get('billing')
+  billing(@CurrentUser() actor: AuthUser) {
+    return this.agentBilling.listForAgent(actor);
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
+  @ApiOperation({ summary: 'Charges raised against one client profile' })
+  @Get('profiles/:id/charges')
+  profileCharges(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.agentBilling.listForProfile(actor, id);
+  }
+
+  @RequirePermissions(Permission.BOOKING_PAY)
+  @ApiOperation({
+    summary: 'Pay an agency charge',
+    description:
+      'The money is held in escrow and reaches the agency only once the match is fixed.',
+  })
+  @Put('charges/:chargeId/pay')
+  payCharge(
+    @CurrentUser() actor: AuthUser,
+    @Param('chargeId', ParseUUIDPipe) chargeId: string,
+  ) {
+    return this.agentBilling.pay(actor, chargeId);
   }
 
   @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)

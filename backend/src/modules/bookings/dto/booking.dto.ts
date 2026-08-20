@@ -10,7 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { BookingStatus, ProviderType } from '../../../common/enums';
+import { BookingStatus, PaymentMilestone, ProviderType } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class CreateBookingDto {
@@ -48,6 +48,17 @@ export class CreateBookingDto {
   @IsOptional()
   @IsUUID('4')
   onBehalfOfUserId?: string;
+}
+
+export class PayDto {
+  @ApiPropertyOptional({
+    enum: PaymentMilestone,
+    default: PaymentMilestone.ADVANCE,
+    description: 'Which instalment to pay. They must be paid in order.',
+  })
+  @IsOptional()
+  @IsEnum(PaymentMilestone)
+  milestone?: PaymentMilestone;
 }
 
 export class CancelBookingDto {

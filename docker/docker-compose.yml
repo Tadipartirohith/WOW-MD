@@ -73,6 +73,20 @@ services:
       # Where the links inside emails point: the SPA, not the API.
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
+      # Business switches. With INDIVIDUAL_USER_ENABLED=false the platform runs
+      # as an agent-only brokerage; SERVICES_REQUIRE_MATCH_FIXED=false runs the
+      # wedding marketplace as a standalone directory.
+      INDIVIDUAL_USER_ENABLED: ${INDIVIDUAL_USER_ENABLED:-true}
+      SERVICES_REQUIRE_MATCH_FIXED: ${SERVICES_REQUIRE_MATCH_FIXED:-true}
+      CHAT_REDACT_CONTACTS: ${CHAT_REDACT_CONTACTS:-true}
+      MATCH_MIN_SCORE: ${MATCH_MIN_SCORE:-50}
+      # The three escrow instalments. They must total 100 or the API refuses to
+      # boot, because a set summing to 90 would under-charge every booking.
+      ESCROW_ADVANCE_PERCENT: ${ESCROW_ADVANCE_PERCENT:-30}
+      ESCROW_SECOND_PERCENT: ${ESCROW_SECOND_PERCENT:-30}
+      ESCROW_FINAL_PERCENT: ${ESCROW_FINAL_PERCENT:-40}
+      AGENT_PROFILE_FEE: ${AGENT_PROFILE_FEE:-2000}
+      AGENT_SETTLEMENT_FEE: ${AGENT_SETTLEMENT_FEE:-25000}
       # Read only by the one-shot admin seeder, never by the running API.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

@@ -2,7 +2,14 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
-import { Permission, ProfileClaimStatus, can } from '../lib/permissions';
+import {
+  MatchFixedState,
+  OnboardingStage,
+  ONBOARDING_LABEL,
+  Permission,
+  ProfileClaimStatus,
+  can,
+} from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
 
 /** Server-side privacy view: an age band, not a date of birth. */
@@ -33,12 +40,26 @@ interface InterestView {
   direction: 'incoming' | 'outgoing';
 }
 
+/** Where this profile stands: the dashboard strip at the top of the page. */
+interface MatchStatus {
+  profileId: string;
+  profileCompleted: boolean;
+  stage: OnboardingStage;
+  matchFixedState: MatchFixedState;
+  awaitingOtherSide: boolean;
+  interestId: string | null;
+  counterpartProfileId: string | null;
+  servicesUnlocked: boolean;
+}
+
 export default function Matches() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const isSteward = can(permissions, Permission.ACT_ON_BEHALF);
   const isAgent = can(permissions, Permission.AGENCY_MANAGE);
   const canRespond = can(permissions, Permission.MATCH_RESPOND_INTEREST);
+  const canFix = can(permissions, Permission.MATCH_FIX);
+  const canEnd = can(permissions, Permission.MATCH_LIFECYCLE);
 
   // Agents must always name a profile; family members and individuals default
   // to their own unless they pick one they manage.
@@ -51,6 +72,20 @@ export default function Matches() {
   const { data, isLoading } = useQuery({
     queryKey: ['suggestions', profileId],
     queryFn: async () => (await api.get('/matches/suggestions', { params })).data,
+    retry: false,
+    enabled: ready,
+  });
+
+  const { data: status } = useQuery({
+    queryKey: ['match-status', profileId],
+    queryFn: async () => (await api.get('/matches/status', { params })).data as MatchStatus,
+    retry: false,
+    enabled: ready,
+  });
+
+  const { data: accepted } = useQuery({
+    queryKey: ['accepted-matches', profileId],
+    queryFn: async () => (await api.get('/matches/accepted', { params })).data as InterestView[],
     retry: false,
     enabled: ready,
   });
@@ -68,6 +103,8 @@ export default function Matches() {
       await fn();
       qc.invalidateQueries({ queryKey: ['suggestions'] });
       qc.invalidateQueries({ queryKey: ['incoming-interests'] });
+      qc.invalidateQueries({ queryKey: ['accepted-matches'] });
+      qc.invalidateQueries({ queryKey: ['match-status'] });
     } catch (err) {
       setError(apiMessage(err, 'That action was rejected.'));
     }
@@ -79,7 +116,18 @@ export default function Matches() {
   const respond = (id: string, accept: boolean) =>
     run(() => api.put(`/matches/${id}/${accept ? 'accept' : 'reject'}`));
 
+  const confirmFixed = (id: string, side?: 'from' | 'to') =>
+    run(() => api.put(`/matches/${id}/match-fixed`, side ? { side } : {}));
+
+  const endMatch = (id: string, action: 'unmatch' | 'block', reason?: string) =>
+    run(() => api.put(`/matches/${id}/${action}`, reason ? { reason } : {}));
+
+  const report = (id: string, reason: string) =>
+    run(() => api.post(`/matches/${id}/report`, { reason }));
+
   const suggestions: Suggestion[] = data?.data ?? [];
+  const acceptedMatches: InterestView[] = accepted ?? [];
+  const fixed = status?.matchFixedState === 'confirmed';
 
   return (
     <div className="space-y-6">
@@ -122,8 +170,95 @@ export default function Matches() {
                   <button className="btn-outline" onClick={() => respond(i.id, false)}>
                     Decline
                   </button>
+                  {canEnd && (
+                    <button
+                      className="btn-outline text-red-600"
+                      onClick={() => endMatch(i.id, 'block')}
+                    >
+                      Block
+                    </button>
+                  )}
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ready && status && (
+        <div className="card space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-gray-900">{ONBOARDING_LABEL[status.stage]}</p>
+              <p className="text-sm text-gray-600">
+                {status.stage === 'profile_incomplete' &&
+                  'Fill in the basics — name, gender, date of birth and city — before browsing.'}
+                {status.stage === 'matchmaking_active' &&
+                  'Browsing and sending interests. Wedding services open once a match is fixed.'}
+                {status.stage === 'match_fixed' &&
+                  'The match is fixed. Matchmaking is closed and the wedding marketplace is open.'}
+              </p>
+            </div>
+            {status.matchFixedState === 'pending_confirmation' && (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+                {status.awaitingOtherSide
+                  ? 'Waiting on the other side to confirm'
+                  : 'They have confirmed — your turn'}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {ready && acceptedMatches.length > 0 && (
+        <div className="card space-y-2">
+          <h2 className="font-semibold text-gray-900">Your matches</h2>
+          <p className="text-sm text-gray-600">
+            Fixing a match takes a confirmation from both sides. The second one closes matchmaking,
+            opens the wedding services, and creates accounts for anyone who did not have one.
+          </p>
+          {acceptedMatches.map((m) => (
+            <div
+              key={m.id}
+              className="flex flex-wrap items-center justify-between gap-3 border-b py-2 last:border-0"
+            >
+              <div>
+                <p className="font-medium">{m.counterpart.displayName}</p>
+                <p className="text-sm text-gray-500">
+                  {[m.counterpart.city, m.counterpart.ageRange].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canFix && !fixed && (
+                  <button className="btn" onClick={() => confirmFixed(m.id)}>
+                    Confirm match fixed
+                  </button>
+                )}
+                {canEnd && !fixed && (
+                  <>
+                    <button className="btn-outline" onClick={() => endMatch(m.id, 'unmatch')}>
+                      Unmatch
+                    </button>
+                    <button
+                      className="btn-outline text-red-600"
+                      onClick={() => endMatch(m.id, 'block')}
+                    >
+                      Block
+                    </button>
+                    <button
+                      className="btn-outline text-red-600"
+                      onClick={() => {
+                        const reason = window.prompt(
+                          'What happened? An officer will look into it.',
+                        );
+                        if (reason && reason.trim().length >= 10) report(m.id, reason.trim());
+                      }}
+                    >
+                      Report
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>

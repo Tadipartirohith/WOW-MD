@@ -64,6 +64,7 @@ describe('AuthService', () => {
       mfaIssuer: 'WOW',
       mfaRequiredForAdmin: true,
     },
+    features: { individualUserEnabled: true },
   } as unknown as AppConfigService;
 
   beforeEach(async () => {

@@ -9,7 +9,13 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { NetworkVisibility, ProfileClaimStatus, ProfileVisibility } from '../../../common/enums';
+import {
+  GovernmentIdType,
+  NetworkVisibility,
+  ProfileClaimStatus,
+  ProfileLifecycle,
+  ProfileVisibility,
+} from '../../../common/enums';
 import { User } from '../../auth/entities/user.entity';
 
 export interface ProfilePreferences {
@@ -128,6 +134,54 @@ export class Profile {
 
   @Column({ default: false })
   profileCompleted: boolean;
+
+  /**
+   * Whether this profile is in play.
+   *
+   * Deactivation is a pause the client asks for — a family stepping back for a
+   * few months — and is reversible. Archiving is the end of the engagement.
+   * Neither deletes anything: the consent record, the circulation history and
+   * the agency's own books all have to outlive the search itself.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: ProfileLifecycle, default: ProfileLifecycle.ACTIVE })
+  lifecycle: ProfileLifecycle;
+
+  // ------------------------------------------------------------- identity
+  //
+  // The number itself is never stored. `governmentIdHash` is an HMAC under a
+  // server-side pepper, and its unique index is what stops the same person
+  // holding two profiles — the chronic problem in this market.
+
+  @Column({ type: 'enum', enum: GovernmentIdType, nullable: true })
+  governmentIdType: GovernmentIdType | null;
+
+  @Index({ unique: true, where: '"governmentIdHash" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  governmentIdHash: string | null;
+
+  /** The only part of the number anyone sees again. */
+  @Column({ type: 'varchar', length: 4, nullable: true })
+  governmentIdLast4: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  idSubmittedAt: Date | null;
+
+  /** Set by a verification officer who saw the document and the person. */
+  @Column({ type: 'timestamptz', nullable: true })
+  idVerifiedAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  idVerifiedByUserId: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  deactivatedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  archivedAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  lifecycleReason: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

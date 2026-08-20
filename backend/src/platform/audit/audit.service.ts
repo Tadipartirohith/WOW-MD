@@ -30,6 +30,34 @@ export const AuditAction = {
   PROFILE_POOLED: 'profile.pooled',
   PROFILE_UNPOOLED: 'profile.unpooled',
 
+  VERIFICATION_REQUESTED: 'verification.requested',
+  VERIFICATION_ALLOCATED: 'verification.allocated',
+  VERIFICATION_APPROVED: 'verification.approved',
+  VERIFICATION_REJECTED: 'verification.rejected',
+  OFFICER_CREATED: 'officer.created',
+
+  CASE_RAISED: 'case.raised',
+  CASE_ALLOCATED: 'case.allocated',
+  CASE_SETTLED: 'case.settled',
+
+  MATCH_FIXED_PROPOSED: 'match.fixed_proposed',
+  MATCH_FIXED_CONFIRMED: 'match.fixed_confirmed',
+  MATCH_UNMATCHED: 'match.unmatched',
+  MATCH_BLOCKED: 'match.blocked',
+  MATCH_REPORTED: 'match.reported',
+  CUSTOMER_PROVISIONED: 'customer.provisioned',
+
+  AGENT_CHARGE_RAISED: 'agent_charge.raised',
+  AGENT_CHARGE_HELD: 'agent_charge.held',
+  AGENT_CHARGE_RELEASED: 'agent_charge.released',
+
+  IDENTITY_SUBMITTED: 'identity.submitted',
+  IDENTITY_VERIFIED: 'identity.verified',
+
+  PROFILE_DEACTIVATED: 'profile.deactivated',
+  PROFILE_REACTIVATED: 'profile.reactivated',
+  PROFILE_ARCHIVED: 'profile.archived',
+
   AGENT_APPROVED: 'agent.approved',
   AGENT_REJECTED: 'agent.rejected',
 

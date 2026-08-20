@@ -61,7 +61,21 @@ export const configValidationSchema = Joi.object({
   MATCH_WEIGHT_LIFESTYLE: Joi.number().default(15),
   MATCH_WEIGHT_PREFERENCES: Joi.number().default(10),
   MATCH_MAX_AGE_GAP: Joi.number().default(8),
-  MATCH_MIN_SCORE: Joi.number().min(0).max(100).default(40),
+  // The spec asks for recommendations above 50%; anything weaker is noise for
+  // the person reading the list.
+  MATCH_MIN_SCORE: Joi.number().min(0).max(100).default(50),
+
+  // Escrow milestones. Validated as a set below: they must sum to 100.
+  ESCROW_ADVANCE_PERCENT: Joi.number().min(0).max(100).default(30),
+  ESCROW_SECOND_PERCENT: Joi.number().min(0).max(100).default(30),
+  ESCROW_FINAL_PERCENT: Joi.number().min(0).max(100).default(40),
+  AGENT_PROFILE_FEE: Joi.number().min(0).default(2000),
+  AGENT_SETTLEMENT_FEE: Joi.number().min(0).default(25000),
+
+  // Feature switches.
+  INDIVIDUAL_USER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  CHAT_REDACT_CONTACTS: Joi.boolean().truthy('true').falsy('false').default(true),
+  SERVICES_REQUIRE_MATCH_FIXED: Joi.boolean().truthy('true').falsy('false').default(true),
   MATCH_SUGGESTIONS_CACHE_TTL: Joi.number().default(120),
   MATCH_MAX_SUGGESTIONS: Joi.number().default(50),
 
@@ -139,4 +153,22 @@ export const configValidationSchema = Joi.object({
   KAFKA_BROKERS: Joi.string().allow('').optional(),
   KAFKA_CLIENT_ID: Joi.string().allow('').optional(),
   KAFKA_TOPIC: Joi.string().allow('').optional(),
-});
+})
+  /**
+   * The three escrow milestones must account for the whole booking. Checked at
+   * boot rather than per payment: a set that sums to 90 would silently
+   * under-charge every booking, and the right moment to find out is now.
+   */
+  .custom((value, helpers) => {
+    const total =
+      Number(value.ESCROW_ADVANCE_PERCENT) +
+      Number(value.ESCROW_SECOND_PERCENT) +
+      Number(value.ESCROW_FINAL_PERCENT);
+    if (Math.abs(total - 100) > 0.001) {
+      return helpers.message({
+        custom:
+          `ESCROW_ADVANCE_PERCENT + ESCROW_SECOND_PERCENT + ESCROW_FINAL_PERCENT must be 100, got ${total}`,
+      } as never);
+    }
+    return value;
+  });

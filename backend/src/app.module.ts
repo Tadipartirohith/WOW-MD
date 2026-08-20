@@ -18,11 +18,13 @@ import { AccountThrottlerGuard } from './platform/throttling/account-throttler.g
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { PasswordResetGuard } from './common/guards/password-reset.guard';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { CirculationModule } from './modules/circulation/circulation.module';
+import { VerificationModule } from './modules/verification/verification.module';
 import { WeddingPlannersModule } from './modules/wedding-planners/wedding-planners.module';
 import { UsersModule } from './modules/users/users.module';
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
@@ -78,6 +80,7 @@ import { AiModule } from './modules/ai/ai.module';
     AuthModule,
     InvitationsModule,
     CirculationModule,
+    VerificationModule,
     AgentsModule,
     WeddingPlannersModule,
     UsersModule,
@@ -97,6 +100,9 @@ import { AiModule } from './modules/ai/ai.module';
     // Rate limits by account when signed in, by IP otherwise.
     { provide: APP_GUARD, useClass: AccountThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Runs before the role and capability checks: an account still holding an
+    // emailed temporary password gets no further than the reset screen.
+    { provide: APP_GUARD, useClass: PasswordResetGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     // Capability check runs last, after authentication and coarse role checks.
     { provide: APP_GUARD, useClass: PermissionsGuard },

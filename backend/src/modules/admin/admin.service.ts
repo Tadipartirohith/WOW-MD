@@ -1,13 +1,29 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Dispute } from './entities/dispute.entity';
+import { Profile } from '../users/entities/profile.entity';
+import { Interest } from '../matchmaking/entities/interest.entity';
+import { Payment } from '../bookings/entities/payment.entity';
+import { AgentCharge } from '../agents/entities/agent-charge.entity';
+import { VerificationRequest } from '../verification/entities/verification-request.entity';
+import { SupportCase } from '../verification/entities/support-case.entity';
 import { RaiseDisputeDto, ResolveDisputeDto, UpdateUserStatusDto } from './dto/admin.dto';
-import { DisputeStatus, ProviderType, UserRole } from '../../common/enums';
+import {
+  BookingStatus,
+  CaseStatus,
+  DisputeStatus,
+  MatchFixedState,
+  PaymentStatus,
+  ProfileLifecycle,
+  ProviderType,
+  UserRole,
+  VerificationStatus,
+} from '../../common/enums';
 import { RedisService } from '../../platform/redis/redis.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
@@ -31,6 +47,13 @@ export class AdminService {
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Dispute) private readonly disputes: Repository<Dispute>,
+    @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(Interest) private readonly interests: Repository<Interest>,
+    @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
+    @InjectRepository(VerificationRequest)
+    private readonly verifications: Repository<VerificationRequest>,
+    @InjectRepository(SupportCase) private readonly cases: Repository<SupportCase>,
     private readonly redis: RedisService,
   ) {}
 
@@ -130,6 +153,14 @@ export class AdminService {
   }
 
   /** Analytics dashboard counters. */
+  /**
+   * The administrator's dashboard.
+   *
+   * Grouped the way the job is actually done rather than as a flat list of
+   * counters: what is waiting on someone (the queues), how the platform is
+   * doing at its actual purpose (matches fixed), and where the money currently
+   * sits. A number nobody would act on is not on here.
+   */
   async analytics() {
     const [
       totalUsers,
@@ -158,6 +189,31 @@ export class AdminService {
       .groupBy('u.role')
       .getRawMany<{ role: string; count: string }>();
 
+    const [
+      officers,
+      verificationsWaiting,
+      verificationsInFlight,
+      verificationsApproved,
+      casesOpen,
+      casesResolved,
+    ] = await Promise.all([
+      this.users.count({ where: { role: UserRole.IN_PERSON, isActive: true } }),
+      this.verifications.count({ where: { status: VerificationStatus.NEW } }),
+      this.verifications.count({ where: { status: VerificationStatus.IN_PROGRESS } }),
+      this.verifications.count({ where: { status: VerificationStatus.APPROVED } }),
+      this.cases.count({ where: { status: CaseStatus.OPEN } }),
+      this.cases.count({ where: { status: CaseStatus.RESOLVED } }),
+    ]);
+
+    const [profilesActive, profilesUnclaimed, profilesArchived, matchesFixed, matchesPending] =
+      await Promise.all([
+        this.profiles.count({ where: { lifecycle: ProfileLifecycle.ACTIVE } }),
+        this.profiles.count({ where: { userId: IsNull() } }),
+        this.profiles.count({ where: { lifecycle: ProfileLifecycle.ARCHIVED } }),
+        this.interests.count({ where: { matchFixedState: MatchFixedState.CONFIRMED } }),
+        this.interests.count({ where: { matchFixedState: MatchFixedState.PENDING_CONFIRMATION } }),
+      ]);
+
     return {
       totalUsers,
       totalVendors,
@@ -168,6 +224,81 @@ export class AdminService {
       totalBookings,
       openDisputes,
       usersByRole: usersByRole.map((r) => ({ role: r.role, count: Number(r.count) })),
+
+      // What is sitting in somebody's queue right now.
+      verification: {
+        officers,
+        // NEW means nobody has been sent to look at it yet, which is the
+        // administrator's own backlog rather than an officer's.
+        awaitingAllocation: verificationsWaiting,
+        inProgress: verificationsInFlight,
+        approved: verificationsApproved,
+        casesOpen,
+        casesResolved,
+      },
+
+      // The platform's actual purpose, measured.
+      matchmaking: {
+        profilesActive,
+        profilesUnclaimed,
+        profilesArchived,
+        matchesFixed,
+        // One side has confirmed and is waiting on the other.
+        matchesAwaitingConfirmation: matchesPending,
+      },
+
+      bookingsByStatus: await this.bookingsByStatus(),
+      escrow: await this.escrowPosition(),
+    };
+  }
+
+  private async bookingsByStatus(): Promise<Record<string, number>> {
+    const rows = await this.bookings
+      .createQueryBuilder('b')
+      .select('b.status', 'status')
+      .addSelect('COUNT(b.id)', 'count')
+      .groupBy('b.status')
+      .getRawMany<{ status: string; count: string }>();
+
+    const out: Record<string, number> = {};
+    for (const status of Object.values(BookingStatus)) out[status] = 0;
+    for (const r of rows) out[r.status] = Number(r.count);
+    return out;
+  }
+
+  /**
+   * Where the money is. Held and disputed are the two that matter: the first is
+   * what the platform owes onwards, the second is what it cannot move until
+   * somebody decides.
+   */
+  private async escrowPosition() {
+    const sum = async (
+      repo: Repository<Payment> | Repository<AgentCharge>,
+      status: PaymentStatus,
+      column: 'amount' | 'payoutAmount' | 'commissionAmount',
+    ): Promise<string> => {
+      const row = await (repo as Repository<Payment>)
+        .createQueryBuilder('p')
+        .select(`COALESCE(SUM(p."${column}"), 0)`, 'total')
+        .where('p.status = :status', { status })
+        .getRawOne<{ total: string }>();
+      return Number(row?.total ?? 0).toFixed(2);
+    };
+
+    return {
+      bookings: {
+        held: await sum(this.payments, PaymentStatus.HELD_IN_ESCROW, 'amount'),
+        disputed: await sum(this.payments, PaymentStatus.DISPUTED, 'amount'),
+        released: await sum(this.payments, PaymentStatus.RELEASED, 'payoutAmount'),
+        commission: await sum(this.payments, PaymentStatus.RELEASED, 'commissionAmount'),
+        refunded: await sum(this.payments, PaymentStatus.REFUNDED, 'amount'),
+      },
+      agencyFees: {
+        outstanding: await sum(this.charges, PaymentStatus.INITIATED, 'amount'),
+        held: await sum(this.charges, PaymentStatus.HELD_IN_ESCROW, 'amount'),
+        released: await sum(this.charges, PaymentStatus.RELEASED, 'payoutAmount'),
+        commission: await sum(this.charges, PaymentStatus.RELEASED, 'commissionAmount'),
+      },
     };
   }
 

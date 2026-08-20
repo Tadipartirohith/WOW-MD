@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { PaymentStatus } from '../../../common/enums';
+import { PaymentMilestone, PaymentStatus } from '../../../common/enums';
 
 @Entity('payments')
 export class Payment {
@@ -38,6 +38,15 @@ export class Payment {
   @Index()
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.INITIATED })
   status: PaymentStatus;
+
+  /**
+   * Which instalment this is. A booking holds at most one payment per
+   * milestone, enforced by a partial unique index in the migration — retrying a
+   * failed advance must not produce two live holds for the same instalment.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: PaymentMilestone, default: PaymentMilestone.ADVANCE })
+  milestone: PaymentMilestone;
 
   @Column()
   provider: string;

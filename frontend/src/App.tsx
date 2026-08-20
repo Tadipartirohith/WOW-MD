@@ -34,6 +34,8 @@ import Security from './pages/Security';
 import ProviderConsole from './pages/ProviderConsole';
 import WeddingPlanners from './pages/WeddingPlanners';
 import Forbidden from './pages/Forbidden';
+import Verification from './pages/Verification';
+import SetPassword from './pages/SetPassword';
 
 /**
  * Every nav entry declares the capabilities it needs. A user sees an entry only
@@ -81,6 +83,11 @@ const NAV: NavEntry[] = [
   { to: '/travel', label: 'Travel', requires: [Permission.TRAVEL_BOOK] },
   { to: '/media', label: 'Media', requires: [Permission.MEDIA_MANAGE_OWN] },
   { to: '/genie', label: 'WOW Genie', requires: [Permission.AI_ASSIST] },
+  {
+    to: '/verification',
+    label: 'Verification',
+    requires: [Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE],
+  },
   { to: '/security', label: 'Security', requires: [Permission.SESSION_MANAGE_OWN] },
   { to: '/admin', label: 'Admin', requires: [Permission.ADMIN_ANALYTICS_READ] },
 ];
@@ -187,6 +194,7 @@ function Protected({
   const token = useAuth((s) => s.accessToken);
   const ready = useAuth((s) => s.ready);
   const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const mustResetPassword = useAuth((s) => s.user?.mustResetPassword ?? false);
 
   // Tokens are held in memory now, so a reload has nothing until the silent
   // refresh finishes. Waiting here stops a signed-in user being bounced to
@@ -199,6 +207,12 @@ function Protected({
     );
   }
   if (!token) return <Navigate to="/login" replace />;
+
+  // An account still holding an emailed temporary password can reach exactly
+  // one screen. The server enforces this; sending them there directly saves
+  // them a wall of refusals on the way to the same place.
+  if (mustResetPassword) return <Navigate to="/set-password" replace />;
+
   if (requires.length > 0 && !canAny(permissions, requires)) {
     return (
       <Layout>
@@ -228,6 +242,10 @@ export default function App() {
       <Route path="/biodata/:token" element={<SharedBiodata />} />
       <Route path="/album/:token" element={<SharedAlbum />} />
 
+      {/* Signed in, but locked to the password reset. Deliberately outside
+          Protected, which would bounce straight back here. */}
+      <Route path="/set-password" element={<SetPassword />} />
+
       <Route
         path="/"
         element={
@@ -249,6 +267,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.SESSION_MANAGE_OWN]}>
             <Security />
+          </Protected>
+        }
+      />
+      <Route
+        path="/verification"
+        element={
+          <Protected requires={[Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE]}>
+            <Verification />
           </Protected>
         }
       />

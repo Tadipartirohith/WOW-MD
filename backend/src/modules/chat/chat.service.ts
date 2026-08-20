@@ -14,6 +14,8 @@ import {
   isProvider,
 } from '../../common/enums';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+import { AppConfigService } from '../../config/app-config.service';
+import { redactContacts } from '../../common/util/redaction';
 
 @Injectable()
 export class ChatService {
@@ -23,6 +25,7 @@ export class ChatService {
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly cfg: AppConfigService,
   ) {}
 
   private async loadPair(a: string, b: string): Promise<[User, User]> {
@@ -129,6 +132,15 @@ export class ChatService {
     return convo;
   }
 
+  /**
+   * Stores a message, with contact details stripped out first.
+   *
+   * Redaction happens before the write, not on the way out: a number that
+   * reaches the database has already leaked to anyone with a database, and
+   * masking it at render time would be theatre. `redactedCount` is kept so
+   * repeated attempts to pass a number across are visible to an investigator
+   * without the platform having to keep the number itself.
+   */
   async persistMessage(
     senderId: string,
     toUserId: string,
@@ -137,11 +149,17 @@ export class ChatService {
   ): Promise<Message> {
     await this.assertCanChat(senderId, toUserId);
     const convo = await this.getOrCreateConversation(senderId, toUserId);
+
+    const { text, redactions } = this.cfg.features.chatRedactContacts
+      ? redactContacts(body)
+      : { text: body, redactions: 0 };
+
     return this.messages.save(
       this.messages.create({
         conversationId: convo.id,
         senderId,
-        body,
+        body: text,
+        redactedCount: redactions,
         mediaUrl: mediaUrl ?? null,
       }),
     );

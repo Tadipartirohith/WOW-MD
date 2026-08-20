@@ -6,6 +6,8 @@ import { User } from '../auth/entities/user.entity';
 import { UpsertAgencyDto } from './dto/agency.dto';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { VerificationService } from '../verification/verification.service';
+import { ApplicantType } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 
 /**
@@ -25,6 +27,7 @@ export class AgencyService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly audit: AuditService,
     private readonly mail: MailService,
+    private readonly verification: VerificationService,
   ) {}
 
   async upsertOwn(ownerUserId: string, dto: UpsertAgencyDto): Promise<AgentProfile> {
@@ -39,7 +42,15 @@ export class AgencyService {
     }
     Object.assign(agency, dto);
     agency.rejectionReason = null;
-    return this.agencies.save(agency);
+    const saved = await this.agencies.save(agency);
+
+    // Submitting details is what puts an agency in the field-verification
+    // queue. Nobody approves an agency from a form alone: an officer visits the
+    // address on it, and their decision is what flips `isApproved`. The call is
+    // idempotent, so editing details while a visit is pending does not queue a
+    // second one.
+    await this.verification.raise(ApplicantType.AGENT, ownerUserId, saved.id);
+    return saved;
   }
 
   async getOwn(ownerUserId: string): Promise<AgentProfile> {

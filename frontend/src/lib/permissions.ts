@@ -8,7 +8,15 @@
  * Keep the two files in step when adding a capability.
  */
 
-export type UserRole = 'bride' | 'groom' | 'family' | 'agent' | 'vendor' | 'planner' | 'admin';
+export type UserRole =
+  | 'bride'
+  | 'groom'
+  | 'family'
+  | 'agent'
+  | 'vendor'
+  | 'planner'
+  | 'in_person'
+  | 'admin';
 
 export type AccountType = 'individual' | 'agent' | 'vendor' | 'planner';
 
@@ -17,6 +25,8 @@ export const Permission = {
   MATCH_BROWSE: 'match:browse',
   MATCH_SEND_INTEREST: 'match:send_interest',
   MATCH_RESPOND_INTEREST: 'match:respond_interest',
+  MATCH_LIFECYCLE: 'match:lifecycle',
+  MATCH_FIX: 'match:fix',
   CHAT_MATCH: 'chat:match',
   CHAT_INQUIRE: 'chat:inquire',
   BOOKING_CREATE: 'booking:create',
@@ -47,6 +57,14 @@ export const Permission = {
   AI_ASSIST: 'ai:assist',
   SESSION_MANAGE_OWN: 'session:manage:own',
   MFA_MANAGE_OWN: 'mfa:manage:own',
+  VERIFICATION_PROCESS: 'verification:process',
+  VERIFICATION_DECIDE: 'verification:decide',
+  VERIFICATION_ALLOCATE: 'verification:allocate',
+  CASE_RAISE: 'case:raise',
+  CASE_ALLOCATE: 'case:allocate',
+  CASE_INVESTIGATE: 'case:investigate',
+  CASE_SETTLE: 'case:settle',
+  ADMIN_OFFICER_MANAGE: 'admin:officer:manage',
   ADMIN_USERS_READ: 'admin:users:read',
   ADMIN_AGENT_APPROVE: 'admin:agent:approve',
   ADMIN_AUDIT_READ: 'admin:audit:read',
@@ -103,7 +121,76 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   agent: 'Marriage agent',
   vendor: 'Vendor',
   planner: 'Wedding planner',
+  in_person: 'Verification officer',
   admin: 'Administrator',
+};
+
+/** Where a profile stands in the journey from sign-up to a fixed match. */
+export type OnboardingStage = 'profile_incomplete' | 'matchmaking_active' | 'match_fixed';
+
+export const ONBOARDING_LABEL: Record<OnboardingStage, string> = {
+  profile_incomplete: 'Profile incomplete',
+  matchmaking_active: 'Matchmaking',
+  match_fixed: 'Match fixed',
+};
+
+/** Both sides confirm before a match is fixed; this is how far along that is. */
+export type MatchFixedState = 'none' | 'pending_confirmation' | 'confirmed';
+
+export type VerificationStatus =
+  | 'new'
+  | 'assigned'
+  | 'in_progress'
+  | 'approved'
+  | 'rejected'
+  | 'issue'
+  | 'additional_review';
+
+export const VERIFICATION_LABEL: Record<VerificationStatus, string> = {
+  new: 'Waiting for allocation',
+  assigned: 'Allocated to an officer',
+  in_progress: 'Visit in progress',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  issue: 'Issue raised',
+  additional_review: 'Needs another look',
+};
+
+export type CaseStatus =
+  | 'open'
+  | 'allocated'
+  | 'in_progress'
+  | 'resolved'
+  | 'rejected'
+  | 'escalated'
+  | 'closed';
+
+export type ProfileLifecycle = 'active' | 'deactivated' | 'archived';
+
+export const LIFECYCLE_LABEL: Record<ProfileLifecycle, string> = {
+  active: 'Active',
+  deactivated: 'Paused',
+  archived: 'Closed',
+};
+
+/** Booking states, in the order they actually happen. */
+export const BOOKING_STATUS_LABEL: Record<string, string> = {
+  requested: 'Request sent',
+  quotation_sent: 'Quotation received',
+  quotation_accepted: 'Quotation accepted',
+  payment_pending: 'Payment pending',
+  pending: 'Paid, awaiting confirmation',
+  confirmed: 'Confirmed',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  disputed: 'Under investigation',
+  cancelled: 'Cancelled',
+};
+
+export const MILESTONE_LABEL: Record<string, string> = {
+  advance: 'Advance',
+  second: 'Second instalment',
+  final: 'Balance',
 };
 
 /** Does the signed-in user hold this capability? */

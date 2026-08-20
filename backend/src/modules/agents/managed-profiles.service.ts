@@ -20,7 +20,8 @@ import { AppConfigService } from '../../config/app-config.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { ConsentService } from '../circulation/consent.service';
-import { ConsentScope } from '../../common/enums';
+import { AgentBillingService } from './agent-billing.service';
+import { ConsentScope, NetworkVisibility, ProfileLifecycle, ProfileVisibility } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { ProfileClaimStatus, UserRole } from '../../common/enums';
@@ -48,6 +49,7 @@ export class ManagedProfilesService {
     private readonly audit: AuditService,
     private readonly invitations: InvitationsService,
     private readonly consent: ConsentService,
+    private readonly billing: AgentBillingService,
   ) {}
 
   /**
@@ -142,6 +144,13 @@ export class ManagedProfilesService {
       resourceId: profile.id,
       metadata: { contactPhone: dto.contactPhone, hasEmail: Boolean(dto.contactEmail) },
     });
+
+    // Taking a client on is what raises the agency's fee. It is raised, not
+    // charged: nothing is collected until the client pays it, and nothing
+    // reaches the agency until the match is fixed.
+    if (actor.role === UserRole.AGENT) {
+      await this.billing.raiseProfileFee(actor.userId, profile);
+    }
 
     if (inviteNow) await this.invitations.invite(actor, profile.id);
     return this.findOne(actor, profile.id);
@@ -277,6 +286,88 @@ export class ManagedProfilesService {
 
     const [data, total] = await qb.getManyAndCount();
     return paginate(data, total, q.page, q.limit);
+  }
+
+  /**
+   * Pauses a profile at the client's request.
+   *
+   * Nothing is deleted and nothing is refunded: a family stepping back for a
+   * few months is not ending the engagement, and treating a pause as a closure
+   * would cost them their place and their history.
+   */
+  async deactivate(actor: AuthUser, profileId: string, reason?: string): Promise<Profile> {
+    const profile = await this.findOne(actor, profileId);
+    if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
+      throw new BadRequestException('That profile is archived');
+    }
+
+    profile.lifecycle = ProfileLifecycle.DEACTIVATED;
+    profile.deactivatedAt = new Date();
+    profile.lifecycleReason = reason ?? null;
+    // Pull it out of the shared pool too — a paused profile still circulating
+    // is exactly what the client asked to stop.
+    profile.networkVisibility = NetworkVisibility.PRIVATE;
+    const saved = await this.profiles.save(profile);
+
+    await this.audit.record({
+      action: AuditAction.PROFILE_DEACTIVATED,
+      actor,
+      resourceType: 'profile',
+      resourceId: profileId,
+      metadata: { reason: reason ?? null },
+    });
+    return saved;
+  }
+
+  /** Brings a paused profile back. Circulation stays off until re-consented. */
+  async reactivate(actor: AuthUser, profileId: string): Promise<Profile> {
+    const profile = await this.findOne(actor, profileId);
+    if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
+      throw new BadRequestException('An archived profile cannot be reactivated');
+    }
+
+    profile.lifecycle = ProfileLifecycle.ACTIVE;
+    profile.deactivatedAt = null;
+    profile.lifecycleReason = null;
+    const saved = await this.profiles.save(profile);
+
+    await this.audit.record({
+      action: AuditAction.PROFILE_REACTIVATED,
+      actor,
+      resourceType: 'profile',
+      resourceId: profileId,
+    });
+    return saved;
+  }
+
+  /**
+   * Closes the engagement out.
+   *
+   * This is the soft delete: the row stays, so the consent record, the
+   * circulation history and the agency's books remain answerable, but the
+   * profile never matches or circulates again. Money still sitting in escrow
+   * goes back — it was charged against an outcome that will not arrive.
+   */
+  async archive(actor: AuthUser, profileId: string, reason?: string): Promise<Profile> {
+    const profile = await this.findOne(actor, profileId);
+
+    profile.lifecycle = ProfileLifecycle.ARCHIVED;
+    profile.archivedAt = new Date();
+    profile.lifecycleReason = reason ?? null;
+    profile.networkVisibility = NetworkVisibility.PRIVATE;
+    profile.visibility = ProfileVisibility.PRIVATE;
+    const saved = await this.profiles.save(profile);
+
+    const refunded = await this.billing.refundHeldFor(profileId, reason ?? 'Profile archived');
+
+    await this.audit.record({
+      action: AuditAction.PROFILE_ARCHIVED,
+      actor,
+      resourceType: 'profile',
+      resourceId: profileId,
+      metadata: { reason: reason ?? null, chargesRefunded: refunded },
+    });
+    return saved;
   }
 
   async remove(actor: AuthUser, profileId: string): Promise<{ success: true }> {

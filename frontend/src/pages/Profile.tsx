@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import IdentityPanel from '../components/IdentityPanel';
 
 export default function Profile() {
   const { data } = useQuery({
@@ -38,7 +39,8 @@ export default function Profile() {
   }
 
   return (
-    <form onSubmit={submit} className="card mx-auto max-w-lg space-y-4">
+    <div className="mx-auto max-w-lg space-y-4">
+      <form onSubmit={submit} className="card space-y-4">
       <h1 className="text-xl font-bold text-brand-dark">Your Profile</h1>
       {saved && <p className="rounded bg-green-50 p-2 text-sm text-green-700">Saved!</p>}
       <div>
@@ -68,6 +70,9 @@ export default function Profile() {
         <textarea className="input" rows={3} value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} />
       </div>
       <button className="btn">Save profile</button>
-    </form>
+      </form>
+
+      {data?.id && <IdentityPanel profileId={data.id} />}
+    </div>
   );
 }

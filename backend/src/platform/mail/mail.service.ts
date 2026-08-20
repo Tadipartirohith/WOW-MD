@@ -121,6 +121,63 @@ export class MailService {
     );
   }
 
+  /**
+   * The outcome of a field verification. An applicant is always told the
+   * reason when the answer is anything other than yes — being left guessing
+   * after a home or office visit is the fastest way to lose them.
+   */
+  async sendVerificationOutcome(params: {
+    to: string;
+    applicantType: string;
+    status: string;
+    remarks: string | null;
+  }): Promise<void> {
+    const approved = params.status === 'approved';
+    const heading = approved
+      ? 'Your verification is complete'
+      : 'An update on your verification';
+    const outcome = params.status.replace(/_/g, ' ');
+    const body = approved
+      ? `Your ${params.applicantType} account has been verified. You now have full operational access.`
+      : [
+          `Your ${params.applicantType} verification could not be completed.`,
+          '',
+          `Outcome: ${outcome}.`,
+          params.remarks ? `Reason: ${params.remarks}` : '',
+          '',
+          'You can correct the details and ask for another visit.',
+        ]
+          .filter((line, i, all) => line !== '' || all[i - 1] !== '')
+          .join('\n');
+
+    await this.send(params.to, heading, 'Hello,', body);
+  }
+
+  /**
+   * Credentials for an account the platform created after a match was fixed.
+   * The password is single-use: the first sign-in forces a reset, which is why
+   * it is safe to send it at all.
+   */
+  async sendProvisionedCredentials(params: {
+    to: string;
+    name: string;
+    temporaryPassword: string;
+  }): Promise<void> {
+    const body = [
+      'Your match has been confirmed and your account is now open.',
+      '',
+      'Sign in with this address and the temporary password below. You will be asked to',
+      'choose your own password straight away, and this one stops working the moment you do.',
+      '',
+      `Temporary password: ${params.temporaryPassword}`,
+    ].join('\n');
+
+    await this.send(params.to, 'Your WOW account is ready', `Hello ${params.name},`, body, {
+      label: 'Sign in',
+      url: `${this.cfg.mail.appBaseUrl.replace(/[/]+$/, '')}/login`,
+    });
+  }
+
   async sendAgentApprovalResult(params: {
     to: string;
     agencyName: string;

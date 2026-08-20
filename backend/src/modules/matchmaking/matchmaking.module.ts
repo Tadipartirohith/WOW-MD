@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Interest } from './entities/interest.entity';
 import { Profile } from '../users/entities/profile.entity';
@@ -6,11 +6,18 @@ import { User } from '../auth/entities/user.entity';
 import { MatchmakingService } from './matchmaking.service';
 import { MatchmakingController } from './matchmaking.controller';
 import { CompatibilityEngine } from './compatibility.engine';
+import { MatchLifecycleService } from './match-lifecycle.service';
+import { VerificationModule } from '../verification/verification.module';
+import { AgentsModule } from '../agents/agents.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Interest, Profile, User])],
-  providers: [MatchmakingService, CompatibilityEngine],
+  imports: [
+    TypeOrmModule.forFeature([Interest, Profile, User]),
+    VerificationModule,
+    forwardRef(() => AgentsModule),
+  ],
+  providers: [MatchmakingService, CompatibilityEngine, MatchLifecycleService],
   controllers: [MatchmakingController],
-  exports: [MatchmakingService, TypeOrmModule],
+  exports: [MatchmakingService, MatchLifecycleService, TypeOrmModule],
 })
 export class MatchmakingModule {}

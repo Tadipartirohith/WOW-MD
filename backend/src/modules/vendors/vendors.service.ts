@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
@@ -10,6 +15,8 @@ import {
   VendorSearchDto,
 } from './dto/vendor.dto';
 import { RedisService } from '../../platform/redis/redis.service';
+import { VerificationService } from '../verification/verification.service';
+import { ApplicantType } from '../../common/enums';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
 @Injectable()
@@ -19,16 +26,39 @@ export class VendorsService {
     @InjectRepository(VendorReview) private readonly reviews: Repository<VendorReview>,
     private readonly redis: RedisService,
     private readonly dataSource: DataSource,
+    private readonly verification: VerificationService,
   ) {}
 
   async create(ownerUserId: string, dto: CreateVendorDto): Promise<Vendor> {
-    // New listings always start unapproved regardless of what the client sent;
-    // approval is an admin action.
-    const vendor = await this.vendors.save(
+    // New listings always start unapproved regardless of what the client sent.
+    const vendor = await this.saveListing(
       this.vendors.create({ ...dto, ownerUserId, isApproved: false, ratingAvg: 0, ratingCount: 0 }),
     );
+
+    // Listing puts the vendor in the field-verification queue. Approval is an
+    // officer's decision after a visit, not a form submission — the registered
+    // address on the listing is the address they go to.
+    await this.verification.raise(ApplicantType.VENDOR, ownerUserId, vendor.id);
+
     await this.invalidateSearchCache();
     return vendor;
+  }
+
+  /**
+   * A GST number identifies one business, so the database holds it unique. A
+   * clash means someone is registering a second listing under a registration
+   * that is already claimed, which is a conflict to report, not a crash.
+   */
+  private async saveListing(vendor: Vendor): Promise<Vendor> {
+    try {
+      return await this.vendors.save(vendor);
+    } catch (err) {
+      const message = (err as { message?: string }).message ?? '';
+      if (message.includes('UQ_vendors_gst_number')) {
+        throw new ConflictException('That GST number is already registered to a listing on WOW.');
+      }
+      throw err;
+    }
   }
 
   /** Only the owning vendor account may edit a listing. */
@@ -39,7 +69,7 @@ export class VendorsService {
       throw new ForbiddenException('This listing does not belong to you');
     }
     Object.assign(vendor, dto);
-    const saved = await this.vendors.save(vendor);
+    const saved = await this.saveListing(vendor);
     await this.invalidateSearchCache();
     return saved;
   }

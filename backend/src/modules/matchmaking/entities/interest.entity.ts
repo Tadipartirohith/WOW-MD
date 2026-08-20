@@ -7,7 +7,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { InterestStatus } from '../../../common/enums';
+import { InterestStatus, MatchFixedState } from '../../../common/enums';
 
 /**
  * An expression of interest between two *profiles*.
@@ -42,6 +42,34 @@ export class Interest {
   @Index()
   @Column({ type: 'enum', enum: InterestStatus, default: InterestStatus.PENDING })
   status: InterestStatus;
+
+  /**
+   * Fixing a match takes two confirmations, one from each side, because it is
+   * the point at which real accounts get provisioned and matchmaking closes.
+   * One side proposing is not enough.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: MatchFixedState, default: MatchFixedState.NONE })
+  matchFixedState: MatchFixedState;
+
+  /** Set when the side that owns `fromProfileId` confirms. */
+  @Column({ type: 'timestamptz', nullable: true })
+  fixedConfirmedFromAt: Date | null;
+
+  /** Set when the side that owns `toProfileId` confirms. */
+  @Column({ type: 'timestamptz', nullable: true })
+  fixedConfirmedToAt: Date | null;
+
+  /** Set once both confirmations are in. Provisioning keys off this. */
+  @Column({ type: 'timestamptz', nullable: true })
+  matchFixedAt: Date | null;
+
+  /** Who ended it, for an unmatch or a block. */
+  @Column({ type: 'uuid', nullable: true })
+  endedByUserId: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  endedReason: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

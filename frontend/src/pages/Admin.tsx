@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 
 interface Vendor {
   id: string;
@@ -43,6 +44,26 @@ interface Analytics {
   totalBookings: number;
   openDisputes: number;
   usersByRole: { role: string; count: number }[];
+  verification: {
+    officers: number;
+    awaitingAllocation: number;
+    inProgress: number;
+    approved: number;
+    casesOpen: number;
+    casesResolved: number;
+  };
+  matchmaking: {
+    profilesActive: number;
+    profilesUnclaimed: number;
+    profilesArchived: number;
+    matchesFixed: number;
+    matchesAwaitingConfirmation: number;
+  };
+  bookingsByStatus: Record<string, number>;
+  escrow: {
+    bookings: Record<string, string>;
+    agencyFees: Record<string, string>;
+  };
 }
 
 export default function Admin() {
@@ -106,6 +127,59 @@ export default function Admin() {
           </div>
         ))}
       </div>
+
+      {analytics?.matchmaking && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Panel
+            title="Matchmaking"
+            subtitle="What the platform is actually for."
+            rows={[
+              ['Matches fixed', analytics.matchmaking.matchesFixed],
+              ['Awaiting the second confirmation', analytics.matchmaking.matchesAwaitingConfirmation],
+              ['Active profiles', analytics.matchmaking.profilesActive],
+              ['Profiles with no account yet', analytics.matchmaking.profilesUnclaimed],
+              ['Closed', analytics.matchmaking.profilesArchived],
+            ]}
+          />
+          <Panel
+            title="Verification"
+            subtitle="Work sitting in somebody's queue right now."
+            rows={[
+              ['Officers on duty', analytics.verification.officers],
+              ['Waiting for allocation', analytics.verification.awaitingAllocation],
+              ['Visits in progress', analytics.verification.inProgress],
+              ['Approved', analytics.verification.approved],
+              ['Open cases', analytics.verification.casesOpen],
+            ]}
+          />
+          <Panel
+            title="Escrow"
+            subtitle="Held is what the platform owes onwards; disputed cannot move."
+            rows={[
+              ['Held on bookings', `₹${analytics.escrow.bookings.held}`],
+              ['Disputed', `₹${analytics.escrow.bookings.disputed}`],
+              ['Released to providers', `₹${analytics.escrow.bookings.released}`],
+              ['Commission earned', `₹${analytics.escrow.bookings.commission}`],
+              ['Agency fees in escrow', `₹${analytics.escrow.agencyFees.held}`],
+            ]}
+          />
+        </div>
+      )}
+
+      {analytics?.bookingsByStatus && (
+        <div className="card">
+          <h2 className="mb-2 font-semibold">Bookings by stage</h2>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(analytics.bookingsByStatus)
+              .filter(([, count]) => count > 0)
+              .map(([status, count]) => (
+                <span key={status} className="rounded-full bg-gray-100 px-3 py-1 text-sm">
+                  {BOOKING_STATUS_LABEL[status] ?? status}: <strong>{count}</strong>
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
 
       {analytics?.usersByRole && (
         <div className="card">
@@ -259,6 +333,31 @@ export default function Admin() {
           </table>
         </div>
         {events.length === 0 && <p className="text-sm text-gray-400">No events recorded yet.</p>}
+      </div>
+    </div>
+  );
+}
+
+function Panel({
+  title,
+  subtitle,
+  rows,
+}: {
+  title: string;
+  subtitle: string;
+  rows: [string, string | number][];
+}) {
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-gray-900">{title}</h2>
+      <p className="mb-2 text-xs text-gray-500">{subtitle}</p>
+      <div className="divide-y">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between py-1.5 text-sm">
+            <span className="text-gray-600">{label}</span>
+            <span className="font-semibold tabular-nums text-gray-900">{value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

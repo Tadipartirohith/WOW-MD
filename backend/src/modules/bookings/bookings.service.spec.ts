@@ -7,10 +7,15 @@ import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { Profile } from '../users/entities/profile.entity';
+import { User } from '../auth/entities/user.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { AgentsService } from '../agents/agents.service';
 import { AuditService } from '../../platform/audit/audit.service';
+import { SupportCasesService } from '../verification/support-cases.service';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { AvailabilityService } from '../vendors/availability.service';
 import { PAYMENT_PROVIDER } from './payment.provider';
 import { BookingStatus, ProviderType, UserRole } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -45,12 +50,43 @@ describe('BookingsService', () => {
     create: jest.fn((x) => x),
     count: jest.fn(async () => 0),
   };
-  const paymentsRepo = { findOne: jest.fn(async () => null), update: jest.fn() };
+  const paymentsRepo = {
+    findOne: jest.fn(async () => null),
+    find: jest.fn(async () => []),
+    update: jest.fn(),
+  };
+
+  // The buyer on these bookings is a matched individual with a completed
+  // profile, so the services gate is satisfied and the tests stay about the
+  // state machine and the ownership rules.
+  const profilesRepo = {
+    findOne: jest.fn(async () => ({ id: 'p1', userId: 'u1', profileCompleted: true })),
+  };
+  const usersRepo = { findOne: jest.fn(async () => ({ id: 'u1', role: UserRole.BRIDE })) };
+  const cases = { hasOpenCaseFor: jest.fn(async () => false) } as unknown as SupportCasesService;
+  const matchmaking = { isMatchFixed: jest.fn(async () => true) } as unknown as MatchmakingService;
+  const availability = {
+    isAvailable: jest.fn(async () => true),
+    reserve: jest.fn(),
+    release: jest.fn(),
+  } as unknown as AvailabilityService;
   const cfg = {
-    payments: { currency: 'INR', provider: 'mock', commissionPercent: 10 },
+    payments: {
+      currency: 'INR',
+      provider: 'mock',
+      commissionPercent: 10,
+      milestonePercents: { advance: 30, second: 30, final: 40 },
+    },
+    features: { servicesRequireMatchFixed: true },
   } as unknown as AppConfigService;
   const outbox = { record: jest.fn() } as unknown as OutboxService;
-  const dataSource = {} as DataSource;
+  // confirm() takes the vendor's date inside a transaction, so the stub has to
+  // hand back a manager that behaves like the booking repository.
+  const dataSource = {
+    transaction: jest.fn(async (fn: (m: unknown) => unknown) =>
+      fn({ getRepository: () => bookingsRepo }),
+    ),
+  } as unknown as DataSource;
   const gateway = { createEscrowHold: jest.fn(), release: jest.fn(), refund: jest.fn() };
   const agents = {
     assertManages: jest.fn(async (agentId: string, clientId: string) => {
@@ -82,11 +118,16 @@ describe('BookingsService', () => {
         { provide: getRepositoryToken(Payment), useValue: paymentsRepo },
         { provide: getRepositoryToken(Vendor), useValue: vendorsRepo },
         { provide: getRepositoryToken(PlannerProfile), useValue: plannersRepo },
+        { provide: getRepositoryToken(Profile), useValue: profilesRepo },
+        { provide: getRepositoryToken(User), useValue: usersRepo },
         { provide: AppConfigService, useValue: cfg },
         { provide: OutboxService, useValue: outbox },
         { provide: DataSource, useValue: dataSource },
         { provide: AgentsService, useValue: agents },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        { provide: SupportCasesService, useValue: cases },
+        { provide: MatchmakingService, useValue: matchmaking },
+        { provide: AvailabilityService, useValue: availability },
         { provide: PAYMENT_PROVIDER, useValue: gateway },
       ],
     }).compile();

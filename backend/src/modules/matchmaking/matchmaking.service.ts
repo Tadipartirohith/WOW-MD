@@ -16,7 +16,9 @@ import { OutboxService } from '../../platform/events/outbox.service';
 import { Neo4jService } from '../../platform/neo4j/neo4j.service';
 import {
   InterestStatus,
+  MatchFixedState,
   ProfileClaimStatus,
+  ProfileLifecycle,
   ProfileVisibility,
   UserRole,
   isIndividual,
@@ -108,6 +110,59 @@ export class MatchmakingService {
   }
 
   /**
+   * Matchmaking is only open to a profile that is complete and is not already
+   * in a fixed match.
+   *
+   * Both gates come straight from the spec, and both are about other people:
+   * a half-filled profile wastes the time of everyone it is shown to, and a
+   * fixed match is the end of matchmaking for that person rather than a pause.
+   */
+  private async assertMatchmakingOpen(profile: Profile): Promise<void> {
+    if (profile.lifecycle !== ProfileLifecycle.ACTIVE) {
+      throw new ForbiddenException(`This profile is ${profile.lifecycle} and is not matchmaking`);
+    }
+    if (!profile.profileCompleted) {
+      throw new ForbiddenException(
+        'Complete the profile first — basic details, preferences and at least one photo.',
+      );
+    }
+    if (await this.isMatchFixed(profile.id)) {
+      throw new ForbiddenException(
+        'This match has been fixed. Matchmaking is closed for this profile.',
+      );
+    }
+  }
+
+  /** Has this profile settled on someone? Gates matchmaking and unlocks services. */
+  async isMatchFixed(profileId: string): Promise<boolean> {
+    const count = await this.interests.count({
+      where: [
+        { fromProfileId: profileId, matchFixedState: MatchFixedState.CONFIRMED },
+        { toProfileId: profileId, matchFixedState: MatchFixedState.CONFIRMED },
+      ],
+    });
+    return count > 0;
+  }
+
+  /**
+   * Counterparts this profile should never be shown again: anyone either side
+   * blocked, and anyone an ended match already ruled out. Withdrawn and
+   * rejected interests are deliberately absent — people change their minds,
+   * and a rejection is not a permanent exclusion.
+   */
+  private async excludedCounterpartIds(profileId: string): Promise<Set<string>> {
+    const rows = await this.interests.find({
+      where: [
+        { fromProfileId: profileId, status: In([InterestStatus.BLOCKED, InterestStatus.UNMATCHED]) },
+        { toProfileId: profileId, status: In([InterestStatus.BLOCKED, InterestStatus.UNMATCHED]) },
+      ],
+    });
+    return new Set(
+      rows.map((r) => (r.fromProfileId === profileId ? r.toProfileId : r.fromProfileId)),
+    );
+  }
+
+  /**
    * Profiles eligible to appear as candidates. Unclaimed profiles ARE eligible
    * (that is the whole point of an agency building them); what gets excluded is
    * anything attached to a non-individual account, or to a suspended one.
@@ -138,6 +193,7 @@ export class MatchmakingService {
     profileId?: string,
   ): Promise<PaginatedResult<Suggestion>> {
     const me = await this.resolveSubject(actor, profileId);
+    await this.assertMatchmakingOpen(me);
     const cacheKey = `match:suggestions:${me.id}:${page}:${limit}`;
 
     return this.redis.wrap(cacheKey, this.cfg.matchmaking.suggestionsCacheTtlSeconds, async () => {
@@ -148,7 +204,11 @@ export class MatchmakingService {
         const ids = await this.neo4j.suggestions(me.id, this.cfg.matchmaking.maxSuggestions);
         if (ids.length) {
           candidates = await this.profiles.find({
-            where: { id: In(ids), visibility: Not(ProfileVisibility.PRIVATE) },
+            where: {
+              id: In(ids),
+              visibility: Not(ProfileVisibility.PRIVATE),
+              lifecycle: ProfileLifecycle.ACTIVE,
+            },
           });
         }
       }
@@ -157,6 +217,7 @@ export class MatchmakingService {
           where: {
             id: Not(me.id),
             visibility: Not(ProfileVisibility.PRIVATE),
+            lifecycle: ProfileLifecycle.ACTIVE,
             ...(me.gender ? { gender: Not(me.gender) } : {}),
           },
           take: this.cfg.matchmaking.maxSuggestions,
@@ -164,7 +225,11 @@ export class MatchmakingService {
       }
 
       const eligible = await this.eligibleProfileIds(candidates);
-      candidates = candidates.filter((c) => eligible.has(c.id));
+      const excluded = await this.excludedCounterpartIds(me.id);
+      const fixedElsewhere = await this.fixedProfileIds(candidates.map((c) => c.id));
+      candidates = candidates.filter(
+        (c) => eligible.has(c.id) && !excluded.has(c.id) && !fixedElsewhere.has(c.id),
+      );
 
       // What the viewer may see of each candidate depends on whether the two
       // sides have already matched.
@@ -206,10 +271,14 @@ export class MatchmakingService {
     fromProfileId?: string,
   ): Promise<Interest> {
     const from = await this.resolveSubject(actor, fromProfileId);
+    await this.assertMatchmakingOpen(from);
     if (from.id === toProfileId) throw new BadRequestException('Cannot send interest to yourself');
 
     const target = await this.profiles.findOne({ where: { id: toProfileId } });
     if (!target) throw new NotFoundException('That profile is unavailable');
+    if (target.lifecycle !== ProfileLifecycle.ACTIVE) {
+      throw new NotFoundException('That profile is unavailable');
+    }
     if (target.visibility === ProfileVisibility.PRIVATE) {
       throw new ForbiddenException('That profile is not accepting interests');
     }
@@ -221,10 +290,32 @@ export class MatchmakingService {
       }
     }
 
+    if (await this.isMatchFixed(toProfileId)) {
+      throw new BadRequestException('That profile has fixed a match and is no longer matchmaking');
+    }
+    const blocked = await this.excludedCounterpartIds(from.id);
+    if (blocked.has(toProfileId)) {
+      throw new ForbiddenException('You can no longer send an interest to that profile');
+    }
+
     const existing = await this.interests.findOne({
       where: { fromProfileId: from.id, toProfileId },
     });
-    if (existing) return existing;
+    if (existing) {
+      // A withdrawn or unmatched interest is re-opened rather than duplicated:
+      // the row is the unique pairing, and its history is worth keeping.
+      if (
+        existing.status === InterestStatus.WITHDRAWN ||
+        existing.status === InterestStatus.REJECTED
+      ) {
+        existing.status = InterestStatus.PENDING;
+        existing.endedByUserId = null;
+        existing.endedReason = null;
+        existing.sentByUserId = actor.userId;
+        return this.interests.save(existing);
+      }
+      return existing;
+    }
 
     const interest = await this.interests.save(
       this.interests.create({
@@ -347,6 +438,23 @@ export class MatchmakingService {
         },
       ];
     });
+  }
+
+  /** Which of these candidate profiles have already fixed a match? */
+  private async fixedProfileIds(ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.interests.find({
+      where: [
+        { fromProfileId: In(ids), matchFixedState: MatchFixedState.CONFIRMED },
+        { toProfileId: In(ids), matchFixedState: MatchFixedState.CONFIRMED },
+      ],
+    });
+    const out = new Set<string>();
+    for (const r of rows) {
+      out.add(r.fromProfileId);
+      out.add(r.toProfileId);
+    }
+    return out;
   }
 
   /**

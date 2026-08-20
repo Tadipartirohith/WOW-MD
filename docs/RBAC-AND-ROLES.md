@@ -14,7 +14,25 @@ A visitor picks an **account type** at sign-up. The server turns that into a
 | Marriage agent    | `agent`                   | Onboards and represents clients; buys on their behalf      |
 | Vendor            | `vendor`                  | Sells wedding services (venue, catering, photography, …)   |
 | Wedding planner   | `planner`                 | Sells planning packages; co-manages plans they are engaged on |
+| *(not offered)*   | `in_person`               | Visits applicants, decides verifications, investigates cases |
 | *(not offered)*   | `admin`                   | Approvals, analytics, disputes, account suspension         |
+
+`in_person` is **not** self-registerable either. A verification officer decides
+whether other people get operational access, so the account exists only because
+an administrator created it:
+
+```
+POST /api/verification/officers    (admin only)
+```
+
+Credentials are emailed and are single-use: `mustResetPassword` keeps the account
+locked to the password-change route until it is replaced, and replacing it
+revokes every session the temporary credential opened.
+
+Their permission row is deliberately the narrowest on the platform — the
+verification queue, the case queue, and nothing else. In particular they cannot
+allocate work to themselves, because an officer choosing their own visits is not
+an allocation.
 
 `admin` is **not** self-registerable. It is created out of band:
 
@@ -31,9 +49,11 @@ promotes and reactivates an existing account instead of failing.
 account at all. That is a distinct axis from the buy/sell split, and it is
 documented separately in [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md).
 
-An agent must be approved by an administrator (`agent_profiles.isApproved`)
-before any stewardship path opens. A family member is capped at a handful of
-relatives instead.
+An agent must be verified before any stewardship path opens. Submitting agency
+details raises a verification request; an administrator allocates it, an officer
+visits the address on it, and their approval is the only thing that sets
+`agent_profiles.isApproved`. A family member is capped at a handful of relatives
+instead.
 
 ### Role groupings
 
@@ -63,8 +83,11 @@ Guards run globally in this order (`app.module.ts`):
 
 1. `ThrottlerGuard` — rate limiting
 2. `JwtAuthGuard` — authentication (`@Public()` opts a route out)
-3. `RolesGuard` — legacy coarse `@Roles()` checks
-4. `PermissionsGuard` — the capability check
+3. `PasswordResetGuard` — an account still holding an emailed temporary
+   password gets no further than the reset screen (`@AllowDuringPasswordReset()`
+   marks the three routes that stay open)
+4. `RolesGuard` — legacy coarse `@Roles()` checks
+5. `PermissionsGuard` — the capability check
 
 ### Two layers, and why both exist
 
@@ -81,40 +104,53 @@ Skipping the second layer is what produced the IDOR bugs listed in §6.
 
 ### Permission reference
 
-| Permission | bride/groom/family | agent | vendor | planner | admin |
-| --- | :-: | :-: | :-: | :-: | :-: |
-| `profile:manage:own` | ● | ● | ● | ● | ● |
-| `match:browse` | ● | ● | | | ● |
-| `match:send_interest` | ● | ● | | | ● |
-| `match:respond_interest` | ● | | | | ● |
-| `managed_profile:manage` | family only | ● | | | ● |
-| `managed_profile:invite` | family only | ● | | | ● |
-| `act_on_behalf` | family only | ● | | | ● |
-| `profile:circulate` | family only | ● | | | ● |
-| `network_pool:browse` | | ● | | | ● |
-| `agency:manage` | | ● | | | ● |
-| `session:manage:own` | ● | ● | ● | ● | ● |
-| `mfa:manage:own` | ● | ● | ● | ● | ● |
-| `chat:match` | ● | | | | ● |
-| `chat:inquire` | ● | ● | ● | ● | ● |
-| `booking:create` | ● | ● | | | ● |
-| `booking:pay` | ● | ● | | | ● |
-| `booking:read:own` | ● | ● | | | ● |
-| `booking:confirm` | | | ● | ● | ● |
-| `booking:complete` | | | ● | ● | ● |
-| `booking:read:incoming` | | | ● | ● | ● |
-| `vendor_listing:manage` | | | ● | | ● |
-| `planner_listing:manage` | | | | ● | ● |
-| `review:write` | ● | ● | | | ● |
-| `client:read` / `client:create` / `client:act_on_behalf` | | ● | | | ● |
-| `plan:manage:own` | ● | ● | | | ● |
-| `plan:manage:engaged` | | | | ● | ● |
-| `event:manage:own` | ● | ● | | ● | ● |
-| `media:manage:own` | ● | ● | ● | ● | ● |
-| `travel:book` | ● | ● | | | ● |
-| `dispute:raise` | ● | ● | ● | ● | ● |
-| `ai:assist` | ● | ● | ● | ● | ● |
-| `admin:*` (users, agents, vendors, analytics, disputes, audit) | | | | | ● |
+| Permission | bride/groom/family | agent | vendor | planner | in_person | admin |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: |
+| `profile:manage:own` | ● | ● | ● | ● | ● | ● |
+| `match:browse` | ● | ● | | | | ● |
+| `match:send_interest` | ● | ● | | | | ● |
+| `match:respond_interest` | ● | ● | | | | ● |
+| `match:lifecycle` | ● | ● | | | | ● |
+| `match:fix` | ● | ● | | | | ● |
+| `managed_profile:manage` | family only | ● | | | | ● |
+| `managed_profile:invite` | family only | ● | | | | ● |
+| `act_on_behalf` | family only | ● | | | | ● |
+| `profile:circulate` | family only | ● | | | | ● |
+| `network_pool:browse` | | ● | | | | ● |
+| `agency:manage` | | ● | | | | ● |
+| `session:manage:own` | ● | ● | ● | ● | ● | ● |
+| `mfa:manage:own` | ● | ● | ● | ● | ● | ● |
+| `chat:match` | ● | | | | | ● |
+| `chat:inquire` | ● | ● | ● | ● | ● | ● |
+| `booking:create` | ● | ● | | | | ● |
+| `booking:pay` | ● | ● | | | | ● |
+| `booking:read:own` | ● | ● | | | | ● |
+| `booking:confirm` | | | ● | ● | | ● |
+| `booking:complete` | | | ● | ● | | ● |
+| `booking:read:incoming` | | | ● | ● | | ● |
+| `vendor_listing:manage` | | | ● | | | ● |
+| `planner_listing:manage` | | | | ● | | ● |
+| `review:write` | ● | ● | | | | ● |
+| `client:read` / `client:create` / `client:act_on_behalf` | | ● | | | | ● |
+| `plan:manage:own` | ● | ● | | | | ● |
+| `plan:manage:engaged` | | | | ● | | ● |
+| `event:manage:own` | ● | ● | | ● | | ● |
+| `media:manage:own` | ● | ● | ● | ● | | ● |
+| `travel:book` | ● | ● | | | | ● |
+| `dispute:raise` | ● | ● | ● | ● | | ● |
+| `case:raise` | ● | ● | ● | ● | ● | ● |
+| `case:investigate` / `case:settle` | | | | | ● | ● |
+| `case:allocate` | | | | | | ● |
+| `verification:process` / `verification:decide` | | | | | ● | ● |
+| `verification:allocate` | | | | | | ● |
+| `ai:assist` | ● | ● | ● | ● | | ● |
+| `admin:*` (users, agents, vendors, officers, analytics, disputes, audit) | | | | | | ● |
+
+Two rows are worth reading twice. An officer can **decide** a verification but
+not **allocate** one — choosing your own visits is not an allocation. And an
+agent holds `match:respond_interest` and `match:fix` because a walk-in client
+with no account has nobody else to answer for them; the ownership check in the
+service still confines that to profiles on their own books.
 
 Admin permissions are computed as `Object.values(Permission)`, so a new
 capability is never accidentally withheld from support staff.
@@ -244,24 +280,34 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
 
 docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
   sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-invites.sh"
+
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-phase1.sh"
 ```
 
-- `verify-rbac.sh` — **118 checks**: privilege escalation, per-persona
+- `verify-rbac.sh` — **140 checks**: privilege escalation, per-persona
   permissions, agency vetting, profile-level scoping, booking IDOR, escrow
-  transitions, review gating, event ownership, schema validation, cookie-borne
-  refresh and token handling.
-- `verify-invites.sh` — **76 checks**: agency approval, profiles built for
-  people with no account, invitation and claim, multi-device sessions,
-  brute-force lockout, signed payment webhooks, the audit trail, two-factor and
-  pagination bounds.
+  transitions, the Match Fixed gate on services, review gating, event ownership,
+  schema validation, cookie-borne refresh and token handling.
+- `verify-invites.sh` — **73 checks**: agency approval, profiles built for
+  people with no account, invitation and claim, the profile-completion gate,
+  multi-device sessions, brute-force lockout, signed payment webhooks, the audit
+  trail, two-factor and pagination bounds.
+- `verify-phase1.sh` — **120 checks**: officer accounts and the forced password
+  reset, the three separations in the verification queue, identity documents and
+  the duplicate they refuse, agency fees, Match Fixed and provisioning, vendor
+  compliance and the calendar, quotations, escrow milestones, a case freezing the
+  money, chat redaction and the profile lifecycle.
 
-Both exit non-zero on any failure, so either can gate a deploy. Each clears its
-own rate-limit counters first: those live in Redis now and deliberately survive
-restarts, so a repeated run would otherwise trip limits unrelated to the checks.
+All exit non-zero on any failure, so any of them can gate a deploy. Each clears
+its own rate-limit counters first: those live in Redis now and deliberately
+survive restarts, so a repeated run would otherwise trip limits unrelated to the
+checks.
 
 Unit tests (`npm test`) additionally cover the permission matrix itself, the
-guards, the commission split, and the auth service (registration, lockout,
-two-factor, recovery and refresh rotation).
+guards, the commission split, the auth service (registration, lockout,
+two-factor, recovery and refresh rotation), contact redaction, and government-ID
+validation and hashing.
 
 ## 8. Related documents
 

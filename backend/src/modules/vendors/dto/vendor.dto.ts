@@ -12,6 +12,7 @@ import {
   Max,
   MaxLength,
   Min,
+  Matches,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -55,7 +56,50 @@ export class VendorPricingDto {
   packages?: VendorPackageDto[];
 }
 
-export class CreateVendorDto {
+/**
+ * Registration details. Optional at listing time and required before approval:
+ * an officer checks them on the visit, and a vendor with nothing to show does
+ * not get activated.
+ */
+export class VendorComplianceDto {
+  @ApiPropertyOptional({ example: '29ABCDE1234F1Z5', description: '15-character GSTIN' })
+  @IsOptional()
+  @Matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, {
+    message: 'gstNumber must be a valid 15-character GSTIN',
+  })
+  gstNumber?: string;
+
+  @ApiPropertyOptional({ example: 'ABCDE1234F' })
+  @IsOptional()
+  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]$/, { message: 'panNumber must be a valid 10-character PAN' })
+  panNumber?: string;
+
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  registrationNumber?: string;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  registeredAddress?: string;
+
+  @ApiPropertyOptional({ example: '+919876543210' })
+  @IsOptional()
+  @Matches(/^\+?[0-9]{10,15}$/, { message: 'contactPhone must be 10-15 digits' })
+  contactPhone?: string;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 10, description: 'Certificate URLs' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUrl({ require_tld: false }, { each: true })
+  complianceDocuments?: string[];
+}
+
+export class CreateVendorDto extends VendorComplianceDto {
   @ApiProperty({ maxLength: 120 })
   @IsString()
   @MinLength(2)

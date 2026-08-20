@@ -48,6 +48,31 @@ export default () => ({
     defaultTtlSeconds: toNumber(process.env.REDIS_DEFAULT_TTL, 300),
   },
 
+  /**
+   * Switches for behaviour the business turns on and off per environment.
+   *
+   * `individualUserEnabled` is the Phase 1 flag: with it off, the platform runs
+   * as an agent-only brokerage and nobody can create their own matchmaking
+   * account. Existing individual accounts keep working — the flag gates the
+   * front door, not the people already inside, because locking out live users
+   * on a config change would be a far worse failure than an open door.
+   */
+  features: {
+    individualUserEnabled: toBool(process.env.INDIVIDUAL_USER_ENABLED, true),
+    /** Strip contact numbers out of chat messages before they are stored. */
+    chatRedactContacts: toBool(process.env.CHAT_REDACT_CONTACTS, true),
+
+    /**
+     * Whether vendor and planner services stay locked until a match is fixed.
+     *
+     * On by default because that is the product: people come here to find a
+     * match, and the wedding marketplace is what they graduate into. An
+     * operator running the services side as a standalone marketplace turns it
+     * off.
+     */
+    servicesRequireMatchFixed: toBool(process.env.SERVICES_REQUIRE_MATCH_FIXED, true),
+  },
+
   auth: {
     jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me',
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
@@ -132,7 +157,7 @@ export default () => ({
     weightLifestyle: toNumber(process.env.MATCH_WEIGHT_LIFESTYLE, 15),
     weightPreferences: toNumber(process.env.MATCH_WEIGHT_PREFERENCES, 10),
     maxAgeGap: toNumber(process.env.MATCH_MAX_AGE_GAP, 8),
-    minScore: toNumber(process.env.MATCH_MIN_SCORE, 40),
+    minScore: toNumber(process.env.MATCH_MIN_SCORE, 50),
     suggestionsCacheTtlSeconds: toNumber(process.env.MATCH_SUGGESTIONS_CACHE_TTL, 120),
     maxSuggestions: toNumber(process.env.MATCH_MAX_SUGGESTIONS, 50),
   },
@@ -159,6 +184,26 @@ export default () => ({
     webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || '',
     razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
     razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
+
+    /**
+     * How a booking's total is split across the three escrow milestones. Wedding
+     * vendors are paid this way in practice: something to hold the date,
+     * something as the event approaches, the balance on delivery.
+     *
+     * The three must add to 100; the config module refuses to boot otherwise,
+     * because a silent mismatch would quietly under- or over-charge every
+     * booking on the platform.
+     */
+    milestonePercents: {
+      advance: toNumber(process.env.ESCROW_ADVANCE_PERCENT, 30),
+      second: toNumber(process.env.ESCROW_SECOND_PERCENT, 30),
+      final: toNumber(process.env.ESCROW_FINAL_PERCENT, 40),
+    },
+
+    /** What an agency charges to build and run a client profile, in rupees. */
+    agentProfileFee: toNumber(process.env.AGENT_PROFILE_FEE, 2000),
+    /** The agency's success fee, due once a match is fixed. */
+    agentSettlementFee: toNumber(process.env.AGENT_SETTLEMENT_FEE, 25000),
   },
 
   ai: {

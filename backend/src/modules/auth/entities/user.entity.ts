@@ -9,7 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { UserRole } from '../../../common/enums';
+import { OnboardingStage, UserRole } from '../../../common/enums';
 import { Profile } from '../../users/entities/profile.entity';
 
 @Entity('users')
@@ -74,6 +74,48 @@ export class User {
    */
   @Column({ type: 'timestamptz', nullable: true })
   passwordChangedAt: Date | null;
+
+  /**
+   * Bumped whenever every session must die: a password change or a reset.
+   *
+   * Access tokens carry this value, and one that no longer matches is refused.
+   * The obvious alternative — comparing the token's issue time against
+   * `passwordChangedAt` — needs two clock samples to agree, and a container
+   * clock that steps backwards then leaves a supposedly-revoked token working.
+   * An integer cannot drift.
+   */
+  @Column({ type: 'int', default: 0 })
+  tokenVersion: number;
+
+  /**
+   * Set on accounts the platform created — after a match is fixed, the system
+   * issues credentials rather than the person choosing them. While true, every
+   * route except the password change is refused, so a temporary password can
+   * never be used to actually operate the account.
+   */
+  @Column({ default: false })
+  mustResetPassword: boolean;
+
+  /** True when this account was provisioned by the platform, not self-registered. */
+  @Column({ default: false })
+  isProvisioned: boolean;
+
+  /**
+   * Where an individual user is in onboarding. Drives two gates: matchmaking
+   * needs a complete profile, and services stay locked until the match is
+   * fixed.
+   */
+  @Index()
+  @Column({
+    type: 'enum',
+    enum: OnboardingStage,
+    default: OnboardingStage.PROFILE_INCOMPLETE,
+  })
+  onboardingStage: OnboardingStage;
+
+  /** The confirmed match this account came from, when it was provisioned. */
+  @Column({ type: 'uuid', nullable: true })
+  matchInterestId: string | null;
 
   @OneToOne(() => Profile, (profile) => profile.user)
   profile: Profile;

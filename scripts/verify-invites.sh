@@ -46,6 +46,15 @@ assert() {
 
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Phone is the duplicate key for an agency-built profile, and the check is
+# global by design — the same number twice means the same person twice. So the
+# numbers have to be unique per run, or a second run of this suite collides
+# with the first one's data and every downstream check fails for the wrong
+# reason.
+PHONE_BASE=$(date +%s | tail -c 7)
+phone() { echo "+919${PHONE_BASE}$1"; }
+
+
 # Intake now records how the family gave permission, so every profile the agent
 # builds carries a consent block. Defined once and appended to each body below.
 CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","allowsCirculation":true}'
@@ -95,22 +104,35 @@ c=$(req POST /auth/login "{\"email\":\"solo-$STAMP@t.com\",\"password\":\"Passwo
 check "solo user signs in with their own password" "$c" 200
 grep -q '"managedByAgentId":null' /tmp/body && assert "solo user is tied to no agency" 1 || assert "solo user is tied to no agency" 0
 SOLO=$(field /tmp/body accessToken)
+
+# Matchmaking is gated on a complete profile now, so an account that has only
+# just registered is refused until it fills one in. Checked here rather than
+# assumed, because it is the gate every new individual user meets first.
 c=$(req GET /matches/suggestions "" "$SOLO")
-check "solo user browses matches unaided" "$c" 200
+check "an incomplete profile cannot browse matches" "$c" 403
+
+# The engine needs more than city and age to clear MATCH_MIN_SCORE: with
+# defaults, same-city plus a 2-year age gap does not reach it. Matching
+# religion, education and lifestyle takes the pair well over the threshold.
+PREFS='{"religion":"hindu","education":"masters","lifestyle":["vegetarian","non-smoker"]}'
+req PUT /users/me/profile "{\"displayName\":\"Solo $STAMP\",\"gender\":\"female\",\"dateOfBirth\":\"1996-06-15\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/s1.jpg\",\"https://cdn.example.com/s2.jpg\"]}" "$SOLO" >/dev/null
+
+c=$(req GET /matches/suggestions "" "$SOLO")
+check "solo user browses matches unaided once the profile is complete" "$c" 200
 
 echo
 echo "== 3. An unvetted agent cannot build profiles =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Blocked\",\"contactEmail\":\"blocked-$STAMP@t.com\",\"contactPhone\":\"+919876500000\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Blocked\",\"contactEmail\":\"blocked-$STAMP@t.com\",\"contactPhone\":\"$(phone 001)\",$CONSENT}" "$AGENT")
 check "unapproved agency cannot create a profile" "$c" 403
 c=$(req GET /agents/agency/status "" "$AGENT")
 check "agency status is readable" "$c" 200
 grep -q '"registered":false' /tmp/body && assert "status reports nothing registered yet" 1 || assert "status reports nothing registered yet" 0
 
-c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderabad\",\"contactPhone\":\"+919876543210\"}" "$AGENT")
+c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderabad\",\"contactPhone\":\"$(phone 002)\"}" "$AGENT")
 check "agent registers their agency" "$c" 200
 AGENCY=$(field /tmp/body id)
 
-c=$(req POST /agents/profiles "{\"displayName\":\"Still Blocked\",\"contactEmail\":\"blocked2-$STAMP@t.com\",\"contactPhone\":\"+919876500001\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Still Blocked\",\"contactEmail\":\"blocked2-$STAMP@t.com\",\"contactPhone\":\"$(phone 003)\",$CONSENT}" "$AGENT")
 check "registered but unapproved agency still cannot create" "$c" 403
 
 c=$(req GET /admin/agents/pending "" "$SOLO")
@@ -122,7 +144,7 @@ check "admin approves the agency" "$c" 200
 
 echo
 echo "== 4. Agent builds a profile for someone with NO account =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Priya $STAMP\",\"contactEmail\":\"priya-$STAMP@t.com\",\"contactPhone\":\"+919876512345\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",\"bio\":\"Loves classical music.\",\"photos\":[\"https://cdn.example.com/a.jpg\",\"https://cdn.example.com/b.jpg\"],$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Priya $STAMP\",\"contactEmail\":\"priya-$STAMP@t.com\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",\"bio\":\"Loves classical music.\",\"photos\":[\"https://cdn.example.com/a.jpg\",\"https://cdn.example.com/b.jpg\"],$CONSENT}" "$AGENT")
 check "agent creates a profile with photos and details" "$c" 201
 cp /tmp/body /tmp/managed.json
 MANAGED=$(field /tmp/managed.json id)
@@ -136,7 +158,7 @@ check "a non-url photo is rejected" "$c" 400
 
 # Email became optional when intake moved to phone-first: a walk-in family
 # hands over a number far more often than an address.
-c=$(req POST /agents/profiles "{\"displayName\":\"NoEmail $STAMP\",\"contactPhone\":\"+919876512300\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"NoEmail $STAMP\",\"contactPhone\":\"$(phone 005)\",$CONSENT}" "$AGENT")
 check "a profile can be built with no email at all" "$c" 201
 c=$(req POST /agents/profiles "{\"displayName\":\"NoPhone\",\"contactEmail\":\"nophone-$STAMP@t.com\",$CONSENT}" "$AGENT")
 check "but the mobile number is still required" "$c" 400
@@ -170,11 +192,8 @@ check "the recipient accepts the interest" "$c" 200
 
 echo
 echo "== 6. Profile privacy in suggestions =="
-# The engine needs more than city and age to clear MATCH_MIN_SCORE (40): with
-# defaults, same-city plus a 2-year age gap only scores 35. Matching religion,
-# education and lifestyle takes the pair well over the threshold.
-PREFS='{"religion":"hindu","education":"masters","lifestyle":["vegetarian","non-smoker"]}'
-req PUT /users/me/profile "{\"displayName\":\"Solo $STAMP\",\"gender\":\"female\",\"dateOfBirth\":\"1996-06-15\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/s1.jpg\",\"https://cdn.example.com/s2.jpg\"]}" "$SOLO" >/dev/null
+# SOLO's profile was completed at sign-in; the groom's is filled in here so the
+# pair actually score against each other.
 req PUT /users/me/profile "{\"displayName\":\"Groom $STAMP\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/g1.jpg\",\"https://cdn.example.com/g2.jpg\"]}" "$GROOM" >/dev/null
 # GROOM has not fetched suggestions yet, so this is not served from the cache
 # that SOLO warmed up before the profiles had any detail on them.
@@ -237,13 +256,13 @@ fi
 
 echo
 echo "== 8. Family members steward relatives, but run no agency =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Relative $STAMP\",\"contactEmail\":\"rel-$STAMP@t.com\",\"contactPhone\":\"+919876599999\",\"gender\":\"male\",$CONSENT}" "$FAMILY")
+c=$(req POST /agents/profiles "{\"displayName\":\"Relative $STAMP\",\"contactEmail\":\"rel-$STAMP@t.com\",\"contactPhone\":\"$(phone 006)\",\"gender\":\"male\",$CONSENT}" "$FAMILY")
 check "a family account can build a relative profile" "$c" 201
 c=$(req PUT /agents/agency '{"agencyName":"Not An Agency"}' "$FAMILY")
 check "a family account cannot register an agency" "$c" 403
 c=$(req GET /agents/clients "" "$FAMILY")
 check "a family account has no client book" "$c" 403
-c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876599990\",$CONSENT}" "$SOLO")
+c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"$(phone 007)\",$CONSENT}" "$SOLO")
 check "a plain bride account cannot steward profiles" "$c" 403
 
 echo

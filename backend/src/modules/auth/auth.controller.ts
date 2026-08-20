@@ -32,6 +32,7 @@ import {
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { AllowDuringPasswordReset } from '../../common/decorators/password-reset.decorator';
 import { Permission, permissionsFor } from '../../common/authz/permissions';
 import { ACCOUNT_TYPE_ROLE, AccountType, INDIVIDUAL_ROLES } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
@@ -94,15 +95,25 @@ export class AuthController {
   @Get('account-types')
   @ApiOperation({ summary: 'Account types a visitor may self-register as' })
   accountTypes() {
+    // The picker mirrors the server switch rather than guessing: with the
+    // Individual User flow off, the option is not offered at all instead of
+    // being offered and then refused.
+    const individual = this.cfg.features.individualUserEnabled
+      ? [
+          {
+            type: AccountType.INDIVIDUAL,
+            label: 'Individual',
+            description: 'Looking for a match, or a family member searching on their behalf.',
+            requiresRole: true,
+            roles: INDIVIDUAL_ROLES,
+          },
+        ]
+      : [];
+
     return {
+      individualUserEnabled: this.cfg.features.individualUserEnabled,
       accountTypes: [
-        {
-          type: AccountType.INDIVIDUAL,
-          label: 'Individual',
-          description: 'Looking for a match, or a family member searching on their behalf.',
-          requiresRole: true,
-          roles: INDIVIDUAL_ROLES,
-        },
+        ...individual,
         {
           type: AccountType.AGENT,
           label: 'Marriage agent',
@@ -222,6 +233,7 @@ export class AuthController {
   @ApiBearerAuth()
   @RequirePermissions(Permission.SESSION_MANAGE_OWN)
   @HttpCode(200)
+  @AllowDuringPasswordReset()
   @Post('logout-all')
   async logoutAll(@CurrentUser('userId') userId: string, @Res({ passthrough: true }) res: Response) {
     this.clearCookie(res);
@@ -280,6 +292,9 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
+  // Reachable by an account still holding a provisioned temporary password:
+  // this route is the only way out of that state.
+  @AllowDuringPasswordReset()
   @HttpCode(200)
   @Post('password/change')
   async changePassword(
@@ -321,6 +336,7 @@ export class AuthController {
 
   /** What the signed-in caller is allowed to do; used to shape the client nav. */
   @ApiBearerAuth()
+  @AllowDuringPasswordReset()
   @Get('me/permissions')
   myPermissions(@CurrentUser() user: AuthUser) {
     return { role: user.role, permissions: permissionsFor(user.role) };

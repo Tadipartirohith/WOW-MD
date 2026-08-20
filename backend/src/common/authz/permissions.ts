@@ -14,6 +14,10 @@ export enum Permission {
   MATCH_BROWSE = 'match:browse',
   MATCH_SEND_INTEREST = 'match:send_interest',
   MATCH_RESPOND_INTEREST = 'match:respond_interest',
+  /** Withdraw, unmatch, block or report a match. */
+  MATCH_LIFECYCLE = 'match:lifecycle',
+  /** Confirm this side of a Match Fixed. Two of these close the match. */
+  MATCH_FIX = 'match:fix',
 
   // --- chat ---
   CHAT_MATCH = 'chat:match',
@@ -67,6 +71,19 @@ export enum Permission {
   DISPUTE_RAISE = 'dispute:raise',
   AI_ASSIST = 'ai:assist',
 
+  // --- field verification and support cases ---
+  /** See and work a verification queue. */
+  VERIFICATION_PROCESS = 'verification:process',
+  /** Record the approve/reject/issue decision on a request. */
+  VERIFICATION_DECIDE = 'verification:decide',
+  /** Assign a request or case to an officer. Admin only. */
+  VERIFICATION_ALLOCATE = 'verification:allocate',
+  CASE_RAISE = 'case:raise',
+  CASE_ALLOCATE = 'case:allocate',
+  CASE_INVESTIGATE = 'case:investigate',
+  /** Decide release / refund / partial on disputed money. */
+  CASE_SETTLE = 'case:settle',
+
   // --- account self-service ---
   SESSION_MANAGE_OWN = 'session:manage:own',
   MFA_MANAGE_OWN = 'mfa:manage:own',
@@ -74,6 +91,8 @@ export enum Permission {
   // --- administration ---
   ADMIN_USERS_READ = 'admin:users:read',
   ADMIN_AGENT_APPROVE = 'admin:agent:approve',
+  /** Create and manage In-Person Verification accounts. Admin only. */
+  ADMIN_OFFICER_MANAGE = 'admin:officer:manage',
   ADMIN_AUDIT_READ = 'admin:audit:read',
   ADMIN_VENDOR_APPROVE = 'admin:vendor:approve',
   ADMIN_ANALYTICS_READ = 'admin:analytics:read',
@@ -86,6 +105,8 @@ const INDIVIDUAL_PERMISSIONS: Permission[] = [
   Permission.MATCH_BROWSE,
   Permission.MATCH_SEND_INTEREST,
   Permission.MATCH_RESPOND_INTEREST,
+  Permission.MATCH_LIFECYCLE,
+  Permission.MATCH_FIX,
   Permission.CHAT_MATCH,
   Permission.CHAT_INQUIRE,
   Permission.BOOKING_CREATE,
@@ -98,6 +119,7 @@ const INDIVIDUAL_PERMISSIONS: Permission[] = [
   Permission.MEDIA_MANAGE_OWN,
   Permission.TRAVEL_BOOK,
   Permission.DISPUTE_RAISE,
+  Permission.CASE_RAISE,
   Permission.AI_ASSIST,
   Permission.SESSION_MANAGE_OWN,
   Permission.MFA_MANAGE_OWN,
@@ -131,6 +153,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.PROFILE_MANAGE_OWN,
     Permission.MATCH_BROWSE,
     Permission.MATCH_SEND_INTEREST,
+    Permission.MATCH_RESPOND_INTEREST,
+    Permission.MATCH_LIFECYCLE,
+    // An agent confirms Match Fixed for a client who has no account of their
+    // own — for a walk-in family, the agent IS the client's interface.
+    Permission.MATCH_FIX,
     Permission.CHAT_INQUIRE,
     Permission.BOOKING_CREATE,
     Permission.BOOKING_PAY,
@@ -139,6 +166,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CLIENT_CREATE,
     Permission.CLIENT_READ,
     Permission.CLIENT_ACT_ON_BEHALF,
+    Permission.CASE_RAISE,
     Permission.AGENCY_MANAGE,
     Permission.MANAGED_PROFILE_MANAGE,
     Permission.MANAGED_PROFILE_INVITE,
@@ -166,6 +194,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CHAT_INQUIRE,
     Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
+    Permission.CASE_RAISE,
     Permission.AI_ASSIST,
     Permission.SESSION_MANAGE_OWN,
     Permission.MFA_MANAGE_OWN,
@@ -183,7 +212,28 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.EVENT_MANAGE_OWN,
     Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
+    Permission.CASE_RAISE,
     Permission.AI_ASSIST,
+    Permission.SESSION_MANAGE_OWN,
+    Permission.MFA_MANAGE_OWN,
+  ],
+
+  /**
+   * Field verification and support staff.
+   *
+   * Deliberately narrow: they decide whether other people get operational
+   * access, so they get the verification and case surface and nothing else —
+   * no matchmaking, no listings, no bookings, and no ability to allocate work
+   * to themselves.
+   */
+  [UserRole.IN_PERSON]: [
+    Permission.PROFILE_MANAGE_OWN,
+    Permission.VERIFICATION_PROCESS,
+    Permission.VERIFICATION_DECIDE,
+    Permission.CASE_RAISE,
+    Permission.CASE_INVESTIGATE,
+    Permission.CASE_SETTLE,
+    Permission.CHAT_INQUIRE,
     Permission.SESSION_MANAGE_OWN,
     Permission.MFA_MANAGE_OWN,
   ],

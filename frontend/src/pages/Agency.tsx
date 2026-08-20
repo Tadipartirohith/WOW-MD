@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { VERIFICATION_LABEL, VerificationStatus } from '../lib/permissions';
 
 interface Agency {
   id: string;
@@ -33,6 +34,35 @@ export default function Agency() {
   const [form, setForm] = useState(empty);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const { data: verification } = useQuery({
+    queryKey: ['my-verification'],
+    queryFn: async () =>
+      (await api.get('/verification/me')).data as {
+        id: string | null;
+        status: VerificationStatus | null;
+        remarks: string | null;
+        submittedAt: string | null;
+      },
+    retry: false,
+  });
+
+  const { data: billing } = useQuery({
+    queryKey: ['agency-billing'],
+    queryFn: async () =>
+      (await api.get('/agents/billing')).data as {
+        charges: {
+          id: string;
+          type: string;
+          amount: string;
+          currency: string;
+          status: string;
+          profileId: string;
+        }[];
+        totals: Record<string, string>;
+      },
+    retry: false,
+  });
 
   const { data: agency, isLoading } = useQuery({
     queryKey: ['agency'],
@@ -109,6 +139,56 @@ export default function Agency() {
         </div>
       )}
 
+      {verification?.status && !agency?.isApproved && (
+        <div className="card space-y-1 border-blue-200 bg-blue-50">
+          <p className="font-medium text-blue-900">
+            Field verification: {VERIFICATION_LABEL[verification.status]}
+          </p>
+          <p className="text-sm text-blue-900">
+            An officer visits your registered address and confirms your details in person. Approval
+            is their decision, not a formality on the form above.
+          </p>
+          {verification.remarks && (
+            <p className="rounded bg-white p-2 text-sm text-blue-900">{verification.remarks}</p>
+          )}
+        </div>
+      )}
+
+      {billing && (
+        <div className="card space-y-2">
+          <div>
+            <h2 className="font-semibold text-gray-900">Your ledger</h2>
+            <p className="text-sm text-gray-600">
+              Fees are held in escrow and reach you when the match is fixed — you are paid for the
+              outcome, not the effort.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Total label="Owed" value={billing.totals.outstanding} />
+            <Total label="In escrow" value={billing.totals.inEscrow} />
+            <Total label="Earned" value={billing.totals.earned} />
+            <Total label="Refunded" value={billing.totals.refunded} />
+          </div>
+          {billing.charges.length > 0 && (
+            <div className="divide-y">
+              {billing.charges.slice(0, 8).map((c) => (
+                <div key={c.id} className="flex items-center justify-between py-2 text-sm">
+                  <span className="capitalize text-gray-700">{c.type.replace(/_/g, ' ')}</span>
+                  <span className="flex items-center gap-3">
+                    <span className="tabular-nums">
+                      {c.currency} {c.amount}
+                    </span>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-600">
+                      {c.status.replace(/_/g, ' ')}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {notice && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
@@ -152,6 +232,15 @@ export default function Agency() {
         </div>
         <button className="btn">{agency ? 'Save details' : 'Submit for review'}</button>
       </form>
+    </div>
+  );
+}
+
+function Total({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="rounded bg-gray-50 p-3">
+      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-lg font-semibold tabular-nums text-gray-900">₹{value ?? '0.00'}</p>
     </div>
   );
 }

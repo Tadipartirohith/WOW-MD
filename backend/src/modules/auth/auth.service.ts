@@ -27,6 +27,7 @@ import {
   AccountType,
   EmailTokenType,
   INDIVIDUAL_ROLES,
+  OnboardingStage,
   ProfileClaimStatus,
   SELF_REGISTERABLE_ROLES,
   UserRole,
@@ -49,8 +50,24 @@ export interface JwtPayload {
    * token is not actually unpredictable.
    */
   jti?: string;
-  /** Issued-at, used to invalidate tokens minted before a password change. */
+  /** Issued-at in whole seconds, set by the signer. */
   iat?: number;
+  /**
+   * The account's token generation at the moment this was minted. A password
+   * change bumps it, and every token carrying the old value stops working.
+   */
+  tv?: number;
+
+  /**
+   * Issued-at in milliseconds.
+   *
+   * The standard `iat` is whole seconds, which is too coarse to decide whether
+   * a token was minted before or after a password change that happened in the
+   * same second — and getting that comparison wrong means either a live token
+   * surviving a "sign me out everywhere", or a freshly issued one being killed
+   * on arrival.
+   */
+  iatMs?: number;
 }
 
 export interface AuthResult {
@@ -62,6 +79,13 @@ export interface AuthResult {
     isVerified: boolean;
     mfaEnabled: boolean;
     permissions: readonly string[];
+    /**
+     * True for an account the platform created after a Match Fixed. Until the
+     * temporary password is replaced, every route except the password change
+     * is refused, so the client should route straight to that screen.
+     */
+    mustResetPassword: boolean;
+    onboardingStage: OnboardingStage;
   };
   accessToken: string;
   /** Also set as an httpOnly cookie by the controller. */
@@ -93,6 +117,14 @@ export class AuthService {
    */
   private resolveRole(dto: RegisterDto): UserRole {
     if (dto.accountType === AccountType.INDIVIDUAL) {
+      // The Individual User flow is a business switch, not a code path: with it
+      // off the platform is an agent-only brokerage and the only way onto it is
+      // through an agency. Accounts created while it was on keep working.
+      if (!this.cfg.features.individualUserEnabled) {
+        throw new ForbiddenException(
+          'Individual sign-up is closed at the moment. An agent can register you and send an invitation.',
+        );
+      }
       const role = dto.role;
       if (!role || !INDIVIDUAL_ROLES.includes(role)) {
         throw new BadRequestException(
@@ -159,6 +191,7 @@ export class AuthService {
       select: [
         'id', 'email', 'role', 'passwordHash', 'isActive', 'managedByAgentId',
         'isVerified', 'mfaEnabled', 'mfaSecret', 'failedLoginAttempts', 'lockedUntil',
+        'mustResetPassword', 'onboardingStage', 'tokenVersion',
       ],
     });
 
@@ -259,7 +292,10 @@ export class AuthService {
 
     const user = await this.users.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'role', 'isActive', 'managedByAgentId', 'isVerified', 'mfaEnabled'],
+      select: [
+        'id', 'email', 'role', 'isActive', 'managedByAgentId', 'isVerified', 'mfaEnabled',
+        'mustResetPassword', 'onboardingStage', 'tokenVersion',
+      ],
     });
     if (!user) throw new UnauthorizedException('Access denied');
     if (!user.isActive) throw new ForbiddenException('This account has been deactivated');
@@ -370,6 +406,8 @@ export class AuthService {
       passwordChangedAt: new Date(),
       failedLoginAttempts: 0,
       lockedUntil: null,
+      // Retires every access token already in circulation for this account.
+      tokenVersion: () => '"tokenVersion" + 1',
     });
     // A reset is the standard response to a suspected compromise, so drop every
     // existing session rather than leaving the attacker signed in.
@@ -393,7 +431,19 @@ export class AuthService {
     if (!ok) throw new UnauthorizedException('Your current password is not correct');
 
     const passwordHash = await bcrypt.hash(dto.newPassword, this.cfg.auth.bcryptRounds);
-    await this.users.update(userId, { passwordHash, passwordChangedAt: new Date() });
+    // Clearing `mustResetPassword` here is what lifts the lock a provisioned
+    // account starts under. Revoking the sessions immediately afterwards is
+    // deliberate: the temporary credential was emailed in the clear, so the
+    // session it opened is retired with it and the person signs in afresh.
+    await this.users.update(userId, {
+      passwordHash,
+      passwordChangedAt: new Date(),
+      mustResetPassword: false,
+      // Retires every access token already in circulation for this account, so
+      // "signed out everywhere" is true of the short-lived tokens as well as
+      // the refresh sessions revoked just below.
+      tokenVersion: () => '"tokenVersion" + 1',
+    });
     await this.sessions.revokeAllForUser(userId, 'password changed');
     return { success: true };
   }
@@ -477,7 +527,10 @@ export class AuthService {
 
   // ------------------------------------------------------------------ tokens
 
-  private publicUser(user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId' | 'isVerified' | 'mfaEnabled'>) {
+  private publicUser(
+    user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId' | 'isVerified' | 'mfaEnabled'> &
+      Partial<Pick<User, 'mustResetPassword' | 'onboardingStage'>>,
+  ) {
     return {
       id: user.id,
       email: user.email,
@@ -485,6 +538,8 @@ export class AuthService {
       managedByAgentId: user.managedByAgentId ?? null,
       isVerified: Boolean(user.isVerified),
       mfaEnabled: Boolean(user.mfaEnabled),
+      mustResetPassword: Boolean(user.mustResetPassword),
+      onboardingStage: user.onboardingStage ?? OnboardingStage.PROFILE_INCOMPLETE,
       // The client mirrors these to hide navigation it cannot use. The server
       // re-checks on every request; this is a UX affordance, not a control.
       permissions: permissionsFor(user.role),
@@ -492,11 +547,14 @@ export class AuthService {
   }
 
   private async mintAccessToken(
-    user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId'>,
+    user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId'> &
+      Partial<Pick<User, 'tokenVersion'>>,
   ): Promise<string> {
     return this.jwt.signAsync(
       {
         sub: user.id,
+        tv: user.tokenVersion ?? 0,
+        iatMs: Date.now(),
         email: user.email,
         role: user.role,
         managedByAgentId: user.managedByAgentId ?? null,
@@ -528,7 +586,8 @@ export class AuthService {
 
   /** Issues a fresh access token and opens a NEW session for this device. */
   async issueTokens(
-    user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId' | 'isVerified' | 'mfaEnabled'>,
+    user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId' | 'isVerified' | 'mfaEnabled'> &
+      Partial<Pick<User, 'mustResetPassword' | 'onboardingStage' | 'tokenVersion'>>,
     ctx: SessionContext = {},
   ): Promise<AuthResult> {
     const refresh = await this.mintRefreshToken(user);

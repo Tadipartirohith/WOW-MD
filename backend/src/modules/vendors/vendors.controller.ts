@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
+import { AvailabilityService } from './availability.service';
 import { BookingsService } from '../bookings/bookings.service';
 import {
   CreateReviewDto,
@@ -18,6 +19,7 @@ import {
   UpdateVendorDto,
   VendorSearchDto,
 } from './dto/vendor.dto';
+import { AvailabilityQueryDto, SetAvailabilityDto } from './dto/availability.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -29,8 +31,33 @@ import { ProviderType, UserRole } from '../../common/enums';
 export class VendorsController {
   constructor(
     private readonly vendors: VendorsService,
+    private readonly availability: AvailabilityService,
     private readonly bookings: BookingsService,
   ) {}
+
+  // ------------------------------------------------------------- calendar
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'Open or block out a date',
+    description: 'Capacity zero blocks the day. It cannot be set below what is already booked.',
+  })
+  @Put(':id/availability')
+  setAvailability(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetAvailabilityDto,
+  ) {
+    return this.availability.set(actor, id, dto);
+  }
+
+  @Public()
+  @ApiOperation({ summary: 'A vendor calendar. Dates with no entry are open.' })
+  @Get(':id/availability')
+  listAvailability(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+    return this.availability.list(id, q.from, q.to);
+  }
 
   @ApiBearerAuth()
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)

@@ -784,14 +784,17 @@ containers, from an empty database, and exit non-zero on any failure.
 
 | Suite | Checks | Covers |
 | --- | --: | --- |
-| `jest` (unit) | 84 | Permission matrix, guards, booking authorization, commission split, auth flows, consent state machine |
-| `verify-rbac.sh` | 118 | Privilege escalation, per-persona permissions, agency vetting, booking IDOR, escrow transitions, review gating, event ownership, validation, cookie-borne refresh |
-| `verify-invites.sh` | 76 | Agency approval, account-less profiles, invitation and claim, multi-device sessions, lockout, signed webhooks, audit, 2FA, pagination |
+| `jest` (unit) | 106 | Permission matrix, guards, booking authorization, commission split, auth flows, consent state machine, contact redaction, government-ID validation and hashing |
+| `verify-rbac.sh` | 140 | Privilege escalation, per-persona permissions, agency vetting, booking IDOR, escrow transitions, Match Fixed gating, review gating, event ownership, validation, cookie-borne refresh |
+| `verify-invites.sh` | 73 | Agency approval, account-less profiles, invitation and claim, profile-completion gate, multi-device sessions, lockout, signed webhooks, audit, 2FA, pagination |
 | `verify-circulation.sh` | 73 | Phone-first intake, duplicate detection, both consent scopes, all five circulation paths, read-only enforcement, withdrawal, cross-agent threads |
+| `verify-phase1.sh` | 120 | Officer accounts and the forced password reset, the verification queue and its separations, identity and duplicate refusal, agency fees, Match Fixed and provisioning, vendor compliance, the calendar, quotations, escrow milestones, case-frozen escrow, chat redaction, the profile lifecycle, the admin dashboard |
 | `app.e2e-spec.ts` | — | Functional integration against real Postgres and Redis |
 
-351 assertions in total. All three live suites clear their own Redis rate-limit
-counters first, since those deliberately survive restarts.
+406 live assertions plus 106 unit tests. All four live suites clear their own
+Redis rate-limit counters first, since those deliberately survive restarts, and
+vary the data that carries a uniqueness constraint — phone numbers, identity
+documents, GST — so a second run does not collide with the first.
 
 ```bash
 docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
@@ -813,6 +816,9 @@ first three were exploitable by any authenticated user.
 | Commission configured but never applied | medium — platform earned nothing | Split computed and stored at payment time |
 | Identical JWTs within one second | medium — session hash collision; refresh tokens predictable | Random `jti` on both token types |
 | `@ValidateNested()` passes on a missing object | medium — absent consent block crashed the service | `@IsDefined()` alongside it |
+| A password change left access tokens alive | medium — "signed out everywhere" was not true of the 15-minute tokens | `tokenVersion` minted into every token and bumped on change; a counter, not a clock comparison |
+| Match notifications silently failed | medium — every match notification since profiles were introduced was dropped by a not-null violation | Consumer resolves a profile to its owner, or to the steward who runs it |
+| Duplicate GST returned a 500 | low — an unhandled unique violation | Caught and reported as a conflict |
 
 ---
 
@@ -823,7 +829,7 @@ Ordered by what I would fix first. Fuller treatment in
 
 | Gap | Why it matters | Severity |
 | --- | --- | --- |
-| **SMS is not wired** | Phone is the identity key and intake is phone-first, but invitations still go by email only. An agent can build a profile with no email and then have no way to reach that family through the platform. | high |
+| **SMS is not wired** | Phone is the identity key and intake is phone-first, but invitations and provisioned credentials still go by email only. An agent can build a profile with no email and then have no way to reach that family through the platform — and a match fixed for that client provisions no account. | high |
 | **Escrow payout is a log line** | The commission split is computed and recorded correctly, but real hold-and-release needs Razorpay Route with linked accounts and per-provider KYC. No money actually moves. | high |
 | **No re-linking on self-registration** | If an agent builds a profile for someone who then signs up independently, the invitation is refused and the agent's work is stranded. | medium |
 | **Webhooks record but never reconcile** | If the gateway says refunded and we say held, nothing alerts. Needs a scheduled reconciliation pass. | medium |
@@ -833,6 +839,8 @@ Ordered by what I would fix first. Fuller treatment in
 | **Photos are URLs, not uploads** | The media module has S3 presigning; the profile editor is not wired to it, so agents must upload elsewhere first. | low |
 | **Session rows grow unbounded** | `pruneExpired` exists and nothing calls it. | low |
 | **Pool has no quality control** | No per-agency quota and no de-listing of stale entries, so one agency could flood the network. | low |
+| **Officer allocation ignores geography** | `region` is captured on an officer but allocation is a manual pick from a workload list, so nothing stops a Hyderabad visit landing on a Chennai officer. | medium |
+| **Nothing chases an unpaid instalment** | The three escrow milestones are enforced in order but no reminder goes out, so a balance can sit unpaid until the event. | low |
 | **`RolesGuard` is dead code** | Superseded everywhere by the permission guard, but still registered — a trap for the next person. | low |
 
 ### Deliberate non-goals
@@ -853,6 +861,7 @@ Ordered by what I would fix first. Fuller treatment in
 | [RBAC-AND-ROLES.md](RBAC-AND-ROLES.md) | The permission contract in full — every role, every capability, the guard order |
 | [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md) | The profile/account split, stewardship, the invitation and claim flow |
 | [CIRCULATION.md](CIRCULATION.md) | Phone-first intake, the two consent scopes, the five circulation paths |
+| [PHASE-1-OPERATIONS.md](PHASE-1-OPERATIONS.md) | In-Person verification, support cases and frozen escrow, Match Fixed and provisioning, agency fees, vendor compliance and the calendar, quotations, escrow milestones, identity, chat redaction, the profile lifecycle |
 | [SELF-REVIEW.md](SELF-REVIEW.md) | Three rounds of work, and what is still missing |
 | [SETUP-GUIDE.md](SETUP-GUIDE.md) | Getting it running, with and without Docker |
 | [DOCKER-AND-TESTING.md](DOCKER-AND-TESTING.md) | Container and test-stack detail |

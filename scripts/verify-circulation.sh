@@ -41,6 +41,15 @@ assert() {
 }
 
 field() { jq -r ".$2 // empty" "$1"; }
+
+# Phone is the duplicate key for an agency-built profile, and the check is
+# global by design — the same number twice means the same person twice. So the
+# numbers have to be unique per run, or a second run of this suite collides
+# with the first one's data and every downstream check fails for the wrong
+# reason.
+PHONE_BASE=$(date +%s | tail -c 7)
+phone() { echo "+919${PHONE_BASE}$1"; }
+
 jqok()  { jq -e "$1" /tmp/body >/dev/null 2>&1 && echo 1 || echo 0; }
 
 if command -v redis-cli >/dev/null 2>&1; then

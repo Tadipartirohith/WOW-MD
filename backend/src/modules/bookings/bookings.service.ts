@@ -4,41 +4,82 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { Profile } from '../users/entities/profile.entity';
+import { User } from '../auth/entities/user.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { BookingSearchDto, CreateBookingDto } from './dto/booking.dto';
 import {
   BookingStatus,
+  PaymentMilestone,
   PaymentStatus,
   ProviderType,
   UserRole,
   isConsumer,
+  isIndividual,
 } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { PAYMENT_PROVIDER, PaymentProvider } from './payment.provider';
 import { AgentsService } from '../agents/agents.service';
+import { SupportCasesService } from '../verification/support-cases.service';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { AvailabilityService } from '../vendors/availability.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
 /**
- * Booking lifecycle + escrow, implemented as an explicit state machine:
- *   REQUESTED -(buyer pays)-> PENDING[escrow held]
- *             -(provider confirms)-> CONFIRMED
- *             -(provider completes)-> COMPLETED[escrow released]
- *   any -> CANCELLED[escrow refunded]
+ * Booking lifecycle + escrow, as an explicit state machine.
+ *
+ * A quotation-driven job:
+ *   REQUESTED -(vendor quotes)-> QUOTATION_SENT
+ *             -(buyer accepts)-> QUOTATION_ACCEPTED -> PAYMENT_PENDING
+ * A listed-price job skips the quote: REQUESTED -> PAYMENT_PENDING.
+ *
+ * Both then converge:
+ *   PAYMENT_PENDING -(advance held)-> PENDING
+ *                   -(provider confirms)-> CONFIRMED
+ *                   -(work starts)-> IN_PROGRESS
+ *                   -(delivered)-> COMPLETED[escrow released]
+ *   raising a case -> DISPUTED[escrow frozen], settled by an officer
+ *   most states -> CANCELLED[escrow refunded]
  */
 const ALLOWED: Record<BookingStatus, BookingStatus[]> = {
-  [BookingStatus.REQUESTED]: [BookingStatus.PENDING, BookingStatus.CANCELLED],
+  [BookingStatus.REQUESTED]: [
+    BookingStatus.QUOTATION_SENT,
+    BookingStatus.PAYMENT_PENDING,
+    BookingStatus.CANCELLED,
+  ],
+  // Re-quoting returns the booking to REQUESTED, so the buyer is never looking
+  // at a stale price while the vendor prepares a new one.
+  [BookingStatus.QUOTATION_SENT]: [
+    BookingStatus.QUOTATION_ACCEPTED,
+    BookingStatus.REQUESTED,
+    BookingStatus.CANCELLED,
+  ],
+  [BookingStatus.QUOTATION_ACCEPTED]: [BookingStatus.PAYMENT_PENDING, BookingStatus.CANCELLED],
+  [BookingStatus.PAYMENT_PENDING]: [BookingStatus.PENDING, BookingStatus.CANCELLED],
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-  [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
-  [BookingStatus.COMPLETED]: [],
+  [BookingStatus.CONFIRMED]: [
+    BookingStatus.IN_PROGRESS,
+    BookingStatus.COMPLETED,
+    BookingStatus.CANCELLED,
+  ],
+  [BookingStatus.IN_PROGRESS]: [
+    BookingStatus.COMPLETED,
+    BookingStatus.DISPUTED,
+    BookingStatus.CANCELLED,
+  ],
+  // A dispute can surface after delivery — that is when most of them do.
+  [BookingStatus.COMPLETED]: [BookingStatus.DISPUTED],
+  [BookingStatus.DISPUTED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
   [BookingStatus.CANCELLED]: [],
 };
 
@@ -49,11 +90,19 @@ export class BookingsService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
+    @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(User) private readonly users: Repository<User>,
     private readonly cfg: AppConfigService,
     private readonly outbox: OutboxService,
     private readonly dataSource: DataSource,
     private readonly agents: AgentsService,
     private readonly audit: AuditService,
+    private readonly cases: SupportCasesService,
+    private readonly matchmaking: MatchmakingService,
+    // Bookings and the vendor calendar need each other; the cycle is broken
+    // here rather than by duplicating the capacity rule in two places.
+    @Inject(forwardRef(() => AvailabilityService))
+    private readonly availability: AvailabilityService,
     @Inject(PAYMENT_PROVIDER) private readonly gateway: PaymentProvider,
   ) {}
 
@@ -75,6 +124,56 @@ export class BookingsService {
       commission: (commission / 100).toFixed(2),
       payout: (payout / 100).toFixed(2),
     };
+  }
+
+  /**
+   * What a given milestone costs on this booking.
+   *
+   * The final instalment is the remainder rather than its own percentage, so
+   * rounding can never leave a rupee uncollected or collect one too many:
+   * advance + second + final always equals the booking total exactly.
+   */
+  milestoneAmount(total: string, milestone: PaymentMilestone): string {
+    const gross = Math.round(parseFloat(total) * 100);
+    const pct = this.cfg.payments.milestonePercents;
+    const advance = Math.floor((gross * pct.advance) / 100);
+    const second = Math.floor((gross * pct.second) / 100);
+
+    const minor =
+      milestone === PaymentMilestone.ADVANCE
+        ? advance
+        : milestone === PaymentMilestone.SECOND
+          ? second
+          : gross - advance - second;
+    return (minor / 100).toFixed(2);
+  }
+
+  /** Every milestone on a booking, with what has been paid against each. */
+  async milestones(actor: AuthUser, bookingId: string) {
+    const booking = await this.loadOrFail(bookingId);
+    await this.assertParticipant(actor, booking);
+
+    const payments = await this.payments.find({ where: { bookingId } });
+    const order = [PaymentMilestone.ADVANCE, PaymentMilestone.SECOND, PaymentMilestone.FINAL];
+    return {
+      bookingId,
+      total: booking.amount,
+      currency: booking.currency,
+      milestones: order.map((milestone) => {
+        const payment = payments.find((p) => p.milestone === milestone && !this.isDead(p.status));
+        return {
+          milestone,
+          amount: this.milestoneAmount(booking.amount, milestone),
+          status: payment?.status ?? null,
+          paymentId: payment?.id ?? null,
+        };
+      }),
+    };
+  }
+
+  /** A payment in one of these states does not occupy its milestone slot. */
+  private isDead(status: PaymentStatus): boolean {
+    return status === PaymentStatus.FAILED || status === PaymentStatus.REFUNDED;
   }
 
   /** Resolves the user account that owns the provider listing on a booking. */
@@ -114,6 +213,16 @@ export class BookingsService {
       clientUserId = dto.onBehalfOfUserId;
     }
 
+    await this.assertServicesUnlocked(clientUserId);
+
+    // A soft check, so the buyer is told now rather than after a quotation and
+    // a deposit. The binding one runs under a lock at confirmation.
+    if (dto.eventDate && dto.providerType === ProviderType.VENDOR) {
+      if (!(await this.availability.isAvailable(dto.providerId, dto.eventDate))) {
+        throw new BadRequestException('That vendor is not available on that date');
+      }
+    }
+
     const provider = await this.providerOwner(dto.providerType, dto.providerId);
     if (!provider.isApproved) {
       throw new BadRequestException('That provider is not yet approved for bookings');
@@ -138,17 +247,54 @@ export class BookingsService {
   }
 
   /**
-   * Initiate payment: funds held in escrow, booking moves to PENDING.
+   * The wedding marketplace opens once a match is fixed.
+   *
+   * The check runs against the *client* the booking is for, not the person
+   * clicking, so an agent booking a venue for a client is held to the client's
+   * status rather than their own. Accounts with no matchmaking profile at all —
+   * an agency booking for its own office, say — are not part of this and pass
+   * straight through.
+   */
+  private async assertServicesUnlocked(clientUserId: string): Promise<void> {
+    if (!this.cfg.features.servicesRequireMatchFixed) return;
+
+    const client = await this.users.findOne({
+      where: { id: clientUserId },
+      select: ['id', 'role'],
+    });
+    if (!client || !isIndividual(client.role)) return;
+
+    const profile = await this.profiles.findOne({ where: { userId: clientUserId } });
+    if (!profile) {
+      throw new BadRequestException('Complete the profile before booking services');
+    }
+    if (!(await this.matchmaking.isMatchFixed(profile.id))) {
+      throw new ForbiddenException(
+        'Wedding services unlock once the match is fixed. Confirm the match first.',
+      );
+    }
+  }
+
+  /**
+   * Pays one escrow milestone.
+   *
+   * The advance is what secures the booking, so it is the instalment that moves
+   * the booking to PENDING; the second and final instalments are collected
+   * against the same booking without changing its state. Milestones run in
+   * order — collecting the balance before the deposit would defeat the point of
+   * staging them.
    *
    * `idempotencyKey` makes a retried request (flaky network, double-tap) return
-   * the original payment instead of creating a second escrow hold against the
-   * same booking.
+   * the original payment instead of creating a second escrow hold.
    */
   async pay(
     actor: AuthUser,
     bookingId: string,
-    idempotencyKey?: string,
+    opts: { milestone?: PaymentMilestone; idempotencyKey?: string } = {},
   ): Promise<{ booking: Booking; payment: Payment }> {
+    const milestone = opts.milestone ?? PaymentMilestone.ADVANCE;
+    const idempotencyKey = opts.idempotencyKey;
+
     if (idempotencyKey) {
       const prior = await this.payments.findOne({ where: { idempotencyKey } });
       if (prior) {
@@ -170,35 +316,65 @@ export class BookingsService {
       });
       if (!booking) throw new NotFoundException('Booking not found');
       await this.assertBuyerSide(actor, booking);
-      this.assertTransition(booking.status, BookingStatus.PENDING);
 
-      // Work out the split now and store it, so what the provider is owed is
-      // fixed at the moment of payment and cannot drift if the rate changes.
-      const { commission, payout } = this.splitAmount(booking.amount);
+      const existing = await paymentRepo.find({ where: { bookingId: booking.id } });
+      const live = existing.filter((p) => !this.isDead(p.status));
+      if (live.some((p) => p.milestone === milestone)) {
+        throw new BadRequestException(`The ${milestone} instalment has already been paid`);
+      }
+      this.assertMilestoneOrder(
+        milestone,
+        live.map((p) => p.milestone),
+      );
 
-      const intent = await this.gateway.createEscrowHold(booking.amount, booking.currency);
+      const isAdvance = milestone === PaymentMilestone.ADVANCE;
+      if (isAdvance) {
+        // A quotation-driven booking is already at PAYMENT_PENDING when the
+        // buyer accepted the quote; a listed-price one arrives straight from
+        // REQUESTED. Both are legal, so the machine is asked rather than
+        // second-guessed.
+        if (booking.status !== BookingStatus.PAYMENT_PENDING) {
+          this.assertTransition(booking.status, BookingStatus.PAYMENT_PENDING);
+          booking.status = BookingStatus.PAYMENT_PENDING;
+        }
+        this.assertTransition(booking.status, BookingStatus.PENDING);
+      } else if (
+        booking.status === BookingStatus.CANCELLED ||
+        booking.status === BookingStatus.COMPLETED
+      ) {
+        throw new BadRequestException('That booking is closed');
+      }
+
+      const amount = this.milestoneAmount(booking.amount, milestone);
+      // The split is fixed at the moment of payment, so what the provider is
+      // owed cannot drift if the commission rate changes later.
+      const { commission, payout } = this.splitAmount(amount);
+
+      const intent = await this.gateway.createEscrowHold(amount, booking.currency);
       const payment = await paymentRepo.save(
         paymentRepo.create({
           bookingId: booking.id,
           userId: booking.userId,
-          amount: booking.amount,
+          amount,
           commissionAmount: commission,
           payoutAmount: payout,
           currency: booking.currency,
           status: PaymentStatus.HELD_IN_ESCROW,
+          milestone,
           provider: this.cfg.payments.provider,
           providerRef: intent.providerRef,
           idempotencyKey: idempotencyKey ?? null,
         }),
       );
 
-      booking.status = BookingStatus.PENDING;
+      if (isAdvance) booking.status = BookingStatus.PENDING;
       await bookingRepo.save(booking);
+
       await this.outbox.record(
         {
           eventType: 'booking.payment_held',
           aggregateType: 'booking',
-          payload: { bookingId: booking.id, userId: booking.userId, amount: booking.amount },
+          payload: { bookingId: booking.id, userId: booking.userId, amount, milestone },
         },
         manager,
       );
@@ -208,7 +384,7 @@ export class BookingsService {
           actor,
           resourceType: 'booking',
           resourceId: booking.id,
-          metadata: { amount: booking.amount, commission, payout },
+          metadata: { amount, milestone, commission, payout },
         },
         manager,
       );
@@ -216,29 +392,78 @@ export class BookingsService {
     });
   }
 
+  /** Instalments run advance, second, final. Skipping ahead is refused. */
+  private assertMilestoneOrder(next: PaymentMilestone, paid: PaymentMilestone[]): void {
+    const required: Record<PaymentMilestone, PaymentMilestone[]> = {
+      [PaymentMilestone.ADVANCE]: [],
+      [PaymentMilestone.SECOND]: [PaymentMilestone.ADVANCE],
+      [PaymentMilestone.FINAL]: [PaymentMilestone.ADVANCE, PaymentMilestone.SECOND],
+    };
+    const missing = required[next].filter((m) => !paid.includes(m));
+    if (missing.length > 0) {
+      throw new BadRequestException(`Pay the ${missing.join(' and ')} instalment first`);
+    }
+  }
+
   /** Provider confirms the pending booking. Only the listing owner may do this. */
+  /**
+   * Provider confirms the pending booking. Only the listing owner may do this.
+   *
+   * Confirmation is where the date is actually taken. Both writes happen in one
+   * transaction with the calendar row locked, so two bookings racing for the
+   * last slot on a date cannot both succeed — for a wedding vendor that clash
+   * has no recovery.
+   */
   async confirm(actor: AuthUser, bookingId: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertSellerSide(actor, booking);
-    const saved = await this.transition(booking, BookingStatus.CONFIRMED);
+
+    const saved = await this.dataSource.transaction(async (manager) => {
+      if (booking.eventDate && booking.providerType === ProviderType.VENDOR) {
+        await this.availability.reserve(manager, booking.providerId, booking.eventDate);
+      }
+      this.assertTransition(booking.status, BookingStatus.CONFIRMED);
+      booking.status = BookingStatus.CONFIRMED;
+      return manager.getRepository(Booking).save(booking);
+    });
+
     await this.outbox.record({
       eventType: 'booking.confirmed',
       aggregateType: 'booking',
-      payload: { bookingId, providerId: booking.providerId },
+      payload: { bookingId, providerId: booking.providerId, eventDate: booking.eventDate },
     });
     return saved;
   }
 
-  /** Provider marks the event delivered, which releases escrow to them. */
+  /** Provider marks work as started. Purely a signal to the buyer. */
+  async startWork(actor: AuthUser, bookingId: string): Promise<Booking> {
+    const booking = await this.loadOrFail(bookingId);
+    await this.assertSellerSide(actor, booking);
+    return this.transition(booking, BookingStatus.IN_PROGRESS);
+  }
+
+  /**
+   * Provider marks the event delivered, which releases every held instalment.
+   *
+   * An open case blocks this outright. Escrow that a provider can release while
+   * the buyer is disputing it is not escrow, so the check comes before the
+   * transition rather than after.
+   */
   async complete(actor: AuthUser, bookingId: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertSellerSide(actor, booking);
+    if (await this.cases.hasOpenCaseFor(bookingId)) {
+      throw new BadRequestException(
+        'An open case is holding the money on this booking. It is released by a settlement decision.',
+      );
+    }
     const saved = await this.transition(booking, BookingStatus.COMPLETED);
 
-    const payment = await this.payments.findOne({
+    const held = await this.payments.find({
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
     });
-    if (payment?.providerRef) {
+    for (const payment of held) {
+      if (!payment.providerRef) continue;
       // Release only the seller share; the commission stays with the platform.
       // Recompute if the row predates the split columns.
       const stored = parseFloat(payment.payoutAmount) > 0;
@@ -257,28 +482,49 @@ export class BookingsService {
         actor,
         resourceType: 'booking',
         resourceId: bookingId,
-        metadata: { gross: payment.amount, payout: split.payout, commission: split.commission },
+        metadata: {
+          gross: payment.amount,
+          milestone: payment.milestone,
+          payout: split.payout,
+          commission: split.commission,
+        },
       });
     }
+
     await this.outbox.record({
       eventType: 'booking.completed',
       aggregateType: 'booking',
-      payload: { bookingId },
+      payload: { bookingId, released: held.length },
     });
     return saved;
   }
 
-  /** Either side may cancel; escrow is refunded to the buyer. */
+  /** Either side may cancel; every held instalment is refunded to the buyer. */
   async cancel(actor: AuthUser, bookingId: string, reason?: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertParticipant(actor, booking);
+    if (await this.cases.hasOpenCaseFor(bookingId)) {
+      throw new BadRequestException(
+        'An open case is holding the money on this booking. It is refunded by a settlement decision.',
+      );
+    }
+    const heldTheDate =
+      booking.status === BookingStatus.CONFIRMED || booking.status === BookingStatus.IN_PROGRESS;
     booking.cancellationReason = reason ?? null;
     const saved = await this.transition(booking, BookingStatus.CANCELLED);
 
-    const payment = await this.payments.findOne({
+    // Give the date back to the vendor's calendar — only if this booking was
+    // actually holding it, or a cancellation before confirmation would free a
+    // slot it never took.
+    if (heldTheDate && booking.eventDate && booking.providerType === ProviderType.VENDOR) {
+      await this.availability.release(booking.providerId, booking.eventDate);
+    }
+
+    const held = await this.payments.find({
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
     });
-    if (payment?.providerRef) {
+    for (const payment of held) {
+      if (!payment.providerRef) continue;
       // Refunds return the FULL amount to the buyer: the platform earns no
       // commission on a booking that never happened.
       await this.gateway.refund(payment.providerRef, payment.amount);
@@ -292,15 +538,29 @@ export class BookingsService {
         actor,
         resourceType: 'booking',
         resourceId: bookingId,
-        metadata: { amount: payment.amount, reason: reason ?? null },
+        metadata: { amount: payment.amount, milestone: payment.milestone, reason: reason ?? null },
       });
     }
+
     await this.outbox.record({
       eventType: 'booking.cancelled',
       aggregateType: 'booking',
-      payload: { bookingId, cancelledBy: actor.userId },
+      payload: { bookingId, cancelledBy: actor.userId, refunded: held.length },
     });
     return saved;
+  }
+
+  /**
+   * Moves a booking into DISPUTED. Called by the support-case flow rather than
+   * by a controller, so the booking state and the frozen money always change
+   * together.
+   */
+  async markDisputed(bookingId: string): Promise<void> {
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    if (!booking) return;
+    if (!ALLOWED[booking.status].includes(BookingStatus.DISPUTED)) return;
+    booking.status = BookingStatus.DISPUTED;
+    await this.bookings.save(booking);
   }
 
   /** Buyer-side listing: own bookings, plus managed clients' for an agent. */
@@ -394,6 +654,24 @@ export class BookingsService {
       // does not hold either.
     }
     await this.assertSellerSide(actor, booking);
+  }
+
+  // The quotation flow lives in its own service but answers to the same
+  // ownership rules, so the three checks are exposed rather than reimplemented.
+
+  /** Throws unless the caller is the buyer, or the agent who booked for them. */
+  assertBuyer(actor: AuthUser, booking: Booking): Promise<void> {
+    return this.assertBuyerSide(actor, booking);
+  }
+
+  /** Throws unless the caller owns the listing that was booked. */
+  assertSeller(actor: AuthUser, booking: Booking): Promise<void> {
+    return this.assertSellerSide(actor, booking);
+  }
+
+  /** Throws unless the caller is on one side of the booking or the other. */
+  assertEitherSide(actor: AuthUser, booking: Booking): Promise<void> {
+    return this.assertParticipant(actor, booking);
   }
 
   /** True when this user completed a booking with the provider (review gate). */

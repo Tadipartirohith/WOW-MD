@@ -105,7 +105,7 @@ docker compose -f docker/docker-compose.test.yml up -d
 npm run migration:run && npm run test:e2e
 ```
 
-Beyond those, two suites exercise the authorization rules against a **running** stack. Both run inside the compose network and exit non-zero on any failure, so either can gate a deploy:
+Beyond those, four suites exercise the rules against a **running** stack. They run inside the compose network and exit non-zero on any failure, so any of them can gate a deploy:
 
 ```bash
 docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
@@ -122,12 +122,18 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
   sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-circulation.sh"
 ```
 
-- `verify-rbac.sh` — 118 checks: privilege escalation at registration, per-persona permissions, agency vetting, profile-level scoping, booking IDOR, escrow transitions, review gating, event ownership, request validation and token handling.
-- `verify-invites.sh` — 76 checks: agency approval, profiles built for people with no account, invitation and claim, multi-device sessions, brute-force lockout, signed payment webhooks, the audit trail, two-factor and pagination bounds.
+```bash
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-phase1.sh"
+```
+
+- `verify-rbac.sh` — 140 checks: privilege escalation at registration, per-persona permissions, agency vetting, profile-level scoping, booking IDOR, escrow transitions, the Match Fixed gate on services, review gating, event ownership, request validation and token handling.
+- `verify-invites.sh` — 73 checks: agency approval, profiles built for people with no account, invitation and claim, the profile-completion gate, multi-device sessions, brute-force lockout, signed payment webhooks, the audit trail, two-factor and pagination bounds.
 - `verify-circulation.sh` — 73 checks: phone-first intake, duplicate detection, consent in both scopes, all five circulation paths, read-only enforcement on shares, withdrawal pulling everything back, and cross-agent proposal threads.
+- `verify-phase1.sh` — 120 checks: officer accounts and the forced password reset, the verification queue and the separations that hold it honest, identity documents and the duplicate they refuse, agency fees through escrow, Match Fixed and customer provisioning, vendor compliance, the calendar, quotations, escrow milestones, a case freezing the money, chat redaction, the profile lifecycle and the admin dashboard.
 
 A k6 load test lives in `backend/test/k6`.
 
 ## Known gaps
 
-[docs/SELF-REVIEW.md](docs/SELF-REVIEW.md) lists what is still missing and what I would do next, in priority order. The largest remaining items are that mobile numbers are collected but no SMS is sent, and that real escrow payouts still need Razorpay Route configured.
+[docs/SELF-REVIEW.md](docs/SELF-REVIEW.md) lists what is still missing and what I would do next, in priority order. The largest remaining items are that mobile numbers are collected but no SMS is sent — which also means a client with no email address cannot be handed a provisioned account when their match is fixed — and that real escrow payouts still need Razorpay Route configured.

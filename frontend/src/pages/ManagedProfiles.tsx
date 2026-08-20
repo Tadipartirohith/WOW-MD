@@ -2,7 +2,14 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
-import { CLAIM_STATUS_LABEL, Permission, ProfileClaimStatus, can } from '../lib/permissions';
+import {
+  CLAIM_STATUS_LABEL,
+  LIFECYCLE_LABEL,
+  Permission,
+  ProfileClaimStatus,
+  ProfileLifecycle,
+  can,
+} from '../lib/permissions';
 import ConsentFields, { ConsentDraft, consentPayload, emptyConsent } from '../components/ConsentFields';
 import ShareProfileDialog from '../components/ShareProfileDialog';
 
@@ -20,6 +27,8 @@ interface ManagedProfile {
   claimStatus: ProfileClaimStatus;
   profileCompleted: boolean;
   createdAt: string;
+  lifecycle?: ProfileLifecycle;
+  lifecycleReason?: string | null;
 }
 
 interface AgencyStatus {
@@ -122,6 +131,37 @@ export default function ManagedProfiles() {
   const remove = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/agents/profiles/${id}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['managed-profiles'] }),
+    onError: (err) => setError(apiMessage(err)),
+  });
+
+  /**
+   * Pausing and closing, as distinct from deleting.
+   *
+   * A client who steps back for a few months has not ended the engagement, and
+   * a client who married elsewhere has — but neither should lose the consent
+   * record or the circulation history, so nothing here removes a row.
+   */
+  const lifecycle = useMutation({
+    mutationFn: async ({
+      id,
+      action,
+      reason,
+    }: {
+      id: string;
+      action: 'deactivate' | 'reactivate' | 'archive';
+      reason?: string;
+    }) => (await api.put(`/agents/profiles/${id}/${action}`, reason ? { reason } : {})).data,
+    onSuccess: (_res, vars) => {
+      setError('');
+      setNotice(
+        vars.action === 'deactivate'
+          ? 'Paused. It will not be matched or circulated until you bring it back.'
+          : vars.action === 'reactivate'
+            ? 'Back in matchmaking.'
+            : 'Closed. The record stays for the audit trail, and anything held in escrow is refunded.',
+      );
+      qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+    },
     onError: (err) => setError(apiMessage(err)),
   });
 
@@ -286,6 +326,12 @@ export default function ManagedProfiles() {
                     {` · ${p.photos?.length ?? 0} photo(s)`}
                     {p.networkVisibility === 'pool' ? ' · in network pool' : ''}
                   </p>
+                  {p.lifecycle && p.lifecycle !== 'active' && (
+                    <p className="mt-1 text-xs font-medium text-amber-700">
+                      {LIFECYCLE_LABEL[p.lifecycle]}
+                      {p.lifecycleReason ? ` — ${p.lifecycleReason}` : ''}
+                    </p>
+                  )}
                   {p.claimStatus === 'claimed' && (
                     <p className="mt-1 text-xs text-gray-500">
                       This profile belongs to its owner now, so it is read-only for you.
@@ -312,6 +358,49 @@ export default function ManagedProfiles() {
                       {can(permissions, Permission.MANAGED_PROFILE_INVITE) && p.contactEmail && (
                         <button className="btn-outline" onClick={() => invite.mutate(p.id)}>
                           {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
+                        </button>
+                      )}
+                      {p.lifecycle === 'deactivated' ? (
+                        <button
+                          className="btn-outline"
+                          onClick={() => lifecycle.mutate({ id: p.id, action: 'reactivate' })}
+                        >
+                          Resume
+                        </button>
+                      ) : (
+                        p.lifecycle !== 'archived' && (
+                          <button
+                            className="btn-outline"
+                            onClick={() =>
+                              lifecycle.mutate({
+                                id: p.id,
+                                action: 'deactivate',
+                                reason:
+                                  window.prompt('Why are they pausing? (optional)') || undefined,
+                              })
+                            }
+                          >
+                            Pause
+                          </button>
+                        )
+                      )}
+                      {p.lifecycle !== 'archived' && (
+                        <button
+                          className="btn-outline"
+                          onClick={() => {
+                            const reason = window.prompt(
+                              'Closing the engagement. Why? (optional)',
+                            );
+                            if (reason !== null) {
+                              lifecycle.mutate({
+                                id: p.id,
+                                action: 'archive',
+                                reason: reason || undefined,
+                              });
+                            }
+                          }}
+                        >
+                          Close
                         </button>
                       )}
                       <button className="btn-outline" onClick={() => remove.mutate(p.id)}>

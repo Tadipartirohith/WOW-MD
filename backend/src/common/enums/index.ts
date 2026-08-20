@@ -13,6 +13,12 @@ export enum UserRole {
   AGENT = 'agent',
   VENDOR = 'vendor',
   PLANNER = 'planner',
+  /**
+   * Field verification and support staff. Accounts are created by an
+   * administrator only — there is deliberately no self-registration path,
+   * because this role decides whether other people get operational access.
+   */
+  IN_PERSON = 'in_person',
   ADMIN = 'admin',
 }
 
@@ -78,6 +84,12 @@ export enum InterestStatus {
   PENDING = 'pending',
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
+  /** The sender took the request back before it was answered. */
+  WITHDRAWN = 'withdrawn',
+  /** Previously accepted, then ended by one side. */
+  UNMATCHED = 'unmatched',
+  /** One side blocked the other; excluded from all future matching. */
+  BLOCKED = 'blocked',
 }
 
 export enum VendorCategory {
@@ -103,20 +115,103 @@ export enum NotificationType {
   BOOKING_UPDATE = 'booking_update',
 }
 
+/**
+ * The service booking lifecycle.
+ *
+ * Two paths lead to payment. A quotation-driven booking goes
+ * REQUESTED -> QUOTATION_SENT -> QUOTATION_ACCEPTED, which is how a vendor
+ * prices a real wedding job. A listed-price booking skips straight to
+ * PAYMENT_PENDING. Both then converge: money into escrow (PENDING), provider
+ * confirms, work starts, work completes.
+ *
+ * PENDING keeps its original meaning — escrow is held and the provider has not
+ * yet confirmed — so existing rows and clients are unaffected.
+ */
 export enum BookingStatus {
+  /** Request received. The provider has been asked and has not priced it yet. */
   REQUESTED = 'requested',
+  QUOTATION_SENT = 'quotation_sent',
+  QUOTATION_ACCEPTED = 'quotation_accepted',
+  /** Waiting on the buyer's money. Nothing is held yet. */
+  PAYMENT_PENDING = 'payment_pending',
+  /** Escrow held, awaiting the provider's confirmation. */
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
+  /** The provider has started work. Cancellation from here is a dispute risk. */
+  IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
+  /** An open case is holding the money. Only a settlement moves it. */
+  DISPUTED = 'disputed',
   CANCELLED = 'cancelled',
+}
+
+/** Where a quotation stands. Only one may be live on a booking at a time. */
+export enum QuotationStatus {
+  SENT = 'sent',
+  ACCEPTED = 'accepted',
+  REJECTED = 'rejected',
+  /** Past `validUntil`. Re-quoting supersedes rather than revives. */
+  EXPIRED = 'expired',
+  /** Replaced by a newer quotation on the same booking. */
+  SUPERSEDED = 'superseded',
+}
+
+/** What an agent is charging for. */
+export enum AgentChargeType {
+  /** Onboarding fee for building and running a client profile. */
+  PROFILE_CREATION = 'profile_creation',
+  /** Success fee, due once the match is fixed. */
+  MATCH_SETTLEMENT = 'match_settlement',
+}
+
+/**
+ * Which government identity document a profile was verified against.
+ *
+ * Aadhaar is the common one in this market, but insisting on it would shut out
+ * anyone who has not enrolled, so the alternatives are first-class.
+ */
+export enum GovernmentIdType {
+  AADHAAR = 'aadhaar',
+  PASSPORT = 'passport',
+  VOTER_ID = 'voter_id',
+  DRIVING_LICENCE = 'driving_licence',
+  PAN = 'pan',
+}
+
+/** Lifecycle of a profile an agency maintains. */
+export enum ProfileLifecycle {
+  ACTIVE = 'active',
+  /** Paused by the client or the agency; invisible to matchmaking. */
+  DEACTIVATED = 'deactivated',
+  /** Closed out. Kept for the record, never matched, never circulated. */
+  ARCHIVED = 'archived',
 }
 
 export enum PaymentStatus {
   INITIATED = 'initiated',
   HELD_IN_ESCROW = 'held_in_escrow',
+  /**
+   * Frozen by an open case. Money in this state cannot be released or refunded
+   * by the normal booking transitions — only a recorded settlement decision
+   * moves it, which is what makes escrow more than a label.
+   */
+  DISPUTED = 'disputed',
   RELEASED = 'released',
   REFUNDED = 'refunded',
+  /** Partially settled: some released, the remainder refunded. */
+  PARTIALLY_SETTLED = 'partially_settled',
   FAILED = 'failed',
+}
+
+/**
+ * Escrow is collected in stages rather than up front, which is how wedding
+ * vendors are actually paid: something to hold the date, something as the
+ * event approaches, and the balance on delivery.
+ */
+export enum PaymentMilestone {
+  ADVANCE = 'advance',
+  SECOND = 'second',
+  FINAL = 'final',
 }
 
 export enum RsvpStatus {
@@ -210,6 +305,62 @@ export enum ShareAudience {
   LINK = 'link',
 }
 
+/** Who a verification request is about. */
+export enum ApplicantType {
+  AGENT = 'agent',
+  VENDOR = 'vendor',
+}
+
+/**
+ * Lifecycle of a verification request.
+ *
+ * NEW and ASSIGNED are administrative; the rest are decisions recorded by the
+ * verifier. ISSUE and ADDITIONAL_REVIEW both block activation without being
+ * outright rejections, which is what the business needs for "we found a
+ * discrepancy" versus "we are not satisfied".
+ */
+export enum VerificationStatus {
+  NEW = 'new',
+  ASSIGNED = 'assigned',
+  IN_PROGRESS = 'in_progress',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  ISSUE = 'issue',
+  ADDITIONAL_REVIEW = 'additional_review',
+}
+
+/** What a support or investigation case is attached to. */
+export enum CaseSubject {
+  AGENT = 'agent',
+  VENDOR = 'vendor',
+  PROFILE = 'profile',
+  MATCH = 'match',
+  BOOKING = 'booking',
+  PAYMENT = 'payment',
+  OTHER = 'other',
+}
+
+export enum CaseStatus {
+  OPEN = 'open',
+  ALLOCATED = 'allocated',
+  IN_PROGRESS = 'in_progress',
+  RESOLVED = 'resolved',
+  REJECTED = 'rejected',
+  ESCALATED = 'escalated',
+  CLOSED = 'closed',
+}
+
+/**
+ * How a case involving money was settled. Recorded on the case AND on the
+ * payment, so a later audit can answer "who decided this, and when".
+ */
+export enum SettlementOutcome {
+  RELEASE = 'release',
+  REFUND = 'refund',
+  PARTIAL = 'partial',
+  NO_ACTION = 'no_action',
+}
+
 /** Whether the profile is discoverable by the wider vetted-agent network. */
 export enum NetworkVisibility {
   /** Only the owning agency, plus anyone explicitly shared with. */
@@ -234,6 +385,34 @@ export const STEWARD_ROLES: readonly UserRole[] = [UserRole.AGENT, UserRole.FAMI
 
 export const isSteward = (role: UserRole | string): boolean =>
   STEWARD_ROLES.includes(role as UserRole);
+
+/**
+ * The full match lifecycle the specification calls for.
+ *
+ * Beyond accept/reject there are four more terminal-ish states, each with a
+ * different meaning for visibility: a WITHDRAWN request never reached the
+ * recipient's decision, an UNMATCHED pair were matched and are no longer,
+ * BLOCKED removes the pair from each other's matching entirely, and REPORTED
+ * additionally raises a case.
+ */
+export enum MatchFixedState {
+  /** Neither side has proposed fixing the match. */
+  NONE = 'none',
+  /** One side has proposed; the other has not yet confirmed. */
+  PENDING_CONFIRMATION = 'pending_confirmation',
+  /** Both sides confirmed. Customer accounts are provisioned from here. */
+  CONFIRMED = 'confirmed',
+}
+
+/** Where an individual user is in the onboarding sequence. */
+export enum OnboardingStage {
+  /** Registered but the mandatory profile fields are incomplete. */
+  PROFILE_INCOMPLETE = 'profile_incomplete',
+  /** Profile complete; matchmaking is open. */
+  MATCHMAKING_ACTIVE = 'matchmaking_active',
+  /** Match fixed; matchmaking closed and services unlocked. */
+  MATCH_FIXED = 'match_fixed',
+}
 
 /** Why a user is allowed to talk to another user outside of a match. */
 export enum ThreadKind {

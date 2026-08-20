@@ -48,6 +48,14 @@ field() { jq -r ".$2 // empty" "$1"; }
 # builds carries a consent block. Defined once and appended to each body below.
 CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","allowsCirculation":true}'
 
+# Phone is the duplicate key for an agency-built profile, and the check is
+# global by design — the same number twice means the same person twice. So the
+# numbers have to be unique per run, or the second run of this suite collides
+# with the first one's data and every downstream check fails for the wrong
+# reason.
+PHONE_BASE=$(date +%s | tail -c 7)
+phone() { echo "+919${PHONE_BASE}$1"; }
+
 
 # Rate-limit counters live in Redis and deliberately survive restarts, so a
 # repeated run inside the same window would trip limits unrelated to what is
@@ -136,7 +144,7 @@ c=$(req POST /vendors "{\"name\":\"Sneaky\",\"category\":\"venue\"}" "$PLANNER")
 check "planner cannot create a vendor listing" "$c" 403
 c=$(req GET /agents/clients "" "$BRIDE")
 check "bride cannot list agent clients" "$c" 403
-c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"+919876500002\",$CONSENT}" "$VENDOR")
+c=$(req POST /agents/profiles "{\"displayName\":\"X\",\"contactEmail\":\"x-$STAMP@t.com\",\"contactPhone\":\"$(phone 002)\",$CONSENT}" "$VENDOR")
 check "vendor cannot build a profile for anyone" "$c" 403
 
 echo
@@ -155,7 +163,7 @@ echo "== 5. Agent stewardship: vetting, profiles, invitations, scoping =="
 c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderabad\"}" "$AGENT")
 check "agent registers their agency" "$c" 200
 AGENCY=$(field /tmp/body id)
-c=$(req POST /agents/profiles "{\"displayName\":\"Too Early\",\"contactEmail\":\"early-$STAMP@t.com\",\"contactPhone\":\"+919876500003\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Too Early\",\"contactEmail\":\"early-$STAMP@t.com\",\"contactPhone\":\"$(phone 003)\",$CONSENT}" "$AGENT")
 check "an unapproved agency cannot build profiles" "$c" 403
 c=$(req PUT "/admin/agents/$AGENCY/approve" "" "$ADMIN")
 check "admin approves the agency" "$c" 200
@@ -166,7 +174,7 @@ c=$(req PUT "/admin/agents/$AGENCY2/approve" "" "$ADMIN")
 check "admin approves the second agency" "$c" 200
 
 # A profile for somebody with no account at all.
-c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"+919876512399\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
 check "agent builds a profile for an account-less person" "$c" 201
 MANAGED=$(field /tmp/body id)
 
@@ -187,6 +195,12 @@ c=$(req GET "/matches/suggestions?profileId=$MANAGED" "" "$AGENT2")
 check "second agent cannot browse as that profile" "$c" 403
 
 # Profile ids for the individuals, since interests are keyed on profiles now.
+# Matchmaking is gated on a completed profile now, so fill both in before
+# anything tries to browse or send an interest.
+PREFS='{"religion":"hindu","community":"kamma","preferredAgeMin":24,"preferredAgeMax":34,"preferredLocations":["Hyderabad"]}'
+req PUT /users/me/profile "{\"displayName\":\"Groom $STAMP\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Bride $STAMP\",\"gender\":\"female\",\"dateOfBirth\":\"1997-07-11\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS}" "$BRIDE" >/dev/null
+
 c=$(req GET /users/me "" "$GROOM")
 GROOM_PROFILE=$(field /tmp/body id)
 c=$(req GET /users/me "" "$BRIDE")
@@ -221,6 +235,37 @@ c=$(req POST /chat/messages "{\"toUserId\":\"$AGENT_ID\",\"body\":\"Hello, can y
 check "independent user messages any agent" "$c" 201
 c=$(req POST /chat/messages "{\"toUserId\":\"$GROOM_ID\",\"body\":\"hi\"}" "$BRIDE")
 check "user cannot message an unmatched individual" "$c" 403
+
+echo
+echo "== 6b. Match Fixed: two confirmations, then the marketplace opens =="
+c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\"}" "$BRIDE")
+check "bride sends the groom an interest" "$c" 201
+FIXED_INTEREST=$(field /tmp/body id)
+c=$(req PUT "/matches/$FIXED_INTEREST/accept" "" "$GROOM")
+check "groom accepts" "$c" 200
+
+# Services are locked until the match is fixed. This is the gate, checked
+# before it opens rather than only after.
+c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$BRIDE_PROFILE\",\"amount\":5000}" "$BRIDE")
+check "services are locked before the match is fixed" "$c" 403
+
+c=$(req PUT "/matches/$FIXED_INTEREST/match-fixed" "" "$BRIDE")
+check "bride confirms her side" "$c" 200
+grep -q '"state":"pending_confirmation"' /tmp/body && { echo "  PASS  one confirmation is not enough"; PASS=$((PASS+1)); } || { echo "  FAIL  one side confirming already fixed the match: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+c=$(req PUT "/matches/$FIXED_INTEREST/match-fixed" "" "$BRIDE")
+check "the same side cannot confirm twice" "$c" 400
+
+c=$(req PUT "/matches/$FIXED_INTEREST/match-fixed" "" "$GROOM")
+check "groom confirms and the match is fixed" "$c" 200
+grep -q '"state":"confirmed"' /tmp/body && { echo "  PASS  both confirmations fix the match"; PASS=$((PASS+1)); } || { echo "  FAIL  match not confirmed: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+
+c=$(req GET /matches/suggestions "" "$BRIDE")
+check "matchmaking closes once the match is fixed" "$c" 403
+c=$(req GET /matches/status "" "$BRIDE")
+check "the dashboard reports the fixed match" "$c" 200
+grep -q '"servicesUnlocked":true' /tmp/body && { echo "  PASS  services report as unlocked"; PASS=$((PASS+1)); } || { echo "  FAIL  services still locked after the fix: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+c=$(req PUT "/matches/$FIXED_INTEREST/unmatch" '{"reason":"changed our minds"}' "$BRIDE")
+check "a fixed match cannot be quietly unmatched" "$c" 400
 
 echo
 echo "== 7. Booking IDOR and escrow lifecycle =="
@@ -267,6 +312,34 @@ echo "== 8. Agent books on behalf of a client =="
 if [ -z "$CLIENT_ID" ]; then
   echo "  NOTE  no claimed client available; skipping on-behalf-of booking checks"
 else
+  # The lock follows the client, not the person clicking, so the agent has to
+  # fix their client's match before booking anything for them. An agency
+  # matching two of its own clients is the ordinary case here, and the agent
+  # confirms both sides because neither client has an account.
+  c=$(req POST /agents/profiles "{\"displayName\":\"Partner $STAMP\",\"contactEmail\":\"partner-$STAMP@t.com\",\"contactPhone\":\"$(phone 005)\",\"gender\":\"male\",\"dateOfBirth\":\"1995-05-05\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+  check "agent builds the counterpart profile" "$c" 201
+  PARTNER=$(field /tmp/body id)
+
+  c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
+  check "agent cannot book for a client with no fixed match" "$c" 403
+
+  c=$(req POST /matches/interest "{\"toProfileId\":\"$PARTNER\",\"profileId\":\"$MANAGED\"}" "$AGENT")
+  check "agent introduces two of their own clients" "$c" 201
+  CLIENT_INTEREST=$(field /tmp/body id)
+  c=$(req PUT "/matches/$CLIENT_INTEREST/accept" "" "$AGENT")
+  check "agent records the acceptance" "$c" 200
+  c=$(req PUT "/matches/$CLIENT_INTEREST/match-fixed" "" "$AGENT")
+  check "agent confirms the first side" "$c" 200
+  c=$(req PUT "/matches/$CLIENT_INTEREST/match-fixed" "" "$AGENT")
+  check "agent confirms the second side" "$c" 200
+  grep -q '"state":"confirmed"' /tmp/body && { echo "  PASS  the agent-brokered match is fixed"; PASS=$((PASS+1)); } || { echo "  FAIL  agent-brokered match not fixed: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+
+  c=$(req GET "/agents/profiles/$MANAGED/charges" "" "$AGENT")
+  check "the agency ledger lists the client's charges" "$c" 200
+  grep -q '"match_settlement"' /tmp/body && { echo "  PASS  the success fee is raised when the match is fixed"; PASS=$((PASS+1)); } || { echo "  FAIL  no settlement fee raised: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+  c=$(req GET "/agents/profiles/$MANAGED/charges" "" "$AGENT2")
+  check "another agency cannot read those charges" "$c" 403
+
   c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
   check "agent books for their client" "$c" 201
   grep -q "\"userId\":\"$CLIENT_ID\"" /tmp/body && { echo "  PASS  booking is owned by the client"; PASS=$((PASS+1)); } || { echo "  FAIL  booking not owned by client"; FAIL=$((FAIL+1)); }

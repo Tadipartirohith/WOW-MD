@@ -49,6 +49,34 @@ export class Vendor {
   @Column({ type: 'int', default: 0 })
   ratingCount: number;
 
+  // ------------------------------------------------------------- compliance
+  //
+  // A wedding vendor invoices real money against real events, so the platform
+  // holds the registration details it would need to answer for that: the GST
+  // number it charges tax under, the PAN behind the business, and the address
+  // the verification officer actually visits.
+
+  @Index({ unique: true, where: '"gstNumber" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 15, nullable: true })
+  gstNumber: string | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  panNumber: string | null;
+
+  /** Company / firm registration number, where the business has one. */
+  @Column({ type: 'varchar', nullable: true })
+  registrationNumber: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  registeredAddress: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  contactPhone: string | null;
+
+  /** Uploaded certificates and licences, as media URLs. */
+  @Column({ type: 'jsonb', default: [] })
+  complianceDocuments: string[];
+
   @Index()
   @Column({ default: false })
   isApproved: boolean;

@@ -1,10 +1,11 @@
 # Self-review
 
-Three rounds of work are recorded here. Round 1 introduced the personas and
+Four rounds of work are recorded here. Round 1 introduced the personas and
 RBAC; round 2 closed every gap round 1 listed and added agent-built profiles
 with email invitations; round 3 reworked intake and built circulation after the
-domain correction below. The last two sections are what is *still* missing,
-and what was left undone on purpose.
+domain correction below; round 4 implemented the Phase 1 specification —
+In-Person verification, Match Fixed, and money that follows outcomes. The last
+two sections are what is *still* missing, and what was left undone on purpose.
 
 ---
 
@@ -257,13 +258,61 @@ uses, which is a trap for the next person.
 
 ---
 
+## E. Round 4 — the Phase 1 specification
+
+Full treatment in [PHASE-1-OPERATIONS.md](PHASE-1-OPERATIONS.md). The short
+version, and what each piece cost:
+
+| Built | The decision behind it |
+| --- | --- |
+| **In-Person verification** | Registration stops granting access. `in_person` is a role with the narrowest permission row on the platform, created only by an admin, and an officer cannot allocate their own work. |
+| **Support cases** | Raising one against a booking freezes the escrow *and* the booking together, and only a recorded settlement moves either. That is what makes escrow a control rather than a label. |
+| **Match Fixed** | Two confirmations, one per side. The second provisions accounts, closes matchmaking, settles the agency and unlocks services. One account may hold both sides — an agency matching two of its own clients is ordinary here. |
+| **Forced password reset** | A provisioned account can reach exactly one route until it replaces the emailed password, enforced by a global guard and a decorator rather than a path list. |
+| **Agency fees** | Profile fee and success fee, both held in escrow until the outcome they were charged for happened. |
+| **Vendor compliance and calendar** | GST/PAN/registered address, and a capacity check that runs inside the confirming transaction with the row locked — double-booking is the one failure a wedding vendor cannot recover from. |
+| **Quotations** | A wedding cannot be priced from a listing. Re-quoting supersedes rather than edits, and line items must add up. |
+| **Escrow milestones** | 30/30/40, paid in order, balance computed as the remainder so rounding never loses a rupee. The three percentages must total 100 or the app refuses to boot. |
+| **Identity** | HMAC under a server-side pepper with a unique index. The number itself is never stored — a plain hash of a 12-digit number is reversible in minutes. |
+| **Chat redaction** | Contact details stripped before storage, not on render. A number that reached the database has already leaked. |
+| **Profile lifecycle** | Pause and close, neither of which deletes anything: consent records and circulation history have to outlive the search. |
+
+### E1. Defects this round found in existing code
+
+- **A password change did not end sessions.** Refresh sessions were revoked but
+  access tokens kept working for their full 15 minutes. Fixed with a
+  `tokenVersion` counter minted into every token — a first attempt compared the
+  token's issue time against `passwordChangedAt`, which flaked once under a
+  clock that moved backwards, and two clocks only have to disagree once.
+- **Match notifications had been failing silently.** The consumer still expected
+  user ids after matchmaking moved to profile ids, so every match notification
+  died on a not-null violation in a swallowed catch. It now resolves a profile
+  to its owner, or to the steward who runs it when there is no account.
+- **A duplicate GST number produced a 500.** Now a conflict, with a message that
+  says which field.
+
+### E2. What round 4 did not close
+
+- **SMS, still.** It has now cost something concrete: a walk-in client with no
+  email address cannot be handed an account when their match is fixed, so the
+  agent keeps operating the profile indefinitely.
+- **Officer geography.** `region` is recorded and then ignored by allocation.
+- **Milestone reminders.** Instalments are enforced in order but nobody is
+  chased for the balance.
+
+---
+
 ## Deliberate non-goals
 
 - **Kept the modulith.** Module boundaries are clean enough to extract later.
 - **Kept the mock payment/AI/media providers.** Swapping them needs real
   credentials and is an environment decision.
-- **Did not renumber migrations.** Phase 3 and Phase 4 are additive and
-  reversible, so existing environments migrate forward cleanly.
+- **Did not renumber migrations.** Phases 3 to 6 are additive and reversible,
+  so existing environments migrate forward cleanly.
+- **Represented the spec's "Quotation Accepted" and "Payment Pending" as two
+  real states.** Acceptance walks the booking through both in one request, so
+  the intermediate state is short-lived — but it is a state the machine can be
+  interrupted in, and collapsing it would have lost that.
 - **`interests` migration drops unresolvable rows.** Moving from user ids to
   profile ids, any interest whose profile could not be resolved is deleted
   rather than guessed at. On a real deployment, check the row count first.

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PermissionValue, UserRole } from '../lib/permissions';
+import type { OnboardingStage, PermissionValue, UserRole } from '../lib/permissions';
 
 export interface AuthUser {
   id: string;
@@ -10,6 +10,13 @@ export interface AuthUser {
   isVerified: boolean;
   mfaEnabled: boolean;
   permissions: PermissionValue[];
+  /**
+   * True for an account the platform created after a match was fixed, until the
+   * emailed temporary password is replaced. Every route but the reset itself is
+   * refused server-side while this holds, so the app routes straight there.
+   */
+  mustResetPassword?: boolean;
+  onboardingStage?: OnboardingStage;
 }
 
 interface AuthState {

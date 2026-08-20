@@ -27,6 +27,9 @@ export class AppConfigService {
   get auth() {
     return this.section('auth');
   }
+  get features() {
+    return this.section('features');
+  }
   get security() {
     return this.section('security');
   }
