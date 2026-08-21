@@ -36,6 +36,17 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   emailVerifiedAt: Date | null;
 
+  /**
+   * When the mobile number was confirmed reachable.
+   *
+   * Distinct from `isVerified`, which is about the email address. In this
+   * market the number is the one people actually answer, and it is already
+   * treated as the identity key for duplicate detection — so it is worth
+   * knowing whether it is real.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  phoneVerifiedAt: Date | null;
+
   /** Soft disable: a steward can deactivate a client, admin can suspend anyone. */
   @Column({ default: true })
   isActive: boolean;

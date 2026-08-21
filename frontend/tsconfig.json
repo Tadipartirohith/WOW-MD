@@ -17,5 +17,9 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
+  // Tests read the backend's enum off disk to check the mirror below it, which
+  // needs Node's types. The app bundle must not carry either, so the test files
+  // are compiled by tsconfig.test.json instead.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

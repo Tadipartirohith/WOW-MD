@@ -151,7 +151,7 @@ no.
 | --- | --- | --- | --- |
 | ENH-01 | Dashboard: role, completion, locked-state guidance | done | With live counters per persona. |
 | ENH-11 | Matches: filters, recently added, recommendations ≥ 50% | done | Eleven filters over indexed columns; recommendations are floored at 50 and return fewer rows rather than padding. |
-| ENH-12 | Chat dashboard, presence, in-app calling, number blocking | partial | Dashboard, unread counts, read receipts and presence are done. Number blocking is the existing redaction, applied before the write. **In-app calling is deferred** — see below. |
+| ENH-12 | Chat dashboard, presence, in-app calling, number blocking | done | Dashboard, unread counts, read receipts, presence and **in-app voice and video** — WebRTC signalling over the existing socket, media peer-to-peer. Number blocking is the existing redaction, applied before the write. A call that cannot traverse NAT says so; see the TURN note below. |
 | ENH-13 | Honeymoon packages | done | Browse by budget and nights across destinations; picking one seeds an itinerary with a day per night. |
 | ENH-14 | Marriage events management | done | Amend and remove; removal is refused while vendors are booked against the day. |
 | ENH-15 | Event-specific vendor selection | done | A booking carries its event; each day lists who is booked for it. |
@@ -163,9 +163,19 @@ no.
 Two items need something the platform does not have yet. Both are named rather
 than quietly dropped:
 
-- **In-app calling (part of ENH-12)** needs a WebRTC signalling service and TURN
-  relays, or a telephony provider with masked numbers. It is a service
-  procurement decision, not a coding one.
+- **TURN relays for the tail of calls (part of ENH-12).** Calling is built and
+  works peer-to-peer, which covers most home and mobile networks. A symmetric
+  NAT on either side needs a relay, and a relay costs money because it carries
+  the audio. `TURN_URL` and its credentials are read from the environment and
+  handed to the client on the offer, so enabling it is a deployment change.
+- **Real escrow payout.** `RazorpayPaymentProvider.release` logs rather than
+  transferring. Needs Razorpay Route, linked accounts, and per-vendor KYC. The
+  commission split is computed and recorded correctly throughout; nothing moves
+  until Route is configured.
+- **Geography-aware officer allocation.** `region` is recorded on an officer and
+  allocation still ranks purely by open workload. Doing it properly needs a
+  service-area model that does not exist, and guessing at one would allocate
+  worse than ignoring geography does.
 - **Live Aadhaar verification** runs against a mock provider today. The
   interface, the OTP session, the hashing and the one-document-one-profile rule
   are all real and tested; `AADHAAR_PROVIDER=licensed` switches to a live

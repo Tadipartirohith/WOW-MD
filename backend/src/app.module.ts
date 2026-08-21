@@ -11,12 +11,13 @@ import { KafkaModule } from './platform/messaging/kafka.module';
 import { EventsModule } from './platform/events/events.module';
 import { HealthModule } from './platform/health/health.module';
 import { MailModule } from './platform/mail/mail.module';
+import { SmsModule } from './platform/sms/sms.module';
+import { JobsModule } from './platform/jobs/jobs.module';
 import { AuditModule } from './platform/audit/audit.module';
 import { ThrottlingModule } from './platform/throttling/throttling.module';
 import { RedisThrottlerStorage } from './platform/throttling/redis-throttler.storage';
 import { AccountThrottlerGuard } from './platform/throttling/account-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
-import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { PasswordResetGuard } from './common/guards/password-reset.guard';
 
@@ -76,6 +77,8 @@ import { AiModule } from './modules/ai/ai.module';
     EventsModule,
     HealthModule,
     MailModule,
+    SmsModule,
+    JobsModule,
     AuditModule,
 
     AuthModule,
@@ -105,7 +108,6 @@ import { AiModule } from './modules/ai/ai.module';
     // Runs before the role and capability checks: an account still holding an
     // emailed temporary password gets no further than the reset screen.
     { provide: APP_GUARD, useClass: PasswordResetGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
     // Capability check runs last, after authentication and coarse role checks.
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

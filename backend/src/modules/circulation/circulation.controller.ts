@@ -171,6 +171,16 @@ export class CirculationController {
 
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Profiles other agents or agencies have shared with you' })
+  @ApiOperation({
+    summary: 'Did circulating this profile lead anywhere?',
+    description:
+      'Shares, opens and what came of them. "Opened but silent" is the number worth acting on.',
+  })
+  @Get('profiles/:id/reach')
+  reach(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sharing.reach(actor, id);
+  }
+
   @Get('shared-with-me')
   async sharedWithMe(@CurrentUser() actor: AuthUser) {
     const rows = await this.sharing.sharedWithMe(actor);

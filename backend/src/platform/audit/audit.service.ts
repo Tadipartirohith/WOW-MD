@@ -70,6 +70,18 @@ export const AuditAction = {
   BOOKING_ESCROW_REFUNDED: 'booking.escrow_refunded',
   PAYMENT_WEBHOOK_RECEIVED: 'payment.webhook_received',
   PAYMENT_WEBHOOK_REJECTED: 'payment.webhook_rejected',
+  /**
+   * The gateway and our record contradict each other. Recorded rather than
+   * corrected: money moving on a schedule with nobody in the loop is how a
+   * reconciliation job becomes the incident.
+   */
+  PAYMENT_RECONCILIATION_MISMATCH: 'payment.reconciliation_mismatch',
+
+  PROFILE_CLAIM_REQUESTED: 'profile.claim_requested',
+  DATA_EXPORTED: 'data.exported',
+  DATA_ERASED: 'data.erased',
+  AUTH_MFA_RECOVERY_USED: 'auth.mfa_recovery_used',
+  AUTH_MFA_RECOVERY_REGENERATED: 'auth.mfa_recovery_regenerated',
 
   USER_SUSPENDED: 'user.suspended',
   USER_REINSTATED: 'user.reinstated',
@@ -94,6 +106,22 @@ export interface AuditInput {
  * describes. Pass a transaction manager when the action itself is
  * transactional, so the trail commits or rolls back with it.
  */
+/**
+ * The events worth an alert rather than a row.
+ *
+ * Kept deliberately short. An alert list that includes everything interesting
+ * is a list nobody reads, and the two that genuinely matter are money moving
+ * out of escrow and somebody losing their account.
+ */
+const ALERTABLE = new Set<string>([
+  AuditAction.BOOKING_ESCROW_RELEASED,
+  AuditAction.BOOKING_ESCROW_REFUNDED,
+  AuditAction.USER_SUSPENDED,
+  AuditAction.CASE_SETTLED,
+  AuditAction.PAYMENT_RECONCILIATION_MISMATCH,
+  AuditAction.AUTH_MFA_RECOVERY_USED,
+]);
+
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name);
@@ -116,9 +144,38 @@ export class AuditService {
           ip: input.ip ?? null,
         }),
       );
+      this.alert(input);
     } catch (err) {
       this.logger.error(`Failed to write audit event ${input.action}`, err as Error);
     }
+  }
+
+  /**
+   * Raises the handful of events somebody should hear about immediately.
+   *
+   * The trail was write-only in practice: everything was recorded, nothing was
+   * watched, and the two events actually worth waking somebody for — money
+   * leaving escrow, and an account being suspended — sat in a table alongside
+   * every routine login.
+   *
+   * This emits a structured `warn`, which is what a log-based alerting rule
+   * keys on. Doing more from inside the request would mean an outbound call on
+   * the path of the very action being audited, and a paging provider that is
+   * having a bad day should never be able to fail an escrow release.
+   */
+  private alert(input: AuditInput): void {
+    if (!ALERTABLE.has(input.action)) return;
+
+    this.logger.warn(
+      JSON.stringify({
+        alert: input.action,
+        actorUserId: input.actor?.userId ?? null,
+        actorRole: input.actor?.role ?? null,
+        resourceType: input.resourceType ?? null,
+        resourceId: input.resourceId ?? null,
+        metadata: input.metadata ?? {},
+      }),
+    );
   }
 
   async list(

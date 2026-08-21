@@ -42,6 +42,12 @@ export class AppConfigService {
   get mail() {
     return this.section('mail');
   }
+  get webrtc() {
+    return this.section('webrtc');
+  }
+  get sms() {
+    return this.section('sms');
+  }
   get matchmaking() {
     return this.section('matchmaking');
   }

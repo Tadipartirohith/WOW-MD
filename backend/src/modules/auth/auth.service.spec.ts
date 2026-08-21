@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { SessionsService } from './sessions.service';
+import { MfaRecoveryCode } from './entities/mfa-recovery-code.entity';
 import { User } from './entities/user.entity';
 import { EmailToken } from './entities/email-token.entity';
 import { Profile } from '../users/entities/profile.entity';
@@ -32,6 +33,17 @@ describe('AuthService', () => {
     create: jest.fn((x) => x),
     save: jest.fn(async (x) => ({ id: 'tok-1', ...x })),
     findOne: jest.fn(),
+  };
+  /**
+   * Recovery codes. Only the shape the service touches — nothing here exercises
+   * them, so an empty `find` is the honest stub: no codes issued, none to spend.
+   */
+  const recoveryRepo = {
+    create: jest.fn((x) => x),
+    save: jest.fn(async (x) => x),
+    find: jest.fn(async () => []),
+    count: jest.fn(async () => 0),
+    delete: jest.fn(async () => ({ affected: 0 })),
   };
   const jwt = {
     signAsync: jest.fn(async () => 'signed.jwt.token'),
@@ -75,6 +87,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: repo },
         { provide: getRepositoryToken(Profile), useValue: profileRepo },
         { provide: getRepositoryToken(EmailToken), useValue: emailTokenRepo },
+        { provide: getRepositoryToken(MfaRecoveryCode), useValue: recoveryRepo },
         { provide: JwtService, useValue: jwt },
         { provide: AppConfigService, useValue: cfg },
         { provide: SessionsService, useValue: sessions },

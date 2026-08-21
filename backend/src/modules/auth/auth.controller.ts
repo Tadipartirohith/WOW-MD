@@ -17,6 +17,7 @@ import type { Request, Response } from 'express';
 import { AuthService, AuthResult } from './auth.service';
 import { SessionsService } from './sessions.service';
 import { InvitationsService } from '../invitations/invitations.service';
+import { PhoneVerificationService } from './phone-verification.service';
 import {
   AcceptInvitationDto,
   ChangePasswordDto,
@@ -27,7 +28,9 @@ import {
   RegisterDto,
   RequestPasswordResetDto,
   ResetPasswordDto,
+  RegenerateRecoveryCodesDto,
   VerifyEmailDto,
+  VerifyPhoneDto,
 } from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
@@ -44,6 +47,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly sessions: SessionsService,
     private readonly invitations: InvitationsService,
+    private readonly phones: PhoneVerificationService,
     private readonly cfg: AppConfigService,
   ) {}
 
@@ -190,8 +194,55 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const user = await this.invitations.accept(dto.token, dto.password);
+    const user = await this.invitations.accept(dto.token, dto.password, dto.email);
     return this.respond(res, await this.auth.issueTokens(user, this.ctx(req)));
+  }
+
+  @ApiOperation({
+    summary: 'How many recovery codes are left',
+    description: 'Worth showing before somebody runs out and has nothing to fall back on.',
+  })
+  @Get('mfa/recovery-codes')
+  recoveryCodeCount(@CurrentUser('userId') userId: string) {
+    return this.auth.recoveryCodeCount(userId);
+  }
+
+  @ApiOperation({
+    summary: 'Issue a fresh set of recovery codes',
+    description:
+      'Invalidates the previous set. Password only — asking for an authenticator code would ' +
+      'defeat the purpose for the person who has lost theirs.',
+  })
+  @HttpCode(200)
+  @Post('mfa/recovery-codes')
+  regenerateRecoveryCodes(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: RegenerateRecoveryCodesDto,
+  ) {
+    return this.auth.regenerateRecoveryCodes(userId, dto.password);
+  }
+
+  // ------------------------------------------------------ phone verification
+
+  /**
+   * Sends a code to the number on the account.
+   *
+   * Rate-limited hard: each request costs real money to send, and a loop here
+   * would be somebody else's phone ringing.
+   */
+  @Throttle({ default: { limit: 3, ttl: 300000 } })
+  @ApiOperation({ summary: 'Send a verification code to your mobile number' })
+  @Post('phone/send-code')
+  sendPhoneCode(@CurrentUser('userId') userId: string) {
+    return this.phones.request(userId);
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 300000 } })
+  @ApiOperation({ summary: 'Confirm the code and mark the number verified' })
+  @HttpCode(200)
+  @Post('phone/verify')
+  verifyPhone(@CurrentUser('userId') userId: string, @Body() dto: VerifyPhoneDto) {
+    return this.phones.confirm(userId, dto.code);
   }
 
   // ---------------------------------------------------------------- sessions
@@ -337,6 +388,15 @@ export class AuthController {
   /** What the signed-in caller is allowed to do; used to shape the client nav. */
   @ApiBearerAuth()
   @AllowDuringPasswordReset()
+  @ApiOperation({
+    summary: 'The signed-in account',
+    description: 'The account, not the marriage profile — a vendor has one and not the other.',
+  })
+  @Get('me')
+  me(@CurrentUser('userId') userId: string) {
+    return this.auth.me(userId);
+  }
+
   @Get('me/permissions')
   myPermissions(@CurrentUser() user: AuthUser) {
     return { role: user.role, permissions: permissionsFor(user.role) };

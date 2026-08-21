@@ -223,7 +223,7 @@ uneventful.
 
 ### 2.1 Module map
 
-Nineteen domain modules and nine platform modules. Platform modules are
+Nineteen domain modules and eleven platform modules. Platform modules are
 global — any domain module can inject audit or mail without re-importing a
 transport.
 
@@ -257,6 +257,8 @@ transport.
 | --- | --- |
 | `audit` | Append-only privileged-action trail |
 | `mail` | log / smtp providers, templates |
+| `sms` | log / http providers. Phone-first intake made this the channel that actually reaches a family |
+| `jobs` | Scheduled maintenance: session pruning, payment reconciliation, milestone reminders, consent-lapse de-listing, retention purges |
 | `throttling` | Redis storage, per-account tracker |
 | `redis` | Cache-aside helper, raw client |
 | `events` | Transactional outbox + processor |
@@ -469,7 +471,7 @@ sequenceDiagram
 
 ### 3.1 Data model
 
-40 application tables across 40 entities. The core cluster is shown below; the
+43 application tables across 43 entities. The core cluster is shown below; the
 marketplace, planning and media clusters hang off `users` in the same way.
 
 ```mermaid
@@ -497,9 +499,9 @@ Note the two distinct `users → profiles` edges: ownership and stewardship.
 
 | Cluster | Tables | Notes |
 | --- | --- | --- |
-| Identity | `users`, `profiles`, `refresh_sessions`, `email_tokens` | `profiles.userId` nullable with a partial unique index; sessions carry a `familyId` for reuse detection |
+| Identity | `users`, `profiles`, `refresh_sessions`, `email_tokens`, `phone_verifications`, `mfa_recovery_codes` | `profiles.userId` nullable with a partial unique index; sessions carry a `familyId` for reuse detection. Verification codes are hashed and attempt-limited; recovery codes are bcrypt, because they are as good as a password |
 | Biodata | `profile_details`, `profile_siblings`, `profile_assets`, `identity_otp_sessions` | One row per profile, saved a section at a time. Filterable answers sit in indexed columns; the rest is grouped jsonb. Assets are private unless individually marked visible. An Aadhaar number is never stored — only an HMAC under a pepper and the last four digits |
-| Stewardship | `agent_profiles`, `invitations` | Agency approval gate; hashed single-use claim tokens |
+| Stewardship | `agent_profiles`, `invitations`, `profile_claim_requests` | Agency approval gate; hashed single-use claim tokens. `invitations.email` is nullable, so an invitation can go out by SMS alone. A claim request is how an agent reaches somebody who signed up before they could be invited — the agent asks, the subject decides |
 | Circulation | `profile_consents`, `profile_shares`, `proposal_notes` | Append-only consent; shares carry view counts and a revoke timestamp |
 | Matchmaking | `interests`, `conversations`, `messages` | Interests are profile-keyed; chat is account-keyed |
 | Marketplace | `vendors`, `planner_profiles`, `vendor_reviews`, `vendor_availability_slots`, `bookings`, `payments`, `disputes` | Payments hold the commission split and an idempotency key. A slot is a time window on a date, reserved under a row lock inside the booking transaction |
@@ -742,6 +744,36 @@ other side does is ask and the agent has nothing to say.
 Both are computed from what is stored rather than tracked as flags, so neither
 can drift from the truth. Identity verification is excluded from both: it runs
 on its own track and should never hold up an introduction.
+
+#### Scheduled work, and why none of it corrects anything
+
+Five jobs run on a timer, in `platform/jobs`. Each is idempotent, because cron
+runs on every replica and coordinating them would be more machinery than the
+work is worth: deletes key on a timestamp, updates are conditional, and nothing
+is written twice in a way that matters.
+
+The reconciliation job is the one worth explaining. It compares each payment's
+recorded status against what the gateway last reported and raises a mismatch —
+and stops there. It would be easy to make it correct the divergence, and that
+would be a mistake: an automated process that moves money on a schedule with
+nobody watching turns one bad gateway response into a hundred wrong refunds
+before anybody notices. Raising it costs a human five minutes and cannot cause
+an incident.
+
+#### Calling, and what it deliberately does not do
+
+Voice and video are WebRTC. The server carries the offer, the answer and the ICE
+candidates, and then gets out of the way — the media goes browser to browser.
+That is the whole architecture, and it is chosen for cost: a relay carrying
+every call's audio is a bandwidth bill that scales with usage rather than with
+revenue.
+
+The honest consequence is that some calls will not connect. A symmetric NAT on
+either side needs a TURN relay, which costs money precisely because it *does*
+carry the audio. The ICE configuration is handed to the client on the offer, so
+adding TURN later is an environment variable rather than a change here. Until
+then a call that cannot traverse says so plainly rather than ringing forever,
+which is the difference between a limitation and a bug.
 
 ### 3.7 Configuration
 

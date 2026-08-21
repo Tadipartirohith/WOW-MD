@@ -132,6 +132,18 @@ export const configValidationSchema = Joi.object({
 
   // Mail
   MAIL_PROVIDER: Joi.string().valid('log', 'smtp').default('log'),
+  POOL_QUOTA_PER_AGENCY: Joi.number().min(1).max(10000).default(50),
+  STUN_URLS: Joi.string().allow('').optional(),
+  TURN_URL: Joi.string().allow('').optional(),
+  TURN_USERNAME: Joi.string().allow('').optional(),
+  TURN_CREDENTIAL: Joi.string().allow('').optional(),
+  SMS_PROVIDER: Joi.string().valid('log', 'http').default('log'),
+  SMS_URL: Joi.string().allow('').optional(),
+  SMS_API_KEY: Joi.string().allow('').optional(),
+  SMS_SENDER_ID: Joi.string().allow('').optional(),
+  SMS_TEMPLATE_ID: Joi.string().allow('').optional(),
+  SMS_TIMEOUT_MS: Joi.number().min(1000).max(30000).default(8000),
+  PHONE_VERIFY_TTL_MINUTES: Joi.number().min(1).max(60).default(10),
   MAIL_FROM: Joi.string().allow('').optional(),
   SMTP_HOST: Joi.string().allow('').optional(),
   SMTP_PORT: Joi.number().default(587),

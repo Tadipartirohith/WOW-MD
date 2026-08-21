@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, IsNull, Repository } from 'typeorm';
 import { ProfileShare } from './entities/profile-share.entity';
+import { Interest } from '../matchmaking/entities/interest.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
@@ -25,6 +26,7 @@ import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
 import {
   NetworkVisibility,
   ProfileVisibility,
+  InterestStatus,
   ShareAudience,
   UserRole,
   isIndividual,
@@ -66,6 +68,7 @@ export class SharingService {
     private readonly consent: ConsentService,
     private readonly details: ProfileDetailsService,
     private readonly cfg: AppConfigService,
+    @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     private readonly audit: AuditService,
   ) {}
 
@@ -271,6 +274,10 @@ export class SharingService {
         ? await this.circulatable(actor, profileId)
         : await this.controlled(actor, profileId);
 
+    if (dto.visibility === NetworkVisibility.POOL) {
+      await this.assertPoolQuota(actor, profileId);
+    }
+
     profile.networkVisibility = dto.visibility;
     profile.pooledAt = dto.visibility === NetworkVisibility.POOL ? new Date() : null;
     const saved = await this.profiles.save(profile);
@@ -285,6 +292,84 @@ export class SharingService {
       resourceId: profileId,
     });
     return saved;
+  }
+
+  /**
+   * A ceiling on how much of the pool any one agency can be.
+   *
+   * The pool is a shared resource: every approved agency browses it, and
+   * nothing stopped one from putting its entire book into it and drowning
+   * everybody else's. A quota is a blunt instrument, but the alternative — a
+   * quality score — is a judgement the platform is not in a position to make
+   * about somebody else's clients.
+   *
+   * Admins are exempt, because an admin re-listing during a support call is not
+   * the behaviour this guards against.
+   */
+  private async assertPoolQuota(actor: AuthUser, profileId: string): Promise<void> {
+    if (actor.role === UserRole.ADMIN) return;
+
+    const already = await this.profiles.count({
+      where: {
+        managedByUserId: actor.userId,
+        networkVisibility: NetworkVisibility.POOL,
+      },
+    });
+    // Re-pooling something already in the pool is a no-op, not a new entry.
+    const current = await this.profiles.findOne({ where: { id: profileId } });
+    if (current?.networkVisibility === NetworkVisibility.POOL) return;
+
+    const limit = this.cfg.matchmaking.poolQuotaPerAgency;
+    if (already >= limit) {
+      throw new BadRequestException(
+        `You have ${already} profiles in the network pool, which is the limit of ${limit}. ` +
+          `Take one out before adding another.`,
+      );
+    }
+  }
+
+  /**
+   * Did circulating this profile lead anywhere?
+   *
+   * An agency could already see who held a profile and whether a link had been
+   * opened, but not whether any of it produced anything — which is the only
+   * question an agent actually has about their own circulation. Opened-but-
+   * silent is the interesting number here: it means the biodata is reaching
+   * people and being passed over, which is a different problem from nobody
+   * looking at it.
+   */
+  async reach(actor: AuthUser, profileId: string) {
+    const profile = await this.controlled(actor, profileId);
+
+    const shares = await this.shares.find({ where: { profileId: profile.id } });
+    const live = shares.filter((share) => !share.revokedAt);
+    const opened = live.filter((share) => share.viewCount > 0);
+
+    // An interest in either direction with somebody the profile was shared to
+    // is the outcome circulation exists to produce.
+    const interests = await this.interests.find({
+      where: [{ fromProfileId: profile.id }, { toProfileId: profile.id }],
+    });
+    const accepted = interests.filter((i) => i.status === InterestStatus.ACCEPTED);
+
+    return {
+      profileId: profile.id,
+      shared: shares.length,
+      live: live.length,
+      revoked: shares.length - live.length,
+      opened: opened.length,
+      totalViews: live.reduce((sum, share) => sum + share.viewCount, 0),
+      /** Reached somebody who then never came back. The number worth acting on. */
+      openedButSilent: Math.max(0, opened.length - interests.length),
+      interests: interests.length,
+      accepted: accepted.length,
+      byAudience: Object.fromEntries(
+        Object.values(ShareAudience).map((audience) => [
+          audience,
+          live.filter((share) => share.audience === audience).length,
+        ]),
+      ),
+    };
   }
 
   private async controlled(actor: AuthUser, profileId: string): Promise<Profile> {

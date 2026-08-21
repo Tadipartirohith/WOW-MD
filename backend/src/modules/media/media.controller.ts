@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { MediaService } from './media.service';
 import { AddMediaItemDto, CreateAlbumDto, PresignDto } from './dto/media.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -34,6 +34,24 @@ export class MediaController {
     @Param('id', ParseUUIDPipe) _id: string,
     @Body() dto: PresignDto,
   ) {
+    return this.media.presignUpload(userId, dto.filename);
+  }
+
+  /**
+   * An upload slot for a profile photograph.
+   *
+   * Separate from the album route because the two are different permissions and
+   * different owners: albums belong to the couple and need `MEDIA_MANAGE_OWN`,
+   * which an agent does not hold — yet an agent sets profile photographs for
+   * every client on their books.
+   * Without this the profile editors could only take a URL, so an agent had to
+   * upload somewhere else first and paste a link back in.
+   */
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.PROFILE_MANAGE_OWN)
+  @ApiOperation({ summary: 'Get an upload URL for a profile photograph' })
+  @Post('profile-photo/presign')
+  presignProfilePhoto(@CurrentUser('userId') userId: string, @Body() dto: PresignDto) {
     return this.media.presignUpload(userId, dto.filename);
   }
 

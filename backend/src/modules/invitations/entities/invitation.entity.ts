@@ -8,7 +8,7 @@ import {
 import { InvitationStatus } from '../../../common/enums';
 
 /**
- * An email invitation to claim a steward-built profile.
+ * An invitation to claim a steward-built profile, by email, SMS or both.
  *
  * Only the SHA-256 of the token is stored, so a database leak does not hand an
  * attacker working invitation links. The plaintext exists exactly once, in the
@@ -23,10 +23,16 @@ export class Invitation {
   @Column('uuid')
   profileId: string;
 
-  /** Where the invite was sent, captured at send time. */
+  /**
+   * Where the invite was sent, captured at send time.
+   *
+   * Nullable, because intake is phone-first: a walk-in family often gives a
+   * number and nothing else, and the invitation goes out by SMS alone. The
+   * address is then collected when they claim the account.
+   */
   @Index()
-  @Column()
-  email: string;
+  @Column({ type: 'varchar', nullable: true })
+  email: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;

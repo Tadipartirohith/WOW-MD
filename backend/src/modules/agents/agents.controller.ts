@@ -14,6 +14,7 @@ import { AgentsService } from './agents.service';
 import { AgencyService } from './agency.service';
 import { ManagedProfilesService } from './managed-profiles.service';
 import { AgentBillingService } from './agent-billing.service';
+import { ProfileClaimsService } from './profile-claims.service';
 import { EndEngagementDto } from './dto/lifecycle.dto';
 import { InvitationsService } from '../invitations/invitations.service';
 import { ClientSearchDto, UpdateClientStatusDto } from './dto/agent.dto';
@@ -23,6 +24,7 @@ import {
   CreateManagedProfileDto,
   ManagedProfileSearchDto,
   UpdateManagedProfileDto,
+  RequestProfileClaimDto,
 } from './dto/managed-profile.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -38,6 +40,7 @@ export class AgentsController {
     private readonly managed: ManagedProfilesService,
     private readonly agentBilling: AgentBillingService,
     private readonly invitations: InvitationsService,
+    private readonly claims: ProfileClaimsService,
   ) {}
 
   // ------------------------------------------------------------- the agency
@@ -233,6 +236,31 @@ export class AgentsController {
   @Delete('invitations/:id')
   revokeInvitation(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.invitations.revoke(actor, id);
+  }
+
+  // --------------------------------------------------------- claim requests
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
+  @ApiOperation({
+    summary: 'Ask an existing account to take a profile you built for them',
+    description:
+      'For the case where the subject signed up on their own after you built their profile, so ' +
+      'an invitation is refused as a duplicate. They decide, not you.',
+  })
+  @Post('profiles/:id/claim-request')
+  requestClaim(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RequestProfileClaimDto,
+  ) {
+    return this.claims.request(actor, id, dto.message);
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
+  @ApiOperation({ summary: 'Claim requests you have sent' })
+  @Get('claim-requests/sent')
+  sentClaims(@CurrentUser() actor: AuthUser) {
+    return this.claims.listForRequester(actor);
   }
 
   // ------------------------------------------------------- the book of business

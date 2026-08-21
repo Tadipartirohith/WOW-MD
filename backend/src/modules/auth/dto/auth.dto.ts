@@ -112,12 +112,23 @@ export class LoginDto {
   @MaxLength(128)
   password: string;
 
-  /** Required only once the account has two-factor enabled. */
-  @ApiPropertyOptional({ example: '123456', description: 'TOTP code, when MFA is enabled' })
+  /**
+   * Required once the account has two-factor enabled.
+   *
+   * Accepts either the six digits from the authenticator or one of the longer
+   * recovery codes, which is the whole point of recovery codes — somebody who
+   * has lost their phone has to be able to type one into this same field.
+   */
+  @ApiPropertyOptional({
+    example: '123456',
+    description: 'TOTP code, or a recovery code, when MFA is enabled',
+  })
   @IsOptional()
   @IsString()
-  @Length(6, 6, { message: 'The authentication code is 6 digits' })
-  @Matches(/^\d{6}$/, { message: 'The authentication code is 6 digits' })
+  @Length(6, 32)
+  @Matches(/^([0-9]{6}|[A-Za-z0-9][A-Za-z0-9\s-]{7,31})$/, {
+    message: 'Enter the 6-digit code from your authenticator, or a recovery code',
+  })
   mfaCode?: string;
 }
 
@@ -204,8 +215,25 @@ export class DisableMfaDto {
  * Accepting an invitation: the subject sets their OWN password, so the steward
  * who created the profile never knows the credentials.
  */
+/** Regenerating recovery codes needs the password, and nothing else. */
+export class RegenerateRecoveryCodesDto {
+  @ApiProperty({ minLength: 8, maxLength: 128 })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  password: string;
+}
+
+/** The six digits that came by SMS. */
+export class VerifyPhoneDto {
+  @ApiProperty({ example: '482910' })
+  @IsString()
+  @Matches(/^[0-9]{6}$/, { message: 'The code is 6 digits' })
+  code: string;
+}
+
 export class AcceptInvitationDto {
-  @ApiProperty({ description: 'Token from the invitation email' })
+  @ApiProperty({ description: 'Token from the invitation email or SMS' })
   @IsString()
   @MinLength(20)
   @MaxLength(512)
@@ -217,4 +245,19 @@ export class AcceptInvitationDto {
   @MaxLength(128)
   @Matches(PASSWORD_PATTERN, { message: PASSWORD_MESSAGE })
   password: string;
+
+  /**
+   * Only needed when the invitation arrived by SMS alone.
+   *
+   * Intake is phone-first, so plenty of profiles are built with a number and
+   * nothing else. An account still needs an email — it is the sign-in
+   * credential and the only way to reset a password — so the one moment to ask
+   * for it is here, when the person themselves is on the other end of the form
+   * rather than the agent guessing on their behalf.
+   */
+  @ApiPropertyOptional({ description: 'Required only when the invitation had no email address' })
+  @IsOptional()
+  @IsEmail({}, { message: 'Enter a valid email address' })
+  @MaxLength(180)
+  email?: string;
 }
