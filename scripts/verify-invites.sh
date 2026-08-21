@@ -71,11 +71,23 @@ else
   echo "-- redis-cli unavailable: rate limits may trip on a repeated run --"
 fi
 
-reg() { # reg key accountType role
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
+reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }
@@ -115,7 +127,7 @@ check "an incomplete profile cannot browse matches" "$c" 403
 # defaults, same-city plus a 2-year age gap does not reach it. Matching
 # religion, education and lifestyle takes the pair well over the threshold.
 PREFS='{"religion":"hindu","education":"masters","lifestyle":["vegetarian","non-smoker"]}'
-req PUT /users/me/profile "{\"displayName\":\"Solo $STAMP\",\"gender\":\"female\",\"dateOfBirth\":\"1996-06-15\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/s1.jpg\",\"https://cdn.example.com/s2.jpg\"]}" "$SOLO" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Solo\",\"gender\":\"female\",\"dateOfBirth\":\"1996-06-15\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/s1.jpg\",\"https://cdn.example.com/s2.jpg\"]}" "$SOLO" >/dev/null
 
 c=$(req GET /matches/suggestions "" "$SOLO")
 check "solo user browses matches unaided once the profile is complete" "$c" 200
@@ -144,7 +156,7 @@ check "admin approves the agency" "$c" 200
 
 echo
 echo "== 4. Agent builds a profile for someone with NO account =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Priya $STAMP\",\"contactEmail\":\"priya-$STAMP@t.com\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",\"bio\":\"Loves classical music.\",\"photos\":[\"https://cdn.example.com/a.jpg\",\"https://cdn.example.com/b.jpg\"],$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Priya\",\"contactEmail\":\"priya-$STAMP@t.com\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",\"bio\":\"Loves classical music.\",\"photos\":[\"https://cdn.example.com/a.jpg\",\"https://cdn.example.com/b.jpg\"],$CONSENT}" "$AGENT")
 check "agent creates a profile with photos and details" "$c" 201
 cp /tmp/body /tmp/managed.json
 MANAGED=$(field /tmp/managed.json id)
@@ -158,7 +170,7 @@ check "a non-url photo is rejected" "$c" 400
 
 # Email became optional when intake moved to phone-first: a walk-in family
 # hands over a number far more often than an address.
-c=$(req POST /agents/profiles "{\"displayName\":\"NoEmail $STAMP\",\"contactPhone\":\"$(phone 005)\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"NoEmail\",\"contactPhone\":\"$(phone 005)\",$CONSENT}" "$AGENT")
 check "a profile can be built with no email at all" "$c" 201
 c=$(req POST /agents/profiles "{\"displayName\":\"NoPhone\",\"contactEmail\":\"nophone-$STAMP@t.com\",$CONSENT}" "$AGENT")
 check "but the mobile number is still required" "$c" 400
@@ -194,7 +206,7 @@ echo
 echo "== 6. Profile privacy in suggestions =="
 # SOLO's profile was completed at sign-in; the groom's is filled in here so the
 # pair actually score against each other.
-req PUT /users/me/profile "{\"displayName\":\"Groom $STAMP\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/g1.jpg\",\"https://cdn.example.com/g2.jpg\"]}" "$GROOM" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS,\"photos\":[\"https://cdn.example.com/g1.jpg\",\"https://cdn.example.com/g2.jpg\"]}" "$GROOM" >/dev/null
 # GROOM has not fetched suggestions yet, so this is not served from the cache
 # that SOLO warmed up before the profiles had any detail on them.
 c=$(req GET /matches/suggestions "" "$GROOM")
@@ -256,7 +268,7 @@ fi
 
 echo
 echo "== 8. Family members steward relatives, but run no agency =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Relative $STAMP\",\"contactEmail\":\"rel-$STAMP@t.com\",\"contactPhone\":\"$(phone 006)\",\"gender\":\"male\",$CONSENT}" "$FAMILY")
+c=$(req POST /agents/profiles "{\"displayName\":\"Relative\",\"contactEmail\":\"rel-$STAMP@t.com\",\"contactPhone\":\"$(phone 006)\",\"gender\":\"male\",$CONSENT}" "$FAMILY")
 check "a family account can build a relative profile" "$c" 201
 c=$(req PUT /agents/agency '{"agencyName":"Not An Agency"}' "$FAMILY")
 check "a family account cannot register an agency" "$c" 403

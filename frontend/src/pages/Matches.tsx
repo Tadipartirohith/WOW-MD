@@ -11,6 +11,7 @@ import {
   can,
 } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
+import { MARITAL_LABEL, OCCUPATION_LABEL } from '../lib/permissions';
 
 /** Server-side privacy view: an age band, not a date of birth. */
 interface PublicProfile {
@@ -52,6 +53,40 @@ interface MatchStatus {
   servicesUnlocked: boolean;
 }
 
+interface Filters {
+  ageMin: string;
+  ageMax: string;
+  heightMinCm: string;
+  heightMaxCm: string;
+  religion: string;
+  caste: string;
+  motherTongue: string;
+  city: string;
+  qualification: string;
+  maritalStatus: string;
+  occupationStatus: string;
+  minScore: string;
+  sort: string;
+  addedWithinDays: string;
+}
+
+const NO_FILTERS: Filters = {
+  ageMin: '',
+  ageMax: '',
+  heightMinCm: '',
+  heightMaxCm: '',
+  religion: '',
+  caste: '',
+  motherTongue: '',
+  city: '',
+  qualification: '',
+  maritalStatus: '',
+  occupationStatus: '',
+  minScore: '',
+  sort: '',
+  addedWithinDays: '',
+};
+
 export default function Matches() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
@@ -65,15 +100,33 @@ export default function Matches() {
   // to their own unless they pick one they manage.
   const [profileId, setProfileId] = useState('');
   const [error, setError] = useState('');
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
 
   const params = profileId ? { profileId } : {};
   const ready = !isAgent || Boolean(profileId);
 
+  // Blank fields are omitted rather than sent as empty strings, so an untouched
+  // filter genuinely does nothing on the server.
+  const searchParams = {
+    ...params,
+    ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')),
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['suggestions', profileId],
-    queryFn: async () => (await api.get('/matches/suggestions', { params })).data,
+    queryKey: ['suggestions', profileId, JSON.stringify(filters)],
+    queryFn: async () => (await api.get('/matches/suggestions', { params: searchParams })).data,
     retry: false,
     enabled: ready,
+  });
+
+  // The engine's own shortlist, unfiltered — it answers a different question
+  // from the browse list below and is deliberately unaffected by those filters.
+  const { data: recommended } = useQuery({
+    queryKey: ['recommended', profileId],
+    queryFn: async () => (await api.get('/ai/recommendations/matches', { params })).data,
+    retry: false,
+    enabled: ready && can(permissions, Permission.AI_ASSIST),
   });
 
   const { data: status } = useQuery({
@@ -125,6 +178,10 @@ export default function Matches() {
   const report = (id: string, reason: string) =>
     run(() => api.post(`/matches/${id}/report`, { reason }));
 
+  const setField = (key: keyof Filters) => (value: string) =>
+    setFilters((f) => ({ ...f, [key]: value }));
+  const activeFilterCount = Object.values(filters).filter((v) => v !== '').length;
+
   const suggestions: Suggestion[] = data?.data ?? [];
   const acceptedMatches: InterestView[] = accepted ?? [];
   const fixed = status?.matchFixedState === 'confirmed';
@@ -150,6 +207,148 @@ export default function Matches() {
       )}
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+      {ready && (recommended?.data?.length ?? 0) > 0 && (
+        <div className="card space-y-2">
+          <div>
+            <h2 className="font-semibold text-gray-900">Recommended for you</h2>
+            <p className="text-sm text-gray-600">
+              Profiles the matching engine rates at 50% or better. A short list on purpose — it is
+              padded with nothing.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {(recommended.data as Suggestion[]).map((s) => (
+              <div key={s.profile.id} className="rounded border border-gray-200 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-gray-900">{s.profile.displayName}</p>
+                  <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs font-semibold text-brand-dark">
+                    {s.score}%
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500">
+                  {[s.profile.city, s.profile.ageRange].filter(Boolean).join(' \u00b7 ')}
+                </p>
+                {!fixed && (
+                  <button className="btn mt-2 w-full" onClick={() => sendInterest(s.profile.id)}>
+                    Send interest
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ready && (
+        <div className="card space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <h2 className="font-semibold text-gray-900">Narrow the list</h2>
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark">
+                  {activeFilterCount} applied
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {activeFilterCount > 0 && (
+                <button className="btn-outline" onClick={() => setFilters(NO_FILTERS)}>
+                  Clear
+                </button>
+              )}
+              <button className="btn-outline" onClick={() => setShowFilters((f) => !f)}>
+                {showFilters ? 'Hide' : 'Filters'}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={pill(filters.sort === 'recent')}
+              onClick={() =>
+                setFilters((f) => ({
+                  ...f,
+                  sort: f.sort === 'recent' ? '' : 'recent',
+                  addedWithinDays: f.sort === 'recent' ? '' : '30',
+                }))
+              }
+            >
+              Recently added
+            </button>
+            <button
+              className={pill(filters.minScore === '50')}
+              onClick={() =>
+                setFilters((f) => ({ ...f, minScore: f.minScore === '50' ? '' : '50' }))
+              }
+            >
+              50% match and above
+            </button>
+          </div>
+
+          {showFilters && (
+            <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
+              <Filter label="Age from" value={filters.ageMin} onChange={setField('ageMin')} type="number" />
+              <Filter label="Age to" value={filters.ageMax} onChange={setField('ageMax')} type="number" />
+              <Filter label="City" value={filters.city} onChange={setField('city')} />
+              <Filter
+                label="Height from (cm)"
+                value={filters.heightMinCm}
+                onChange={setField('heightMinCm')}
+                type="number"
+              />
+              <Filter
+                label="Height to (cm)"
+                value={filters.heightMaxCm}
+                onChange={setField('heightMaxCm')}
+                type="number"
+              />
+              <Filter label="Religion" value={filters.religion} onChange={setField('religion')} />
+              <Filter label="Caste" value={filters.caste} onChange={setField('caste')} />
+              <Filter
+                label="Mother tongue"
+                value={filters.motherTongue}
+                onChange={setField('motherTongue')}
+              />
+              <Filter
+                label="Qualification"
+                value={filters.qualification}
+                onChange={setField('qualification')}
+              />
+              <label className="block text-sm">
+                <span className="text-gray-700">Marital status</span>
+                <select
+                  className="input mt-1"
+                  value={filters.maritalStatus}
+                  onChange={(e) => setField('maritalStatus')(e.target.value)}
+                >
+                  <option value="">Any</option>
+                  {Object.entries(MARITAL_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-700">Occupation</span>
+                <select
+                  className="input mt-1"
+                  value={filters.occupationStatus}
+                  onChange={(e) => setField('occupationStatus')(e.target.value)}
+                >
+                  <option value="">Any</option>
+                  {Object.entries(OCCUPATION_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+      )}
 
       {ready && (incoming?.length ?? 0) > 0 && (
         <div className="card space-y-2">
@@ -311,5 +510,36 @@ export default function Matches() {
         ))}
       </div>
     </div>
+  );
+}
+
+/** A filter chip, on or off. */
+function pill(active: boolean): string {
+  return active
+    ? 'rounded-full border border-brand bg-brand-light px-3 py-1 text-sm text-brand-dark'
+    : 'rounded-full border border-gray-200 px-3 py-1 text-sm text-gray-600 hover:bg-gray-50';
+}
+
+function Filter({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-gray-700">{label}</span>
+      <input
+        className="input mt-1"
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
   );
 }

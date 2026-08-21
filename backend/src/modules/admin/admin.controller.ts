@@ -87,11 +87,14 @@ export class AdminController {
     return this.admin.listPendingVendors();
   }
 
-  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
-  @Put('vendors/:id/approve')
-  approveVendor(@Param('id', ParseUUIDPipe) id: string) {
-    return this.admin.approveVendor(id);
-  }
+  /**
+   * Deliberately absent: there is no route that approves a vendor listing.
+   *
+   * A listing is activated by the officer who visited the registered address,
+   * through `PUT /verification/requests/:id/decide`. Leaving an administrative
+   * shortcut here would make the visit optional, which is the one thing the
+   * whole verification flow exists to prevent.
+   */
 
   @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
   @Get('planners/pending')

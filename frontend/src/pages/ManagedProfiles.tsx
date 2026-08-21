@@ -29,6 +29,20 @@ interface ManagedProfile {
   createdAt: string;
   lifecycle?: ProfileLifecycle;
   lifecycleReason?: string | null;
+  /**
+   * What the agency may still do to this row, decided by the server. Rendering
+   * from this rather than re-deriving it here keeps the buttons and the rules
+   * from drifting apart.
+   */
+  actions?: {
+    canEdit: boolean;
+    canManagePhotos: boolean;
+    canCirculate: boolean;
+    canInvite: boolean;
+    canPause: boolean;
+    canClose: boolean;
+    canDelete: boolean;
+  };
 }
 
 interface AgencyStatus {
@@ -339,15 +353,19 @@ export default function ManagedProfiles() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {p.claimStatus !== 'claimed' && (
+                  {(() => {
+                    const allow = p.actions;
+                    return (
                     <>
+                      {allow?.canManagePhotos && (
                       <button
                         className="btn-outline"
                         onClick={() => setSelected(selected === p.id ? null : p.id)}
                       >
                         {selected === p.id ? 'Close' : 'Photos'}
                       </button>
-                      {can(permissions, Permission.PROFILE_CIRCULATE) && (
+                      )}
+                      {can(permissions, Permission.PROFILE_CIRCULATE) && allow?.canCirculate && (
                         <button
                           className="btn"
                           onClick={() => setSharing(sharing === p.id ? null : p.id)}
@@ -355,12 +373,12 @@ export default function ManagedProfiles() {
                           {sharing === p.id ? 'Done' : 'Circulate'}
                         </button>
                       )}
-                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && p.contactEmail && (
+                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && allow?.canInvite && (
                         <button className="btn-outline" onClick={() => invite.mutate(p.id)}>
                           {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
                         </button>
                       )}
-                      {p.lifecycle === 'deactivated' ? (
+                      {allow?.canPause && p.lifecycle === 'deactivated' ? (
                         <button
                           className="btn-outline"
                           onClick={() => lifecycle.mutate({ id: p.id, action: 'reactivate' })}
@@ -368,7 +386,7 @@ export default function ManagedProfiles() {
                           Resume
                         </button>
                       ) : (
-                        p.lifecycle !== 'archived' && (
+                        allow?.canPause && (
                           <button
                             className="btn-outline"
                             onClick={() =>
@@ -384,7 +402,7 @@ export default function ManagedProfiles() {
                           </button>
                         )
                       )}
-                      {p.lifecycle !== 'archived' && (
+                      {allow?.canClose && (
                         <button
                           className="btn-outline"
                           onClick={() => {
@@ -403,11 +421,14 @@ export default function ManagedProfiles() {
                           Close
                         </button>
                       )}
-                      <button className="btn-outline" onClick={() => remove.mutate(p.id)}>
-                        Delete
-                      </button>
+                      {allow?.canDelete && (
+                        <button className="btn-outline" onClick={() => remove.mutate(p.id)}>
+                          Delete
+                        </button>
+                      )}
                     </>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
 

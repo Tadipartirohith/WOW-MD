@@ -223,7 +223,7 @@ uneventful.
 
 ### 2.1 Module map
 
-Seventeen domain modules and nine platform modules. Platform modules are
+Nineteen domain modules and nine platform modules. Platform modules are
 global — any domain module can inject audit or mail without re-importing a
 transport.
 
@@ -233,6 +233,8 @@ transport.
 | --- | --- |
 | `auth` | Registration, login, sessions, MFA, recovery |
 | `users` | Own profile CRUD |
+| `profile-details` | The matrimonial biodata, section by section, and Aadhaar verification |
+| `verification` | Field verification requests, officers, support cases and settlements |
 | `agents` | Agency record, managed profiles, client book |
 | `invitations` | Claim tokens, account creation on accept |
 | `circulation` | Consent, sharing, pool, proposals |
@@ -467,7 +469,7 @@ sequenceDiagram
 
 ### 3.1 Data model
 
-31 application tables across 31 entities. The core cluster is shown below; the
+40 application tables across 40 entities. The core cluster is shown below; the
 marketplace, planning and media clusters hang off `users` in the same way.
 
 ```mermaid
@@ -496,17 +498,19 @@ Note the two distinct `users → profiles` edges: ownership and stewardship.
 | Cluster | Tables | Notes |
 | --- | --- | --- |
 | Identity | `users`, `profiles`, `refresh_sessions`, `email_tokens` | `profiles.userId` nullable with a partial unique index; sessions carry a `familyId` for reuse detection |
+| Biodata | `profile_details`, `profile_siblings`, `profile_assets`, `identity_otp_sessions` | One row per profile, saved a section at a time. Filterable answers sit in indexed columns; the rest is grouped jsonb. Assets are private unless individually marked visible. An Aadhaar number is never stored — only an HMAC under a pepper and the last four digits |
 | Stewardship | `agent_profiles`, `invitations` | Agency approval gate; hashed single-use claim tokens |
 | Circulation | `profile_consents`, `profile_shares`, `proposal_notes` | Append-only consent; shares carry view counts and a revoke timestamp |
 | Matchmaking | `interests`, `conversations`, `messages` | Interests are profile-keyed; chat is account-keyed |
-| Marketplace | `vendors`, `planner_profiles`, `vendor_reviews`, `bookings`, `payments`, `disputes` | Payments hold the commission split and an idempotency key |
+| Marketplace | `vendors`, `planner_profiles`, `vendor_reviews`, `vendor_availability_slots`, `bookings`, `payments`, `disputes` | Payments hold the commission split and an idempotency key. A slot is a time window on a date, reserved under a row lock inside the booking transaction |
+| Verification | `verification_requests`, `support_cases` | Both carry an append-only `history`. A case records which instalment it disputes, the evidence behind it, and whether it needs somebody on the ground |
 | Planning | `wedding_plans`, `plan_tasks`, `events`, `guests`, `event_invites` | Invites carry a hashed RSVP token for guests with no account |
 | Content | `albums`, `media_items`, `destinations`, `travel_packages`, `itineraries` | Albums support a public share token |
 | Platform | `audit_events`, `outbox_events`, `notifications` | Audit is append-only by design — no update or delete path exists |
 
 ### 3.2 Permission matrix
 
-40 permissions across 7 roles. Admin is computed as
+51 permissions across 8 roles. Admin is computed as
 `Object.values(Permission)`, so a new capability is never accidentally withheld
 from support staff. B/G = bride and groom, F = family.
 
@@ -703,6 +707,41 @@ the data but how the viewer got there.
 | Bio | After a match | Always |
 | Search preferences | Never — describes what they want, not who they are | Never |
 | Contact details | Never | Never — the agent brokers the introduction |
+
+#### Availability, and why the window is computed
+
+A vendor's calendar is a rolling three months from today, worked out per
+request and never stored. The alternative — rows for a fixed window — needs
+somebody or something to open the next quarter, and the failure mode is a vendor
+who silently cannot be booked from the first of the month. Computing it means
+there is nothing to forget.
+
+Within that window, availability is time slots rather than days. A photographer
+sells a morning and an evening on the same Saturday; a hall sells three
+sittings. Each slot carries its own capacity and its own status, and the two are
+deliberately separate: one confirmed booking takes a slot even when its capacity
+is twenty, because capacity describes how many people fit, not how many jobs the
+vendor can run at once.
+
+Reservation happens inside the transaction that creates the booking, under a
+`pessimistic_write` lock on the slot row. Checking availability and then writing
+would leave a window between the two in which a second buyer reads the same
+answer; the lock closes it, so two buyers racing for the last Saturday afternoon
+serialise and the second is refused with the id of the booking that won.
+
+#### Completeness, asked twice
+
+Two different questions get asked about the same profile, and conflating them
+was a bug worth naming. `profiles.profileCompleted` gates matchmaking and asks
+only for the basics — a name, a date of birth, a city. `isBiodataComplete()`
+gates circulation and asks for everything another family will ask about. Someone
+may reasonably browse for matches with the first; nobody should be sending a
+biodata to strangers with the family section empty, because the first thing the
+other side does is ask and the agent has nothing to say.
+
+Both are computed from what is stored rather than tracked as flags, so neither
+can drift from the truth. Identity verification is excluded from both: it runs
+on its own track and should never hold up an introduction.
 
 ### 3.7 Configuration
 

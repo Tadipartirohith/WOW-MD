@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Delete,
+  HttpCode,
   ForbiddenException,
   Get,
   Param,
@@ -19,7 +21,12 @@ import {
   UpdateVendorDto,
   VendorSearchDto,
 } from './dto/vendor.dto';
-import { AvailabilityQueryDto, SetAvailabilityDto } from './dto/availability.dto';
+import {
+  AvailabilityQueryDto,
+  BlockSlotDto,
+  CreateSlotDto,
+  UpdateSlotDto,
+} from './dto/availability.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -36,27 +43,118 @@ export class VendorsController {
   ) {}
 
   // ------------------------------------------------------------- calendar
+  //
+  // Availability runs on a rolling three-month window computed from today, so
+  // a vendor never has to open a new quarter by hand.
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({ summary: 'Publish a bookable time slot' })
+  @Post(':id/availability/slots')
+  createSlot(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateSlotDto,
+  ) {
+    return this.availability.create(actor, id, dto);
+  }
 
   @ApiBearerAuth()
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @ApiOperation({
-    summary: 'Open or block out a date',
-    description: 'Capacity zero blocks the day. It cannot be set below what is already booked.',
+    summary: 'Amend a slot',
+    description: 'Times are fixed once anyone has requested it; capacity can still rise.',
   })
-  @Put(':id/availability')
-  setAvailability(
+  @Put(':id/availability/slots/:slotId')
+  updateSlot(
     @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: SetAvailabilityDto,
+    @Param('slotId', ParseUUIDPipe) slotId: string,
+    @Body() dto: UpdateSlotDto,
   ) {
-    return this.availability.set(actor, id, dto);
+    return this.availability.update(actor, id, slotId, dto);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'Delete a slot',
+    description: 'Only an untouched one. Anything requested or booked is history — block it instead.',
+  })
+  @Delete(':id/availability/slots/:slotId')
+  deleteSlot(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('slotId', ParseUUIDPipe) slotId: string,
+  ) {
+    return this.availability.remove(actor, id, slotId);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({ summary: 'Make a slot unavailable without losing it' })
+  @HttpCode(200)
+  @Post(':id/availability/slots/:slotId/block')
+  blockSlot(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('slotId', ParseUUIDPipe) slotId: string,
+    @Body() dto: BlockSlotDto,
+  ) {
+    return this.availability.block(actor, id, slotId, dto);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @HttpCode(200)
+  @Post(':id/availability/slots/:slotId/unblock')
+  unblockSlot(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('slotId', ParseUUIDPipe) slotId: string,
+  ) {
+    return this.availability.unblock(actor, id, slotId);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({ summary: 'Every slot in the window, whatever its status' })
+  @Get(':id/availability/slots')
+  listSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+    return this.availability.list(id, q.from, q.to);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({ summary: 'Counters for the availability dashboard' })
+  @Get(':id/availability/summary')
+  availabilitySummary(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+    return this.availability.summary(id, q.from, q.to);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({ summary: 'Per-date rollup, for painting the calendar' })
+  @Get(':id/availability/calendar')
+  availabilityCalendar(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+    return this.availability.calendar(id, q.from, q.to);
   }
 
   @Public()
-  @ApiOperation({ summary: 'A vendor calendar. Dates with no entry are open.' })
+  @ApiOperation({
+    summary: 'Slots a buyer can actually book',
+    description: 'Blocked, pending and booked windows are absent rather than shown greyed out.',
+  })
   @Get(':id/availability')
-  listAvailability(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.list(id, q.from, q.to);
+  bookableSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+    return this.availability.listBookable(id, q.from, q.to);
+  }
+
+  @Public()
+  @ApiOperation({ summary: 'The rolling window the calendar runs on' })
+  @Get('availability/window')
+  availabilityWindow() {
+    return this.availability.window();
   }
 
   @ApiBearerAuth()

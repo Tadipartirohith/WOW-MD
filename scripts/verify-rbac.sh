@@ -69,11 +69,51 @@ ufield() { jq -r ".user.$2 // empty" "$1"; }
 
 echo
 echo "== 1. One account per persona =="
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+# A vendor listing is activated by the officer who visited it, never by an
+# administrator clicking approve — that route no longer exists. This walks the
+# real path: raise (automatic on listing), allocate, decide.
+OFFICER_TOKEN=""
+OFFICER_USER_ID=""
+ensure_officer() {
+  [ -n "$OFFICER_TOKEN" ] && return 0
+  req POST /verification/officers "{\"email\":\"officer-$STAMP@wow.local\",\"name\":\"Officer $STAMP\"}" "$ADMIN" >/dev/null
+  OFFICER_USER_ID=$(field /tmp/body id)
+  temp=$(field /tmp/body devPassword)
+  req POST /auth/login "{\"email\":\"officer-$STAMP@wow.local\",\"password\":\"$temp\"}" >/dev/null
+  t=$(field /tmp/body accessToken)
+  req POST /auth/password/change "{\"currentPassword\":\"$temp\",\"newPassword\":\"OfficerPass1\"}" "$t" >/dev/null
+  req POST /auth/login "{\"email\":\"officer-$STAMP@wow.local\",\"password\":\"OfficerPass1\"}" >/dev/null
+  OFFICER_TOKEN=$(field /tmp/body accessToken)
+}
+
+# verify_applicant <applicant-token>
+verify_applicant() {
+  ensure_officer
+  req GET /verification/me "" "$1" >/dev/null
+  vreq=$(field /tmp/body id)
+  [ -z "$vreq" ] && return 1
+  req PUT "/verification/requests/$vreq/allocate" "{\"officerUserId\":\"$OFFICER_USER_ID\"}" "$ADMIN" >/dev/null
+  req PUT "/verification/requests/$vreq/start" "" "$OFFICER_TOKEN" >/dev/null
+  req PUT "/verification/requests/$vreq/decide" '{"status":"approved"}' "$OFFICER_TOKEN" >/dev/null
+}
+
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
 reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }
@@ -174,7 +214,7 @@ c=$(req PUT "/admin/agents/$AGENCY2/approve" "" "$ADMIN")
 check "admin approves the second agency" "$c" 200
 
 # A profile for somebody with no account at all.
-c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Client\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
 check "agent builds a profile for an account-less person" "$c" 201
 MANAGED=$(field /tmp/body id)
 
@@ -198,8 +238,8 @@ check "second agent cannot browse as that profile" "$c" 403
 # Matchmaking is gated on a completed profile now, so fill both in before
 # anything tries to browse or send an interest.
 PREFS='{"religion":"hindu","community":"kamma","preferredAgeMin":24,"preferredAgeMax":34,"preferredLocations":["Hyderabad"]}'
-req PUT /users/me/profile "{\"displayName\":\"Groom $STAMP\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
-req PUT /users/me/profile "{\"displayName\":\"Bride $STAMP\",\"gender\":\"female\",\"dateOfBirth\":\"1997-07-11\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS}" "$BRIDE" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Bride\",\"gender\":\"female\",\"dateOfBirth\":\"1997-07-11\",\"city\":\"Hyderabad\",\"visibility\":\"public\",\"preferences\":$PREFS}" "$BRIDE" >/dev/null
 
 c=$(req GET /users/me "" "$GROOM")
 GROOM_PROFILE=$(field /tmp/body id)
@@ -276,8 +316,9 @@ grep -q '"isApproved":false' /tmp/body && { echo "  PASS  new listing starts una
 
 c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":5000}" "$BRIDE")
 check "cannot book an unapproved listing" "$c" 400
-c=$(req PUT "/admin/vendors/$LISTING/approve" "" "$ADMIN")
-check "admin approves the listing" "$c" 200
+verify_applicant "$VENDOR"
+c=$(req GET "/vendors/$LISTING" "")
+grep -q '"isApproved":true' /tmp/body && { echo "  PASS  the officer's approval activated the listing"; PASS=$((PASS+1)); } || { echo "  FAIL  listing still unapproved after verification: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
 c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":5000}" "$BRIDE")
 check "bride books the approved vendor" "$c" 201
 BOOKING=$(field /tmp/body id)
@@ -291,14 +332,34 @@ check "unrelated user cannot pay" "$c" 403
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$PLANNER")
 check "a different provider cannot confirm" "$c" 403
 c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
-check "provider cannot complete before confirm" "$c" 400
+check "provider cannot mark work done before accepting the job" "$c" 400
 
-c=$(req PUT "/bookings/$BOOKING/pay" "" "$BRIDE")
-check "buyer pays into escrow" "$c" 200
+# Money and work alternate, and neither side gets ahead of the other.
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "the advance is not payable until the provider accepts" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
-check "owning vendor confirms" "$c" 200
+check "owning vendor accepts the job" "$c" 200
+
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "vendor cannot start before the advance is held" "$c" 400
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "buyer pays the advance into escrow" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
+check "the second instalment waits for work to start" "$c" 400
+
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "vendor starts work" "$c" 200
 c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
-check "owning vendor completes" "$c" 200
+check "vendor cannot mark work done before the second instalment" "$c" 400
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
+check "buyer pays the second instalment" "$c" 200
+
+c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
+check "vendor marks the work delivered" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
+check "buyer pays the balance, closing the booking" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/settle" "" "$VENDOR")
+check "the held instalments are released to the provider" "$c" 200
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
 check "no transition out of COMPLETED" "$c" 400
 
@@ -316,7 +377,7 @@ else
   # fix their client's match before booking anything for them. An agency
   # matching two of its own clients is the ordinary case here, and the agent
   # confirms both sides because neither client has an account.
-  c=$(req POST /agents/profiles "{\"displayName\":\"Partner $STAMP\",\"contactEmail\":\"partner-$STAMP@t.com\",\"contactPhone\":\"$(phone 005)\",\"gender\":\"male\",\"dateOfBirth\":\"1995-05-05\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+  c=$(req POST /agents/profiles "{\"displayName\":\"Partner\",\"contactEmail\":\"partner-$STAMP@t.com\",\"contactPhone\":\"$(phone 005)\",\"gender\":\"male\",\"dateOfBirth\":\"1995-05-05\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
   check "agent builds the counterpart profile" "$c" 201
   PARTNER=$(field /tmp/body id)
 
@@ -340,15 +401,21 @@ else
   c=$(req GET "/agents/profiles/$MANAGED/charges" "" "$AGENT2")
   check "another agency cannot read those charges" "$c" 403
 
+  # The wedding marketplace belongs to the couple, not to the agency that
+  # introduced them. An agent has no booking surface at all now — not the
+  # directory, not bookings, not events or travel — and the API refuses it
+  # rather than merely hiding it.
   c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
-  check "agent books for their client" "$c" 201
-  grep -q "\"userId\":\"$CLIENT_ID\"" /tmp/body && { echo "  PASS  booking is owned by the client"; PASS=$((PASS+1)); } || { echo "  FAIL  booking not owned by client"; FAIL=$((FAIL+1)); }
-  grep -q "\"bookedByUserId\":\"$AGENT_ID\"" /tmp/body && { echo "  PASS  acting agent recorded on the booking"; PASS=$((PASS+1)); } || { echo "  FAIL  acting agent not recorded"; FAIL=$((FAIL+1)); }
-
-  c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT2")
-  check "another agent cannot book for that client" "$c" 403
+  check "an agent cannot place a booking at all" "$c" 403
+  c=$(req GET /bookings "" "$AGENT")
+  check "nor read a booking list" "$c" 403
+  c=$(req POST /events '{"name":"Reception"}' "$AGENT")
+  check "nor create events" "$c" 403
+  # The field is gone from the API surface entirely, so an attempt to book for
+  # somebody else is now rejected as a malformed request rather than a refused
+  # one — there is no such request to refuse.
   c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$BRIDE")
-  check "a plain user cannot book on behalf of anyone" "$c" 403
+  check "booking on behalf of another account is not part of the API" "$c" 400
 fi
 
 echo "== 9. Planner persona: listing, approval, booking =="
@@ -361,11 +428,11 @@ c=$(req POST /bookings "{\"providerType\":\"planner\",\"providerId\":\"$PLISTING
 check "bride books a wedding planner" "$c" 201
 PBOOKING=$(field /tmp/body id)
 c=$(req PUT "/bookings/$PBOOKING/confirm" "" "$VENDOR")
-check "a vendor cannot confirm a planner booking" "$c" 403
-c=$(req PUT "/bookings/$PBOOKING/pay" "" "$BRIDE")
-check "buyer pays the planner booking" "$c" 200
+check "a vendor cannot accept a planner booking" "$c" 403
 c=$(req PUT "/bookings/$PBOOKING/confirm" "" "$PLANNER")
-check "the owning planner confirms" "$c" 200
+check "the owning planner accepts the job" "$c" 200
+c=$(req PUT "/bookings/$PBOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "buyer pays the planner advance" "$c" 200
 
 echo
 echo "== 10. Reviews gated on a completed booking =="

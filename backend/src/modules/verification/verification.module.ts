@@ -7,6 +7,7 @@ import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { Booking } from '../bookings/entities/booking.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { VerificationService } from './verification.service';
 import { SupportCasesService } from './support-cases.service';
@@ -24,6 +25,7 @@ import { UsersModule } from '../users/users.module';
       Vendor,
       Payment,
       Booking,
+      PlannerProfile,
       Profile,
     ]),
     UsersModule,

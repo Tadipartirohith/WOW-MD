@@ -1,17 +1,25 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsEnum,
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   Max,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
-import { CaseStatus, CaseSubject, SettlementOutcome } from '../../../common/enums';
+import {
+  CaseStatus,
+  CaseSubject,
+  PaymentMilestone,
+  SettlementOutcome,
+} from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class RaiseCaseDto {
@@ -27,6 +35,27 @@ export class RaiseCaseDto {
   @IsUUID('4')
   subjectId?: string;
 
+  /**
+   * Which instalment the argument is about. Optional, because plenty of cases
+   * are not about money at all — a profile that is not who it says it is, for
+   * one.
+   */
+  @ApiPropertyOptional({ enum: PaymentMilestone })
+  @IsOptional()
+  @IsEnum(PaymentMilestone)
+  milestone?: PaymentMilestone;
+
+  /**
+   * Photographs, invoices, screenshots. An investigation run on two sentences
+   * of prose is a coin toss, and the person raising it usually has proof.
+   */
+  @ApiPropertyOptional({ type: [String], maxItems: 10 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUrl({ require_protocol: true }, { each: true })
+  evidence?: string[];
+
   @ApiProperty({ minLength: 5, maxLength: 200 })
   @IsString()
   @MinLength(5)
@@ -40,10 +69,36 @@ export class RaiseCaseDto {
   description: string;
 }
 
+/**
+ * Escalate a case to somebody who will go and look.
+ *
+ * Some disputes cannot be settled from a desk: the hall that turns out not to
+ * exist, the caterer whose kitchen is a front room. Marking that explicitly is
+ * how the case reaches a field officer rather than circling in a queue.
+ */
+export class EscalateCaseDto {
+  @ApiProperty({ minLength: 10, maxLength: 1000, description: 'Why a visit is needed' })
+  @IsString()
+  @MinLength(10, { message: 'Say why this needs somebody on the ground' })
+  @MaxLength(1000)
+  reason: string;
+}
+
+/** More proof, arriving after the case was raised. */
+export class AddEvidenceDto {
+  @ApiProperty({ type: [String], maxItems: 10 })
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUrl({ require_protocol: true }, { each: true })
+  evidence: string[];
+}
+
 export class AllocateCaseDto {
-  @ApiProperty({ format: 'uuid' })
+  /** Omit to let the platform pick the officer with the fewest open cases. */
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
   @IsUUID('4')
-  officerUserId: string;
+  officerUserId?: string;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()

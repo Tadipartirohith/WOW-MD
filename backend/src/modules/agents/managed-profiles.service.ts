@@ -285,7 +285,29 @@ export class ManagedProfilesService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    // Each row carries what the agency may still do to it, so the client
+    // renders the same rule the server enforces.
+    const withActions = data.map((profile) => ({
+      ...profile,
+      actions: this.agencyActions(profile),
+    }));
+    return paginate(withActions, total, q.page, q.limit);
+  }
+
+  /**
+   * The line an agency stops at once the subject owns their profile.
+   *
+   * Editing was already refused, but pausing, closing and deleting were not —
+   * so an agency could still take a claimed profile out of matchmaking behind
+   * its owner's back. The agency keeps read access, because it is still their
+   * client; what it loses is the ability to act as them.
+   */
+  private assertNotClaimed(profile: Profile, action: string): void {
+    if (profile.claimStatus === ProfileClaimStatus.CLAIMED) {
+      throw new ForbiddenException(
+        `This profile belongs to its owner now — only they can ${action} it.`,
+      );
+    }
   }
 
   /**
@@ -297,6 +319,7 @@ export class ManagedProfilesService {
    */
   async deactivate(actor: AuthUser, profileId: string, reason?: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
+    this.assertNotClaimed(profile, 'pause');
     if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
       throw new BadRequestException('That profile is archived');
     }
@@ -322,6 +345,7 @@ export class ManagedProfilesService {
   /** Brings a paused profile back. Circulation stays off until re-consented. */
   async reactivate(actor: AuthUser, profileId: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
+    this.assertNotClaimed(profile, 'resume');
     if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
       throw new BadRequestException('An archived profile cannot be reactivated');
     }
@@ -350,6 +374,7 @@ export class ManagedProfilesService {
    */
   async archive(actor: AuthUser, profileId: string, reason?: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
+    this.assertNotClaimed(profile, 'close');
 
     profile.lifecycle = ProfileLifecycle.ARCHIVED;
     profile.archivedAt = new Date();
@@ -368,6 +393,34 @@ export class ManagedProfilesService {
       metadata: { reason: reason ?? null, chargesRefunded: refunded },
     });
     return saved;
+  }
+
+  /**
+   * What an agency may still do to this profile.
+   *
+   * Returned alongside the profile so the client renders the same rule the
+   * server enforces, rather than showing buttons that will be refused.
+   */
+  agencyActions(profile: Profile): {
+    canEdit: boolean;
+    canManagePhotos: boolean;
+    canCirculate: boolean;
+    canInvite: boolean;
+    canPause: boolean;
+    canClose: boolean;
+    canDelete: boolean;
+  } {
+    const claimed = profile.claimStatus === ProfileClaimStatus.CLAIMED;
+    const archived = profile.lifecycle === ProfileLifecycle.ARCHIVED;
+    return {
+      canEdit: !claimed && !archived,
+      canManagePhotos: !claimed && !archived,
+      canCirculate: !claimed && !archived,
+      canInvite: !claimed && Boolean(profile.contactEmail),
+      canPause: !claimed && !archived,
+      canClose: !claimed && !archived,
+      canDelete: !claimed,
+    };
   }
 
   async remove(actor: AuthUser, profileId: string): Promise<{ success: true }> {

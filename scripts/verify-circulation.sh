@@ -13,8 +13,11 @@ ADMIN_PASSWORD=${ADMIN_PASSWORD:-AdminLocalDev2026!}
 PASS=0
 FAIL=0
 STAMP=$(head -c 8 /proc/sys/kernel/random/uuid | tr -d '-')
-NUM=$(head -c 4 /proc/sys/kernel/random/uuid | tr -cd '0-9' | head -c 4)
-[ -z "$NUM" ] && NUM=4242
+# Four digits, always. Taking whatever digits happen to fall out of a uuid
+# fragment gave a number of unpredictable length, so roughly one run in three
+# built a nine-digit mobile and failed validation for reasons that had nothing
+# to do with what was being tested.
+NUM=$(printf '%04d' "$(( $(head -c 8 /proc/sys/kernel/random/uuid | tr -cd '0-9' | head -c 4 | sed 's/^0*//;s/^$/0/') % 10000 ))")
 
 req() {
   m=$1; p=$2; b=$3; t=$4
@@ -62,11 +65,23 @@ fi
 CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","notes":"Father visited the office with the biodata."}'
 CONSENT_OK='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","allowsCirculation":true}'
 
-reg() {
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
+reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }
@@ -98,10 +113,26 @@ AGENT_B_ID=$(jq -r '.user.id' /tmp/agentB.json)
 approve_agency "$AGENT_A" "Agency A $STAMP"
 approve_agency "$AGENT_B" "Agency B $STAMP"
 
+# A biodata has to be complete before it can be sent to another family — the
+# other side's first questions are about the family, the education and the
+# horoscope, and an agent with those blank has nothing to answer with. This
+# fills in every required section for a profile the agent manages.
+fill_biodata() {
+  pid=$1
+  tok=$2
+  req PUT "/profiles/$pid/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"Fair","nativePlace":"Guntur","placeOfBirth":"Hyderabad","communicationAddress":"12 Jubilee Hills, Hyderabad"}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/religion" '{"religion":"Hindu","caste":"Kamma","subCaste":"None","motherTongue":"Telugu"}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/horoscope" '{"horoscopeAvailable":false}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/marital" '{"maritalStatus":"never_married"}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/family" '{"father":{"name":"Ramesh Sharma","profession":"Retired"},"mother":{"name":"Lakshmi Sharma"},"familyType":"nuclear","familyStatus":"Middle class","brothers":1,"sisters":0}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/education" '{"highestQualification":"M.Tech","course":"Computer Science","occupationStatus":"employed","employment":{"company":"Infosys","designation":"Senior Engineer"}}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/preferences" '{"preferredAgeMin":26,"preferredAgeMax":34,"preferredHeightMinCm":165,"preferredHeightMaxCm":190}' "$tok" >/dev/null
+}
+
 echo
 echo "== 2. Walk-in intake: phone required, email optional =="
 # The realistic case: a family gives a number and nothing else.
-c=$(req POST /agents/profiles "{\"displayName\":\"Priya $STAMP\",\"contactPhone\":\"+9198765${NUM}1\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT_A")
+c=$(req POST /agents/profiles "{\"displayName\":\"Priya\",\"contactPhone\":\"+9198765${NUM}1\",\"gender\":\"female\",\"dateOfBirth\":\"1997-04-12\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT_A")
 check "profile created with NO email address" "$c" 201
 cp /tmp/body /tmp/priya.json
 PRIYA=$(field /tmp/priya.json id)
@@ -141,6 +172,20 @@ assert "and it carries an expiry, so it must be re-confirmed" "$(jqok '.circulat
 
 c=$(req POST "/circulation/profiles/$PRIYA/consent" '{"scope":"circulation","method":"phone","givenByRelation":"father","givenByName":"Someone Else","givenAt":"2026-08-02"}' "$AGENT_B")
 check "another agency cannot record consent on that profile" "$c" 403
+
+echo
+echo "== 4b. A half-filled biodata is not ready to send to another family =="
+c=$(req POST /circulation/share/agent "{\"profileId\":\"$PRIYA\",\"agentUserId\":\"$AGENT_B_ID\"}" "$AGENT_A")
+check "an incomplete biodata cannot be circulated" "$c" 400
+assert "and the refusal names what is still missing" "$(grep -qi 'Still needed' /tmp/body && echo 1 || echo 0)"
+
+c=$(req GET "/profiles/$PRIYA/details" "" "$AGENT_A")
+check "the agent can read the biodata to see the gaps" "$c" 200
+assert "completion is reported as a fraction, for the progress bar" "$(jqok '.completion.percent >= 0 and .completion.percent <= 100')"
+
+fill_biodata "$PRIYA" "$AGENT_A"
+c=$(req GET "/profiles/$PRIYA/details" "" "$AGENT_A")
+assert "every section except identity is now complete" "$(jqok '[.completion.missing[] | select(. != "identity")] | length == 0')"
 
 echo
 echo "== 5. Circulate to another agent =="
@@ -231,7 +276,7 @@ echo "== 10. Cross-agent proposal thread =="
 # Re-consent so the pairing can be set up.
 req POST "/circulation/profiles/$PRIYA/consent" '{"scope":"circulation","method":"phone","givenByRelation":"father","givenByName":"Ramesh","givenAt":"2026-08-03"}' "$AGENT_A" >/dev/null
 
-c=$(req POST /agents/profiles "{\"displayName\":\"Arjun $STAMP\",\"contactPhone\":\"+9198765${NUM}2\",\"gender\":\"male\",\"dateOfBirth\":\"1995-02-02\",\"city\":\"Hyderabad\",$CONSENT_OK}" "$AGENT_B")
+c=$(req POST /agents/profiles "{\"displayName\":\"Arjun\",\"contactPhone\":\"+9198765${NUM}2\",\"gender\":\"male\",\"dateOfBirth\":\"1995-02-02\",\"city\":\"Hyderabad\",$CONSENT_OK}" "$AGENT_B")
 check "agent B builds the other side" "$c" 201
 ARJUN=$(field /tmp/body id)
 
@@ -259,9 +304,10 @@ assert "the thread reads back in order" "$(jqok '.notes | length == 2 and (.[0].
 
 echo
 echo "== 11. Family stewards circulate, but do not browse the network =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Cousin $STAMP\",\"contactPhone\":\"+9198765${NUM}3\",\"gender\":\"female\",$CONSENT_OK}" "$FAMILY")
+c=$(req POST /agents/profiles "{\"displayName\":\"Cousin\",\"contactPhone\":\"+9198765${NUM}3\",\"gender\":\"female\",$CONSENT_OK}" "$FAMILY")
 check "a family account builds a relative profile" "$c" 201
 COUSIN=$(field /tmp/body id)
+fill_biodata "$COUSIN" "$FAMILY"
 c=$(req POST /circulation/share/link "{\"profileId\":\"$COUSIN\"}" "$FAMILY")
 check "and can send out a biodata link" "$c" 201
 c=$(req POST /circulation/share/agent "{\"profileId\":\"$COUSIN\",\"agentUserId\":\"$AGENT_B_ID\"}" "$FAMILY")

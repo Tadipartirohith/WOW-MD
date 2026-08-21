@@ -1,10 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { PHONE_MESSAGE, PHONE_PATTERN } from '../../auth/dto/auth.dto';
-
-const normalisePhone = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.replace(/[\s()-]/g, '') : value;
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import {
+  MOBILE_MESSAGE,
+  MOBILE_PATTERN,
+  normaliseMobile,
+} from '../../../common/util/identity-fields';
 
 export class UpsertAgencyDto {
   @ApiProperty({ example: 'Sharma Matrimony', minLength: 2, maxLength: 120 })
@@ -21,8 +32,8 @@ export class UpsertAgencyDto {
 
   @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
-  @Transform(normalisePhone)
-  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   contactPhone?: string;
 
   @ApiPropertyOptional({ maxLength: 80 })
@@ -30,6 +41,24 @@ export class UpsertAgencyDto {
   @IsString()
   @MaxLength(80)
   city?: string;
+
+  @ApiPropertyOptional({ maxLength: 500, description: 'Where the officer will visit' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @ApiPropertyOptional({ format: 'date', example: '2018-04-01' })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 10, description: 'Office photographs' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUrl({ require_protocol: true }, { each: true })
+  pictures?: string[];
 
   @ApiPropertyOptional({ maxLength: 2000 })
   @IsOptional()

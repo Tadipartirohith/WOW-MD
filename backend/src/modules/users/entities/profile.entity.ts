@@ -119,6 +119,17 @@ export class Profile {
   @Column({ nullable: true })
   city: string;
 
+  /**
+   * The account holder's own postal address.
+   *
+   * Distinct from the biodata's `communicationAddress`, which is part of what a
+   * family circulates. This one is never shared — it exists so every account
+   * type, including vendors and planners who have no biodata, has somewhere to
+   * put an address that survives a reload.
+   */
+  @Column({ type: 'text', nullable: true })
+  address: string | null;
+
   @Column({ type: 'jsonb', default: {} })
   preferences: ProfilePreferences;
 

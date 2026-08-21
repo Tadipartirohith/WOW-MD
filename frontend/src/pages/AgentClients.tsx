@@ -26,12 +26,22 @@ interface Client {
 export default function AgentClients() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  // 'all' rather than an empty string: "show me everyone" is a real answer here,
+  // not the absence of one, and a deactivated client still needs finding.
+  const [status, setStatus] = useState<'all' | 'active' | 'deactivated'>('all');
   const [error, setError] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['agent-clients', search],
+    queryKey: ['agent-clients', search, status],
     queryFn: async () =>
-      (await api.get('/agents/clients', { params: search ? { q: search } : {} })).data,
+      (
+        await api.get('/agents/clients', {
+          params: {
+            ...(search ? { q: search } : {}),
+            ...(status === 'all' ? {} : { isActive: status === 'active' }),
+          },
+        })
+      ).data,
   });
 
   const toggle = useMutation({
@@ -62,18 +72,31 @@ export default function AgentClients() {
       <div className="card space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-semibold text-gray-900">Client accounts</h2>
-          <input
-            className="input max-w-xs"
-            placeholder="Search name or email"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="input max-w-[10rem]"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as typeof status)}
+            >
+              <option value="all">All clients</option>
+              <option value="active">Active</option>
+              <option value="deactivated">Deactivated</option>
+            </select>
+            <input
+              className="input max-w-xs"
+              placeholder="Search name or email"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
 
         {isLoading && <p className="text-sm text-gray-500">Loading...</p>}
         {!isLoading && clients.length === 0 && (
           <p className="text-sm text-gray-400">
-            No clients have accepted an invitation yet.
+            {search || status !== 'all'
+              ? 'No clients match that filter.'
+              : 'No clients have accepted an invitation yet.'}
           </p>
         )}
 

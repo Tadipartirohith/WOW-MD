@@ -52,6 +52,7 @@ export const AuditAction = {
   AGENT_CHARGE_RELEASED: 'agent_charge.released',
 
   IDENTITY_SUBMITTED: 'identity.submitted',
+  IDENTITY_OTP_SENT: 'identity.otp_sent',
   IDENTITY_VERIFIED: 'identity.verified',
 
   PROFILE_DEACTIVATED: 'profile.deactivated',

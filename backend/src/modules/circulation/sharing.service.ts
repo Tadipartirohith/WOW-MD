@@ -30,6 +30,7 @@ import {
   isIndividual,
 } from '../../common/enums';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+import { ProfileDetailsService } from '../profile-details/profile-details.service';
 
 export interface ShareResult {
   share: ProfileShare;
@@ -63,6 +64,7 @@ export class SharingService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     private readonly consent: ConsentService,
+    private readonly details: ProfileDetailsService,
     private readonly cfg: AppConfigService,
     private readonly audit: AuditService,
   ) {}
@@ -86,7 +88,30 @@ export class SharingService {
     }
 
     await this.consent.assertMayCirculate(profile);
+    await this.assertBiodataComplete(profile);
     return profile;
+  }
+
+  /**
+   * A half-filled biodata is not ready to send to another family.
+   *
+   * The first thing the other side does with it is ask about the family, the
+   * education and the horoscope — and an agent circulating a profile with those
+   * blank has nothing to answer with. The refusal names what is missing, so the
+   * fix is a specific piece of work rather than a hunt.
+   *
+   * Identity verification is excluded on purpose: it runs on its own track and
+   * should never hold up an introduction.
+   */
+  private async assertBiodataComplete(profile: Profile): Promise<void> {
+    if (await this.details.isBiodataComplete(profile.id)) return;
+
+    const missing = await this.details.missingSections(profile.id);
+    throw new BadRequestException(
+      missing.length
+        ? `This biodata is not complete enough to circulate. Still needed: ${missing.join(', ')}.`
+        : 'This biodata is not complete enough to circulate.',
+    );
   }
 
   private async assertApprovedAgent(userId: string): Promise<void> {

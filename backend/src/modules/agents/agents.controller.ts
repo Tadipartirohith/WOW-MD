@@ -189,7 +189,7 @@ export class AgentsController {
     return this.agentBilling.listForProfile(actor, id);
   }
 
-  @RequirePermissions(Permission.BOOKING_PAY)
+  @RequirePermissions(Permission.AGENCY_FEE_PAY)
   @ApiOperation({
     summary: 'Pay an agency charge',
     description:

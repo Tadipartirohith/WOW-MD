@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -7,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -21,7 +22,6 @@ import {
   PaymentStatus,
   ProviderType,
   UserRole,
-  isConsumer,
   isIndividual,
 } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
@@ -36,20 +36,36 @@ import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
 /**
+ * The client branches on this to open the request the buyer already has rather
+ * than showing them a bare error.
+ */
+export const DUPLICATE_BOOKING_REQUEST = 'DUPLICATE_BOOKING_REQUEST';
+
+/** Money is added in minor units; summing decimal strings drifts a paisa at a time. */
+const toMinor = (amount: string): number => Math.round(parseFloat(amount || '0') * 100);
+const toMajor = (minor: number): string => (minor / 100).toFixed(2);
+
+/**
  * Booking lifecycle + escrow, as an explicit state machine.
  *
- * A quotation-driven job:
- *   REQUESTED -(vendor quotes)-> QUOTATION_SENT
- *             -(buyer accepts)-> QUOTATION_ACCEPTED -> PAYMENT_PENDING
- * A listed-price job skips the quote: REQUESTED -> PAYMENT_PENDING.
+ * The spine of it is that **money and work alternate**, and neither side can
+ * get ahead of the other:
  *
- * Both then converge:
- *   PAYMENT_PENDING -(advance held)-> PENDING
- *                   -(provider confirms)-> CONFIRMED
- *                   -(work starts)-> IN_PROGRESS
- *                   -(delivered)-> COMPLETED[escrow released]
- *   raising a case -> DISPUTED[escrow frozen], settled by an officer
- *   most states -> CANCELLED[escrow refunded]
+ *   REQUESTED ─quote→ QUOTATION_SENT ─buyer accepts→ QUOTATION_ACCEPTED
+ *     └─ provider agrees → PAYMENT_PENDING
+ *          └─ advance held → CONFIRMED
+ *               └─ provider starts → IN_PROGRESS
+ *                    └─ second instalment → provider may finish
+ *                         └─ provider confirms → COMPLETED_PENDING_FINAL_PAYMENT
+ *                              └─ balance paid → COMPLETED [escrow released]
+ *
+ * A provider cannot start before being paid something, and a buyer cannot be
+ * asked for the balance before the work is done. Every one of those gates is
+ * enforced here rather than by hiding a button, because the button is not what
+ * an attacker uses.
+ *
+ * Raising a case moves the booking to DISPUTED and freezes the money until an
+ * officer settles it; most states can still be cancelled, which refunds.
  */
 const ALLOWED: Record<BookingStatus, BookingStatus[]> = {
   [BookingStatus.REQUESTED]: [
@@ -58,21 +74,23 @@ const ALLOWED: Record<BookingStatus, BookingStatus[]> = {
     BookingStatus.CANCELLED,
   ],
   // Re-quoting returns the booking to REQUESTED, so the buyer is never looking
-  // at a stale price while the vendor prepares a new one.
+  // at a stale price while the provider prepares a new one.
   [BookingStatus.QUOTATION_SENT]: [
     BookingStatus.QUOTATION_ACCEPTED,
     BookingStatus.REQUESTED,
     BookingStatus.CANCELLED,
   ],
   [BookingStatus.QUOTATION_ACCEPTED]: [BookingStatus.PAYMENT_PENDING, BookingStatus.CANCELLED],
-  [BookingStatus.PAYMENT_PENDING]: [BookingStatus.PENDING, BookingStatus.CANCELLED],
+  [BookingStatus.PAYMENT_PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
+  // Historic state; nothing enters it any more.
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-  [BookingStatus.CONFIRMED]: [
-    BookingStatus.IN_PROGRESS,
-    BookingStatus.COMPLETED,
+  [BookingStatus.CONFIRMED]: [BookingStatus.IN_PROGRESS, BookingStatus.CANCELLED],
+  [BookingStatus.IN_PROGRESS]: [
+    BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT,
+    BookingStatus.DISPUTED,
     BookingStatus.CANCELLED,
   ],
-  [BookingStatus.IN_PROGRESS]: [
+  [BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT]: [
     BookingStatus.COMPLETED,
     BookingStatus.DISPUTED,
     BookingStatus.CANCELLED,
@@ -82,6 +100,25 @@ const ALLOWED: Record<BookingStatus, BookingStatus[]> = {
   [BookingStatus.DISPUTED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED],
   [BookingStatus.CANCELLED]: [],
 };
+
+/** States in which a slot is still being held for this booking. */
+const HOLDS_SLOT: BookingStatus[] = [
+  BookingStatus.REQUESTED,
+  BookingStatus.QUOTATION_SENT,
+  BookingStatus.QUOTATION_ACCEPTED,
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+  BookingStatus.IN_PROGRESS,
+  BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT,
+];
+
+/**
+ * A request that is still live, for the "one at a time" rule. A rejected
+ * quotation does **not** end a request — the provider can re-quote inside it —
+ * so only cancellation and completion free the buyer to ask again.
+ */
+const ACTIVE_REQUEST: BookingStatus[] = HOLDS_SLOT;
 
 @Injectable()
 export class BookingsService {
@@ -195,33 +232,23 @@ export class BookingsService {
   }
 
   /**
-   * Creates a booking. Only consumer personas reach this (enforced by the
-   * permission guard); the extra checks here cover who the booking is *for*.
+   * Places a booking request.
+   *
+   * For a vendor this means holding one of their published windows: the slot is
+   * reserved inside the same transaction that writes the booking, so two buyers
+   * racing for the last Saturday afternoon cannot both succeed.
    */
   async create(actor: AuthUser, dto: CreateBookingDto): Promise<Booking> {
-    if (!isConsumer(actor.role)) {
-      throw new ForbiddenException('Only individual users and agents can place bookings');
+    // The wedding marketplace belongs to the couple. An agency introduces two
+    // families and is paid for that; it does not hire their photographer, and
+    // it certainly does not hold their escrow. Booking on somebody else's
+    // behalf was removed with that scope, not merely hidden.
+    if (!isIndividual(actor.role)) {
+      throw new ForbiddenException('Only the couple and their family can place bookings');
     }
 
-    let clientUserId = actor.userId;
-    if (dto.onBehalfOfUserId && dto.onBehalfOfUserId !== actor.userId) {
-      if (actor.role !== UserRole.AGENT) {
-        throw new ForbiddenException('Only agents can book on behalf of another account');
-      }
-      // Throws unless the target is a live client on this agent's books.
-      await this.agents.assertManages(actor.userId, dto.onBehalfOfUserId);
-      clientUserId = dto.onBehalfOfUserId;
-    }
-
+    const clientUserId = actor.userId;
     await this.assertServicesUnlocked(clientUserId);
-
-    // A soft check, so the buyer is told now rather than after a quotation and
-    // a deposit. The binding one runs under a lock at confirmation.
-    if (dto.eventDate && dto.providerType === ProviderType.VENDOR) {
-      if (!(await this.availability.isAvailable(dto.providerId, dto.eventDate))) {
-        throw new BadRequestException('That vendor is not available on that date');
-      }
-    }
 
     const provider = await this.providerOwner(dto.providerType, dto.providerId);
     if (!provider.isApproved) {
@@ -231,18 +258,92 @@ export class BookingsService {
       throw new BadRequestException('You cannot book your own listing');
     }
 
-    return this.bookings.save(
-      this.bookings.create({
+    // One live request per buyer, provider, event and slot. Sending the same
+    // request twice is almost always a double-click or an impatient refresh,
+    // and answering it with a second request would have the provider quoting
+    // the same job twice.
+    const existing = await this.findActiveRequest(clientUserId, dto);
+    if (existing) {
+      throw new ConflictException({
+        message:
+          'You already have an active booking request with this provider for that event and slot.',
+        code: DUPLICATE_BOOKING_REQUEST,
+        bookingId: existing.id,
+      });
+    }
+
+    if (dto.slotId) {
+      const slot = await this.availability.findSlot(dto.slotId);
+      if (!slot || slot.vendorId !== dto.providerId) {
+        throw new BadRequestException('That time slot does not belong to this provider');
+      }
+      if (dto.eventDate && dto.eventDate !== slot.date) {
+        throw new BadRequestException('The event date does not match the slot you chose');
+      }
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const bookingRepo = manager.getRepository(Booking);
+      const booking = await bookingRepo.save(
+        bookingRepo.create({
+          userId: clientUserId,
+          bookedByUserId: actor.userId,
+          providerType: dto.providerType,
+          providerId: dto.providerId,
+          slotId: dto.slotId ?? null,
+          eventId: dto.eventId ?? null,
+          // A request carries no committed price: the provider quotes against
+          // the requirements. `amount` stays zero until a quotation is accepted.
+          amount: (dto.amount ?? 0).toFixed(2),
+          currency: this.cfg.payments.currency,
+          eventDate: dto.eventDate ?? null,
+          requirements: dto.requirements ?? null,
+          expectedBudget: dto.expectedBudget !== undefined ? dto.expectedBudget.toFixed(2) : null,
+          notes: dto.notes,
+          status: BookingStatus.REQUESTED,
+        }),
+      );
+
+      if (dto.slotId) await this.availability.reserve(manager, dto.slotId, booking.id);
+
+      await this.outbox.record(
+        {
+          eventType: 'booking.requested',
+          aggregateType: 'booking',
+          payload: {
+            bookingId: booking.id,
+            userId: clientUserId,
+            providerId: dto.providerId,
+            slotId: dto.slotId ?? null,
+          },
+        },
+        manager,
+      );
+      return booking;
+    });
+  }
+
+  /** The live request for this buyer/provider/event/slot, if there is one. */
+  private async findActiveRequest(
+    clientUserId: string,
+    dto: CreateBookingDto,
+  ): Promise<Booking | null> {
+    const candidates = await this.bookings.find({
+      where: {
         userId: clientUserId,
-        bookedByUserId: actor.userId,
         providerType: dto.providerType,
         providerId: dto.providerId,
-        amount: dto.amount.toFixed(2),
-        currency: this.cfg.payments.currency,
-        eventDate: dto.eventDate ?? null,
-        notes: dto.notes,
-        status: BookingStatus.REQUESTED,
-      }),
+        status: In(ACTIVE_REQUEST),
+      },
+    });
+
+    return (
+      candidates.find(
+        (b) =>
+          (dto.slotId ? b.slotId === dto.slotId : true) &&
+          (dto.eventId ? b.eventId === dto.eventId : true) &&
+          (!dto.slotId && !dto.eventId ? b.eventDate === (dto.eventDate ?? null) : true),
+      ) ?? null
     );
   }
 
@@ -278,14 +379,14 @@ export class BookingsService {
   /**
    * Pays one escrow milestone.
    *
-   * The advance is what secures the booking, so it is the instalment that moves
-   * the booking to PENDING; the second and final instalments are collected
-   * against the same booking without changing its state. Milestones run in
-   * order — collecting the balance before the deposit would defeat the point of
-   * staging them.
+   * Each instalment is tied to a point in the work, not just to the one before
+   * it: the advance secures the job, the second falls due once the provider has
+   * actually started, and the balance only once they say it is finished. The
+   * gate is here rather than in the UI, because a disabled button stops nobody
+   * who is willing to call the API directly.
    *
    * `idempotencyKey` makes a retried request (flaky network, double-tap) return
-   * the original payment instead of creating a second escrow hold.
+   * the original payment instead of holding a second time.
    */
   async pay(
     actor: AuthUser,
@@ -308,8 +409,7 @@ export class BookingsService {
       const bookingRepo = manager.getRepository(Booking);
       const paymentRepo = manager.getRepository(Payment);
 
-      // Lock the row so two concurrent pay calls cannot both create an escrow
-      // hold against the same booking.
+      // Lock the row so two concurrent pay calls cannot both create a hold.
       const booking = await bookingRepo.findOne({
         where: { id: bookingId },
         lock: { mode: 'pessimistic_write' },
@@ -317,33 +417,18 @@ export class BookingsService {
       if (!booking) throw new NotFoundException('Booking not found');
       await this.assertBuyerSide(actor, booking);
 
+      if (parseFloat(booking.amount) <= 0) {
+        throw new BadRequestException(
+          'This booking has no agreed price yet — accept a quotation first',
+        );
+      }
+
       const existing = await paymentRepo.find({ where: { bookingId: booking.id } });
       const live = existing.filter((p) => !this.isDead(p.status));
       if (live.some((p) => p.milestone === milestone)) {
         throw new BadRequestException(`The ${milestone} instalment has already been paid`);
       }
-      this.assertMilestoneOrder(
-        milestone,
-        live.map((p) => p.milestone),
-      );
-
-      const isAdvance = milestone === PaymentMilestone.ADVANCE;
-      if (isAdvance) {
-        // A quotation-driven booking is already at PAYMENT_PENDING when the
-        // buyer accepted the quote; a listed-price one arrives straight from
-        // REQUESTED. Both are legal, so the machine is asked rather than
-        // second-guessed.
-        if (booking.status !== BookingStatus.PAYMENT_PENDING) {
-          this.assertTransition(booking.status, BookingStatus.PAYMENT_PENDING);
-          booking.status = BookingStatus.PAYMENT_PENDING;
-        }
-        this.assertTransition(booking.status, BookingStatus.PENDING);
-      } else if (
-        booking.status === BookingStatus.CANCELLED ||
-        booking.status === BookingStatus.COMPLETED
-      ) {
-        throw new BadRequestException('That booking is closed');
-      }
+      this.assertMilestoneAllowed(booking, milestone, live);
 
       const amount = this.milestoneAmount(booking.amount, milestone);
       // The split is fixed at the moment of payment, so what the provider is
@@ -367,7 +452,16 @@ export class BookingsService {
         }),
       );
 
-      if (isAdvance) booking.status = BookingStatus.PENDING;
+      // The advance is what turns an agreement into a booking; the balance is
+      // what closes it. The middle instalment changes no state of its own.
+      if (milestone === PaymentMilestone.ADVANCE) {
+        this.assertTransition(booking.status, BookingStatus.CONFIRMED);
+        booking.status = BookingStatus.CONFIRMED;
+        if (booking.slotId) await this.availability.confirm(manager, booking.slotId);
+      } else if (milestone === PaymentMilestone.FINAL) {
+        this.assertTransition(booking.status, BookingStatus.COMPLETED);
+        booking.status = BookingStatus.COMPLETED;
+      }
       await bookingRepo.save(booking);
 
       await this.outbox.record(
@@ -388,80 +482,155 @@ export class BookingsService {
         },
         manager,
       );
+
       return { booking, payment };
     });
   }
 
-  /** Instalments run advance, second, final. Skipping ahead is refused. */
-  private assertMilestoneOrder(next: PaymentMilestone, paid: PaymentMilestone[]): void {
+  /**
+   * Whether this instalment is due yet.
+   *
+   * Two conditions, both necessary: the instalments run in order, and each one
+   * is unlocked by something the provider has done.
+   */
+  private assertMilestoneAllowed(
+    booking: Booking,
+    next: PaymentMilestone,
+    paid: Payment[],
+  ): void {
+    const done = paid.map((p) => p.milestone);
     const required: Record<PaymentMilestone, PaymentMilestone[]> = {
       [PaymentMilestone.ADVANCE]: [],
       [PaymentMilestone.SECOND]: [PaymentMilestone.ADVANCE],
       [PaymentMilestone.FINAL]: [PaymentMilestone.ADVANCE, PaymentMilestone.SECOND],
     };
-    const missing = required[next].filter((m) => !paid.includes(m));
+    const missing = required[next].filter((m) => !done.includes(m));
     if (missing.length > 0) {
       throw new BadRequestException(`Pay the ${missing.join(' and ')} instalment first`);
     }
+
+    const gate: Record<PaymentMilestone, { states: BookingStatus[]; because: string }> = {
+      [PaymentMilestone.ADVANCE]: {
+        states: [BookingStatus.PAYMENT_PENDING, BookingStatus.PENDING],
+        because: 'The provider has to accept the job before the advance is payable',
+      },
+      [PaymentMilestone.SECOND]: {
+        states: [BookingStatus.IN_PROGRESS],
+        because: 'The second instalment falls due once the provider has started work',
+      },
+      [PaymentMilestone.FINAL]: {
+        states: [BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT],
+        because: 'The balance falls due once the provider has confirmed the work is finished',
+      },
+    };
+    if (!gate[next].states.includes(booking.status)) {
+      throw new BadRequestException(gate[next].because);
+    }
   }
 
-  /** Provider confirms the pending booking. Only the listing owner may do this. */
   /**
-   * Provider confirms the pending booking. Only the listing owner may do this.
+   * The provider accepts the job. From here the buyer can pay the advance.
    *
-   * Confirmation is where the date is actually taken. Both writes happen in one
-   * transaction with the calendar row locked, so two bookings racing for the
-   * last slot on a date cannot both succeed — for a wedding vendor that clash
-   * has no recovery.
+   * On a quotation-driven booking the price is already agreed; on a
+   * listed-price one this is where the provider signs up to it.
    */
   async confirm(actor: AuthUser, bookingId: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertSellerSide(actor, booking);
 
-    const saved = await this.dataSource.transaction(async (manager) => {
-      if (booking.eventDate && booking.providerType === ProviderType.VENDOR) {
-        await this.availability.reserve(manager, booking.providerId, booking.eventDate);
-      }
-      this.assertTransition(booking.status, BookingStatus.CONFIRMED);
-      booking.status = BookingStatus.CONFIRMED;
-      return manager.getRepository(Booking).save(booking);
-    });
+    if (parseFloat(booking.amount) <= 0) {
+      throw new BadRequestException('Send a quotation before accepting this job');
+    }
+    const saved = await this.transition(booking, BookingStatus.PAYMENT_PENDING);
 
     await this.outbox.record({
       eventType: 'booking.confirmed',
       aggregateType: 'booking',
-      payload: { bookingId, providerId: booking.providerId, eventDate: booking.eventDate },
+      payload: { bookingId, providerId: booking.providerId, amount: booking.amount },
     });
     return saved;
   }
 
-  /** Provider marks work as started. Purely a signal to the buyer. */
+  /**
+   * The provider says they have started. Refused until the advance is actually
+   * held — that is the entire purpose of taking one.
+   */
   async startWork(actor: AuthUser, bookingId: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertSellerSide(actor, booking);
-    return this.transition(booking, BookingStatus.IN_PROGRESS);
+
+    if (!(await this.hasHeld(bookingId, PaymentMilestone.ADVANCE))) {
+      throw new BadRequestException('The advance payment has not been completed yet');
+    }
+    booking.startedAt = new Date();
+    const saved = await this.transition(booking, BookingStatus.IN_PROGRESS);
+
+    await this.outbox.record({
+      eventType: 'booking.started',
+      aggregateType: 'booking',
+      payload: { bookingId, userId: booking.userId },
+    });
+    return saved;
   }
 
   /**
-   * Provider marks the event delivered, which releases every held instalment.
-   *
-   * An open case blocks this outright. Escrow that a provider can release while
-   * the buyer is disputing it is not escrow, so the check comes before the
-   * transition rather than after.
+   * The provider says the work is delivered. This does not complete the
+   * booking — it makes the balance payable, and paying it is what completes it.
    */
-  async complete(actor: AuthUser, bookingId: string): Promise<Booking> {
+  async completeWork(actor: AuthUser, bookingId: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertSellerSide(actor, booking);
+
+    if (await this.cases.hasOpenCaseFor(bookingId)) {
+      throw new BadRequestException(
+        'An open case is holding this booking. It moves on when a settlement is recorded.',
+      );
+    }
+    if (!(await this.hasHeld(bookingId, PaymentMilestone.SECOND))) {
+      throw new BadRequestException('The second instalment has not been completed yet');
+    }
+
+    booking.completedAt = new Date();
+    const saved = await this.transition(booking, BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT);
+
+    await this.outbox.record({
+      eventType: 'booking.work_completed',
+      aggregateType: 'booking',
+      payload: { bookingId, userId: booking.userId },
+    });
+    return saved;
+  }
+
+  /**
+   * Releases every held instalment to the provider.
+   *
+   * Called once the balance is in and the booking is complete. An open case
+   * blocks it outright: escrow a provider can release while the buyer disputes
+   * it is not escrow.
+   */
+  async settle(actor: AuthUser, bookingId: string): Promise<Booking> {
+    const booking = await this.loadOrFail(bookingId);
+    await this.assertParticipant(actor, booking);
+
+    if (booking.status !== BookingStatus.COMPLETED) {
+      throw new BadRequestException('The booking is not complete yet');
+    }
     if (await this.cases.hasOpenCaseFor(bookingId)) {
       throw new BadRequestException(
         'An open case is holding the money on this booking. It is released by a settlement decision.',
       );
     }
-    const saved = await this.transition(booking, BookingStatus.COMPLETED);
 
+    await this.releaseHeld(actor, bookingId);
+    return booking;
+  }
+
+  /** Moves every held payment on a booking to the provider. */
+  private async releaseHeld(actor: AuthUser | undefined, bookingId: string): Promise<number> {
     const held = await this.payments.find({
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
     });
+
     for (const payment of held) {
       if (!payment.providerRef) continue;
       // Release only the seller share; the commission stays with the platform.
@@ -490,16 +659,25 @@ export class BookingsService {
         },
       });
     }
-
-    await this.outbox.record({
-      eventType: 'booking.completed',
-      aggregateType: 'booking',
-      payload: { bookingId, released: held.length },
-    });
-    return saved;
+    return held.length;
   }
 
-  /** Either side may cancel; every held instalment is refunded to the buyer. */
+  /** Is this instalment held (or already released) on this booking? */
+  private async hasHeld(bookingId: string, milestone: PaymentMilestone): Promise<boolean> {
+    const count = await this.payments.count({
+      where: [
+        { bookingId, milestone, status: PaymentStatus.HELD_IN_ESCROW },
+        { bookingId, milestone, status: PaymentStatus.RELEASED },
+        { bookingId, milestone, status: PaymentStatus.DISPUTED },
+      ],
+    });
+    return count > 0;
+  }
+
+  /**
+   * Either side may cancel; every held instalment is refunded and the slot goes
+   * back on sale.
+   */
   async cancel(actor: AuthUser, bookingId: string, reason?: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertParticipant(actor, booking);
@@ -508,16 +686,21 @@ export class BookingsService {
         'An open case is holding the money on this booking. It is refunded by a settlement decision.',
       );
     }
-    const heldTheDate =
-      booking.status === BookingStatus.CONFIRMED || booking.status === BookingStatus.IN_PROGRESS;
+
+    const wasConfirmed = [
+      BookingStatus.CONFIRMED,
+      BookingStatus.IN_PROGRESS,
+      BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT,
+    ].includes(booking.status);
+    const heldSlot = HOLDS_SLOT.includes(booking.status);
+
     booking.cancellationReason = reason ?? null;
     const saved = await this.transition(booking, BookingStatus.CANCELLED);
 
-    // Give the date back to the vendor's calendar — only if this booking was
-    // actually holding it, or a cancellation before confirmation would free a
-    // slot it never took.
-    if (heldTheDate && booking.eventDate && booking.providerType === ProviderType.VENDOR) {
-      await this.availability.release(booking.providerId, booking.eventDate);
+    // Give the window back. `wasConfirmed` decides whether a confirmed booking
+    // is being un-counted or a mere request is being let go.
+    if (heldSlot && booking.slotId) {
+      await this.availability.release(booking.slotId, wasConfirmed);
     }
 
     const held = await this.payments.find({
@@ -585,7 +768,38 @@ export class BookingsService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    return paginate(await this.withProviderNames(data), total, q.page, q.limit);
+  }
+
+  /**
+   * Attaches the provider's trading name to each row.
+   *
+   * Without it the client holds a uuid and nothing else, and every booking list
+   * reads as a wall of hex. Resolved in one query per provider type rather than
+   * one per row.
+   */
+  private async withProviderNames<T extends Booking>(rows: T[]): Promise<T[]> {
+    if (rows.length === 0) return rows;
+
+    const vendorIds = rows
+      .filter((r) => r.providerType === ProviderType.VENDOR)
+      .map((r) => r.providerId);
+    const plannerIds = rows
+      .filter((r) => r.providerType === ProviderType.PLANNER)
+      .map((r) => r.providerId);
+
+    const [vendors, planners] = await Promise.all([
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : Promise.resolve([]),
+      plannerIds.length ? this.planners.find({ where: { id: In(plannerIds) } }) : Promise.resolve([]),
+    ]);
+
+    const names = new Map<string, string>();
+    for (const v of vendors) names.set(v.id, v.name);
+    for (const p of planners) names.set(p.id, p.agencyName);
+
+    return rows.map((row) =>
+      Object.assign(row, { providerName: names.get(row.providerId) ?? 'Provider' }),
+    );
   }
 
   /** Seller-side listing: bookings against the caller's own listings. */
@@ -602,7 +816,105 @@ export class BookingsService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    return paginate(await this.withProviderNames(data), total, q.page, q.limit);
+  }
+
+  /**
+   * The provider's account: what has been earned, what is still in escrow, and
+   * the line-by-line ledger behind both.
+   *
+   * Held and released are reported separately because they mean very different
+   * things to somebody deciding whether they can pay their own suppliers this
+   * week. Everything is net of commission — the payout figure is the money that
+   * actually reaches them, so it is the one shown as earnings.
+   */
+  async earnings(actor: AuthUser): Promise<{
+    heldInEscrow: string;
+    released: string;
+    refunded: string;
+    commission: string;
+    gross: string;
+    currency: string;
+    ledger: {
+      paymentId: string;
+      bookingId: string;
+      milestone: PaymentMilestone;
+      status: PaymentStatus;
+      amount: string;
+      commissionAmount: string;
+      payoutAmount: string;
+      confirmedAt: Date | null;
+      createdAt: Date;
+    }[];
+  }> {
+    const providerIds = await this.ownedProviderIds(actor);
+    const empty = {
+      heldInEscrow: '0.00',
+      released: '0.00',
+      refunded: '0.00',
+      commission: '0.00',
+      gross: '0.00',
+      currency: 'INR',
+      ledger: [],
+    };
+    if (providerIds.length === 0) return empty;
+
+    const bookings = await this.bookings.find({
+      where: { providerId: In(providerIds) },
+      select: ['id', 'currency'],
+    });
+    if (bookings.length === 0) return empty;
+
+    const payments = await this.payments.find({
+      where: { bookingId: In(bookings.map((b) => b.id)) },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Money is added in minor units. Summing the decimal strings directly would
+    // drift a paisa at a time and eventually disagree with the ledger below it.
+    let held = 0;
+    let released = 0;
+    let refunded = 0;
+    let commission = 0;
+    let gross = 0;
+
+    for (const payment of payments) {
+      const payout = toMinor(payment.payoutAmount ?? '0');
+      const fee = toMinor(payment.commissionAmount ?? '0');
+      const total = toMinor(payment.amount ?? '0');
+
+      if (payment.status === PaymentStatus.HELD_IN_ESCROW || payment.status === PaymentStatus.DISPUTED) {
+        held += payout;
+      }
+      if (payment.status === PaymentStatus.RELEASED || payment.status === PaymentStatus.PARTIALLY_SETTLED) {
+        released += payout;
+        commission += fee;
+        gross += total;
+      }
+      if (payment.status === PaymentStatus.REFUNDED) {
+        refunded += total;
+      }
+    }
+
+    return {
+      heldInEscrow: toMajor(held),
+      released: toMajor(released),
+      refunded: toMajor(refunded),
+      commission: toMajor(commission),
+      gross: toMajor(gross),
+      currency: bookings[0].currency ?? 'INR',
+      ledger: payments.map((p) => ({
+        paymentId: p.id,
+        bookingId: p.bookingId,
+        milestone: p.milestone,
+        status: p.status,
+        amount: p.amount,
+        commissionAmount: p.commissionAmount,
+        payoutAmount: p.payoutAmount,
+        confirmedAt: p.webhookVerifiedAt ?? null,
+        createdAt: p.createdAt,
+      })),
+    };
   }
 
   private async ownedProviderIds(actor: AuthUser): Promise<string[]> {

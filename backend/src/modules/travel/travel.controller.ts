@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TravelService } from './travel.service';
-import { CreateItineraryDto } from './dto/travel.dto';
+import { CreateItineraryDto, PackageSearchDto } from './dto/travel.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -16,6 +16,16 @@ export class TravelController {
   @Get('destinations')
   destinations() {
     return this.travel.listDestinations();
+  }
+
+  @Public()
+  @ApiOperation({
+    summary: 'Browse packages across every destination',
+    description: 'Filter by budget, nights and destination tag — tag=honeymoon for the honeymoon catalogue.',
+  })
+  @Get('packages')
+  searchPackages(@Query() q: PackageSearchDto) {
+    return this.travel.searchPackages(q);
   }
 
   @Public()

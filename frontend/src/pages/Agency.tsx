@@ -10,6 +10,9 @@ interface Agency {
   contactPhone: string | null;
   city: string | null;
   about: string | null;
+  address: string | null;
+  startDate: string | null;
+  pictures: string[];
   isApproved: boolean;
   rejectionReason: string | null;
 }
@@ -19,6 +22,8 @@ const empty = {
   registrationNumber: '',
   contactPhone: '',
   city: '',
+  address: '',
+  startDate: '',
   about: '',
 };
 
@@ -32,6 +37,8 @@ const empty = {
 export default function Agency() {
   const qc = useQueryClient();
   const [form, setForm] = useState(empty);
+  const [pictures, setPictures] = useState<string[]>([]);
+  const [pictureUrl, setPictureUrl] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -78,8 +85,11 @@ export default function Agency() {
         registrationNumber: agency.registrationNumber ?? '',
         contactPhone: agency.contactPhone ?? '',
         city: agency.city ?? '',
+        address: agency.address ?? '',
+        startDate: agency.startDate ?? '',
         about: agency.about ?? '',
       });
+      setPictures(agency.pictures ?? []);
     }
   }, [agency]);
 
@@ -89,9 +99,17 @@ export default function Agency() {
     setNotice('');
     try {
       const payload: Record<string, unknown> = { agencyName: form.agencyName };
-      for (const key of ['registrationNumber', 'contactPhone', 'city', 'about'] as const) {
+      for (const key of [
+        'registrationNumber',
+        'contactPhone',
+        'city',
+        'address',
+        'startDate',
+        'about',
+      ] as const) {
         if (form[key]) payload[key] = form[key];
       }
+      payload.pictures = pictures;
       await api.put('/agents/agency', payload);
       setNotice(
         agency?.isApproved
@@ -219,6 +237,32 @@ export default function Agency() {
             <label className="label">City</label>
             <input className="input" value={form.city} onChange={set('city')} />
           </div>
+          <div>
+            <label className="label">Trading since</label>
+            <input
+              className="input"
+              type="date"
+              value={form.startDate}
+              onChange={set('startDate')}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Families ask how long you have been doing this. Answering it up front saves the
+              question.
+            </p>
+          </div>
+        </div>
+        <div>
+          <label className="label">Registered address</label>
+          <textarea
+            className="input"
+            rows={2}
+            maxLength={500}
+            value={form.address}
+            onChange={set('address')}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Where a verification officer will visit. It is not shown to clients.
+          </p>
         </div>
         <div>
           <label className="label">About your agency</label>
@@ -230,6 +274,54 @@ export default function Agency() {
             onChange={set('about')}
           />
         </div>
+        <div>
+          <label className="label">Office photographs</label>
+          <p className="text-xs text-gray-500">
+            A real office with people in it is the single most reassuring thing on an agency
+            profile.
+          </p>
+          {pictures.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {pictures.map((url) => (
+                <div key={url} className="relative">
+                  <img
+                    src={url}
+                    alt=""
+                    className="h-24 w-32 rounded object-cover"
+                    loading="lazy"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs text-gray-700"
+                    onClick={() => setPictures((p) => p.filter((u) => u !== url))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              className="input flex-1"
+              placeholder="https://…"
+              value={pictureUrl}
+              onChange={(e) => setPictureUrl(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={!pictureUrl.trim()}
+              onClick={() => {
+                setPictures((p) => [...p, pictureUrl.trim()]);
+                setPictureUrl('');
+              }}
+            >
+              Add photo
+            </button>
+          </div>
+        </div>
+
         <button className="btn">{agency ? 'Save details' : 'Submit for review'}</button>
       </form>
     </div>

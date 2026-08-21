@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Put, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { MessageHistoryQueryDto, SendMessageDto } from './dto/chat.dto';
@@ -29,5 +29,18 @@ export class ChatController {
   @Get('conversations')
   conversations(@CurrentUser('userId') userId: string) {
     return this.chat.listConversations(userId);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @Put('messages/read')
+  @HttpCode(200)
+  markRead(@CurrentUser('userId') userId: string, @Query() q: MessageHistoryQueryDto) {
+    return this.chat.markRead(userId, q.withUserId);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @Get('presence')
+  presence(@Query() q: MessageHistoryQueryDto) {
+    return this.chat.presenceOf(q.withUserId);
   }
 }

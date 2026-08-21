@@ -27,7 +27,7 @@ export class MatchmakingController {
   })
   @Get('suggestions')
   suggestions(@CurrentUser() actor: AuthUser, @Query() q: SuggestionsQueryDto) {
-    return this.matchmaking.suggestions(actor, q.page, q.limit, q.profileId);
+    return this.matchmaking.suggestions(actor, q);
   }
 
   @RequirePermissions(Permission.MATCH_SEND_INTEREST)

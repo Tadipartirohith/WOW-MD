@@ -49,6 +49,33 @@ JWT_REFRESH_SECRET=test-refresh-at-least-32-characters-long \
 docker compose -f docker/docker-compose.test.yml down
 ```
 
+## Verification suites
+
+The five verification suites in `scripts/` drive the live API the way a person
+would, and assert on what comes back. Between them they carry 557 assertions.
+They run from inside the compose network, against a stack that is already up.
+
+| Suite | Covers |
+| --- | --- |
+| `verify-rbac.sh` | Who may do what, per persona, including by direct URL |
+| `verify-invites.sh` | Building a profile for someone, inviting them, and what changes when they claim it |
+| `verify-circulation.sh` | Consent, duplicate detection, and sending a biodata to another family |
+| `verify-phase1.sh` | Field verification, support cases, frozen escrow, milestones and quotations |
+| `verify-phase2.sh` | The sectioned biodata and Aadhaar, notifications, the accounts ledger, chat presence, events, honeymoon packages, match filters and disputes |
+
+Run one like this, replacing the name at the end:
+
+```
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts"   alpine:3.20 sh -c "apk add --no-cache curl jq redis >/dev/null && sh /scripts/verify-phase2.sh"
+```
+
+Each prints a PASS or FAIL line per assertion and a total at the end, and exits
+non-zero if anything failed. They need `MAIL_PROVIDER=log` and
+`AADHAAR_PROVIDER=mock`: in those modes invitation links, temporary passwords
+and OTP codes come back on the response, because nothing is actually delivered.
+They are safe to re-run — every run generates its own emails, phone numbers and
+Aadhaar number, so a second run does not collide with the first.
+
 ## Load test
 
 The load test uses k6 and checks that the busy endpoints stay fast under pressure. Run it against a stack that is already up, and it reports whether the response times stayed within the target.

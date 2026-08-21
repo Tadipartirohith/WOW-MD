@@ -10,10 +10,11 @@ import {
   MinLength,
 } from 'class-validator';
 import { ConsentMethod, ConsentRelation, ConsentScope } from '../../../common/enums';
-import { PHONE_MESSAGE, PHONE_PATTERN } from '../../auth/dto/auth.dto';
-
-const normalisePhone = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.replace(/[\s()-]/g, '') : value;
+import {
+  MOBILE_MESSAGE,
+  MOBILE_PATTERN,
+  normaliseMobile,
+} from '../../../common/util/identity-fields';
 
 export class RecordConsentDto {
   @ApiProperty({
@@ -46,8 +47,8 @@ export class RecordConsentDto {
     description: 'A number the agency can call back on to confirm.',
   })
   @IsOptional()
-  @Transform(normalisePhone)
-  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   givenByPhone?: string;
 
   @ApiProperty({

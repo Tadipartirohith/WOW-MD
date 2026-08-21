@@ -43,6 +43,8 @@ describe('BookingsService', () => {
   const plannersRepo = { findOne: jest.fn(async () => null), find: jest.fn(async () => []) };
   const bookingsRepo = {
     findOne: jest.fn(async () => current),
+    // The duplicate-request check reads the buyer's live requests.
+    find: jest.fn(async () => []),
     save: jest.fn(async (b) => {
       current = b as Booking;
       return current;
@@ -53,6 +55,8 @@ describe('BookingsService', () => {
   const paymentsRepo = {
     findOne: jest.fn(async () => null),
     find: jest.fn(async () => []),
+    // The work gates ask "is this instalment held?"; each test says yes or no.
+    count: jest.fn(async () => 1),
     update: jest.fn(),
   };
 
@@ -104,6 +108,8 @@ describe('BookingsService', () => {
       bookedByUserId: 'u1',
       providerType: ProviderType.VENDOR,
       providerId: 'v1',
+      amount: '5000.00',
+      slotId: null,
       status: BookingStatus.CONFIRMED,
       ...over,
     }) as Booking;
@@ -135,9 +141,27 @@ describe('BookingsService', () => {
   });
 
   describe('state machine', () => {
-    it('allows a legal transition CONFIRMED to COMPLETED', async () => {
-      const result = await service.complete(asUser('vendor-owner', UserRole.VENDOR), 'b1');
-      expect(result.status).toBe(BookingStatus.COMPLETED);
+    it('lets the provider mark work delivered once the second instalment is in', async () => {
+      current = baseBooking({ status: BookingStatus.IN_PROGRESS });
+      paymentsRepo.count.mockResolvedValueOnce(1);
+      const result = await service.completeWork(asUser('vendor-owner', UserRole.VENDOR), 'b1');
+      expect(result.status).toBe(BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT);
+    });
+
+    it('refuses to mark work delivered before the second instalment', async () => {
+      current = baseBooking({ status: BookingStatus.IN_PROGRESS });
+      paymentsRepo.count.mockResolvedValueOnce(0);
+      await expect(
+        service.completeWork(asUser('vendor-owner', UserRole.VENDOR), 'b1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('refuses to start work before the advance is held', async () => {
+      current = baseBooking({ status: BookingStatus.CONFIRMED });
+      paymentsRepo.count.mockResolvedValueOnce(0);
+      await expect(
+        service.startWork(asUser('vendor-owner', UserRole.VENDOR), 'b1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('rejects an illegal transition COMPLETED to CONFIRMED', async () => {
@@ -158,9 +182,10 @@ describe('BookingsService', () => {
   describe('authorization', () => {
     // Previously complete() took only a booking id, so any authenticated user
     // could release another party's escrow by guessing a UUID.
-    it('refuses to complete a booking against someone else’s listing', async () => {
+    it('refuses to mark work delivered on someone else’s listing', async () => {
+      current = baseBooking({ status: BookingStatus.IN_PROGRESS });
       await expect(
-        service.complete(asUser('random-user', UserRole.VENDOR), 'b1'),
+        service.completeWork(asUser('random-user', UserRole.VENDOR), 'b1'),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -211,36 +236,16 @@ describe('BookingsService', () => {
     });
   });
 
-  describe('agent on behalf of a client', () => {
-    it('stamps both the client and the acting agent on the booking', async () => {
-      const booking = await service.create(asUser('agent-1', UserRole.AGENT), {
-        providerType: ProviderType.VENDOR,
-        providerId: 'v1',
-        amount: 1000,
-        onBehalfOfUserId: 'client-1',
-      });
-      expect(booking.userId).toBe('client-1');
-      expect(booking.bookedByUserId).toBe('agent-1');
-    });
-
-    it('refuses to book for a client the agent does not manage', async () => {
+  describe('who may place a booking', () => {
+    it('refuses a booking from an agent account', async () => {
+      // Narrowed deliberately: an agency introduces two families and is paid
+      // for that. The couple hires their own vendors and holds their own
+      // escrow, so there is no on-behalf path left to test.
       await expect(
         service.create(asUser('agent-1', UserRole.AGENT), {
           providerType: ProviderType.VENDOR,
           providerId: 'v1',
           amount: 1000,
-          onBehalfOfUserId: 'someone-elses-client',
-        }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('refuses on-behalf-of booking from a non-agent account', async () => {
-      await expect(
-        service.create(asUser('u1', UserRole.BRIDE), {
-          providerType: ProviderType.VENDOR,
-          providerId: 'v1',
-          amount: 1000,
-          onBehalfOfUserId: 'client-1',
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });

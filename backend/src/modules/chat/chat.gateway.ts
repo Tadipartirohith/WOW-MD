@@ -3,6 +3,7 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
+  OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -16,6 +17,7 @@ import { ChatService } from './chat.service';
 import { SendMessageDto } from './dto/chat.dto';
 import { User } from '../auth/entities/user.entity';
 import { Permission, roleHasPermission } from '../../common/authz/permissions';
+import { PresenceService } from './presence.service';
 
 /**
  * Real-time chat. Authenticated on the handshake via JWT. Runs behind the Redis
@@ -24,7 +26,7 @@ import { Permission, roleHasPermission } from '../../common/authz/permissions';
  * recipient's room regardless of which replica they are connected to.
  */
 @WebSocketGateway({ namespace: 'chat', cors: true })
-export class ChatGateway implements OnGatewayConnection {
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
 
   @WebSocketServer()
@@ -35,6 +37,7 @@ export class ChatGateway implements OnGatewayConnection {
     private readonly jwt: JwtService,
     private readonly cfg: AppConfigService,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly presence: PresenceService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -56,10 +59,37 @@ export class ChatGateway implements OnGatewayConnection {
       client.data.userId = user.id;
       client.data.role = user.role;
       client.join(`user:${user.id}`);
+
+      await this.presence.markOnline(user.id);
+      this.server.emit('presence:changed', { userId: user.id, online: true });
     } catch {
       this.logger.warn('Rejected socket: invalid token or ineligible account');
       client.disconnect(true);
     }
+  }
+
+  /**
+   * A clean close. An unclean one — a lid shutting, a tunnel — is caught by the
+   * TTL on the presence key instead, which is why presence is not a flag.
+   */
+  async handleDisconnect(client: Socket) {
+    const userId = client.data.userId as string | undefined;
+    if (!userId) return;
+
+    // Several tabs are normal. Only the last one closing means they have gone.
+    const sockets = await this.server.in(`user:${userId}`).fetchSockets();
+    if (sockets.length > 0) return;
+
+    await this.presence.markOffline(userId);
+    this.server.emit('presence:changed', { userId, online: false });
+  }
+
+  /** Keeps the presence key alive while a tab is open but quiet. */
+  @SubscribeMessage('presence:heartbeat')
+  async onHeartbeat(@ConnectedSocket() client: Socket) {
+    const userId = client.data.userId as string | undefined;
+    if (userId) await this.presence.markOnline(userId);
+    return { ok: true };
   }
 
   /**

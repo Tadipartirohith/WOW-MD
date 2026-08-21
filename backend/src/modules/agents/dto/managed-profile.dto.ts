@@ -24,10 +24,12 @@ import {
 } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { PreferencesDto } from '../../users/dto/profile.dto';
-import { PHONE_MESSAGE, PHONE_PATTERN, normaliseEmail } from '../../auth/dto/auth.dto';
-
-const normalisePhone = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.replace(/[\s()-]/g, '') : value;
+import { normaliseEmail } from '../../auth/dto/auth.dto';
+import {
+  MOBILE_MESSAGE,
+  MOBILE_PATTERN,
+  normaliseMobile,
+} from '../../../common/util/identity-fields';
 
 /**
  * How the family gave permission, captured at intake.
@@ -56,8 +58,8 @@ export class IntakeConsentDto {
 
   @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
-  @Transform(normalisePhone)
-  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   givenByPhone?: string;
 
   @ApiProperty({ format: 'date', example: '2026-08-12' })
@@ -100,8 +102,8 @@ export class CreateManagedProfileDto {
     example: '+919876543210',
     description: 'The primary way to reach this family. Required.',
   })
-  @Transform(normalisePhone)
-  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   contactPhone: string;
 
   @ApiPropertyOptional({

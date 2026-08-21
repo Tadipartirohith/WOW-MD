@@ -51,6 +51,9 @@ export class AppConfigService {
   get payments() {
     return this.section('payments');
   }
+  get identity() {
+    return this.section('identity');
+  }
   get ai() {
     return this.section('ai');
   }

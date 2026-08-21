@@ -27,6 +27,7 @@ import { CirculationModule } from './modules/circulation/circulation.module';
 import { VerificationModule } from './modules/verification/verification.module';
 import { WeddingPlannersModule } from './modules/wedding-planners/wedding-planners.module';
 import { UsersModule } from './modules/users/users.module';
+import { ProfileDetailsModule } from './modules/profile-details/profile-details.module';
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
@@ -84,6 +85,7 @@ import { AiModule } from './modules/ai/ai.module';
     AgentsModule,
     WeddingPlannersModule,
     UsersModule,
+    ProfileDetailsModule,
     MatchmakingModule,
     ChatModule,
     VendorsModule,
