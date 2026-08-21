@@ -41,6 +41,13 @@ jobs:
       REDIS_PORT: 6379
       JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
       JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-characters-long
+      # The auth throttle exists to slow credential stuffing from one address.
+      # The e2e suite registers a dozen accounts from one address in a few
+      # seconds, which is not that threat — and with the production ceiling of
+      # 10 the suite sat one new test away from failing on a 429 that had
+      # nothing to do with the code under test. The limit itself is exercised
+      # by scripts/verify-invites.sh, which drives it deliberately.
+      AUTH_RATE_LIMIT_MAX: 100
 
     steps:
       - uses: actions/checkout@v4

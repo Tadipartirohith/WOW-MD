@@ -17,31 +17,42 @@ describe('WOW API (e2e)', () => {
   let app: INestApplication;
   const unique = Date.now();
 
+  /**
+   * A registration name is a person's name: letters and spaces, no digits. The
+   * fixtures used to read "E2E Solo", which the platform now — correctly —
+   * refuses, so uniqueness lives in the email address where it belongs.
+   *
+   * A business account must also carry a mobile number. In this market that is
+   * the channel a vendor or an agency is actually reached on, and it is the key
+   * duplicate detection runs against, so it is not optional for them.
+   */
   const solo = {
     email: `solo_${unique}@test.com`,
     password: 'Password123',
     accountType: 'individual',
     role: 'bride',
-    displayName: 'E2E Solo',
+    displayName: 'Solo Sharma',
   };
   const groom = {
     email: `groom_${unique}@test.com`,
     password: 'Password123',
     accountType: 'individual',
     role: 'groom',
-    displayName: 'E2E Groom',
+    displayName: 'Groom Reddy',
   };
   const agent = {
     email: `agent_${unique}@test.com`,
     password: 'Password123',
     accountType: 'agent',
-    displayName: 'E2E Agency',
+    displayName: 'Anita Rao',
+    phone: `98765${String(unique).slice(-5)}`,
   };
   const vendor = {
     email: `vendor_${unique}@test.com`,
     password: 'Password123',
     accountType: 'vendor',
-    displayName: 'E2E Venue Co',
+    displayName: 'Vikram Nair',
+    phone: `98764${String(unique).slice(-5)}`,
   };
 
   let soloToken: string;
@@ -106,6 +117,37 @@ describe('WOW API (e2e)', () => {
     // A vendor must never be handed buy-side capabilities.
     expect(r4.body.user.permissions).not.toContain('booking:create');
     expect(r4.body.user.permissions).not.toContain('match:browse');
+  });
+
+  it('refuses a registration name with digits or symbols in it', async () => {
+    // "E2E Solo" is a plausible-looking name that is not one. A display name
+    // reaches other families on a biodata, so it has to read as a person.
+    await http()
+      .post('/api/auth/register')
+      .send({ ...solo, email: `digits_${unique}@test.com`, displayName: 'E2E Solo' })
+      .expect(400);
+
+    await http()
+      .post('/api/auth/register')
+      .send({ ...solo, email: `symbols_${unique}@test.com`, displayName: 'Priya <script>' })
+      .expect(400);
+  });
+
+  it('insists a business account carries a mobile number', async () => {
+    // An individual may sign up on an email alone — proven by `solo` above,
+    // which carries no phone — while a vendor or an agency is reached on their
+    // number, and duplicate detection keys on it.
+    const { phone: _agentPhone, ...agentWithoutPhone } = agent;
+    await http()
+      .post('/api/auth/register')
+      .send({ ...agentWithoutPhone, email: `nophone_agent_${unique}@test.com` })
+      .expect(400);
+
+    const { phone: _vendorPhone, ...vendorWithoutPhone } = vendor;
+    await http()
+      .post('/api/auth/register')
+      .send({ ...vendorWithoutPhone, email: `nophone_vendor_${unique}@test.com` })
+      .expect(400);
   });
 
   it('lets a solo user sign in on their own, with no agent involved', async () => {
@@ -276,6 +318,48 @@ describe('WOW API (e2e)', () => {
       .set('Authorization', `Bearer ${soloToken}`)
       .send({ name: 'Not mine', category: 'venue' })
       .expect(403);
+  });
+
+  it('keeps the wedding marketplace to the couple', async () => {
+    // An agency introduces two families and is paid for that. Once the match is
+    // fixed the couple hires their own vendors and holds their own escrow, so
+    // an agent has no booking surface at all — and the field that used to let
+    // them book for a client is gone from the API rather than merely refused.
+    expect((await http().post('/api/auth/login').send({ email: agent.email, password: agent.password })).body.user.permissions).not.toContain(
+      'booking:create',
+    );
+
+    await http()
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${agentToken}`)
+      .send({ providerType: 'vendor', providerId: groomProfileId, amount: 100 })
+      .expect(403);
+
+    await http()
+      .post('/api/bookings')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .send({
+        providerType: 'vendor',
+        providerId: groomProfileId,
+        amount: 100,
+        onBehalfOfUserId: groomProfileId,
+      })
+      .expect(400);
+  });
+
+  it('leaves the couple their own albums and assistant', async () => {
+    // A vendor selling into the marketplace has no wedding of their own here:
+    // albums and the planning assistant belong to the couple, and a vendor
+    // holding them saw two menu entries onto somebody else's wedding.
+    await http().get('/api/media/albums').set('Authorization', `Bearer ${vendorToken}`).expect(403);
+
+    await http()
+      .post('/api/ai/budget-insight')
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ totalBudget: 100000 })
+      .expect(403);
+
+    await http().get('/api/media/albums').set('Authorization', `Bearer ${soloToken}`).expect(200);
   });
 
   it('closes the admin surface to every non-admin persona', async () => {

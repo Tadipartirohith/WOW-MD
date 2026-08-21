@@ -40,6 +40,21 @@ import { Permission, permissionsFor } from '../../common/authz/permissions';
 import { ACCOUNT_TYPE_ROLE, AccountType, INDIVIDUAL_ROLES } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 
+/**
+ * The ceiling on the credential-guessing surface: register, login, refresh and
+ * the password-reset routes.
+ *
+ * Read from the environment here rather than from AppConfigService because a
+ * decorator is evaluated when this file is imported, long before any provider
+ * exists. `AUTH_RATE_LIMIT_MAX` is validated by the config schema at boot all
+ * the same — it had simply never been applied to anything, while these routes
+ * carried hard-coded numbers of their own.
+ */
+const AUTH_THROTTLE = {
+  limit: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10),
+  ttl: Number(process.env.RATE_LIMIT_TTL ?? 60) * 1000,
+};
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -153,14 +168,14 @@ export class AuthController {
    * involved anywhere.
    */
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: AUTH_THROTTLE })
   @Post('register')
   async register(@Body() dto: RegisterDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.respond(res, await this.auth.register(dto, this.ctx(req)));
   }
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: AUTH_THROTTLE })
   @HttpCode(200)
   @Post('login')
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
@@ -175,7 +190,7 @@ export class AuthController {
    * does not yet prove you are the right person.
    */
   @Public()
-  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @Throttle({ default: AUTH_THROTTLE })
   @Get('invitations/:token')
   previewInvitation(@Param('token') token: string) {
     return this.invitations.preview(token);
@@ -187,7 +202,7 @@ export class AuthController {
    * following the link proved control of it.
    */
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: AUTH_THROTTLE })
   @Post('invitations/accept')
   async acceptInvitation(
     @Body() dto: AcceptInvitationDto,
@@ -309,7 +324,7 @@ export class AuthController {
   // ------------------------------------------------------ email + credentials
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: AUTH_THROTTLE })
   @HttpCode(200)
   @Post('verify-email')
   verifyEmail(@Body() dto: VerifyEmailDto) {
@@ -334,7 +349,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: AUTH_THROTTLE })
   @HttpCode(200)
   @Post('password/reset')
   async resetPassword(@Body() dto: ResetPasswordDto, @Res({ passthrough: true }) res: Response) {
