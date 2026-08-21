@@ -1,10 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { PHONE_MESSAGE, PHONE_PATTERN } from '../../auth/dto/auth.dto';
-
-const normalisePhone = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.replace(/[\s()-]/g, '') : value;
+import {
+  MOBILE_MESSAGE,
+  MOBILE_PATTERN,
+  normaliseMobile,
+} from '../../../common/util/identity-fields';
 
 export class UpsertAgencyDto {
   @ApiProperty({ example: 'Sharma Matrimony', minLength: 2, maxLength: 120 })
@@ -21,8 +22,8 @@ export class UpsertAgencyDto {
 
   @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
-  @Transform(normalisePhone)
-  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   contactPhone?: string;
 
   @ApiPropertyOptional({ maxLength: 80 })

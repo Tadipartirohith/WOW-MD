@@ -75,11 +75,23 @@ if command -v redis-cli >/dev/null 2>&1; then
   echo "-- cleared rate-limit counters so this run starts clean --"
 fi
 
-reg() {
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
+reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }
@@ -270,17 +282,58 @@ check "bride confirms" "$c" 200
 c=$(req PUT "/matches/$BG/match-fixed" "" "$GROOM")
 check "groom confirms and their match is fixed" "$c" 200
 
-c=$(req PUT "/vendors/$LISTING/availability" '{"date":"2027-02-14","capacity":0,"note":"already committed"}' "$VENDOR")
-check "vendor blocks a date out" "$c" 200
-c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":100000,\"eventDate\":\"2027-02-14\"}" "$BRIDE")
-check "a blocked date cannot be booked" "$c" 400
-c=$(req PUT "/vendors/$LISTING/availability" '{"date":"2027-02-14","capacity":1}' "$VENDOR")
-check "vendor opens the date again" "$c" 200
+# Availability runs on a rolling three-month window, so the dates the suite
+# uses are computed from today rather than written down.
+# Epoch arithmetic rather than `date -d '+30 days'`, which busybox does not
+# understand — the suite runs inside an Alpine container.
+days_from_now() { date -d "@$(( $(date +%s) + $1 * 86400 ))" +%Y-%m-%d; }
+SLOT_DATE=$(days_from_now 30)
+FAR_DATE=$(days_from_now 200)
+PAST_DATE=$(days_from_now -1)
 
-c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":100000,\"eventDate\":\"2027-02-14\"}" "$BRIDE")
-check "bride sends the request" "$c" 201
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$FAR_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\"}" "$VENDOR")
+check "a slot beyond the three-month window is refused" "$c" 400
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$PAST_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\"}" "$VENDOR")
+check "a slot in the past is refused" "$c" 400
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"16:00\",\"endTime\":\"12:00\"}" "$VENDOR")
+check "an end time before the start is refused" "$c" 400
+
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\",\"note\":\"Afternoon\"}" "$VENDOR")
+check "vendor publishes an afternoon slot" "$c" 201
+SLOT_A=$(field /tmp/body id)
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"14:00\",\"endTime\":\"18:00\"}" "$VENDOR")
+check "an overlapping slot is refused" "$c" 400
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"18:00\",\"endTime\":\"22:00\",\"note\":\"Evening\"}" "$VENDOR")
+check "a back-to-back slot is fine" "$c" 201
+SLOT_B=$(field /tmp/body id)
+
+c=$(req POST "/vendors/$LISTING/availability/slots/$SLOT_B/block" '{"reason":"our own function"}' "$VENDOR")
+check "vendor blocks the evening slot" "$c" 200
+c=$(req GET "/vendors/$LISTING/availability?from=$SLOT_DATE&to=$SLOT_DATE" "")
+check "the buyer view lists bookable slots" "$c" 200
+grep -q "$SLOT_B" /tmp/body && assert "a blocked slot is offered to buyers" 0 || assert "a blocked slot is not offered to buyers" 1
+grep -q "$SLOT_A" /tmp/body && assert "the open slot is offered" 1 || assert "the open slot is missing" 0
+c=$(req POST "/vendors/$LISTING/availability/slots/$SLOT_B/unblock" "" "$VENDOR")
+check "vendor opens it again" "$c" 200
+
+c=$(req GET "/vendors/$LISTING/availability/summary" "" "$VENDOR")
+check "the availability summary counts the window" "$c" 200
+body_has '"availableSlots":2' "both slots read as available"
+
+c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"slotId\":\"$SLOT_A\",\"eventDate\":\"$SLOT_DATE\",\"requirements\":\"Catering for 300 guests, vegetarian and non-vegetarian.\",\"expectedBudget\":50000}" "$BRIDE")
+check "bride requests the afternoon slot" "$c" 201
 BOOKING=$(field /tmp/body id)
 body_has '"status":"requested"' "a request starts unpriced"
+
+c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"slotId\":\"$SLOT_A\",\"eventDate\":\"$SLOT_DATE\",\"requirements\":\"Same thing again by mistake.\"}" "$BRIDE")
+check "a second request for the same slot is refused" "$c" 409
+body_has 'DUPLICATE_BOOKING_REQUEST' "the refusal names the request they already have"
+
+c=$(req GET "/vendors/$LISTING/availability?from=$SLOT_DATE&to=$SLOT_DATE" "")
+grep -q "$SLOT_A" /tmp/body && assert "a requested slot is still offered to others" 0 || assert "a requested slot is held, not offered to others" 1
+
+c=$(req DELETE "/vendors/$LISTING/availability/slots/$SLOT_A" "" "$VENDOR")
+check "a slot with a live request cannot be deleted" "$c" 400
 
 c=$(req POST "/bookings/$BOOKING/quotations" '{"amount":90000,"lines":[{"description":"Hall","amount":60000},{"description":"Catering","amount":20000}]}' "$VENDOR")
 check "line items that do not add up are refused" "$c" 400
@@ -299,40 +352,54 @@ c=$(req PUT "/bookings/quotations/$QUOTE2/accept" '{}' "$VENDOR")
 check "the vendor cannot accept on the buyer's behalf" "$c" 403
 c=$(req PUT "/bookings/quotations/$QUOTE2/accept" '{}' "$BRIDE")
 check "bride accepts the live quotation" "$c" 200
-body_has '"status":"payment_pending"' "acceptance moves the booking to payment pending"
+body_has '"status":"quotation_accepted"' "acceptance settles the price"
 body_has '"amount":"85000.00"' "and the accepted price is what the booking now carries"
 
 echo
-echo "== 9. Escrow in three instalments =="
+echo "== 9. Money and work alternate =="
 c=$(req GET "/bookings/$BOOKING/milestones" "" "$BRIDE")
 check "the instalments are listed" "$c" 200
 body_has '"amount":"25500.00"' "the advance is 30% of the accepted price"
 body_has '"amount":"34000.00"' "and the balance is the remainder, not a third percentage"
 
+# Neither side can get ahead of the other, and every gate is enforced by the
+# API rather than by hiding a button.
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "the advance waits for the provider to accept the job" "$c" 400
+c=$(req PUT "/bookings/$BOOKING/confirm" "" "$BRIDE")
+check "the buyer cannot accept the job on the vendor's behalf" "$c" 403
+c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
+check "vendor accepts the job" "$c" 200
+
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "vendor cannot start before the advance is held" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
-check "the balance cannot be paid before the deposit" "$c" 400
+check "the balance cannot jump the queue" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
 check "bride pays the advance" "$c" 200
+body_has '"status":"confirmed"' "the advance is what confirms the booking"
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
 check "the same instalment cannot be paid twice" "$c" 400
+
+c=$(req GET "/vendors/$LISTING/availability?from=$SLOT_DATE&to=$SLOT_DATE" "")
+grep -q "$SLOT_A" /tmp/body && assert "a booked slot is still offered" 0 || assert "the booked slot leaves the buyer list" 1
+
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
+check "the second instalment waits for work to start" "$c" 400
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "vendor starts work" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
+check "vendor cannot mark it done before the second instalment" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
 check "bride pays the second instalment" "$c" 200
-c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
-check "bride pays the balance" "$c" 200
 
-c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
-check "vendor confirms and takes the date" "$c" 200
-c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
-check "vendor marks work started" "$c" 200
-
-echo
 echo "== 10. A case freezes the money until somebody decides =="
 c=$(req POST /verification/cases "{\"subjectType\":\"booking\",\"subjectId\":\"$BOOKING\",\"title\":\"Venue not as described\",\"description\":\"The hall shown at the visit is not the hall we were given.\"}" "$BRIDE")
 check "bride raises a case against the booking" "$c" 201
 CASE=$(field /tmp/body id)
 
 c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
-check "the provider cannot release the money while the case is open" "$c" 400
+check "the provider cannot close the job while the case is open" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/cancel" '{"reason":"forget it"}' "$BRIDE")
 check "nor can the buyer refund it out from under the case" "$c" 400
 
@@ -349,6 +416,14 @@ check "officer settles in the provider's favour" "$c" 200
 
 c=$(req GET "/bookings/$BOOKING/milestones" "" "$BRIDE")
 body_has '"status":"released"' "the settlement is what moved the money"
+
+# With the case settled the job can finish, and the balance closes it.
+c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
+check "vendor marks the work delivered" "$c" 200
+body_has 'completed_pending_final_payment' "delivery makes the balance payable, it does not close the booking"
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
+check "bride pays the balance" "$c" 200
+body_has '"status":"completed"' "paying the balance is what completes the booking"
 
 echo
 echo "== 11. Chat keeps the conversation on the platform =="

@@ -71,11 +71,23 @@ else
   echo "-- redis-cli unavailable: rate limits may trip on a repeated run --"
 fi
 
-reg() { # reg key accountType role
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
+reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }

@@ -14,9 +14,21 @@ import {
   Min,
   Matches,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { VendorCategory } from '../../../common/enums';
+import {
+  GSTIN_MESSAGE,
+  GSTIN_PATTERN,
+  MOBILE_MESSAGE,
+  MOBILE_PATTERN,
+  PAN_MESSAGE,
+  PAN_PATTERN,
+  normaliseMobile,
+  upperCaseTrim,
+} from '../../../common/util/identity-fields';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class VendorPackageDto {
@@ -64,14 +76,14 @@ export class VendorPricingDto {
 export class VendorComplianceDto {
   @ApiPropertyOptional({ example: '29ABCDE1234F1Z5', description: '15-character GSTIN' })
   @IsOptional()
-  @Matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, {
-    message: 'gstNumber must be a valid 15-character GSTIN',
-  })
+  @Transform(upperCaseTrim)
+  @Matches(GSTIN_PATTERN, { message: GSTIN_MESSAGE })
   gstNumber?: string;
 
   @ApiPropertyOptional({ example: 'ABCDE1234F' })
   @IsOptional()
-  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]$/, { message: 'panNumber must be a valid 10-character PAN' })
+  @Transform(upperCaseTrim)
+  @Matches(PAN_PATTERN, { message: PAN_MESSAGE })
   panNumber?: string;
 
   @ApiPropertyOptional({ maxLength: 64 })
@@ -86,9 +98,10 @@ export class VendorComplianceDto {
   @MaxLength(500)
   registeredAddress?: string;
 
-  @ApiPropertyOptional({ example: '+919876543210' })
+  @ApiPropertyOptional({ example: '9876543210' })
   @IsOptional()
-  @Matches(/^\+?[0-9]{10,15}$/, { message: 'contactPhone must be 10-15 digits' })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   contactPhone?: string;
 
   @ApiPropertyOptional({ type: [String], maxItems: 10, description: 'Certificate URLs' })
@@ -109,6 +122,18 @@ export class CreateVendorDto extends VendorComplianceDto {
   @ApiProperty({ enum: VendorCategory })
   @IsEnum(VendorCategory)
   category: VendorCategory;
+
+  /**
+   * Required when the category is OTHER, refused otherwise — a listing that
+   * says "Other: Venue" would fragment the very directory the category exists
+   * to organise.
+   */
+  @ApiPropertyOptional({ example: 'Wedding Transportation', maxLength: 80 })
+  @ValidateIf((o: { category: VendorCategory }) => o.category === VendorCategory.OTHER)
+  @IsString({ message: 'Tell us which category, since you chose Other' })
+  @MinLength(2)
+  @MaxLength(80)
+  otherCategory?: string;
 
   @ApiPropertyOptional({ maxLength: 2000 })
   @IsOptional()

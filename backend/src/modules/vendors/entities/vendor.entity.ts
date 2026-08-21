@@ -30,6 +30,10 @@ export class Vendor {
   @Column({ type: 'enum', enum: VendorCategory })
   category: VendorCategory;
 
+  /** What the vendor actually does. Required when `category` is OTHER. */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  otherCategory: string | null;
+
   @Column({ type: 'text', nullable: true })
   description: string;
 

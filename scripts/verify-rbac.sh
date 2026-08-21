@@ -69,11 +69,23 @@ ufield() { jq -r ".user.$2 // empty" "$1"; }
 
 echo
 echo "== 1. One account per persona =="
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
 reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }
@@ -291,14 +303,34 @@ check "unrelated user cannot pay" "$c" 403
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$PLANNER")
 check "a different provider cannot confirm" "$c" 403
 c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
-check "provider cannot complete before confirm" "$c" 400
+check "provider cannot mark work done before accepting the job" "$c" 400
 
-c=$(req PUT "/bookings/$BOOKING/pay" "" "$BRIDE")
-check "buyer pays into escrow" "$c" 200
+# Money and work alternate, and neither side gets ahead of the other.
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "the advance is not payable until the provider accepts" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
-check "owning vendor confirms" "$c" 200
+check "owning vendor accepts the job" "$c" 200
+
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "vendor cannot start before the advance is held" "$c" 400
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "buyer pays the advance into escrow" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
+check "the second instalment waits for work to start" "$c" 400
+
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "vendor starts work" "$c" 200
 c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
-check "owning vendor completes" "$c" 200
+check "vendor cannot mark work done before the second instalment" "$c" 400
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
+check "buyer pays the second instalment" "$c" 200
+
+c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
+check "vendor marks the work delivered" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
+check "buyer pays the balance, closing the booking" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/settle" "" "$VENDOR")
+check "the held instalments are released to the provider" "$c" 200
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
 check "no transition out of COMPLETED" "$c" 400
 
@@ -361,11 +393,11 @@ c=$(req POST /bookings "{\"providerType\":\"planner\",\"providerId\":\"$PLISTING
 check "bride books a wedding planner" "$c" 201
 PBOOKING=$(field /tmp/body id)
 c=$(req PUT "/bookings/$PBOOKING/confirm" "" "$VENDOR")
-check "a vendor cannot confirm a planner booking" "$c" 403
-c=$(req PUT "/bookings/$PBOOKING/pay" "" "$BRIDE")
-check "buyer pays the planner booking" "$c" 200
+check "a vendor cannot accept a planner booking" "$c" 403
 c=$(req PUT "/bookings/$PBOOKING/confirm" "" "$PLANNER")
-check "the owning planner confirms" "$c" 200
+check "the owning planner accepts the job" "$c" 200
+c=$(req PUT "/bookings/$PBOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "buyer pays the planner advance" "$c" 200
 
 echo
 echo "== 10. Reviews gated on a completed booking =="

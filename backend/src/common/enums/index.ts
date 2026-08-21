@@ -99,6 +99,13 @@ export enum VendorCategory {
   DECOR = 'decor',
   MAKEUP = 'makeup',
   ENTERTAINMENT = 'entertainment',
+  /**
+   * A wedding needs trades nobody thought to list — transport, priests,
+   * mehendi, fireworks. `OTHER` keeps them on the platform instead of turning
+   * them away, and `otherCategory` records what they actually do so the list
+   * can grow from evidence rather than guesswork.
+   */
+  OTHER = 'other',
 }
 
 export enum TaskStatus {
@@ -132,13 +139,23 @@ export enum BookingStatus {
   REQUESTED = 'requested',
   QUOTATION_SENT = 'quotation_sent',
   QUOTATION_ACCEPTED = 'quotation_accepted',
-  /** Waiting on the buyer's money. Nothing is held yet. */
+  /** The provider has agreed to the job. Waiting on the advance. */
   PAYMENT_PENDING = 'payment_pending',
-  /** Escrow held, awaiting the provider's confirmation. */
+  /**
+   * Historic only. Before the milestone lifecycle this meant "escrow held,
+   * awaiting the provider" — kept so old rows still load, never entered now.
+   */
   PENDING = 'pending',
+  /** Advance held in escrow. The provider may start. */
   CONFIRMED = 'confirmed',
-  /** The provider has started work. Cancellation from here is a dispute risk. */
+  /** The provider has started. Cancelling from here is a dispute risk. */
   IN_PROGRESS = 'in_progress',
+  /**
+   * The provider says the work is done and the balance is now payable. The
+   * booking is not complete until the buyer pays it — which is the whole point
+   * of holding the last instalment back.
+   */
+  COMPLETED_PENDING_FINAL_PAYMENT = 'completed_pending_final_payment',
   COMPLETED = 'completed',
   /** An open case is holding the money. Only a settlement moves it. */
   DISPUTED = 'disputed',
@@ -176,6 +193,21 @@ export enum GovernmentIdType {
   VOTER_ID = 'voter_id',
   DRIVING_LICENCE = 'driving_licence',
   PAN = 'pan',
+}
+
+/**
+ * Where a bookable window stands.
+ *
+ * PENDING is the important one: it is held between a booking request and the
+ * decision on it, so a second buyer cannot take the same window while the first
+ * is waiting on a quotation.
+ */
+export enum SlotStatus {
+  AVAILABLE = 'available',
+  PENDING = 'pending',
+  BOOKED = 'booked',
+  BLOCKED = 'blocked',
+  CANCELLED = 'cancelled',
 }
 
 /** Lifecycle of a profile an agency maintains. */

@@ -119,11 +119,10 @@ export class QuotationsService {
 
     booking.amount = quotation.amount;
     booking.currency = quotation.currency;
-    // Acceptance walks the booking through to the state that is actually
-    // actionable — the buyer's next step is to pay, not to wait.
+    // Acceptance settles the price and nothing else. The provider still has to
+    // accept the job before any money moves — they may have taken another
+    // booking in the days the quotation sat unanswered.
     booking.status = BookingStatus.QUOTATION_ACCEPTED;
-    await this.bookings.save(booking);
-    booking.status = BookingStatus.PAYMENT_PENDING;
     const saved = await this.bookings.save(booking);
 
     await this.outbox.record({

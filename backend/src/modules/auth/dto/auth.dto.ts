@@ -18,26 +18,22 @@ import {
   SELF_REGISTERABLE_ROLES,
   UserRole,
 } from '../../../common/enums';
+import {
+  MOBILE_MESSAGE,
+  MOBILE_PATTERN,
+  NAME_MESSAGE,
+  NAME_PATTERN,
+  normaliseMobile,
+  normaliseName,
+} from '../../../common/util/identity-fields';
 
 /** Shared password policy: length plus three character classes. */
 export const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 export const PASSWORD_MESSAGE =
   'Password must be at least 8 characters and include an uppercase letter, a lowercase letter and a digit';
 
-/**
- * E.164-ish: an optional +, then 8-15 digits. Deliberately permissive about
- * country formatting but strict about shape, because agents key these in by
- * hand and a typo means the client never gets contacted.
- */
-export const PHONE_PATTERN = /^\+?[1-9]\d{7,14}$/;
-export const PHONE_MESSAGE =
-  'Enter a valid phone number in international format, for example +919876543210';
-
 export const normaliseEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
-
-const normalisePhone = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.replace(/[\s()-]/g, '') : value;
 
 export class RegisterDto {
   @ApiProperty({ example: 'bride@example.com' })
@@ -73,16 +69,31 @@ export class RegisterDto {
   })
   role?: UserRole;
 
-  @ApiPropertyOptional({ example: 'Priya Sharma', maxLength: 120 })
-  @IsOptional()
+  /**
+   * The person's own name, for every account type.
+   *
+   * A vendor used to type their *business* name here, which put the business
+   * identity on the account record and left the person nameless. The business
+   * name is collected later, with the rest of the business details.
+   */
+  @ApiProperty({ example: 'Rakesh Rao', maxLength: 120 })
   @IsString()
-  @MaxLength(120)
-  displayName?: string;
+  @Transform(normaliseName)
+  @Length(2, 120)
+  @Matches(NAME_PATTERN, { message: NAME_MESSAGE })
+  displayName: string;
 
-  @ApiPropertyOptional({ example: '+919876543210' })
-  @IsOptional()
-  @Transform(normalisePhone)
-  @Matches(PHONE_PATTERN, { message: PHONE_MESSAGE })
+  /**
+   * Ten digits, stored with its country code. Required for business accounts,
+   * which are contacted by phone as a matter of course; optional for an
+   * individual, who may only ever be reached by email.
+   */
+  @ApiPropertyOptional({ example: '9876543210' })
+  @ValidateIf(
+    (o: RegisterDto) => o.accountType !== AccountType.INDIVIDUAL || o.phone !== undefined,
+  )
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
   phone?: string;
 }
 

@@ -2,7 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Vendor } from './entities/vendor.entity';
 import { VendorReview } from './entities/vendor-review.entity';
-import { VendorAvailability } from './entities/vendor-availability.entity';
+import { VendorAvailabilitySlot } from './entities/vendor-availability-slot.entity';
 import { VendorsService } from './vendors.service';
 import { AvailabilityService } from './availability.service';
 import { VendorsController } from './vendors.controller';
@@ -11,7 +11,7 @@ import { VerificationModule } from '../verification/verification.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Vendor, VendorReview, VendorAvailability]),
+    TypeOrmModule.forFeature([Vendor, VendorReview, VendorAvailabilitySlot]),
     forwardRef(() => BookingsModule),
     VerificationModule,
   ],

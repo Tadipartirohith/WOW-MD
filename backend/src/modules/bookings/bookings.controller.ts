@@ -147,12 +147,24 @@ export class BookingsController {
 
   @RequirePermissions(Permission.BOOKING_COMPLETE)
   @ApiOperation({
-    summary: 'Mark delivered, releasing every held instalment',
-    description: 'Refused while a support case is open against the booking.',
+    summary: 'Mark the work delivered',
+    description:
+      'Makes the balance payable rather than completing the booking — paying it is what does ' +
+      'that. Refused before the second instalment, and while a case is open.',
   })
   @Put(':id/complete')
   complete(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.bookings.complete(actor, id);
+    return this.bookings.completeWork(actor, id);
+  }
+
+  @RequirePermissions(Permission.BOOKING_COMPLETE)
+  @ApiOperation({
+    summary: 'Release the held instalments to the provider',
+    description: 'Only once the balance is in and no case is open against the booking.',
+  })
+  @Put(':id/settle')
+  settle(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.settle(actor, id);
   }
 
   /**

@@ -50,6 +50,16 @@ export class SupportCase {
   allocatedAt: Date | null;
 
   /** What the officer found on investigation. */
+  /**
+   * Where the booking stood when this case froze it.
+   *
+   * A settlement has to put the booking back into its own flow, not invent a
+   * new position for it: a dispute raised mid-job ends with the job still
+   * mid-job. Without this the only options are guessing or leaving it frozen.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  bookingPreviousStatus: string | null;
+
   @Column({ type: 'text', nullable: true })
   findings: string | null;
 

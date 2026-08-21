@@ -48,6 +48,13 @@ export class SupportCasesService {
   ) {}
 
   async raise(actor: AuthUser, dto: RaiseCaseDto): Promise<SupportCase> {
+    // Read where the booking stands before freezing it, so the settlement can
+    // put it back rather than guess.
+    const frozen =
+      dto.subjectId && dto.subjectType === CaseSubject.BOOKING
+        ? await this.bookings.findOne({ where: { id: dto.subjectId } })
+        : null;
+
     const created = await this.cases.save(
       this.cases.create({
         subjectType: dto.subjectType,
@@ -56,6 +63,7 @@ export class SupportCasesService {
         title: dto.title,
         description: dto.description,
         status: CaseStatus.OPEN,
+        bookingPreviousStatus: frozen?.status ?? null,
         history: [
           { at: new Date().toISOString(), byUserId: actor.userId, status: CaseStatus.OPEN },
         ],
@@ -173,14 +181,15 @@ export class SupportCasesService {
 
     if (item.subjectId && item.subjectType === CaseSubject.BOOKING) {
       await this.applySettlement(item.subjectId, dto.outcome);
-      // Where the booking lands follows the money: released or no-action means
-      // the job stands, a refund means it did not happen.
-      await this.markBooking(
-        item.subjectId,
+
+      // Where the booking lands follows the money. A refund means the job did
+      // not happen; anything else means it carries on from wherever the dispute
+      // interrupted it — a case raised mid-job ends with the job still mid-job.
+      const restored =
         dto.outcome === SettlementOutcome.REFUND
           ? BookingStatus.CANCELLED
-          : BookingStatus.COMPLETED,
-      );
+          : ((item.bookingPreviousStatus as BookingStatus | null) ?? BookingStatus.COMPLETED);
+      await this.markBooking(item.subjectId, restored);
     }
 
     await this.audit.record({
@@ -215,9 +224,13 @@ export class SupportCasesService {
   }
 
   /**
-   * Moves a disputed booking. Silently does nothing when the id is not a
-   * booking — case subjects also cover profiles and matches, and a case raised
-   * against one of those has no booking to move.
+   * Moves a disputed booking, either into DISPUTED or back out of it.
+   *
+   * Deliberately not routed through the booking state machine: freezing and
+   * restoring are sideways moves that the forward-only map would refuse, and an
+   * officer's settlement is exactly the authority that should be able to make
+   * them. Silently does nothing when the id is not a booking — case subjects
+   * also cover profiles and matches.
    */
   private async markBooking(bookingId: string, status: BookingStatus): Promise<void> {
     const booking = await this.bookings.findOne({ where: { id: bookingId } });

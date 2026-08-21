@@ -62,11 +62,23 @@ fi
 CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","notes":"Father visited the office with the biodata."}'
 CONSENT_OK='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh Sharma","givenAt":"2026-08-01","allowsCirculation":true}'
 
-reg() {
+# Registration now insists on a real person's name (letters and spaces only)
+# and, for a business account, a 10-digit mobile. The counter keeps each
+# registration on its own number.
+# A distinct 10-digit mobile per registration. The number has to start 6-9 and
+# be unique enough that two runs do not collide on the profile duplicate check.
+REG_PHONE_BASE=$(date +%s | tail -c 7)
+# Suffixes start at 900 so a registration number can never collide with the
+# profile numbers `phone()` hands out in the same run.
+regphone() { printf '9%s%03d' "$REG_PHONE_BASE" "$((900 + $1))"; }
+REG_N=0
+reg() { # reg key accountType role -> writes /tmp/$key.json
   key=$1; at=$2; role=$3
   extra=""
   [ -n "$role" ] && extra=",\"role\":\"$role\""
-  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"Test $key\"$extra}")
+  REG_N=$((REG_N + 1))
+  name="Test $(echo "$key" | tr -d '0-9')"
+  c=$(req POST /auth/register "{\"email\":\"$key-$STAMP@t.com\",\"password\":\"Password123\",\"accountType\":\"$at\",\"displayName\":\"$name\",\"phone\":\"$(regphone $REG_N)\"$extra}")
   cp /tmp/body "/tmp/$key.json"
   check "register $key" "$c" 201
 }
