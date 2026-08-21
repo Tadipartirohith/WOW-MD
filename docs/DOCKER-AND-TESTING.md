@@ -28,6 +28,16 @@ npm install
 npm test
 ```
 
+The frontend has its own tests, which are quick and worth running before any change to the permission list.
+
+```
+cd frontend
+npm install
+npm test
+```
+
+The important one there reads the backend's permission enum straight off disk and fails if the client's hand-written mirror has drifted from it. That mirror decides which navigation entries a persona sees, and nothing else was checking it.
+
 ## Functional tests
 
 The functional tests drive the real API against a real database and cache, so those two services must be running. The simplest way is to start the throwaway test services with the test compose file, apply the schema, and then run the end to end suite. The test services listen on port 5433 for the database and port 6380 for the cache so they do not clash with a normal stack.
@@ -51,8 +61,8 @@ docker compose -f docker/docker-compose.test.yml down
 
 ## Verification suites
 
-The five verification suites in `scripts/` drive the live API the way a person
-would, and assert on what comes back. Between them they carry 557 assertions.
+The six verification suites in `scripts/` drive the live API the way a person
+would, and assert on what comes back. Between them they carry 618 assertions.
 They run from inside the compose network, against a stack that is already up.
 
 | Suite | Covers |
@@ -62,6 +72,7 @@ They run from inside the compose network, against a stack that is already up.
 | `verify-circulation.sh` | Consent, duplicate detection, and sending a biodata to another family |
 | `verify-phase1.sh` | Field verification, support cases, frozen escrow, milestones and quotations |
 | `verify-phase2.sh` | The sectioned biodata and Aadhaar, notifications, the accounts ledger, chat presence, events, honeymoon packages, match filters and disputes |
+| `verify-phase3.sh` | SMS delivery, phone verification, phone-only invitations, profile claim requests, recovery codes, data export and erasure, the pool quota, circulation reach and photo uploads |
 
 Run one like this, replacing the name at the end:
 
@@ -73,6 +84,7 @@ Each prints a PASS or FAIL line per assertion and a total at the end, and exits
 non-zero if anything failed. They need `MAIL_PROVIDER=log` and
 `AADHAAR_PROVIDER=mock`: in those modes invitation links, temporary passwords
 and OTP codes come back on the response, because nothing is actually delivered.
+`SMS_PROVIDER=log` behaves the same way for text messages.
 They are safe to re-run — every run generates its own emails, phone numbers and
 Aadhaar number, so a second run does not collide with the first.
 

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +16,8 @@ import { SupportCasesService } from '../verification/support-cases.service';
 import { AgentBillingService } from '../agents/agent-billing.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { SmsService } from '../../platform/sms/sms.service';
+import { InvitationsService } from '../invitations/invitations.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -46,6 +49,8 @@ export interface MatchFixedResult {
  */
 @Injectable()
 export class MatchLifecycleService {
+  private readonly logger = new Logger(MatchLifecycleService.name);
+
   constructor(
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
@@ -55,6 +60,8 @@ export class MatchLifecycleService {
     private readonly billing: AgentBillingService,
     private readonly cfg: AppConfigService,
     private readonly mail: MailService,
+    private readonly sms: SmsService,
+    private readonly invitations: InvitationsService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly dataSource: DataSource,
@@ -313,7 +320,7 @@ export class MatchLifecycleService {
   }
 
   /**
-   * Creates the account for a profile that never had one, and emails a
+   * Creates the account for a profile that never had one, and sends the
    * temporary password.
    *
    * `mustResetPassword` is the safety catch: until the person changes it, the
@@ -325,9 +332,26 @@ export class MatchLifecycleService {
   ): Promise<{ userId: string; email: string } | null> {
     const email = profile.contactEmail;
     if (!email) {
-      // Phone-only walk-in with no email on file. There is nowhere to send
-      // credentials, so the agent keeps operating the profile — this is the
-      // gap that SMS delivery would close.
+      // A phone-only walk-in. There is no address to send a temporary password
+      // to, and inventing one would be worse than useless — so they get an SMS
+      // invitation instead, and supply their own address when they claim the
+      // account. That is the same route a steward-built profile takes, and it
+      // ends with the person choosing their own password rather than being
+      // handed one.
+      if (profile.contactPhone && profile.managedByUserId) {
+        await this.invitations
+          .invite(
+            { userId: profile.managedByUserId, role: UserRole.AGENT } as AuthUser,
+            profile.id,
+          )
+          .catch((err) => {
+            // The match is fixed either way. A failed invitation is resendable
+            // and must not roll back the confirmation that triggered it.
+            this.logger.warn(
+              `Could not invite phone-only profile ${profile.id}: ${(err as Error).message}`,
+            );
+          });
+      }
       return null;
     }
 
@@ -382,6 +406,16 @@ export class MatchLifecycleService {
       name: profile.displayName,
       temporaryPassword,
     });
+
+    // Also by SMS where we have a number. An emailed password that lands in a
+    // spam folder is a client who cannot sign in and an agent who has to be
+    // rung up about it.
+    if (profile.contactPhone) {
+      await this.sms.sendProvisionedCredentials({
+        to: profile.contactPhone,
+        temporaryPassword,
+      });
+    }
 
     await this.audit.record({
       action: AuditAction.CUSTOMER_PROVISIONED,

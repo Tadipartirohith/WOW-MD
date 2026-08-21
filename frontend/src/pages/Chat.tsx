@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
+import { useCall } from '../lib/useCall';
+import CallPanel from '../components/CallPanel';
 
 interface Conversation {
   conversationId: string;
@@ -59,6 +61,7 @@ export default function Chat() {
     refetchInterval: 30_000,
   });
 
+  const call = useCall();
   const messages: Message[] = [...(history?.data ?? [])].reverse();
   const active = conversations.find((c) => c.withUserId === withUserId);
 
@@ -163,15 +166,32 @@ export default function Chat() {
 
           {withUserId && (
             <>
-              <div className="flex items-center justify-between border-b pb-2">
-                <p className="font-semibold text-gray-900">{active?.displayName ?? 'Conversation'}</p>
-                <p className="text-xs text-gray-500">
-                  {presence?.online
-                    ? 'Online now'
-                    : presence?.lastSeen
-                      ? `Last seen ${new Date(presence.lastSeen).toLocaleString()}`
-                      : 'Offline'}
-                </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {active?.displayName ?? 'Conversation'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {presence?.online
+                      ? 'Online now'
+                      : presence?.lastSeen
+                        ? `Last seen ${new Date(presence.lastSeen).toLocaleString()}`
+                        : 'Offline'}
+                  </p>
+                </div>
+                {/* Only when they are actually there: a call to somebody
+                    offline can only ring out, which teaches people the button
+                    does not work. */}
+                {presence?.online && call.state === 'idle' && (
+                  <div className="flex gap-2">
+                    <button className="btn-outline" onClick={() => call.call(withUserId, 'audio')}>
+                      Call
+                    </button>
+                    <button className="btn-outline" onClick={() => call.call(withUserId, 'video')}>
+                      Video
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="my-3 flex-1 space-y-2 overflow-y-auto">
@@ -221,6 +241,20 @@ export default function Chat() {
           )}
         </div>
       </div>
+
+      <CallPanel
+        state={call.state}
+        media={call.media}
+        error={call.error}
+        withName={
+          conversations.find((c) => c.withUserId === (call.peerId ?? withUserId))?.displayName ??
+          'them'
+        }
+        localStream={call.localStream}
+        remoteStream={call.remoteStream}
+        onAnswer={call.answer}
+        onHangUp={call.hangUp}
+      />
     </div>
   );
 }

@@ -11,17 +11,22 @@ import { AgentsService } from './agents.service';
 import { AgencyService } from './agency.service';
 import { ManagedProfilesService } from './managed-profiles.service';
 import { AgentBillingService } from './agent-billing.service';
+import { ProfileClaimsService } from './profile-claims.service';
+import { ProfileClaimRequest } from './entities/profile-claim-request.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 import {
   MockPaymentProvider,
   RazorpayPaymentProvider,
   paymentProviderFactory,
 } from '../bookings/payment.provider';
 import { AgentsController } from './agents.controller';
+import { ClaimRequestsController } from './claim-requests.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Profile, AgentProfile, AgentCharge]),
+    TypeOrmModule.forFeature([User, Profile, AgentProfile, AgentCharge, ProfileClaimRequest]),
     InvitationsModule,
+    NotificationsModule,
     CirculationModule,
     VerificationModule,
   ],
@@ -30,6 +35,7 @@ import { AgentsController } from './agents.controller';
     AgencyService,
     ManagedProfilesService,
     AgentBillingService,
+    ProfileClaimsService,
     // The gateway adapters are stateless, so agency billing binds its own copy
     // rather than importing BookingsModule and creating a cycle between the
     // marketplace and the brokerage.
@@ -37,12 +43,13 @@ import { AgentsController } from './agents.controller';
     RazorpayPaymentProvider,
     paymentProviderFactory,
   ],
-  controllers: [AgentsController],
+  controllers: [AgentsController, ClaimRequestsController],
   exports: [
     AgentsService,
     AgencyService,
     ManagedProfilesService,
     AgentBillingService,
+    ProfileClaimsService,
     TypeOrmModule,
   ],
 })

@@ -207,3 +207,15 @@ export class AddProfilePhotoDto {
   @MaxLength(2048)
   url: string;
 }
+
+/** The agent's note when asking somebody to take a profile built for them. */
+export class RequestProfileClaimDto {
+  @ApiPropertyOptional({
+    maxLength: 500,
+    description: 'Context that helps them recognise you — where you met, when.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  message?: string;
+}

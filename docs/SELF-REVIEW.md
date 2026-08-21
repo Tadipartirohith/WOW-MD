@@ -1,11 +1,16 @@
 # Self-review
 
-Four rounds of work are recorded here. Round 1 introduced the personas and
+Six rounds of work are recorded here. Round 1 introduced the personas and
 RBAC; round 2 closed every gap round 1 listed and added agent-built profiles
 with email invitations; round 3 reworked intake and built circulation after the
 domain correction below; round 4 implemented the Phase 1 specification —
-In-Person verification, Match Fixed, and money that follows outcomes. The last
-two sections are what is *still* missing, and what was left undone on purpose.
+In-Person verification, Match Fixed, and money that follows outcomes; round 5
+implemented the 115-page issues specification; round 6 closed the backlog this
+document had been carrying since round 2.
+
+**The list in section D is now historical.** Every item in it has been either
+built or deferred for a stated reason — see section F. The last section is what
+was left undone on purpose.
 
 ---
 
@@ -151,9 +156,10 @@ empty database.
 
 ---
 
-## What is still missing
+## What was still missing (rounds 2–4)
 
-Honest list, in the order I would tackle it.
+Kept as written, because the record of what was known-broken and for how long is
+more useful than a tidied list. Section F says what happened to each.
 
 ### D1. SMS is not wired — now the biggest gap
 
@@ -302,11 +308,54 @@ version, and what each piece cost:
 
 ---
 
+## F. Round 6 — closing the backlog
+
+Every item D1–D13 and the round-4 leftovers, and what became of them.
+
+| # | Was | Now |
+| - | --- | --- |
+| D1 | SMS collected and never used | `SmsProvider` alongside `MailProvider` (`log` / `http`), invitations over both channels, and phone verification with a hashed, attempt-limited code. A profile with a number and no email can now be invited, and the address is collected when they claim it. |
+| D2 | Agent's work stranded when the subject self-registered first | `profile_claim_requests`. The agent asks; the subject decides. Accepting replaces their untouched registration stub — a profile they have actually filled in is refused instead, because two real profiles is a merge and silently picking one loses the other. |
+| D3 | Escrow release is a log line | **Still deferred.** Needs Razorpay Route, linked accounts and per-vendor KYC. The commission split is computed and recorded correctly; nothing moves until Route is configured. |
+| D4 | Webhooks recorded, never reconciled | Hourly job comparing our status against the gateway's, raising `payment.reconciliation_mismatch`. It deliberately does not auto-correct: money moving on a schedule with nobody in the loop is how a reconciliation job becomes the incident. |
+| D5 | MFA had no recovery codes | Ten single-use bcrypt-hashed codes issued at setup, shown once, regenerable with the password alone — asking for an authenticator code would be useless to the person who has lost theirs. Login accepts one in place of a TOTP. |
+| D6 | Profile photos were URLs, not uploads | `POST /media/profile-photo/presign` plus a `PhotoUploader` component. The file goes browser → storage directly, never through the API. |
+| D7 | No frontend tests | `vitest`, with a mirror test that reads the backend enum off disk and fails if the client's copy drifts. Verified to fail by deliberately renaming a permission. |
+| D8 | Data-subject rights half-built | Export (everything held, as one JSON document) and erasure. Erasure is refused while money is in flight, deletes the personal record, and anonymises the account rather than orphaning the financial trail. A weekly job purges unclaimed profiles past a two-year retention limit. |
+| D9 | Audit trail write-only | The six events worth waking somebody for emit a structured `warn` that a log-based alerting rule keys on. Deliberately not an outbound call from inside the audited request. |
+| D10 | `pruneExpired` never called | Nightly, alongside spent phone codes. |
+| D11 | No circulation reach analytics | `GET /circulation/profiles/:id/reach`, and a panel on the profile row. "Opened, then silence" is reported separately, because it is the number an agent can act on. |
+| D12 | Pool had no quality control | A per-agency quota (`POOL_QUOTA_PER_AGENCY`), and a nightly job that de-lists a profile a week before its circulation consent lapses. |
+| D13 | `RolesGuard` was dead code | Removed, along with its decorator and its tests. |
+| E2 | Phone-only client could not be handed an account at Match Fixed | They get an SMS invitation instead of an emailed password, and choose their own password — which is better than what email-holders get. |
+| E2 | Milestone reminders | Daily job, three days after a booking stalls at a payment step, by notification and SMS. |
+| E2 | Officer geography ignored | **Still deferred.** `region` is recorded and allocation still ranks purely by open workload. Geography-aware allocation needs a service-area model that does not exist yet, and guessing at one would produce worse allocations than ignoring it. |
+| ENH-12 | In-app calling | Built: WebRTC signalling over the existing socket, reusing the chat authorization rule exactly. Media is peer-to-peer. **Partly deferred** — public STUN covers most networks; the tail behind symmetric NAT needs a TURN relay, which is a procurement decision. A call that cannot connect says so rather than ringing forever. |
+
+### F1. Defects this round found
+
+- **A support case could be raised against any booking id.** Raising one freezes
+  escrow, so guessing a uuid froze a stranger's money. Now checked against
+  participation.
+- **The claim transfer was unreachable for everybody it was built for.**
+  Registration seeds a profile from the sign-up form, and the first version
+  refused to transfer when the subject already had one — which is everybody who
+  has ever signed up. It now replaces an untouched stub and refuses only a
+  profile with real content on it.
+- **Narrowing the agent's booking scope silently broke agency fee collection**,
+  because fee payment had been borrowing `BOOKING_PAY`. It has its own
+  capability now, which is what it should have had from the start.
+
 ## Deliberate non-goals
 
 - **Kept the modulith.** Module boundaries are clean enough to extract later.
-- **Kept the mock payment/AI/media providers.** Swapping them needs real
-  credentials and is an environment decision.
+- **Kept the mock payment/AI/media/Aadhaar/SMS providers.** Every one of them
+  now has a real provider behind the same interface, selected by an environment
+  variable. Swapping them needs credentials and is a deployment decision, not a
+  code change.
+- **Did not build TURN.** Calling works peer-to-peer today. Relaying the tail of
+  calls that cannot traverse NAT means paying for bandwidth per minute of
+  conversation, which is a commercial decision rather than a technical one.
 - **Did not renumber migrations.** Phases 3 to 6 are additive and reversible,
   so existing environments migrate forward cleanly.
 - **Represented the spec's "Quotation Accepted" and "Payment Pending" as two

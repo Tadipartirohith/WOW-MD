@@ -12,6 +12,7 @@ import {
 } from '../lib/permissions';
 import ConsentFields, { ConsentDraft, consentPayload, emptyConsent } from '../components/ConsentFields';
 import ShareProfileDialog from '../components/ShareProfileDialog';
+import PhotoUploader from '../components/PhotoUploader';
 
 interface ManagedProfile {
   id: string;
@@ -81,6 +82,7 @@ export default function ManagedProfiles() {
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [reach, setReach] = useState<string | null>(null);
 
   const { data: agency } = useQuery({
     queryKey: ['agency-status'],
@@ -365,6 +367,14 @@ export default function ManagedProfiles() {
                         {selected === p.id ? 'Close' : 'Photos'}
                       </button>
                       )}
+                      {allow?.canCirculate && (
+                        <button
+                          className="btn-outline"
+                          onClick={() => setReach(reach === p.id ? null : p.id)}
+                        >
+                          {reach === p.id ? 'Hide reach' : 'Reach'}
+                        </button>
+                      )}
                       {can(permissions, Permission.PROFILE_CIRCULATE) && allow?.canCirculate && (
                         <button
                           className="btn"
@@ -433,6 +443,8 @@ export default function ManagedProfiles() {
               </div>
 
               {selected === p.id && <PhotoEditor profile={p} onError={setError} />}
+              {reach === p.id && <ReachPanel profileId={p.id} />}
+
               {sharing === p.id && (
                 <ShareProfileDialog
                   profileId={p.id}
@@ -505,22 +517,89 @@ function PhotoEditor({
           <p className="text-sm text-gray-500">No photos yet.</p>
         )}
       </div>
-      <form onSubmit={add} className="mt-3 flex flex-wrap items-end gap-2">
-        <div className="flex-1">
-          <label className="label">Photo URL</label>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <PhotoUploader
+          label="Upload a photo"
+          onUploaded={async (uploaded) => {
+            try {
+              await api.post(`/agents/profiles/${profile.id}/photos`, { url: uploaded });
+              qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+            } catch (err) {
+              onError(apiMessage(err, 'That photo could not be added.'));
+            }
+          }}
+        />
+        <span className="text-sm text-gray-400">or</span>
+        <form onSubmit={add} className="flex flex-1 flex-wrap items-end gap-2">
           <input
-            className="input"
-            placeholder="https://..."
+            className="input flex-1"
+            placeholder="https://… paste an address"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             required
           />
-        </div>
-        <button className="btn-outline">Add photo</button>
-      </form>
+          <button className="btn-outline">Add</button>
+        </form>
+      </div>
       <p className="mt-2 text-xs text-gray-500">
-        Upload the image to your media library first, then paste its address here. Up to 20 photos.
+        Up to 20 photos. Uploading is usually easier — the file goes straight from this device to
+        storage without passing through us.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Did circulating this profile lead anywhere?
+ *
+ * An agency could already see who held a profile and whether a link had been
+ * opened, but not whether any of it produced anything — which is the only
+ * question they actually have. "Opened and then silence" is the number worth
+ * acting on: it means the biodata is being read and passed over, which is a
+ * different problem from nobody looking at it.
+ */
+function ReachPanel({ profileId }: { profileId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['reach', profileId],
+    queryFn: async () => (await api.get(`/circulation/profiles/${profileId}/reach`)).data,
+    retry: false,
+  });
+
+  if (isLoading) return <p className="py-2 text-sm text-gray-400">Loading…</p>;
+  if (!data) return null;
+
+  return (
+    <div className="mt-2 rounded bg-gray-50 p-3">
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Metric label="Shared with" value={data.live} note={`${data.revoked} withdrawn`} />
+        <Metric label="Opened" value={data.opened} note={`${data.totalViews} views`} />
+        <Metric label="Interests" value={data.interests} note={`${data.accepted} accepted`} />
+        <Metric
+          label="Read, then nothing"
+          value={data.openedButSilent}
+          note="Worth a follow-up call"
+        />
+      </div>
+      {data.live === 0 && (
+        <p className="mt-2 text-sm text-gray-600">
+          This profile has not been circulated yet.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, note }: { label: string; value: number; note: string }) {
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p
+        className="text-xl font-semibold text-gray-900"
+        style={{ fontVariantNumeric: 'tabular-nums' }}
+      >
+        {value}
+      </p>
+      <p className="text-xs text-gray-500">{note}</p>
     </div>
   );
 }

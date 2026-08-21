@@ -116,6 +116,46 @@ export default () => ({
     appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:8080',
   },
 
+  /**
+   * SMS. Phone-first intake made this the channel that actually reaches a
+   * family — an agent can take on a client with no email address at all.
+   */
+  sms: {
+    provider: process.env.SMS_PROVIDER || 'log', // log | http
+    url: process.env.SMS_URL || '',
+    apiKey: process.env.SMS_API_KEY || '',
+    senderId: process.env.SMS_SENDER_ID || 'WOWMAT',
+    /** Most Indian gateways require a pre-registered DLT template id. */
+    templateId: process.env.SMS_TEMPLATE_ID || '',
+    timeoutMs: toNumber(process.env.SMS_TIMEOUT_MS, 8000),
+    /** How long a phone verification code stays valid. */
+    verificationTtlMinutes: toNumber(process.env.PHONE_VERIFY_TTL_MINUTES, 10),
+  },
+
+  /**
+   * WebRTC. Only the signalling runs here — the media goes browser to browser,
+   * which is what makes calling affordable at all.
+   *
+   * Public STUN covers most home and mobile networks. A symmetric NAT on either
+   * side needs a TURN relay, which costs money because it carries the audio;
+   * set TURN_URL and its credentials when you are ready to pay for the tail of
+   * calls that cannot connect without one.
+   */
+  webrtc: {
+    iceServers: [
+      { urls: (process.env.STUN_URLS || 'stun:stun.l.google.com:19302').split(',') },
+      ...(process.env.TURN_URL
+        ? [
+            {
+              urls: process.env.TURN_URL.split(','),
+              username: process.env.TURN_USERNAME || '',
+              credential: process.env.TURN_CREDENTIAL || '',
+            },
+          ]
+        : []),
+    ],
+  },
+
   security: {
     rateLimitTtlSeconds: toNumber(process.env.RATE_LIMIT_TTL, 60),
     rateLimitMax: toNumber(process.env.RATE_LIMIT_MAX, 120),
@@ -150,6 +190,11 @@ export default () => ({
    * engine without a code change or redeploy, just update env and restart.
    */
   matchmaking: {
+    /**
+     * How many profiles one agency may hold in the shared network pool. The
+     * pool is a common resource and nothing stopped one agency filling it.
+     */
+    poolQuotaPerAgency: toNumber(process.env.POOL_QUOTA_PER_AGENCY, 50),
     weightAge: toNumber(process.env.MATCH_WEIGHT_AGE, 20),
     weightLocation: toNumber(process.env.MATCH_WEIGHT_LOCATION, 20),
     weightReligion: toNumber(process.env.MATCH_WEIGHT_RELIGION, 20),

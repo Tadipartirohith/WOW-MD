@@ -13,6 +13,7 @@ import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { SmsService } from '../../platform/sms/sms.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
 import {
@@ -25,7 +26,8 @@ import { AuthUser } from '../../common/decorators/current-user.decorator';
 /** What the public invitation-landing page is allowed to see. */
 export interface InvitationPreview {
   displayName: string;
-  email: string;
+  /** Null when the invitation went out by SMS alone; the claim form asks for one. */
+  email: string | null;
   invitedBy: string;
   city: string | null;
   photoCount: number;
@@ -48,6 +50,7 @@ export class InvitationsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly cfg: AppConfigService,
     private readonly mail: MailService,
+    private readonly sms: SmsService,
     private readonly audit: AuditService,
     private readonly dataSource: DataSource,
   ) {}
@@ -60,7 +63,14 @@ export class InvitationsService {
   async invite(
     actor: AuthUser,
     profileId: string,
-  ): Promise<{ status: InvitationStatus; expiresAt: Date; devToken?: string; devUrl?: string }> {
+  ): Promise<{
+    status: InvitationStatus;
+    expiresAt: Date;
+    /** Which channels actually carried it, so the steward knows what happened. */
+    channels: string[];
+    devToken?: string;
+    devUrl?: string;
+  }> {
     const profile = await this.profiles.findOne({ where: { id: profileId } });
     if (!profile) throw new NotFoundException('Profile not found');
 
@@ -70,13 +80,20 @@ export class InvitationsService {
     if (profile.claimStatus === ProfileClaimStatus.CLAIMED) {
       throw new ConflictException('That profile has already been claimed by its owner');
     }
-    if (!profile.contactEmail) {
-      throw new BadRequestException('Add an email address to the profile before inviting');
+    // A number is enough to invite somebody now. Intake is phone-first and a
+    // great many walk-in families have no email address at all; requiring one
+    // here meant their profile could be built and then never handed over.
+    if (!profile.contactEmail && !profile.contactPhone) {
+      throw new BadRequestException(
+        'Add a mobile number or an email address to the profile before inviting',
+      );
     }
 
     // The subject may already have signed up on their own since the profile was
     // built. Refuse rather than silently creating a duplicate account.
-    const existingUser = await this.users.findOne({ where: { email: profile.contactEmail } });
+    const existingUser = profile.contactEmail
+      ? await this.users.findOne({ where: { email: profile.contactEmail } })
+      : null;
     if (existingUser) {
       throw new ConflictException(
         'An account already exists for that email address. Ask them to sign in and link the profile.',
@@ -120,20 +137,39 @@ export class InvitationsService {
       ? await this.profiles.findOne({ where: { userId: steward.id } })
       : null;
 
-    await this.mail.sendProfileInvitation({
-      to: profile.contactEmail,
-      inviteeName: profile.displayName,
-      stewardName: stewardProfile?.displayName ?? steward?.email ?? 'Your agent',
-      token,
-      expiresAt: expiry,
-    });
+    const stewardName = stewardProfile?.displayName ?? steward?.email ?? 'Your agent';
+
+    // Both channels, because either may be the only one that reaches.
+    // Intake is phone-first: an agent can take on a client who has no email
+    // address at all, and until SMS existed that family was unreachable
+    // through the platform they had just been added to.
+    const delivered: string[] = [];
+    if (profile.contactEmail) {
+      await this.mail.sendProfileInvitation({
+        to: profile.contactEmail,
+        inviteeName: profile.displayName,
+        stewardName,
+        token,
+        expiresAt: expiry,
+      });
+      delivered.push('email');
+    }
+    if (profile.contactPhone) {
+      const sent = await this.sms.sendProfileInvitation({
+        to: profile.contactPhone,
+        inviteeName: profile.displayName,
+        stewardName,
+        token,
+      });
+      if (sent) delivered.push('sms');
+    }
 
     await this.audit.record({
       action: AuditAction.PROFILE_INVITED,
       actor,
       resourceType: 'profile',
       resourceId: profileId,
-      metadata: { email: profile.contactEmail },
+      metadata: { email: profile.contactEmail, channels: delivered },
     });
 
     // In dev the 'log' mail provider does not actually deliver anything, so the
@@ -145,7 +181,7 @@ export class InvitationsService {
         ? { devToken: token, devUrl: `${this.cfg.mail.appBaseUrl}/invite/${token}` }
         : {};
 
-    return { status: InvitationStatus.PENDING, expiresAt: expiry, ...dev };
+    return { status: InvitationStatus.PENDING, expiresAt: expiry, channels: delivered, ...dev };
   }
 
   /** Loads a pending, unexpired invitation by its plaintext token. */
@@ -197,7 +233,7 @@ export class InvitationsService {
    * The subject's email is verified implicitly — they proved control of it by
    * following the link.
    */
-  async accept(token: string, password: string): Promise<User> {
+  async accept(token: string, password: string, email?: string): Promise<User> {
     return this.dataSource.transaction(async (manager) => {
       const invitationRepo = manager.getRepository(Invitation);
       const profileRepo = manager.getRepository(Profile);
@@ -219,13 +255,21 @@ export class InvitationsService {
       if (!profile) throw new NotFoundException('That profile no longer exists');
       if (profile.userId) throw new ConflictException('That profile already has an owner');
 
-      const clash = await userRepo.findOne({ where: { email: invitation.email } });
+      // An invitation that went out by SMS alone carries no address, so the
+      // person supplies one here — this is the first moment somebody who
+      // actually owns the address is filling the form in.
+      const address = invitation.email ?? email;
+      if (!address) {
+        throw new BadRequestException('Enter an email address to finish setting up your account');
+      }
+
+      const clash = await userRepo.findOne({ where: { email: address } });
       if (clash) throw new ConflictException('An account already exists for that email address');
 
       const passwordHash = await bcrypt.hash(password, this.cfg.auth.bcryptRounds);
       const user = await userRepo.save(
         userRepo.create({
-          email: invitation.email,
+          email: address,
           phone: invitation.phone,
           passwordHash,
           // The profile decides the persona; a steward builds bride/groom/family
@@ -233,12 +277,17 @@ export class InvitationsService {
           role: this.roleForProfile(profile),
           managedByAgentId: invitation.invitedByUserId,
           isActive: true,
-          // Following the emailed link proves control of the address.
-          isVerified: true,
-          emailVerifiedAt: new Date(),
+          // Following an emailed link proves control of that address. An
+          // address typed into this form after an SMS invitation proves
+          // nothing, so that account starts unverified like any other.
+          isVerified: Boolean(invitation.email),
+          emailVerifiedAt: invitation.email ? new Date() : null,
         }),
       );
 
+      // Keep the profile's contact details in step with the account, or the
+      // agent's copy and the owner's disagree from the first day.
+      profile.contactEmail = address;
       profile.userId = user.id;
       profile.claimStatus = ProfileClaimStatus.CLAIMED;
       await profileRepo.save(profile);

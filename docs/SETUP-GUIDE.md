@@ -56,7 +56,7 @@ npm run dev
 
 ## Changing settings
 
-The file called .env.example inside the backend folder lists every setting you can adjust, and each one has a short explanation next to it. Copy it to a file named .env and change whatever you need. The important groups are the database connection, the Redis connection, the security settings such as the token secrets and the rate limits, the matchmaking weights that control how compatibility is scored, and the choice of payment, storage and AI provider. The application reads these values when it starts and refuses to start if a required value is missing or clearly wrong, which means a mistake is caught right away.
+The file called .env.example inside the backend folder lists every setting you can adjust, and each one has a short explanation next to it. Copy it to a file named .env and change whatever you need. The important groups are the database connection, the Redis connection, the security settings such as the token secrets and the rate limits, the matchmaking weights that control how compatibility is scored, and the choice of payment, storage, AI, mail, SMS and Aadhaar provider. Every one of those providers defaults to a local stand-in that needs no credentials, so the whole system runs end to end on a laptop; switching one to its real implementation is a single environment variable and no code change. The application reads these values when it starts and refuses to start if a required value is missing or clearly wrong, which means a mistake is caught right away.
 
 ## Running the tests
 

@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Permission, PermissionValue, ROLE_LABEL, canAny } from '../lib/permissions';
 import { ReactNode } from 'react';
+import ClaimRequests from '../components/ClaimRequests';
 
 interface Tile {
   to: string;
@@ -213,6 +214,8 @@ export default function Dashboard() {
             : 'Finish your profile to unlock everything below.'}
         </p>
       </div>
+      <ClaimRequests />
+
       <div className="grid gap-3 sm:grid-cols-3">
         <Counter
           label="Unread notifications"

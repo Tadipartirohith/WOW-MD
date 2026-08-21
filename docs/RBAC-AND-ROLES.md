@@ -350,6 +350,11 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
 - `verify-circulation.sh` — **78 checks**: phone-first intake, duplicate
   detection across agencies, the two consent scopes, the biodata-completeness
   gate on circulation, and the five ways a profile reaches another family.
+- `verify-phase3.sh` — **61 checks**: SMS as a real channel, phone
+  verification, an invitation that goes out by SMS alone and is claimed with an
+  address supplied at that moment, profile claim requests, MFA recovery codes,
+  data export and erasure, the network-pool quota, circulation reach, and
+  profile-photo uploads.
 - `verify-phase2.sh` — **108 checks**: the sectioned biodata and its completion
   report, Aadhaar OTP and the one-document-one-profile rule, notifications, the
   provider's accounts ledger, the chat dashboard and presence, event management
@@ -361,8 +366,8 @@ its own rate-limit counters first: those live in Redis now and deliberately
 survive restarts, so a repeated run would otherwise trip limits unrelated to the
 checks.
 
-Unit tests (`npm test`) additionally cover the permission matrix itself, the
-guards, the commission split, the auth service (registration, lockout,
+Unit tests (`npm test`, in both `backend/` and `frontend/`) additionally cover
+the permission matrix itself and the client's mirror of it, the guards, the commission split, the auth service (registration, lockout,
 two-factor, recovery and refresh rotation), contact redaction, and government-ID
 validation and hashing.
 

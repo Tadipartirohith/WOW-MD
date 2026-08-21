@@ -92,6 +92,118 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { ok: true };
   }
 
+  // ------------------------------------------------------------- calling
+  //
+  // WebRTC signalling, and nothing more. The media never touches this server:
+  // the two browsers negotiate through these three messages and then talk
+  // directly. That is what makes voice and video affordable — a relay carrying
+  // every call's audio is a bandwidth bill that scales with usage.
+  //
+  // ICE servers come from config. Public STUN is enough for most home and
+  // mobile networks; a symmetric NAT on one side needs a TURN relay, and
+  // without one those calls will fail to connect rather than fail silently —
+  // `call:failed` says so rather than leaving a ringing screen forever.
+
+  /**
+   * Offer a call. Reuses the chat authorization rule exactly: if you may not
+   * message somebody, you may not ring them either.
+   */
+  @SubscribeMessage('call:offer')
+  async onCallOffer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { toUserId: string; sdp: string; media: 'audio' | 'video' },
+  ) {
+    const callerId = client.data.userId as string;
+    if (!callerId) return { error: 'unauthenticated' };
+    if (typeof payload?.toUserId !== 'string' || typeof payload?.sdp !== 'string') {
+      return { error: 'A call offer needs a recipient and an SDP' };
+    }
+
+    try {
+      await this.chat.assertCanChat(callerId, payload.toUserId);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Call rejected' };
+    }
+
+    // Nobody on the other end is a normal outcome, not an error: it is a
+    // missed call, and the caller needs to be told rather than left ringing.
+    const sockets = await this.server.in(`user:${payload.toUserId}`).fetchSockets();
+    if (sockets.length === 0) {
+      return { error: 'unavailable', reason: 'They are not online right now' };
+    }
+
+    this.server.to(`user:${payload.toUserId}`).emit('call:incoming', {
+      fromUserId: callerId,
+      sdp: payload.sdp,
+      media: payload.media === 'video' ? 'video' : 'audio',
+    });
+    return { ringing: true, iceServers: this.cfg.webrtc.iceServers };
+  }
+
+  /** The callee picks up. */
+  @SubscribeMessage('call:answer')
+  async onCallAnswer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { toUserId: string; sdp: string },
+  ) {
+    const userId = client.data.userId as string;
+    if (!userId) return { error: 'unauthenticated' };
+    if (typeof payload?.toUserId !== 'string' || typeof payload?.sdp !== 'string') {
+      return { error: 'An answer needs a recipient and an SDP' };
+    }
+
+    try {
+      await this.chat.assertCanChat(userId, payload.toUserId);
+    } catch {
+      return { error: 'Call rejected' };
+    }
+
+    this.server.to(`user:${payload.toUserId}`).emit('call:answered', {
+      fromUserId: userId,
+      sdp: payload.sdp,
+    });
+    return { ok: true, iceServers: this.cfg.webrtc.iceServers };
+  }
+
+  /**
+   * Candidate exchange, which continues for the life of the negotiation.
+   *
+   * Deliberately not authorization-checked on every candidate: the offer and
+   * the answer were, and re-running the whole chat rule for each of the dozens
+   * of candidates a connection produces would put a database round trip on a
+   * path that has to complete in a second or two.
+   */
+  @SubscribeMessage('call:candidate')
+  onCallCandidate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { toUserId: string; candidate: unknown },
+  ) {
+    const userId = client.data.userId as string;
+    if (!userId || typeof payload?.toUserId !== 'string') return { error: 'unauthenticated' };
+
+    this.server.to(`user:${payload.toUserId}`).emit('call:candidate', {
+      fromUserId: userId,
+      candidate: payload.candidate,
+    });
+    return { ok: true };
+  }
+
+  /** Hang up, decline, or give up on a connection that will not form. */
+  @SubscribeMessage('call:end')
+  onCallEnd(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { toUserId: string; reason?: string },
+  ) {
+    const userId = client.data.userId as string;
+    if (!userId || typeof payload?.toUserId !== 'string') return { error: 'unauthenticated' };
+
+    this.server.to(`user:${payload.toUserId}`).emit('call:ended', {
+      fromUserId: userId,
+      reason: payload.reason ?? 'ended',
+    });
+    return { ok: true };
+  }
+
   /**
    * The global ValidationPipe is HTTP-only, so the WS payload is validated here
    * explicitly — otherwise this route would accept an unvalidated body.

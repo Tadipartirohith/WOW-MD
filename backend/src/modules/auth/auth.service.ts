@@ -10,11 +10,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomInt } from 'crypto';
 import { authenticator } from 'otplib';
 import { User } from './entities/user.entity';
 import { EmailToken } from './entities/email-token.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { MfaRecoveryCode } from './entities/mfa-recovery-code.entity';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -100,6 +101,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(MfaRecoveryCode) private readonly recoveryCodes: Repository<MfaRecoveryCode>,
     @InjectRepository(EmailToken) private readonly emailTokens: Repository<EmailToken>,
     private readonly jwt: JwtService,
     private readonly cfg: AppConfigService,
@@ -232,12 +234,33 @@ export class AuthService {
           code: MFA_REQUIRED,
         });
       }
+      // A recovery code stands in for the authenticator. Checked first because
+      // the two are distinguishable by shape, and a mistyped TOTP should not
+      // burn a recovery code.
+      const looksLikeRecovery = dto.mfaCode.replace(/[\s-]/g, '').length > 6;
+      if (looksLikeRecovery) {
+        if (await this.consumeRecoveryCode(user.id, dto.mfaCode)) {
+          await this.audit.record({
+            action: AuditAction.AUTH_MFA_RECOVERY_USED,
+            actor: { userId: user.id, role: user.role },
+            resourceType: 'user',
+            resourceId: user.id,
+          });
+          return this.finishLogin(user, ctx);
+        }
+        throw new UnauthorizedException('That recovery code is not valid');
+      }
       if (!this.verifyTotp(user.mfaSecret, dto.mfaCode)) {
         await this.registerFailedLogin(user, ctx);
         throw new UnauthorizedException('That authentication code is not valid');
       }
     }
 
+    return this.finishLogin(user, ctx);
+  }
+
+  /** The last few steps of a successful sign-in, shared by both second factors. */
+  private async finishLogin(user: User, ctx: SessionContext) {
     await this.clearLoginFailures(user.id);
     await this.audit.record({
       action: AuditAction.AUTH_LOGIN_SUCCEEDED,
@@ -477,7 +500,10 @@ export class AuthService {
     };
   }
 
-  async confirmMfa(userId: string, code: string): Promise<{ success: true }> {
+  async confirmMfa(
+    userId: string,
+    code: string,
+  ): Promise<{ success: true; recoveryCodes: string[] }> {
     const user = await this.users.findOne({
       where: { id: userId },
       select: ['id', 'role', 'mfaSecret', 'mfaEnabled'],
@@ -488,13 +514,104 @@ export class AuthService {
     }
 
     await this.users.update(userId, { mfaEnabled: true });
+    const recoveryCodes = await this.issueRecoveryCodes(userId);
+
     await this.audit.record({
       action: AuditAction.AUTH_MFA_ENABLED,
       actor: { userId, role: user.role },
       resourceType: 'user',
       resourceId: userId,
     });
-    return { success: true };
+
+    // Shown exactly once, at the only moment the plaintext exists. Storing them
+    // retrievably would make them a second password sitting in the database.
+    return { success: true, recoveryCodes };
+  }
+
+  /**
+   * Ten single-use codes, replacing any that came before.
+   *
+   * Regenerating invalidates the old set on purpose: somebody asking for new
+   * codes has usually just decided the old ones are compromised or lost, and
+   * leaving both sets live would defeat the point of asking.
+   */
+  async issueRecoveryCodes(userId: string): Promise<string[]> {
+    await this.recoveryCodes.delete({ userId });
+
+    const codes = Array.from({ length: 10 }, () => this.formatRecoveryCode());
+    await this.recoveryCodes.save(
+      await Promise.all(
+        codes.map(async (code) =>
+          this.recoveryCodes.create({
+            userId,
+            codeHash: await bcrypt.hash(code, this.cfg.auth.bcryptRounds),
+          }),
+        ),
+      ),
+    );
+    return codes;
+  }
+
+  /** Regenerate, for somebody who has used most of theirs or lost the list. */
+  async regenerateRecoveryCodes(
+    userId: string,
+    password: string,
+  ): Promise<{ recoveryCodes: string[] }> {
+    const user = await this.users.findOne({
+      where: { id: userId },
+      select: ['id', 'role', 'passwordHash', 'mfaEnabled'],
+    });
+    if (!user) throw new NotFoundException('Account not found');
+    if (!user.mfaEnabled) throw new BadRequestException('Two-factor is not enabled');
+
+    // Password only — asking for a TOTP code here would defeat the purpose for
+    // the person who has lost their authenticator and still has the password.
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) throw new UnauthorizedException('Password is not correct');
+
+    const recoveryCodes = await this.issueRecoveryCodes(userId);
+    await this.audit.record({
+      action: AuditAction.AUTH_MFA_RECOVERY_REGENERATED,
+      actor: { userId, role: user.role },
+      resourceType: 'user',
+      resourceId: userId,
+    });
+    return { recoveryCodes };
+  }
+
+  /** How many are left, so somebody can be told before they run out. */
+  async recoveryCodeCount(userId: string): Promise<{ remaining: number }> {
+    return { remaining: await this.recoveryCodes.count({ where: { userId, usedAt: IsNull() } }) };
+  }
+
+  /**
+   * Spends one recovery code, if it matches.
+   *
+   * Every unused code has to be compared, because only the hashes are stored —
+   * there is nothing to look the code up by. Ten bcrypt comparisons is the
+   * price of not keeping them readable, and this path is rare by definition.
+   */
+  private async consumeRecoveryCode(userId: string, candidate: string): Promise<boolean> {
+    const normalised = candidate.replace(/[\s-]/g, '').toUpperCase();
+    if (normalised.length < 8) return false;
+
+    const outstanding = await this.recoveryCodes.find({ where: { userId, usedAt: IsNull() } });
+    for (const code of outstanding) {
+      if (await bcrypt.compare(normalised, code.codeHash)) {
+        code.usedAt = new Date();
+        await this.recoveryCodes.save(code);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Groups of four, which is what makes a printed code transcribable. */
+  private formatRecoveryCode(): string {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0 or I/1
+    let out = '';
+    for (let i = 0; i < 12; i += 1) out += alphabet[randomInt(0, alphabet.length)];
+    return out;
   }
 
   async disableMfa(userId: string, password: string, code: string): Promise<{ success: true }> {
@@ -526,6 +643,24 @@ export class AuthService {
   }
 
   // ------------------------------------------------------------------ tokens
+
+  /**
+   * The signed-in account, as the client is allowed to see it.
+   *
+   * Distinct from `GET /users/me`, which returns the marriage *profile* — two
+   * different records that a vendor makes obvious, since they have an account
+   * and no profile at all.
+   */
+  async me(userId: string) {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Account not found');
+    return {
+      ...this.publicUser(user),
+      phone: user.phone,
+      phoneVerifiedAt: user.phoneVerifiedAt,
+      createdAt: user.createdAt,
+    };
+  }
 
   private publicUser(
     user: Pick<User, 'id' | 'email' | 'role' | 'managedByAgentId' | 'isVerified' | 'mfaEnabled'> &
