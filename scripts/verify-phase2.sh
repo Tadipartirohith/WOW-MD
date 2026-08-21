@@ -56,33 +56,42 @@ field() { jq -r ".$2 // empty" "$1"; }
 # collide with the first and fail for a reason that has nothing to do with what
 # is being tested. This builds a fresh valid number per run: eleven digits from
 # the clock, plus the check digit that makes them valid.
+#
+# One character in the Verhoeff table was wrong here for a while — row 6 read
+# 6598715432 where it should read 6598710432 — and because that cell is only
+# reached by some inputs, the generator produced a valid number about four
+# times in five. The suite then failed roughly one run in five, pointing at the
+# Aadhaar endpoint, which was correct all along. The table is now indexed with
+# substr() out of one string per row so a row can be read against the standard
+# at a glance, and the permutation table is generated rather than typed.
 verhoeff() {
   awk -v body="$1" '
+    function cell(table, row, col) { return substr(table, row * 10 + col + 1, 1) + 0 }
     BEGIN {
-      split("0123456789 1234067895 2340178956 3401289567 4012395678 5987604321 6598715432 7659821043 8765932104 9876543210", drows, " ");
-      for (i = 1; i <= 10; i++) {
-        split(drows[i], row, "");
-        for (j = 1; j <= 10; j++) d[i - 1, j - 1] = row[j] + 0;
-      }
+      D = "0123456789" "1234067895" "2340178956" "3401289567" "4012395678" "5987604321" "6598710432" "7659821043" "8765932104" "9876543210";
+      INV = "0432156789";
 
-      # The permutation table is generated from its first row rather than
-      # typed out: eight hand-copied rows is eight chances to introduce a
+      # The permutation table is generated from its first row rather than typed
+      # out: eight hand-copied rows is eight chances to introduce a
       # transposition into the very check that exists to catch transpositions.
-      split("1576283094", p1, "");
-      for (j = 1; j <= 10; j++) perm[0, j] = j - 1;
-      for (i = 1; i <= 7; i++)
-        for (j = 1; j <= 10; j++) perm[i, j] = p1[perm[i - 1, j] + 1] + 0;
-
-      split("0432156789", invrow, "");
-      for (j = 1; j <= 10; j++) inv[j - 1] = invrow[j] + 0;
+      P = "0123456789";
+      prev = "0123456789";
+      for (r = 1; r <= 7; r++) {
+        row = "";
+        for (c = 0; c < 10; c++) {
+          row = row substr("1576283094", substr(prev, c + 1, 1) + 1, 1);
+        }
+        P = P row;
+        prev = row;
+      }
 
       n = length(body);
       c = 0;
       for (i = 1; i <= n; i++) {
         digit = substr(body, n - i + 1, 1) + 0;
-        c = d[c, perm[i % 8, digit + 1]];
+        c = cell(D, c, cell(P, i % 8, digit));
       }
-      printf "%d", inv[c];
+      printf "%d", substr(INV, c + 1, 1);
     }'
 }
 AADHAAR_BODY="2$(date +%s | tail -c 8)$(printf '%03d' $(( $$ % 1000 )))"
