@@ -42,7 +42,7 @@ family walks in  →  UNCLAIMED  →  (optional) invite  →  INVITED  →  they
   (matchable and circulatable straight away)                          (they own it)
 ```
 
-Details: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** is the single combined reference (high-level, system-level and low-level design in one document, with diagrams). Narrower contracts live in [docs/CIRCULATION.md](docs/CIRCULATION.md) for consent and sharing, [docs/PROFILES-AND-INVITATIONS.md](docs/PROFILES-AND-INVITATIONS.md) for the profile/account split, and [docs/RBAC-AND-ROLES.md](docs/RBAC-AND-ROLES.md) for the permission contract.
+Details: the design is written at three altitudes — **[docs/HLD.md](docs/HLD.md)** for what the system is and why, **[docs/SLD.md](docs/SLD.md)** for how the subsystems fit together, and **[docs/LLD.md](docs/LLD.md)** for the tables, routes and algorithms. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is the index over all three. Narrower contracts live in [docs/CIRCULATION.md](docs/CIRCULATION.md) for consent and sharing, [docs/PROFILES-AND-INVITATIONS.md](docs/PROFILES-AND-INVITATIONS.md) for the profile/account split, and [docs/RBAC-AND-ROLES.md](docs/RBAC-AND-ROLES.md) for the permission contract.
 
 ## What is inside this repository
 
@@ -127,13 +127,19 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
   sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-phase1.sh"
 ```
 
-- `verify-rbac.sh` — 140 checks: privilege escalation at registration, per-persona permissions, agency vetting, profile-level scoping, booking IDOR, escrow transitions, the Match Fixed gate on services, review gating, event ownership, request validation and token handling.
+Six suites, 618 live assertions between them. Swap the name at the end of the command above to run a different one.
+
+- `verify-rbac.sh` — 147 checks: privilege escalation at registration, per-persona permissions, agency vetting, profile-level scoping, booking IDOR, escrow transitions, the Match Fixed gate on services, review gating, event ownership, request validation and token handling.
 - `verify-invites.sh` — 73 checks: agency approval, profiles built for people with no account, invitation and claim, the profile-completion gate, multi-device sessions, brute-force lockout, signed payment webhooks, the audit trail, two-factor and pagination bounds.
-- `verify-circulation.sh` — 73 checks: phone-first intake, duplicate detection, consent in both scopes, all five circulation paths, read-only enforcement on shares, withdrawal pulling everything back, and cross-agent proposal threads.
-- `verify-phase1.sh` — 120 checks: officer accounts and the forced password reset, the verification queue and the separations that hold it honest, identity documents and the duplicate they refuse, agency fees through escrow, Match Fixed and customer provisioning, vendor compliance, the calendar, quotations, escrow milestones, a case freezing the money, chat redaction, the profile lifecycle and the admin dashboard.
+- `verify-circulation.sh` — 78 checks: phone-first intake, duplicate detection, consent in both scopes, the biodata-completeness gate, all five circulation paths, read-only enforcement on shares, withdrawal pulling everything back, and cross-agent proposal threads.
+- `verify-phase1.sh` — 151 checks: officer accounts and the forced password reset, the verification queue and the separations that hold it honest, identity documents and the duplicate they refuse, agency fees through escrow, Match Fixed and customer provisioning, vendor compliance, quotations, escrow milestones, a case freezing the money, chat redaction, the profile lifecycle and the admin dashboard.
+- `verify-phase2.sh` — 108 checks: the sectioned client biodata and its completion report, Aadhaar OTP and the one-document-one-profile rule, notifications, the provider's accounts ledger, the chat dashboard and presence, event management with per-event vendors, honeymoon package search, the match filters, and disputes carrying a milestone and evidence.
+- `verify-phase3.sh` — 61 checks: SMS delivery, phone verification, an invitation that goes out by SMS alone, profile claim requests, MFA recovery codes, data export and erasure, the network-pool quota, circulation reach, and profile-photo uploads.
+
+Alongside them: 103 backend unit tests, 27 e2e tests against real Postgres and Redis, and 7 frontend tests — one of which reads the backend permission enum off disk and fails if the client's hand-written mirror has drifted from it.
 
 A k6 load test lives in `backend/test/k6`.
 
 ## Known gaps
 
-[docs/SELF-REVIEW.md](docs/SELF-REVIEW.md) lists what is still missing and what I would do next, in priority order. The largest remaining items are that mobile numbers are collected but no SMS is sent — which also means a client with no email address cannot be handed a provisioned account when their match is fixed — and that real escrow payouts still need Razorpay Route configured.
+[docs/SELF-REVIEW.md](docs/SELF-REVIEW.md) records six rounds of work, every defect found along the way, and what is deliberately still open. Four things are deferred rather than missed, each for a stated reason: real escrow **payout** needs Razorpay Route with per-vendor KYC; TURN relays are needed for the fraction of calls that cannot traverse NAT peer-to-peer; live Aadhaar verification needs UIDAI credentials, though the interface, the OTP session and the hashing are real and tested behind a mock; and geography-aware officer allocation needs a service-area model that would be worse guessed at than ignored.

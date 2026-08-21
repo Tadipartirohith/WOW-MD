@@ -2,8 +2,8 @@
 
 This is the model behind "an agent can build a full profile for someone who has
 no account". Read it with [RBAC-AND-ROLES.md](RBAC-AND-ROLES.md), which covers
-who may do what, and [ARCHITECTURE.md](ARCHITECTURE.md) for where it sits in the
-whole system.
+who may do what, and [SLD §2](SLD.md#2-identity-a-profile-is-not-an-account)
+for where it sits in the whole system.
 
 ## 1. A profile is not an account
 

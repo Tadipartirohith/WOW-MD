@@ -9,8 +9,8 @@ Status values:
 | **partial** | Implemented in part; what is missing is named |
 | **deferred** | Needs something the platform does not yet have (named below) |
 
-Live coverage referenced below comes from `scripts/verify-*.sh` — 557 assertions
-against a running stack, plus 106 unit tests. See
+Live coverage referenced below comes from `scripts/verify-*.sh` — 618 assertions
+against a running stack, plus 137 automated tests. See
 [DOCKER-AND-TESTING.md](DOCKER-AND-TESTING.md) for how to run them.
 
 ---

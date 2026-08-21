@@ -373,8 +373,10 @@ validation and hashing.
 
 ## 8. Related documents
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — the combined HLD/SLD/LLD
-  reference for the whole repository.
+- [HLD.md](HLD.md) · [SLD.md](SLD.md) · [LLD.md](LLD.md) — the design at its
+  three altitudes. The permission matrix is reproduced in
+  [LLD §2](LLD.md#2-permission-matrix); the two-layer model behind it is in
+  [SLD §3](SLD.md#3-authorization-two-layers-that-answer-different-questions).
 
 - [PROFILES-AND-INVITATIONS.md](PROFILES-AND-INVITATIONS.md) — profiles without
   accounts, stewardship, and the invitation/claim flow.
