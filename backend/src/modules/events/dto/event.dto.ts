@@ -25,6 +25,21 @@ export class CreateEventDto {
   venue?: string;
 }
 
+/** Everything on an event is amendable — dates move, venues fall through. */
+export class UpdateEventDto {
+  @ApiPropertyOptional({ minLength: 1, maxLength: 120 })
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(120)
+  name?: string;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional() @IsDateString()
+  eventDate?: string;
+
+  @ApiPropertyOptional({ maxLength: 240 })
+  @IsOptional() @IsString() @MaxLength(240)
+  venue?: string;
+}
+
 export class CreateGuestDto {
   @ApiProperty({ minLength: 1, maxLength: 120 })
   @IsString() @MinLength(1) @MaxLength(120)

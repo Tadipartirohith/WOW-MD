@@ -10,6 +10,8 @@ import { SupportCase } from './entities/support-case.entity';
 import { User } from '../auth/entities/user.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { Booking } from '../bookings/entities/booking.entity';
+import { Vendor } from '../vendors/entities/vendor.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import {
   AllocateCaseDto,
   CaseQueryDto,
@@ -44,15 +46,21 @@ export class SupportCasesService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
+    @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     private readonly audit: AuditService,
   ) {}
 
   async raise(actor: AuthUser, dto: RaiseCaseDto): Promise<SupportCase> {
     // Read where the booking stands before freezing it, so the settlement can
     // put it back rather than guess.
+    //
+    // The lookup doubles as a check that the booking exists and is the caller's
+    // to dispute. Raising a case freezes escrow, so an unchecked booking id was
+    // a way to freeze a stranger's money by guessing a uuid.
     const frozen =
       dto.subjectId && dto.subjectType === CaseSubject.BOOKING
-        ? await this.bookings.findOne({ where: { id: dto.subjectId } })
+        ? await this.disputableBooking(actor, dto.subjectId)
         : null;
 
     const created = await this.cases.save(
@@ -62,6 +70,8 @@ export class SupportCasesService {
         raisedByUserId: actor.userId,
         title: dto.title,
         description: dto.description,
+        milestone: dto.milestone ?? null,
+        evidence: dto.evidence ?? [],
         status: CaseStatus.OPEN,
         bookingPreviousStatus: frozen?.status ?? null,
         history: [
@@ -91,6 +101,29 @@ export class SupportCasesService {
    * Held escrow on the disputed booking is marked disputed, which the booking
    * service treats as un-releasable until a settlement lands.
    */
+  /**
+   * The booking a dispute is about, if the caller is party to it.
+   *
+   * Either side may raise one — the buyer whose photographer never arrived, and
+   * the vendor who turned up to a locked venue. Nobody else may, because the
+   * act of raising freezes the money.
+   */
+  private async disputableBooking(actor: AuthUser, bookingId: string): Promise<Booking> {
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    if (actor.role === UserRole.ADMIN) return booking;
+    if (booking.userId === actor.userId || booking.bookedByUserId === actor.userId) return booking;
+
+    const [vendor, planner] = await Promise.all([
+      this.vendors.findOne({ where: { id: booking.providerId, ownerUserId: actor.userId } }),
+      this.planners.findOne({ where: { id: booking.providerId, ownerUserId: actor.userId } }),
+    ]);
+    if (vendor || planner) return booking;
+
+    throw new ForbiddenException('That booking is not yours to dispute');
+  }
+
   private async freezeFundsFor(bookingId: string): Promise<void> {
     const held = await this.payments.find({
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
@@ -102,7 +135,12 @@ export class SupportCasesService {
 
   async allocate(actor: AuthUser, caseId: string, dto: AllocateCaseDto): Promise<SupportCase> {
     const item = await this.loadOrFail(caseId);
-    const officer = await this.users.findOne({ where: { id: dto.officerUserId } });
+    const officerUserId = dto.officerUserId ?? (await this.lightestOfficer());
+    if (!officerUserId) {
+      throw new BadRequestException('There are no active verification officers to allocate this to');
+    }
+
+    const officer = await this.users.findOne({ where: { id: officerUserId } });
     if (!officer || !officer.isActive) throw new NotFoundException('Verification officer not found');
     if (officer.role !== UserRole.IN_PERSON) {
       throw new BadRequestException('Cases can only be allocated to a verification officer');
@@ -132,6 +170,34 @@ export class SupportCasesService {
     return saved;
   }
 
+  /**
+   * The active officer carrying the fewest open cases. Same idea as the
+   * verification queue: an unallocated officer should be the obvious choice,
+   * and a query that counts only existing work would never surface them.
+   */
+  private async lightestOfficer(): Promise<string | null> {
+    const officers = await this.users.find({
+      where: { role: UserRole.IN_PERSON, isActive: true },
+      select: ['id'],
+    });
+    if (officers.length === 0) return null;
+
+    const open = await this.cases.find({
+      where: [
+        { status: CaseStatus.ALLOCATED },
+        { status: CaseStatus.IN_PROGRESS },
+        { status: CaseStatus.ESCALATED },
+      ],
+    });
+
+    return officers
+      .map((officer) => ({
+        id: officer.id,
+        load: open.filter((c) => c.assignedToUserId === officer.id).length,
+      }))
+      .sort((a, b) => a.load - b.load)[0].id;
+  }
+
   async recordFindings(
     actor: AuthUser,
     caseId: string,
@@ -153,6 +219,88 @@ export class SupportCasesService {
    * Recorded on the case and mirrored onto the payment so the two can never
    * disagree about what was decided.
    */
+  /**
+   * Marks a case as needing somebody on the ground.
+   *
+   * Escalation does not reassign or decide anything — it changes what kind of
+   * work the case is, so allocation can route it to a field officer instead of
+   * leaving it in a queue that will never resolve it. The reason is required:
+   * "escalated" with no explanation tells the next person nothing.
+   */
+  async escalate(actor: AuthUser, id: string, reason: string): Promise<SupportCase> {
+    const supportCase = await this.loadOrFail(id);
+    if (supportCase.status === CaseStatus.RESOLVED || supportCase.status === CaseStatus.CLOSED) {
+      throw new BadRequestException('That case is already settled');
+    }
+
+    supportCase.requiresPhysicalVerification = true;
+    supportCase.status = CaseStatus.ESCALATED;
+    supportCase.history = [
+      ...supportCase.history,
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: CaseStatus.ESCALATED,
+        note: reason,
+      },
+    ];
+
+    const saved = await this.cases.save(supportCase);
+    await this.audit.record({
+      action: AuditAction.CASE_ALLOCATED,
+      actor,
+      resourceType: 'support_case',
+      resourceId: saved.id,
+      metadata: { escalated: true, reason },
+    });
+    return saved;
+  }
+
+  /**
+   * Parks a case on the party who owes an answer.
+   *
+   * Distinct from "in progress" because the clock is not on the officer:
+   * reporting the two as one state hides which side is holding everything up,
+   * and a queue where nothing distinguishes them stops being a queue.
+   */
+  async awaitInformation(actor: AuthUser, id: string, note: string): Promise<SupportCase> {
+    const supportCase = await this.loadOrFail(id);
+    if (supportCase.status === CaseStatus.RESOLVED || supportCase.status === CaseStatus.CLOSED) {
+      throw new BadRequestException('That case is already settled');
+    }
+
+    supportCase.status = CaseStatus.WAITING_FOR_INFORMATION;
+    supportCase.history = [
+      ...supportCase.history,
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: CaseStatus.WAITING_FOR_INFORMATION,
+        note,
+      },
+    ];
+    return this.cases.save(supportCase);
+  }
+
+  /** Adds evidence to an open case — proof rarely all arrives at once. */
+  async addEvidence(actor: AuthUser, id: string, urls: string[]): Promise<SupportCase> {
+    const supportCase = await this.loadOrFail(id);
+    if (supportCase.status === CaseStatus.RESOLVED || supportCase.status === CaseStatus.CLOSED) {
+      throw new BadRequestException('That case is already settled');
+    }
+    // Only the person who raised it, or staff, may add to it.
+    if (
+      supportCase.raisedByUserId !== actor.userId &&
+      actor.role !== UserRole.ADMIN &&
+      actor.role !== UserRole.IN_PERSON
+    ) {
+      throw new ForbiddenException('That case is not yours to add to');
+    }
+
+    supportCase.evidence = [...new Set([...supportCase.evidence, ...urls])];
+    return this.cases.save(supportCase);
+  }
+
   async settle(actor: AuthUser, caseId: string, dto: SettleCaseDto): Promise<SupportCase> {
     const item = await this.assignedOrAdmin(actor, caseId);
     if (item.status === CaseStatus.CLOSED) {

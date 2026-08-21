@@ -26,6 +26,8 @@ import {
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { PublicProfileView, toPublicProfile } from '../users/dto/public-profile.dto';
+import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
+import { SuggestionsQueryDto } from './dto/matchmaking.dto';
 
 export interface Suggestion {
   profile: PublicProfileView;
@@ -55,6 +57,7 @@ export class MatchmakingService {
   constructor(
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(ProfileDetails) private readonly details: Repository<ProfileDetails>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly engine: CompatibilityEngine,
     private readonly cfg: AppConfigService,
@@ -186,15 +189,15 @@ export class MatchmakingService {
     );
   }
 
-  async suggestions(
-    actor: AuthUser,
-    page: number,
-    limit: number,
-    profileId?: string,
-  ): Promise<PaginatedResult<Suggestion>> {
-    const me = await this.resolveSubject(actor, profileId);
+  async suggestions(actor: AuthUser, q: SuggestionsQueryDto): Promise<PaginatedResult<Suggestion>> {
+    const { page, limit } = q;
+    const me = await this.resolveSubject(actor, q.profileId);
     await this.assertMatchmakingOpen(me);
-    const cacheKey = `match:suggestions:${me.id}:${page}:${limit}`;
+
+    // The filters are part of the identity of the result, so they are part of
+    // the cache key. Without that, setting a filter would return the previous,
+    // unfiltered page from cache and look like the filter did nothing.
+    const cacheKey = `match:suggestions:${me.id}:${page}:${limit}:${this.filterKey(q)}`;
 
     return this.redis.wrap(cacheKey, this.cfg.matchmaking.suggestionsCacheTtlSeconds, async () => {
       // Prefer graph-ranked candidates when Neo4j is enabled and returns any;
@@ -235,13 +238,20 @@ export class MatchmakingService {
       // sides have already matched.
       const acceptedWith = await this.acceptedCounterpartIds(me.id);
 
+      candidates = await this.applyFilters(candidates, q);
+
+      const floor = Math.max(this.cfg.matchmaking.minScore, q.minScore ?? 0);
       const scored = candidates
         .map((profile) => {
           const { score, breakdown } = this.engine.score(me, profile);
           return { profile, score, breakdown };
         })
-        .filter((s) => s.score >= this.cfg.matchmaking.minScore)
-        .sort((a, b) => b.score - a.score);
+        .filter((s) => s.score >= floor)
+        .sort((a, b) =>
+          q.sort === 'recent'
+            ? b.profile.createdAt.getTime() - a.profile.createdAt.getTime()
+            : b.score - a.score,
+        );
 
       const start = (page - 1) * limit;
       const pageItems = scored.slice(start, start + limit).map((s) => ({
@@ -251,6 +261,113 @@ export class MatchmakingService {
       }));
       return paginate(pageItems, scored.length, page, limit);
     });
+  }
+
+  /** A stable, short key for whichever filters are actually set. */
+  private filterKey(q: SuggestionsQueryDto): string {
+    const parts: string[] = [];
+    const add = (name: string, value: unknown) => {
+      if (value !== undefined && value !== null && value !== '') parts.push(`${name}=${value}`);
+    };
+    add('ageMin', q.ageMin);
+    add('ageMax', q.ageMax);
+    add('hMin', q.heightMinCm);
+    add('hMax', q.heightMaxCm);
+    add('rel', q.religion);
+    add('cst', q.caste);
+    add('tng', q.motherTongue);
+    add('cty', q.city);
+    add('qual', q.qualification);
+    add('mar', q.maritalStatus);
+    add('occ', q.occupationStatus);
+    add('min', q.minScore);
+    add('sort', q.sort);
+    add('new', q.addedWithinDays);
+    return parts.length ? parts.join('|') : 'none';
+  }
+
+  /**
+   * Narrows the candidate pool to what the family asked for.
+   *
+   * Age, city and recency come off the profile itself; everything else lives in
+   * the biodata, which is loaded in one query for the whole pool rather than
+   * per candidate. A candidate with no biodata row is dropped as soon as any
+   * biodata filter is set — not because they are unsuitable, but because we
+   * genuinely cannot say, and putting an unknown in a filtered list is how a
+   * filter loses its meaning.
+   */
+  private async applyFilters(
+    candidates: Profile[],
+    q: SuggestionsQueryDto,
+  ): Promise<Profile[]> {
+    let pool = candidates;
+
+    if (q.city) {
+      const city = q.city.trim().toLowerCase();
+      pool = pool.filter((p) => (p.city ?? '').toLowerCase() === city);
+    }
+
+    if (q.ageMin !== undefined || q.ageMax !== undefined) {
+      pool = pool.filter((p) => {
+        const age = this.ageOf(p.dateOfBirth);
+        if (age === null) return false;
+        if (q.ageMin !== undefined && age < q.ageMin) return false;
+        if (q.ageMax !== undefined && age > q.ageMax) return false;
+        return true;
+      });
+    }
+
+    if (q.addedWithinDays !== undefined) {
+      const cutoff = Date.now() - q.addedWithinDays * 24 * 60 * 60 * 1000;
+      pool = pool.filter((p) => p.createdAt.getTime() >= cutoff);
+    }
+
+    const wantsBiodata =
+      q.heightMinCm !== undefined ||
+      q.heightMaxCm !== undefined ||
+      Boolean(q.religion) ||
+      Boolean(q.caste) ||
+      Boolean(q.motherTongue) ||
+      Boolean(q.qualification) ||
+      Boolean(q.maritalStatus) ||
+      Boolean(q.occupationStatus);
+
+    if (!wantsBiodata || pool.length === 0) return pool;
+
+    const details = await this.details.find({
+      where: { profileId: In(pool.map((p) => p.id)) },
+    });
+    const byProfile = new Map(details.map((d) => [d.profileId, d]));
+
+    const same = (a: string | null, b?: string) =>
+      !b || (a ?? '').trim().toLowerCase() === b.trim().toLowerCase();
+
+    return pool.filter((p) => {
+      const d = byProfile.get(p.id);
+      if (!d) return false;
+      if (q.heightMinCm !== undefined && (d.heightCm ?? 0) < q.heightMinCm) return false;
+      if (q.heightMaxCm !== undefined && (d.heightCm ?? 999) > q.heightMaxCm) return false;
+      if (!same(d.religion, q.religion)) return false;
+      if (!same(d.caste, q.caste)) return false;
+      if (!same(d.motherTongue, q.motherTongue)) return false;
+      if (!same(d.highestQualification, q.qualification)) return false;
+      if (q.maritalStatus && d.maritalStatus !== q.maritalStatus) return false;
+      if (q.occupationStatus && d.occupationStatus !== q.occupationStatus) return false;
+      return true;
+    });
+  }
+
+  /** Whole years, from a date-only column. */
+  private ageOf(dateOfBirth: string | null): number | null {
+    if (!dateOfBirth) return null;
+    const dob = new Date(`${dateOfBirth}T00:00:00`);
+    if (Number.isNaN(dob.getTime())) return null;
+
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const monthDiff = now.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age -= 1;
+    return age;
   }
 
   private async acceptedCounterpartIds(profileId: string): Promise<Set<string>> {

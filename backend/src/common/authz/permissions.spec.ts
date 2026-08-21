@@ -4,7 +4,6 @@ import { Permission, ROLE_PERMISSIONS, permissionsFor, roleHasPermission } from 
 import { PermissionsGuard } from '../guards/permissions.guard';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import {
-  CONSUMER_ROLES,
   INDIVIDUAL_ROLES,
   PROVIDER_ROLES,
   SELF_REGISTERABLE_ROLES,
@@ -43,15 +42,23 @@ describe('permission matrix', () => {
     }
   });
 
-  // The core separation the product asks for: only users and agents buy.
-  it('lets only consumer roles create bookings', () => {
-    for (const role of CONSUMER_ROLES) {
+  /**
+   * The wedding marketplace belongs to the couple.
+   *
+   * Narrowed from "consumers buy" to "individuals buy": an agency introduces
+   * two families and is paid for that, and once the match is fixed the couple
+   * hires their own vendors and holds their own escrow. The agent keeps the
+   * one payment surface that is genuinely theirs — settling an agency fee.
+   */
+  it('lets only individual roles create bookings', () => {
+    for (const role of INDIVIDUAL_ROLES) {
       expect(roleHasPermission(role, Permission.BOOKING_CREATE)).toBe(true);
     }
-    for (const role of PROVIDER_ROLES) {
+    for (const role of [...PROVIDER_ROLES, UserRole.AGENT]) {
       expect(roleHasPermission(role, Permission.BOOKING_CREATE)).toBe(false);
       expect(roleHasPermission(role, Permission.BOOKING_PAY)).toBe(false);
     }
+    expect(roleHasPermission(UserRole.AGENT, Permission.AGENCY_FEE_PAY)).toBe(true);
   });
 
   it('lets only provider roles confirm and complete bookings', () => {

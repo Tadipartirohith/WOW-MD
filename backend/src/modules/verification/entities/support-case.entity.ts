@@ -6,7 +6,12 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { CaseStatus, CaseSubject, SettlementOutcome } from '../../../common/enums';
+import {
+  CaseStatus,
+  CaseSubject,
+  PaymentMilestone,
+  SettlementOutcome,
+} from '../../../common/enums';
 
 /**
  * An issue raised against an agent, vendor, profile, match, booking or payment.
@@ -59,6 +64,28 @@ export class SupportCase {
    */
   @Column({ type: 'varchar', nullable: true })
   bookingPreviousStatus: string | null;
+
+  /**
+   * Which instalment the argument is about.
+   *
+   * "They never turned up" and "the album is three months late" are disputes
+   * over different money, and an officer choosing between release and refund
+   * has to know which. Null for a case that is not about a payment at all.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  milestone: PaymentMilestone | null;
+
+  /** URLs of what was uploaded to support the claim. */
+  @Column({ type: 'jsonb', default: [] })
+  evidence: string[];
+
+  /**
+   * Marks a case nobody can settle from a desk — the hall that does not exist,
+   * the caterer whose kitchen is somebody's front room.
+   */
+  @Index()
+  @Column({ default: false })
+  requiresPhysicalVerification: boolean;
 
   @Column({ type: 'text', nullable: true })
   findings: string | null;

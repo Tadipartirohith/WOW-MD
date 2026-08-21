@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import {
@@ -6,6 +6,7 @@ import {
   CreateGuestDto,
   GuestRsvpDto,
   InviteDto,
+  UpdateEventDto,
   UpdateRsvpDto,
 } from './dto/event.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -28,6 +29,25 @@ export class EventsController {
   @Get()
   list(@CurrentUser('userId') userId: string) {
     return this.events.listEvents(userId);
+  }
+
+  @Put(':id')
+  updateEvent(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateEventDto,
+  ) {
+    return this.events.updateEvent(userId, id, dto);
+  }
+
+  @Delete(':id')
+  removeEvent(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.removeEvent(userId, id);
+  }
+
+  @Get(':id/vendors')
+  eventVendors(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.eventVendors(userId, id);
   }
 
   @Post('guests')

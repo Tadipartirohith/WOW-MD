@@ -79,16 +79,6 @@ export class CreateBookingDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
-
-  /**
-   * Agents only. Books for a client on their own books; ignored (and rejected)
-   * for every other role, so an individual cannot create bookings under someone
-   * else's name.
-   */
-  @ApiPropertyOptional({ format: 'uuid', description: 'AGENT only: the managed client to book for' })
-  @IsOptional()
-  @IsUUID('4')
-  onBehalfOfUserId?: string;
 }
 
 export class PayDto {

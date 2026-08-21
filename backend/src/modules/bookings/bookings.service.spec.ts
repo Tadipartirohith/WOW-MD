@@ -236,36 +236,16 @@ describe('BookingsService', () => {
     });
   });
 
-  describe('agent on behalf of a client', () => {
-    it('stamps both the client and the acting agent on the booking', async () => {
-      const booking = await service.create(asUser('agent-1', UserRole.AGENT), {
-        providerType: ProviderType.VENDOR,
-        providerId: 'v1',
-        amount: 1000,
-        onBehalfOfUserId: 'client-1',
-      });
-      expect(booking.userId).toBe('client-1');
-      expect(booking.bookedByUserId).toBe('agent-1');
-    });
-
-    it('refuses to book for a client the agent does not manage', async () => {
+  describe('who may place a booking', () => {
+    it('refuses a booking from an agent account', async () => {
+      // Narrowed deliberately: an agency introduces two families and is paid
+      // for that. The couple hires their own vendors and holds their own
+      // escrow, so there is no on-behalf path left to test.
       await expect(
         service.create(asUser('agent-1', UserRole.AGENT), {
           providerType: ProviderType.VENDOR,
           providerId: 'v1',
           amount: 1000,
-          onBehalfOfUserId: 'someone-elses-client',
-        }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it('refuses on-behalf-of booking from a non-agent account', async () => {
-      await expect(
-        service.create(asUser('u1', UserRole.BRIDE), {
-          providerType: ProviderType.VENDOR,
-          providerId: 'v1',
-          amount: 1000,
-          onBehalfOfUserId: 'client-1',
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });

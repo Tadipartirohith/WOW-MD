@@ -72,6 +72,12 @@ export const configValidationSchema = Joi.object({
   AGENT_PROFILE_FEE: Joi.number().min(0).default(2000),
   AGENT_SETTLEMENT_FEE: Joi.number().min(0).default(25000),
 
+  // Identity verification. 'mock' returns the OTP on the response for local
+  // use; anything else needs a licensed AUA/KUA integration.
+  AADHAAR_PROVIDER: Joi.string().valid('mock', 'licensed').default('mock'),
+  AADHAAR_API_KEY: Joi.string().allow('').optional(),
+  AADHAAR_API_SECRET: Joi.string().allow('').optional(),
+
   // Feature switches.
   INDIVIDUAL_USER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
   CHAT_REDACT_CONTACTS: Joi.boolean().truthy('true').falsy('false').default(true),

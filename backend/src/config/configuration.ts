@@ -206,6 +206,18 @@ export default () => ({
     agentSettlementFee: toNumber(process.env.AGENT_SETTLEMENT_FEE, 25000),
   },
 
+  identity: {
+    /**
+     * UIDAI does not issue credentials to a marketplace directly; verification
+     * runs through a licensed AUA/KUA. 'mock' exercises the whole flow locally
+     * and hands the code back on the response, which is why it must never be
+     * the setting in production.
+     */
+    aadhaarProvider: process.env.AADHAAR_PROVIDER || 'mock',
+    aadhaarApiKey: process.env.AADHAAR_API_KEY || '',
+    aadhaarApiSecret: process.env.AADHAAR_API_SECRET || '',
+  },
+
   ai: {
     // 'mock' uses deterministic, rule-based responses; 'openai' calls an LLM.
     provider: process.env.AI_PROVIDER || 'mock',

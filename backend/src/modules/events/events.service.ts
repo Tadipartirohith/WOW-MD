@@ -5,13 +5,21 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { WeddingEvent } from './entities/event.entity';
 import { Guest } from './entities/guest.entity';
 import { EventInvite } from './entities/event-invite.entity';
 import { Profile } from '../users/entities/profile.entity';
-import { CreateEventDto, CreateGuestDto, GuestRsvpDto, UpdateRsvpDto } from './dto/event.dto';
-import { RsvpStatus } from '../../common/enums';
+import {
+  CreateEventDto,
+  CreateGuestDto,
+  GuestRsvpDto,
+  UpdateEventDto,
+  UpdateRsvpDto,
+} from './dto/event.dto';
+import { Booking } from '../bookings/entities/booking.entity';
+import { Vendor } from '../vendors/entities/vendor.entity';
+import { BookingStatus, RsvpStatus } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
@@ -34,6 +42,8 @@ export class EventsService {
     @InjectRepository(Guest) private readonly guests: Repository<Guest>,
     @InjectRepository(EventInvite) private readonly invites: Repository<EventInvite>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
+    @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     private readonly cfg: AppConfigService,
     private readonly mail: MailService,
   ) {}
@@ -44,6 +54,61 @@ export class EventsService {
 
   listEvents(userId: string) {
     return this.events.find({ where: { userId }, order: { eventDate: 'ASC' } });
+  }
+
+  async updateEvent(userId: string, eventId: string, dto: UpdateEventDto) {
+    const event = await this.ownedEvent(userId, eventId);
+    Object.assign(event, dto);
+    return this.events.save(event);
+  }
+
+  /**
+   * Removes an event.
+   *
+   * Refused while vendors are booked against it. Deleting the mehendi out from
+   * under a confirmed makeup artist would leave a live booking pointing at
+   * nothing, and the couple would find out when somebody failed to arrive.
+   */
+  async removeEvent(userId: string, eventId: string) {
+    await this.ownedEvent(userId, eventId);
+
+    const booked = await this.bookings.count({
+      where: { eventId, status: Not(BookingStatus.CANCELLED) },
+    });
+    if (booked > 0) {
+      throw new BadRequestException(
+        'Cancel the vendors booked for this event before removing it',
+      );
+    }
+
+    await this.invites.delete({ eventId });
+    await this.events.delete({ id: eventId });
+    return { success: true };
+  }
+
+  /** Who is booked for this event, so the couple can see the day as a whole. */
+  async eventVendors(userId: string, eventId: string) {
+    await this.ownedEvent(userId, eventId);
+    const bookings = await this.bookings.find({
+      where: { eventId },
+      order: { createdAt: 'DESC' },
+    });
+    if (bookings.length === 0) return [];
+
+    const vendors = await this.vendors.find({
+      where: { id: In(bookings.map((b) => b.providerId)) },
+    });
+    const byId = new Map(vendors.map((v) => [v.id, v]));
+
+    return bookings.map((b) => ({
+      bookingId: b.id,
+      status: b.status,
+      amount: b.amount,
+      providerId: b.providerId,
+      providerType: b.providerType,
+      providerName: byId.get(b.providerId)?.name ?? 'Provider',
+      category: byId.get(b.providerId)?.category ?? null,
+    }));
   }
 
   addGuest(userId: string, dto: CreateGuestDto) {

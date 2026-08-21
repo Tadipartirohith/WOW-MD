@@ -12,6 +12,7 @@ import { SharingService } from './sharing.service';
 import { ProposalsService } from './proposals.service';
 import { AgentDirectoryService } from './agent-directory.service';
 import { CirculationController } from './circulation.controller';
+import { ProfileDetailsModule } from '../profile-details/profile-details.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { CirculationController } from './circulation.controller';
       AgentProfile,
       Interest,
     ]),
+    ProfileDetailsModule,
   ],
   providers: [ConsentService, SharingService, ProposalsService, AgentDirectoryService],
   controllers: [CirculationController],

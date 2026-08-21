@@ -87,15 +87,6 @@ export class AdminService {
     return this.planners.find({ where: { isApproved: false }, order: { createdAt: 'ASC' } });
   }
 
-  async approveVendor(vendorId: string) {
-    const vendor = await this.vendors.findOne({ where: { id: vendorId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
-    vendor.isApproved = true;
-    const saved = await this.vendors.save(vendor);
-    await this.invalidateListingCaches();
-    return saved;
-  }
-
   async approvePlanner(plannerId: string) {
     const planner = await this.planners.findOne({ where: { id: plannerId } });
     if (!planner) throw new NotFoundException('Planner not found');

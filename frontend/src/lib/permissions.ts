@@ -48,6 +48,7 @@ export const Permission = {
   CLIENT_READ: 'client:read',
   CLIENT_ACT_ON_BEHALF: 'client:act_on_behalf',
   AGENCY_MANAGE: 'agency:manage',
+  AGENCY_FEE_PAY: 'agency_fee:pay',
   PLAN_MANAGE_OWN: 'plan:manage:own',
   PLAN_MANAGE_ENGAGED: 'plan:manage:engaged',
   EVENT_MANAGE_OWN: 'event:manage:own',
@@ -192,6 +193,111 @@ export const MILESTONE_LABEL: Record<string, string> = {
   second: 'Second instalment',
   final: 'Balance',
 };
+
+/** Where a bookable window stands. */
+export type SlotStatus = 'available' | 'pending' | 'booked' | 'blocked' | 'cancelled';
+
+export const SLOT_STATUS_LABEL: Record<SlotStatus, string> = {
+  available: 'Available',
+  pending: 'Requested',
+  booked: 'Booked',
+  blocked: 'Blocked',
+  cancelled: 'Cancelled',
+};
+
+/** How a calendar day reads at a glance. */
+export const DAY_STATE_LABEL: Record<string, string> = {
+  available: 'Available',
+  partially_booked: 'Part booked',
+  fully_booked: 'Fully booked',
+  pending: 'Requested',
+  blocked: 'Blocked',
+  no_availability: 'Nothing published',
+};
+
+export type MaritalStatus =
+  | 'never_married'
+  | 'divorced'
+  | 'widowed'
+  | 'separated'
+  | 'annulled';
+
+export const MARITAL_LABEL: Record<MaritalStatus, string> = {
+  never_married: 'Never married',
+  divorced: 'Divorced',
+  widowed: 'Widowed',
+  separated: 'Separated',
+  annulled: 'Annulled',
+};
+
+export type FamilyType = 'joint' | 'nuclear' | 'extended' | 'single_parent';
+
+export const FAMILY_TYPE_LABEL: Record<FamilyType, string> = {
+  joint: 'Joint',
+  nuclear: 'Nuclear',
+  extended: 'Extended',
+  single_parent: 'Single parent',
+};
+
+export type OccupationStatus =
+  | 'employed'
+  | 'self_employed'
+  | 'not_employed'
+  | 'student'
+  | 'homemaker'
+  | 'retired';
+
+export const OCCUPATION_LABEL: Record<OccupationStatus, string> = {
+  employed: 'Employed',
+  self_employed: 'Self-employed / business',
+  not_employed: 'Not currently employed',
+  student: 'Student',
+  homemaker: 'Homemaker',
+  retired: 'Retired',
+};
+
+export const ASSET_TYPE_LABEL: Record<string, string> = {
+  independent_house: 'Independent house',
+  apartment: 'Apartment',
+  villa: 'Villa',
+  agricultural_land: 'Agricultural land',
+  residential_plot: 'Residential plot',
+  commercial_plot: 'Commercial plot',
+  commercial_building: 'Commercial building',
+  other: 'Other',
+};
+
+/**
+ * The same rules the server applies, so a typo is caught in the field rather
+ * than after a round trip. The server still enforces them — this is a courtesy
+ * to the person typing, never the authority.
+ */
+export const CASE_STATUS_LABEL: Record<string, string> = {
+  open: 'Open',
+  allocated: 'Assigned to an officer',
+  in_progress: 'Under investigation',
+  waiting_for_information: 'Waiting on you',
+  escalated: 'Escalated for a visit',
+  resolved: 'Settled',
+  rejected: 'Not upheld',
+  closed: 'Closed',
+};
+
+export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+export const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+export const MOBILE_10_PATTERN = /^[6-9]\d{9}$/;
+export const NAME_PATTERN = /^[\p{L}][\p{L}\s]*$/u;
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export const VENDOR_CATEGORIES = [
+  'venue',
+  'catering',
+  'photography',
+  'decor',
+  'makeup',
+  'entertainment',
+  'other',
+] as const;
 
 /** Does the signed-in user hold this capability? */
 export function can(permissions: string[] | null | undefined, permission: PermissionValue): boolean {

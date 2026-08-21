@@ -22,7 +22,6 @@ import {
   PaymentStatus,
   ProviderType,
   UserRole,
-  isConsumer,
   isIndividual,
 } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
@@ -41,6 +40,10 @@ import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
  * than showing them a bare error.
  */
 export const DUPLICATE_BOOKING_REQUEST = 'DUPLICATE_BOOKING_REQUEST';
+
+/** Money is added in minor units; summing decimal strings drifts a paisa at a time. */
+const toMinor = (amount: string): number => Math.round(parseFloat(amount || '0') * 100);
+const toMajor = (minor: number): string => (minor / 100).toFixed(2);
 
 /**
  * Booking lifecycle + escrow, as an explicit state machine.
@@ -236,20 +239,15 @@ export class BookingsService {
    * racing for the last Saturday afternoon cannot both succeed.
    */
   async create(actor: AuthUser, dto: CreateBookingDto): Promise<Booking> {
-    if (!isConsumer(actor.role)) {
-      throw new ForbiddenException('Only individual users and agents can place bookings');
+    // The wedding marketplace belongs to the couple. An agency introduces two
+    // families and is paid for that; it does not hire their photographer, and
+    // it certainly does not hold their escrow. Booking on somebody else's
+    // behalf was removed with that scope, not merely hidden.
+    if (!isIndividual(actor.role)) {
+      throw new ForbiddenException('Only the couple and their family can place bookings');
     }
 
-    let clientUserId = actor.userId;
-    if (dto.onBehalfOfUserId && dto.onBehalfOfUserId !== actor.userId) {
-      if (actor.role !== UserRole.AGENT) {
-        throw new ForbiddenException('Only agents can book on behalf of another account');
-      }
-      // Throws unless the target is a live client on this agent's books.
-      await this.agents.assertManages(actor.userId, dto.onBehalfOfUserId);
-      clientUserId = dto.onBehalfOfUserId;
-    }
-
+    const clientUserId = actor.userId;
     await this.assertServicesUnlocked(clientUserId);
 
     const provider = await this.providerOwner(dto.providerType, dto.providerId);
@@ -770,7 +768,38 @@ export class BookingsService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    return paginate(await this.withProviderNames(data), total, q.page, q.limit);
+  }
+
+  /**
+   * Attaches the provider's trading name to each row.
+   *
+   * Without it the client holds a uuid and nothing else, and every booking list
+   * reads as a wall of hex. Resolved in one query per provider type rather than
+   * one per row.
+   */
+  private async withProviderNames<T extends Booking>(rows: T[]): Promise<T[]> {
+    if (rows.length === 0) return rows;
+
+    const vendorIds = rows
+      .filter((r) => r.providerType === ProviderType.VENDOR)
+      .map((r) => r.providerId);
+    const plannerIds = rows
+      .filter((r) => r.providerType === ProviderType.PLANNER)
+      .map((r) => r.providerId);
+
+    const [vendors, planners] = await Promise.all([
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : Promise.resolve([]),
+      plannerIds.length ? this.planners.find({ where: { id: In(plannerIds) } }) : Promise.resolve([]),
+    ]);
+
+    const names = new Map<string, string>();
+    for (const v of vendors) names.set(v.id, v.name);
+    for (const p of planners) names.set(p.id, p.agencyName);
+
+    return rows.map((row) =>
+      Object.assign(row, { providerName: names.get(row.providerId) ?? 'Provider' }),
+    );
   }
 
   /** Seller-side listing: bookings against the caller's own listings. */
@@ -787,7 +816,105 @@ export class BookingsService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    return paginate(await this.withProviderNames(data), total, q.page, q.limit);
+  }
+
+  /**
+   * The provider's account: what has been earned, what is still in escrow, and
+   * the line-by-line ledger behind both.
+   *
+   * Held and released are reported separately because they mean very different
+   * things to somebody deciding whether they can pay their own suppliers this
+   * week. Everything is net of commission — the payout figure is the money that
+   * actually reaches them, so it is the one shown as earnings.
+   */
+  async earnings(actor: AuthUser): Promise<{
+    heldInEscrow: string;
+    released: string;
+    refunded: string;
+    commission: string;
+    gross: string;
+    currency: string;
+    ledger: {
+      paymentId: string;
+      bookingId: string;
+      milestone: PaymentMilestone;
+      status: PaymentStatus;
+      amount: string;
+      commissionAmount: string;
+      payoutAmount: string;
+      confirmedAt: Date | null;
+      createdAt: Date;
+    }[];
+  }> {
+    const providerIds = await this.ownedProviderIds(actor);
+    const empty = {
+      heldInEscrow: '0.00',
+      released: '0.00',
+      refunded: '0.00',
+      commission: '0.00',
+      gross: '0.00',
+      currency: 'INR',
+      ledger: [],
+    };
+    if (providerIds.length === 0) return empty;
+
+    const bookings = await this.bookings.find({
+      where: { providerId: In(providerIds) },
+      select: ['id', 'currency'],
+    });
+    if (bookings.length === 0) return empty;
+
+    const payments = await this.payments.find({
+      where: { bookingId: In(bookings.map((b) => b.id)) },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Money is added in minor units. Summing the decimal strings directly would
+    // drift a paisa at a time and eventually disagree with the ledger below it.
+    let held = 0;
+    let released = 0;
+    let refunded = 0;
+    let commission = 0;
+    let gross = 0;
+
+    for (const payment of payments) {
+      const payout = toMinor(payment.payoutAmount ?? '0');
+      const fee = toMinor(payment.commissionAmount ?? '0');
+      const total = toMinor(payment.amount ?? '0');
+
+      if (payment.status === PaymentStatus.HELD_IN_ESCROW || payment.status === PaymentStatus.DISPUTED) {
+        held += payout;
+      }
+      if (payment.status === PaymentStatus.RELEASED || payment.status === PaymentStatus.PARTIALLY_SETTLED) {
+        released += payout;
+        commission += fee;
+        gross += total;
+      }
+      if (payment.status === PaymentStatus.REFUNDED) {
+        refunded += total;
+      }
+    }
+
+    return {
+      heldInEscrow: toMajor(held),
+      released: toMajor(released),
+      refunded: toMajor(refunded),
+      commission: toMajor(commission),
+      gross: toMajor(gross),
+      currency: bookings[0].currency ?? 'INR',
+      ledger: payments.map((p) => ({
+        paymentId: p.id,
+        bookingId: p.bookingId,
+        milestone: p.milestone,
+        status: p.status,
+        amount: p.amount,
+        commissionAmount: p.commissionAmount,
+        payoutAmount: p.payoutAmount,
+        confirmedAt: p.webhookVerifiedAt ?? null,
+        createdAt: p.createdAt,
+      })),
+    };
   }
 
   private async ownedProviderIds(actor: AuthUser): Promise<string[]> {

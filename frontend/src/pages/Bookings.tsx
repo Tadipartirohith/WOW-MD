@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/permissions';
@@ -10,6 +11,9 @@ interface Booking {
   bookedByUserId: string;
   providerType: 'vendor' | 'planner';
   providerId: string;
+  providerName?: string;
+  requirements?: string | null;
+  expectedBudget?: string | null;
   amount: string;
   currency: string;
   status: string;
@@ -26,8 +30,10 @@ interface Quotation {
   status: string;
 }
 
+type MilestoneKey = 'advance' | 'second' | 'final';
+
 interface Milestone {
-  milestone: 'advance' | 'second' | 'final';
+  milestone: MilestoneKey;
   amount: string;
   status: string | null;
   paymentId: string | null;
@@ -39,6 +45,20 @@ interface MilestoneView {
   currency: string;
   milestones: Milestone[];
 }
+
+/**
+ * Which instalment the booking's own state makes payable.
+ *
+ * Money and work alternate: the advance secures the job, the second releases
+ * the provider to finish it, the balance falls due once they say it is done.
+ * The server enforces this; mirroring it here means the button appears at the
+ * moment it will actually work rather than producing a refusal.
+ */
+const PAYABLE_AT: Record<MilestoneKey, string[]> = {
+  advance: ['payment_pending'],
+  second: ['in_progress'],
+  final: ['completed_pending_final_payment'],
+};
 
 const OPEN_STATUSES = [
   'requested',
@@ -65,9 +85,15 @@ export default function Bookings() {
   const canPay = can(permissions, Permission.BOOKING_PAY);
   const canRaiseCase = can(permissions, Permission.CASE_RAISE);
 
+  const [params] = useSearchParams();
+  const highlight = params.get('highlight');
+
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // Arriving from a fresh request opens that booking straight away, so the
+  // person is looking at the thing they just did rather than hunting for it.
+  const [expanded, setExpanded] = useState<string | null>(highlight);
+  const [disputing, setDisputing] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['bookings', status],
@@ -133,19 +159,19 @@ export default function Bookings() {
           <p className="card text-sm text-gray-400">No bookings yet.</p>
         )}
         {bookings.map((b) => (
-          <div key={b.id} className="card space-y-3">
+          <div
+            key={b.id}
+            className={`card space-y-3 ${highlight === b.id ? 'ring-2 ring-brand' : ''}`}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-medium">
-                  <span className="text-xs uppercase tracking-wide text-gray-400">
-                    {b.providerType}
-                  </span>{' '}
-                  {b.providerId.slice(0, 8)}…
+                <p className="font-medium text-gray-900">
+                  {b.providerName ?? `${b.providerType} ${b.providerId.slice(0, 8)}`}
                 </p>
                 <p className="text-sm text-gray-500">
-                  {b.currency} {b.amount}
-                  {b.eventDate ? ` · event ${b.eventDate}` : ''}
-                  {b.bookedByUserId !== b.userId && ' · booked by your agent'}
+                  <span className="uppercase tracking-wide text-gray-400">{b.providerType}</span>
+                  {Number(b.amount) > 0 ? ` · ${b.currency} ${b.amount}` : ' · not yet priced'}
+                  {b.eventDate ? ` · ${b.eventDate}` : ''}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -163,30 +189,30 @@ export default function Bookings() {
                     Cancel
                   </button>
                 )}
-                {canRaiseCase && ['confirmed', 'in_progress', 'completed'].includes(b.status) && (
-                  <button
-                    className="btn-outline text-red-600"
-                    onClick={() => {
-                      const description = window.prompt(
-                        'What went wrong? An officer investigates, and the money stays frozen until they decide.',
-                      );
-                      if (description && description.trim().length >= 10) {
-                        void run(() =>
-                          api.post('/verification/cases', {
-                            subjectType: 'booking',
-                            subjectId: b.id,
-                            title: 'Booking dispute',
-                            description: description.trim(),
-                          }),
-                        );
-                      }
-                    }}
-                  >
-                    Raise an issue
-                  </button>
-                )}
+                {canRaiseCase &&
+                  ['confirmed', 'in_progress', 'completed_pending_final_payment', 'completed'].includes(
+                    b.status,
+                  ) && (
+                    <button
+                      className="btn-outline text-red-600"
+                      onClick={() => setDisputing(disputing === b.id ? null : b.id)}
+                    >
+                      {disputing === b.id ? 'Never mind' : 'Raise an issue'}
+                    </button>
+                  )}
               </div>
             </div>
+
+            {disputing === b.id && (
+              <DisputeForm
+                booking={b}
+                onCancel={() => setDisputing(null)}
+                onRaise={async (body) => {
+                  await run(() => api.post('/verification/cases', body));
+                  setDisputing(null);
+                }}
+              />
+            )}
 
             {expanded === b.id && (
               <BookingDetail booking={b} canPay={canPay} onRun={run} />
@@ -197,6 +223,13 @@ export default function Bookings() {
     </div>
   );
 }
+
+/** Why a milestone that is next in line still is not payable. */
+const WAITING_ON: Record<MilestoneKey, string> = {
+  advance: 'Waiting on the provider to accept',
+  second: 'Due once they start the work',
+  final: 'Due once they mark it delivered',
+};
 
 function BookingDetail({
   booking,
@@ -228,6 +261,8 @@ function BookingDetail({
       .map((m) => m.milestone),
   );
   const nextDue = (milestones?.milestones ?? []).find((m) => !paid.has(m.milestone));
+  const dueNow =
+    nextDue && PAYABLE_AT[nextDue.milestone].includes(booking.status) ? nextDue.milestone : null;
 
   return (
     <div className="space-y-4 border-t pt-3">
@@ -301,7 +336,7 @@ function BookingDetail({
                   <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize text-gray-700">
                     {m.status.replace(/_/g, ' ')}
                   </span>
-                ) : canPay && nextDue?.milestone === m.milestone ? (
+                ) : canPay && dueNow === m.milestone ? (
                   <button
                     className="btn"
                     onClick={() =>
@@ -313,7 +348,11 @@ function BookingDetail({
                     Pay
                   </button>
                 ) : (
-                  <span className="text-xs text-gray-400">Not due yet</span>
+                  <span className="text-xs text-gray-400">
+                    {nextDue?.milestone === m.milestone
+                      ? WAITING_ON[m.milestone]
+                      : 'Not due yet'}
+                  </span>
                 )}
               </div>
             ))}
@@ -321,5 +360,140 @@ function BookingDetail({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Raising a dispute.
+ *
+ * A prompt box asking "what went wrong?" produced two sentences of prose and
+ * nothing else, and an officer deciding whether to release fifty thousand
+ * rupees was doing it on that. This asks for the two things that actually
+ * decide the case: which instalment is in question, and what proof there is.
+ */
+function DisputeForm({
+  booking,
+  onRaise,
+  onCancel,
+}: {
+  booking: Booking;
+  onRaise: (body: Record<string, unknown>) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [milestone, setMilestone] = useState('');
+  const [evidence, setEvidence] = useState<string[]>([]);
+  const [url, setUrl] = useState('');
+
+  const ready = title.trim().length >= 3 && description.trim().length >= 10;
+
+  return (
+    <form
+      className="space-y-3 border-t pt-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onRaise({
+          subjectType: 'booking',
+          subjectId: booking.id,
+          title: title.trim(),
+          description: description.trim(),
+          ...(milestone ? { milestone } : {}),
+          ...(evidence.length ? { evidence } : {}),
+        });
+      }}
+    >
+      <p className="text-sm text-gray-600">
+        An officer investigates. Everything held in escrow on this booking stays frozen until they
+        decide — neither side can move it in the meantime.
+      </p>
+
+      <label className="block text-sm">
+        <span className="text-gray-700">In one line, what happened?</span>
+        <input
+          className="input mt-1"
+          placeholder="Photographer did not attend the reception"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="text-gray-700">Tell them the whole story</span>
+        <textarea
+          className="input mt-1"
+          rows={4}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="text-gray-700">Which payment is this about?</span>
+        <select
+          className="input mt-1"
+          value={milestone}
+          onChange={(e) => setMilestone(e.target.value)}
+        >
+          <option value="">Not about a specific payment</option>
+          {(Object.keys(MILESTONE_LABEL) as MilestoneKey[]).map((key) => (
+            <option key={key} value={key}>
+              {MILESTONE_LABEL[key]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div>
+        <p className="label">Evidence</p>
+        <p className="text-xs text-gray-500">
+          Photographs, invoices, message screenshots. Anything that shows what you are describing.
+        </p>
+        {evidence.length > 0 && (
+          <ul className="mt-1 space-y-1 text-sm text-gray-700">
+            {evidence.map((e) => (
+              <li key={e} className="flex items-center justify-between gap-2">
+                <span className="truncate">{e}</span>
+                <button
+                  type="button"
+                  className="text-xs text-gray-500 underline"
+                  onClick={() => setEvidence((list) => list.filter((u) => u !== e))}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-1 flex flex-wrap gap-2">
+          <input
+            className="input flex-1"
+            placeholder="https://…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={!/^https?:\/\/\S+$/.test(url.trim())}
+            onClick={() => {
+              setEvidence((list) => [...list, url.trim()]);
+              setUrl('');
+            }}
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button className="btn" disabled={!ready}>
+          Raise the issue
+        </button>
+        <button type="button" className="btn-outline" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

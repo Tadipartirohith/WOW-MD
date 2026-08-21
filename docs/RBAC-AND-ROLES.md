@@ -62,8 +62,25 @@ Defined once in `backend/src/common/enums/index.ts` and reused everywhere:
 - `INDIVIDUAL_ROLES` — `bride`, `groom`, `family`. The only roles that appear in
   matchmaking, either as a searcher or as a candidate.
 - `PROVIDER_ROLES` — `vendor`, `planner`. The sell side.
-- `CONSUMER_ROLES` — individuals plus `agent`. **Only these may place bookings.**
+- `CONSUMER_ROLES` — individuals plus `agent`. The buy side of chat and the
+  network, but **no longer the booking side**; see below.
 - `SELF_REGISTERABLE_ROLES` — everything except `admin`.
+
+**Only `INDIVIDUAL_ROLES` may place bookings.** The wedding marketplace belongs
+to the couple: an agency introduces two families and is paid for that
+introduction, and once the match is fixed the couple hires their own vendors and
+holds their own escrow. Booking on somebody else's behalf was removed from the
+API rather than merely hidden — `onBehalfOfUserId` no longer exists on the
+booking DTO, so an attempt to use it is rejected as malformed rather than
+refused. The one payment surface an agent keeps is settling an agency fee, which
+has its own capability (`AGENCY_FEE_PAY`) precisely so it does not have to
+borrow the marketplace's.
+
+A vendor's row was narrowed for the same reason. Wedding albums
+(`MEDIA_MANAGE_OWN`) and the Genie assistant (`AI_ASSIST`) belong to the couple
+planning the wedding, not to the caterer they hired; a vendor holding them saw
+two menu entries that opened onto somebody else's wedding. Their own portfolio
+lives on the listing, which `VENDOR_LISTING_MANAGE` already covers.
 
 ## 2. The permission model
 
@@ -206,13 +223,25 @@ explicit `ValidationPipe` (the global pipe is HTTP-only).
 ## 5. Booking lifecycle and who drives it
 
 ```
-REQUESTED --(buyer pays)--> PENDING[escrow held]
-          --(provider confirms)--> CONFIRMED
-          --(provider completes)--> COMPLETED[escrow released]
-   any    --(either party)--> CANCELLED[escrow refunded]
+REQUESTED  --(provider quotes)-->  QUOTATION_SENT
+           --(buyer accepts)-->    QUOTATION_ACCEPTED --> PAYMENT_PENDING
+           --(buyer pays advance)--> PENDING[escrow held]
+           --(provider confirms)--> CONFIRMED
+           --(provider starts)-->  IN_PROGRESS
+           --(buyer pays second)--> IN_PROGRESS
+           --(provider delivers)--> COMPLETED_PENDING_FINAL_PAYMENT
+           --(buyer pays balance)--> COMPLETED[escrow released]
+    any    --(either party)-->     CANCELLED[escrow refunded]
 ```
 
-- Buyer side: the client, or the agent who placed it, or an admin.
+Money and work alternate, and each step is gated on the one before it: a
+provider cannot start before the advance is held, cannot deliver before the
+second instalment, and the balance only falls due once they say the work is
+done. A booking also holds a published time slot, reserved under a row lock
+inside the same transaction that creates it, so two buyers racing for the last
+Saturday afternoon cannot both succeed.
+
+- Buyer side: the individual who placed it, or an admin.
 - Seller side: the account owning the vendor/planner listing, or an admin.
 - Cancel: either side.
 - Reviews require a **completed** booking with that provider, and you cannot
@@ -269,6 +298,20 @@ Found and fixed in the second round:
 | 25 | Two logins in the same second produced identical JWTs | Session-hash collision, and a refresh token that was not unpredictable |
 | 26 | Healthchecks probed `localhost` against IPv4-only listeners | The frontend reported unhealthy while serving traffic correctly |
 
+Found and fixed in the third round, working through the issues specification:
+
+| #  | Problem | Impact |
+| -- | ------- | ------ |
+| 27 | A support case could be raised against any booking id | Guessing a uuid froze a stranger's escrow — raising a case freezes money, and nothing checked the caller was party to the booking |
+| 28 | `profile_details.horoscopeAvailable` defaulted to `false` | A profile that had only had its name filled in already counted as having answered the horoscope question; the completion report told agents a section was done when nobody had opened it |
+| 29 | Chat's match picker wrote the same user id whichever way the match ran | Half of all accepted matches opened a conversation with yourself; the other family was unreachable |
+| 30 | An accepted match with no messages had no conversation row | Two families had agreed to talk and the chat list was empty |
+| 31 | Saving your profile never invalidated the cached copy | The write succeeded and the page redisplayed the pre-edit state — indistinguishable from losing it |
+| 32 | Agency fee payment borrowed `BOOKING_PAY` | Narrowing the agent's booking scope silently broke fee collection, because the two had been conflated |
+| 33 | Availability was one row per day | A photographer selling a morning and an evening on the same Saturday could not express it |
+| 34 | Nothing prevented duplicate booking requests | The same buyer could flood one vendor with identical requests for one slot |
+| 35 | `PUT /admin/vendors/:id/approve` existed alongside field verification | An admin could approve a business nobody had visited, which is the whole point of the officer |
+
 ## 7. Verifying
 
 ```bash
@@ -283,9 +326,15 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
 
 docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
   sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-phase1.sh"
+
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-circulation.sh"
+
+docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 \
+  sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-phase2.sh"
 ```
 
-- `verify-rbac.sh` — **140 checks**: privilege escalation, per-persona
+- `verify-rbac.sh` — **147 checks**: privilege escalation, per-persona
   permissions, agency vetting, profile-level scoping, booking IDOR, escrow
   transitions, the Match Fixed gate on services, review gating, event ownership,
   schema validation, cookie-borne refresh and token handling.
@@ -293,11 +342,19 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
   people with no account, invitation and claim, the profile-completion gate,
   multi-device sessions, brute-force lockout, signed payment webhooks, the audit
   trail, two-factor and pagination bounds.
-- `verify-phase1.sh` — **120 checks**: officer accounts and the forced password
+- `verify-phase1.sh` — **151 checks**: officer accounts and the forced password
   reset, the three separations in the verification queue, identity documents and
   the duplicate they refuse, agency fees, Match Fixed and provisioning, vendor
   compliance and the calendar, quotations, escrow milestones, a case freezing the
   money, chat redaction and the profile lifecycle.
+- `verify-circulation.sh` — **78 checks**: phone-first intake, duplicate
+  detection across agencies, the two consent scopes, the biodata-completeness
+  gate on circulation, and the five ways a profile reaches another family.
+- `verify-phase2.sh` — **108 checks**: the sectioned biodata and its completion
+  report, Aadhaar OTP and the one-document-one-profile rule, notifications, the
+  provider's accounts ledger, the chat dashboard and presence, event management
+  with per-event vendors, honeymoon package search, the match filters, and
+  disputes with a milestone, evidence and escalation.
 
 All exit non-zero on any failure, so any of them can gate a deploy. Each clears
 its own rate-limit counters first: those live in Redis now and deliberately

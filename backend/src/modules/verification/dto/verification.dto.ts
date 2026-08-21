@@ -4,9 +4,15 @@ import { ApplicantType, VerificationStatus } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class AllocateRequestDto {
-  @ApiProperty({ format: 'uuid', description: 'User id of the verification officer' })
+  /**
+   * Leave it out to let the platform pick the lightest-loaded active officer.
+   * An administrator overriding that is normal — they know who is near which
+   * address — but they should not have to do the arithmetic every time.
+   */
+  @ApiPropertyOptional({ format: 'uuid', description: 'User id of the verification officer' })
+  @IsOptional()
   @IsUUID('4')
-  officerUserId: string;
+  officerUserId?: string;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()

@@ -37,6 +37,22 @@ export class AgentProfile {
   @Column({ nullable: true })
   city: string;
 
+  /** Where the agency actually operates from. The officer visits this. */
+  @Column({ type: 'text', nullable: true })
+  address: string | null;
+
+  /** When the agency started trading — a proxy for how established it is. */
+  @Column({ type: 'date', nullable: true })
+  startDate: string | null;
+
+  /**
+   * Photographs of the office. Optional on purpose: a small agency working out
+   * of a front room should not be blocked from registering because it has
+   * nothing photogenic to show.
+   */
+  @Column({ type: 'jsonb', default: [] })
+  pictures: string[];
+
   @Column({ type: 'text', nullable: true })
   about: string;
 

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import {
   CaseStatus,
+  MILESTONE_LABEL,
   Permission,
   VERIFICATION_LABEL,
   VerificationStatus,
@@ -31,6 +32,10 @@ interface SupportCase {
   assignedToUserId: string | null;
   findings: string | null;
   settlementOutcome: string | null;
+  /** Which instalment the argument is over; null when it is not about money. */
+  milestone: string | null;
+  evidence: string[];
+  requiresPhysicalVerification: boolean;
   createdAt: string;
 }
 
@@ -39,6 +44,8 @@ interface Officer {
   name: string;
   email: string;
   isActive: boolean;
+  /** Open cases already on their plate, so allocation is an informed choice. */
+  openCount?: number;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -112,6 +119,24 @@ export default function Verification() {
     enabled: canManageOfficers,
   });
 
+  // How much each officer is already carrying. Allocation without it is a name
+  // picked off a list, which is how one officer ends up with everything.
+  const { data: workload = [] } = useQuery({
+    queryKey: ['verification-workload'],
+    queryFn: async () =>
+      (await api.get('/verification/workload')).data as {
+        officerUserId: string;
+        open: number;
+      }[],
+    retry: false,
+    enabled: canAllocate,
+  });
+
+  const officersWithLoad: Officer[] = (officers ?? []).map((o) => ({
+    ...o,
+    openCount: workload.find((w) => w.officerUserId === o.id)?.open ?? 0,
+  }));
+
   async function run(fn: () => Promise<unknown>, done?: string) {
     setError('');
     setNotice('');
@@ -129,7 +154,10 @@ export default function Verification() {
 
   const rows: VerificationRequest[] = requests?.data ?? [];
   const caseRows: SupportCase[] = cases?.data ?? [];
-  const activeOfficers = (officers ?? []).filter((o) => o.isActive);
+  // Lightest first, so the recommended choice is also the first one listed.
+  const activeOfficers = officersWithLoad
+    .filter((o) => o.isActive)
+    .sort((a, b) => (a.openCount ?? 0) - (b.openCount ?? 0));
 
   return (
     <div className="space-y-6">
@@ -268,6 +296,8 @@ function RequestRow({
         <p className="rounded bg-gray-50 p-2 text-sm text-gray-700">{request.remarks}</p>
       )}
 
+      <SubjectDetails requestId={request.id} />
+
       {canAllocate && !decided && (
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm">
@@ -277,26 +307,34 @@ function RequestRow({
               value={officerUserId}
               onChange={(e) => setOfficerUserId(e.target.value)}
             >
-              <option value="">Choose an officer</option>
+              <option value="">Lightest workload (recommended)</option>
               {officers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
+                  {typeof o.openCount === 'number' ? ` — ${o.openCount} open` : ''}
                 </option>
               ))}
             </select>
           </label>
           <button
             className="btn"
-            disabled={!officerUserId}
             onClick={() =>
               onRun(
-                () => api.put(`/verification/requests/${request.id}/allocate`, { officerUserId }),
+                () =>
+                  api.put(
+                    `/verification/requests/${request.id}/allocate`,
+                    officerUserId ? { officerUserId } : {},
+                  ),
                 'Allocated. The officer will see it in their queue.',
               )
             }
           >
             Allocate
           </button>
+          <p className="w-full text-xs text-gray-500">
+            Left to itself this goes to whoever is carrying least. Name an officer only when
+            something about this case says it should be theirs.
+          </p>
         </div>
       )}
 
@@ -395,6 +433,43 @@ function CaseRow({
       </div>
 
       <p className="text-sm text-gray-700">{item.description}</p>
+
+      {item.milestone && (
+        <p className="text-sm text-gray-600">
+          The argument is over the{' '}
+          <span className="font-medium">
+            {(MILESTONE_LABEL[item.milestone] ?? item.milestone).toLowerCase()}
+          </span>
+          .
+        </p>
+      )}
+
+      {item.requiresPhysicalVerification && (
+        <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">
+          Escalated — this one needs somebody on the ground.
+        </p>
+      )}
+
+      {(item.evidence?.length ?? 0) > 0 && (
+        <div>
+          <p className="text-sm font-medium text-gray-900">Evidence</p>
+          <ul className="mt-1 space-y-0.5 text-sm">
+            {item.evidence.map((url) => (
+              <li key={url}>
+                <a
+                  className="text-brand underline"
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {url.length > 60 ? `${url.slice(0, 60)}\u2026` : url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {item.settlementOutcome && (
         <p className="text-sm text-gray-600">
           Settled: <span className="font-medium">{item.settlementOutcome.replace(/_/g, ' ')}</span>
@@ -410,22 +485,65 @@ function CaseRow({
               value={officerUserId}
               onChange={(e) => setOfficerUserId(e.target.value)}
             >
-              <option value="">Choose an officer</option>
+              <option value="">Lightest workload (recommended)</option>
               {officers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
+                  {typeof o.openCount === 'number' ? ` — ${o.openCount} open` : ''}
                 </option>
               ))}
             </select>
           </label>
           <button
             className="btn"
-            disabled={!officerUserId}
             onClick={() =>
-              onRun(() => api.put(`/verification/cases/${item.id}/allocate`, { officerUserId }))
+              onRun(() =>
+                api.put(
+                  `/verification/cases/${item.id}/allocate`,
+                  officerUserId ? { officerUserId } : {},
+                ),
+              )
             }
           >
             Allocate
+          </button>
+          {!item.requiresPhysicalVerification && (
+            <button
+              className="btn-outline"
+              onClick={() => {
+                const reason = window.prompt(
+                  'Why does this need somebody on the ground? The next officer reads this.',
+                );
+                if (reason && reason.trim().length >= 10) {
+                  void onRun(
+                    () =>
+                      api.put(`/verification/cases/${item.id}/escalate`, {
+                        reason: reason.trim(),
+                      }),
+                    'Escalated. It now needs a physical visit before it can be settled.',
+                  );
+                }
+              }}
+            >
+              Needs a visit
+            </button>
+          )}
+          <button
+            className="btn-outline"
+            onClick={() => {
+              const note = window.prompt('What have you asked for, and from whom?');
+              if (note && note.trim().length >= 10) {
+                void onRun(
+                  () =>
+                    api.put(`/verification/cases/${item.id}/await-information`, {
+                      reason: note.trim(),
+                    }),
+                  'Parked. The clock is on them now, not on you.',
+                );
+              }
+            }}
+          >
+            Waiting on them
           </button>
         </div>
       )}
@@ -597,6 +715,118 @@ function OfficersPanel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * What is actually being verified.
+ *
+ * The queue used to show a request id and an applicant type, which tells an
+ * officer nothing about where to go or what to check. This is the record the
+ * decision is about — the business or agency as the applicant filled it in —
+ * plus every hand the request has passed through, so an approval can be read
+ * back later and understood.
+ */
+function SubjectDetails({ requestId }: { requestId: string }) {
+  const [open, setOpen] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ['verification-request', requestId],
+    queryFn: async () => (await api.get(`/verification/requests/${requestId}`)).data,
+    enabled: open,
+    retry: false,
+  });
+
+  if (!open) {
+    return (
+      <button className="btn-outline" onClick={() => setOpen(true)}>
+        Show the business details
+      </button>
+    );
+  }
+
+  const subject = data?.subject as Record<string, unknown> | null;
+  const applicant = data?.applicant as Record<string, unknown> | null;
+  const history = (data?.history ?? []) as {
+    at: string;
+    action: string;
+    byUserId?: string;
+    note?: string;
+  }[];
+
+  const text = (value: unknown) =>
+    value === null || value === undefined || value === '' ? '—' : String(value);
+
+  return (
+    <div className="space-y-3 rounded border border-gray-200 p-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-medium text-gray-900">The record being verified</h4>
+        <button className="text-sm text-gray-500 underline" onClick={() => setOpen(false)}>
+          Hide
+        </button>
+      </div>
+
+      {!data && <p className="text-sm text-gray-400">Loading…</p>}
+
+      {subject && (
+        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          <Row label="Name">{text(subject.name ?? subject.agencyName)}</Row>
+          <Row label="Category">
+            {text(subject.otherCategory ?? subject.category ?? 'Marriage agency')}
+          </Row>
+          <Row label="City">{text(subject.city)}</Row>
+          <Row label="Registered address">
+            {text(subject.registeredAddress ?? subject.address)}
+          </Row>
+          <Row label="Contact number">{text(subject.contactPhone)}</Row>
+          <Row label="GST number">{text(subject.gstNumber)}</Row>
+          <Row label="PAN">{text(subject.panNumber)}</Row>
+          <Row label="Registration number">{text(subject.registrationNumber)}</Row>
+          <Row label="Trading since">{text(subject.startDate)}</Row>
+          <Row label="Currently approved">{subject.isApproved ? 'Yes' : 'No'}</Row>
+        </dl>
+      )}
+
+      {subject?.description ? (
+        <p className="border-t pt-2 text-sm text-gray-700">{String(subject.description)}</p>
+      ) : null}
+
+      {applicant && (
+        <p className="border-t pt-2 text-sm text-gray-600">
+          Applicant: {text(applicant.email)}
+          {applicant.phone ? ` · ${String(applicant.phone)}` : ''}
+          {applicant.createdAt
+            ? ` · joined ${new Date(String(applicant.createdAt)).toLocaleDateString()}`
+            : ''}
+        </p>
+      )}
+
+      {history.length > 0 && (
+        <div className="border-t pt-2">
+          <p className="mb-1 text-sm font-medium text-gray-900">History</p>
+          <ol className="space-y-1 text-sm text-gray-600">
+            {history.map((entry, i) => (
+              <li key={i}>
+                <span className="text-gray-400">
+                  {new Date(entry.at).toLocaleString()} ·{' '}
+                </span>
+                <span className="capitalize">{entry.action.replace(/_/g, ' ')}</span>
+                {entry.note ? ` — ${entry.note}` : ''}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
+      <dd className="text-gray-800">{children}</dd>
     </div>
   );
 }

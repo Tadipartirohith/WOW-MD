@@ -57,6 +57,12 @@ export enum Permission {
   CLIENT_ACT_ON_BEHALF = 'client:act_on_behalf',
   /** Maintain the agency's own registration record. */
   AGENCY_MANAGE = 'agency:manage',
+  /**
+   * Settle an agency fee. Held by the client who owes it and by the agency
+   * recording a walk-in's payment — deliberately not `booking:pay`, which
+   * belongs to the vendor marketplace an agent has no part in.
+   */
+  AGENCY_FEE_PAY = 'agency_fee:pay',
 
   // --- wedding planning workspace ---
   PLAN_MANAGE_OWN = 'plan:manage:own',
@@ -113,6 +119,7 @@ const INDIVIDUAL_PERMISSIONS: Permission[] = [
   Permission.BOOKING_PAY,
   Permission.BOOKING_CANCEL_OWN,
   Permission.BOOKING_READ_OWN,
+  Permission.AGENCY_FEE_PAY,
   Permission.REVIEW_WRITE,
   Permission.PLAN_MANAGE_OWN,
   Permission.EVENT_MANAGE_OWN,
@@ -147,8 +154,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.PROFILE_CIRCULATE,
   ],
 
-  // Agents broker on behalf of the clients they onboard. They do NOT get a
-  // matchmaking profile of their own, but they can browse and act for clients.
+  /**
+   * Agents broker matches on behalf of the clients they onboard.
+   *
+   * Their surface is deliberately the brokerage and nothing else: no vendor or
+   * planner directory, no bookings, no events, no travel. Those belong to the
+   * couple, not to the agency that introduced them — and an agent holding
+   * `booking:create` was the reason the wedding marketplace showed up in their
+   * navigation at all.
+   *
+   * `client:act_on_behalf` still lets them run matchmaking under a client
+   * identity; that is the whole job.
+   */
   [UserRole.AGENT]: [
     Permission.PROFILE_MANAGE_OWN,
     Permission.MATCH_BROWSE,
@@ -159,15 +176,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     // own — for a walk-in family, the agent IS the client's interface.
     Permission.MATCH_FIX,
     Permission.CHAT_INQUIRE,
-    Permission.BOOKING_CREATE,
-    Permission.BOOKING_PAY,
-    Permission.BOOKING_CANCEL_OWN,
-    Permission.BOOKING_READ_OWN,
     Permission.CLIENT_CREATE,
     Permission.CLIENT_READ,
     Permission.CLIENT_ACT_ON_BEHALF,
     Permission.CASE_RAISE,
     Permission.AGENCY_MANAGE,
+    Permission.AGENCY_FEE_PAY,
     Permission.MANAGED_PROFILE_MANAGE,
     Permission.MANAGED_PROFILE_INVITE,
     Permission.ACT_ON_BEHALF,
@@ -175,16 +189,20 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.NETWORK_POOL_BROWSE,
     Permission.SESSION_MANAGE_OWN,
     Permission.MFA_MANAGE_OWN,
-    Permission.PLAN_MANAGE_OWN,
-    Permission.EVENT_MANAGE_OWN,
     Permission.MEDIA_MANAGE_OWN,
-    Permission.TRAVEL_BOOK,
     Permission.DISPUTE_RAISE,
     Permission.AI_ASSIST,
-    Permission.REVIEW_WRITE,
   ],
 
   // Vendors sell services. They cannot browse or book matchmaking.
+  /**
+   * A vendor sells into the marketplace and does nothing else on it.
+   *
+   * Wedding albums and the Genie assistant belong to the couple planning the
+   * wedding, not to the caterer they hired — a vendor holding them saw two
+   * menu entries that opened onto somebody else's wedding. Their own portfolio
+   * lives on the listing, which `VENDOR_LISTING_MANAGE` already covers.
+   */
   [UserRole.VENDOR]: [
     Permission.PROFILE_MANAGE_OWN,
     Permission.VENDOR_LISTING_MANAGE,
@@ -192,10 +210,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.BOOKING_COMPLETE,
     Permission.BOOKING_READ_INCOMING,
     Permission.CHAT_INQUIRE,
-    Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
     Permission.CASE_RAISE,
-    Permission.AI_ASSIST,
     Permission.SESSION_MANAGE_OWN,
     Permission.MFA_MANAGE_OWN,
   ],

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Put } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Put } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -12,6 +12,17 @@ export class NotificationsController {
   @Get()
   list(@CurrentUser('userId') userId: string) {
     return this.notifications.listForUser(userId);
+  }
+
+  @Get('unread-count')
+  unreadCount(@CurrentUser('userId') userId: string) {
+    return this.notifications.unreadCount(userId);
+  }
+
+  @Put('read-all')
+  @HttpCode(200)
+  markAllRead(@CurrentUser('userId') userId: string) {
+    return this.notifications.markAllRead(userId);
   }
 
   @Put(':id/read')

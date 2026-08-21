@@ -181,6 +181,55 @@ export enum AgentChargeType {
   MATCH_SETTLEMENT = 'match_settlement',
 }
 
+/** Present marital status. Drives which of the history fields even appear. */
+export enum MaritalStatus {
+  NEVER_MARRIED = 'never_married',
+  DIVORCED = 'divorced',
+  WIDOWED = 'widowed',
+  SEPARATED = 'separated',
+  ANNULLED = 'annulled',
+}
+
+export enum FamilyType {
+  JOINT = 'joint',
+  NUCLEAR = 'nuclear',
+  EXTENDED = 'extended',
+  SINGLE_PARENT = 'single_parent',
+}
+
+/**
+ * How the person earns. Employed and self-employed ask for entirely different
+ * fields, and "not currently employed" is a real answer rather than an empty
+ * form — a great many candidates are students or between jobs.
+ */
+export enum OccupationStatus {
+  EMPLOYED = 'employed',
+  SELF_EMPLOYED = 'self_employed',
+  NOT_EMPLOYED = 'not_employed',
+  STUDENT = 'student',
+  HOMEMAKER = 'homemaker',
+  RETIRED = 'retired',
+}
+
+export enum FamilyAssetType {
+  INDEPENDENT_HOUSE = 'independent_house',
+  APARTMENT = 'apartment',
+  VILLA = 'villa',
+  AGRICULTURAL_LAND = 'agricultural_land',
+  RESIDENTIAL_PLOT = 'residential_plot',
+  COMMERCIAL_PLOT = 'commercial_plot',
+  COMMERCIAL_BUILDING = 'commercial_building',
+  OTHER = 'other',
+}
+
+/** Where an Aadhaar OTP check has got to. */
+export enum OtpVerificationStatus {
+  SENT = 'sent',
+  VERIFIED = 'verified',
+  FAILED = 'failed',
+  EXPIRED = 'expired',
+}
+
 /**
  * Which government identity document a profile was verified against.
  *
@@ -376,6 +425,13 @@ export enum CaseStatus {
   OPEN = 'open',
   ALLOCATED = 'allocated',
   IN_PROGRESS = 'in_progress',
+  /**
+   * The officer has asked one of the parties for something and cannot go
+   * further until it arrives. Distinct from IN_PROGRESS because the clock is
+   * not on the officer — reporting the two as one hides which side is holding
+   * everything up.
+   */
+  WAITING_FOR_INFORMATION = 'waiting_for_information',
   RESOLVED = 'resolved',
   REJECTED = 'rejected',
   ESCALATED = 'escalated',

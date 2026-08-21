@@ -1,82 +1,348 @@
 import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { Link } from 'react-router-dom';
+import { api, apiMessage } from '../lib/api';
+import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 
-interface WEvent { id: string; name: string; venue?: string; eventDate?: string }
-interface Guest { id: string; name: string; contact?: string }
+interface WEvent {
+  id: string;
+  name: string;
+  venue?: string;
+  eventDate?: string | null;
+}
 
+interface Guest {
+  id: string;
+  name: string;
+  contact?: string;
+}
+
+interface EventVendor {
+  bookingId: string;
+  status: string;
+  amount: string;
+  providerId: string;
+  providerName: string;
+  category: string | null;
+}
+
+/**
+ * The wedding as a series of days.
+ *
+ * A wedding is not one event — it is the mehendi, the haldi, the ceremony and
+ * the reception, each with its own venue, its own guests and its own vendors.
+ * Everything here hangs off whichever day is selected, so the couple can look
+ * at one of them at a time rather than at a single undifferentiated list.
+ */
 export default function Events() {
   const qc = useQueryClient();
-  const [ename, setEname] = useState('');
-  const [venue, setVenue] = useState('');
-  const [gname, setGname] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const { data: events } = useQuery({ queryKey: ['events'], queryFn: async () => (await api.get('/events')).data as WEvent[] });
-  const { data: guests } = useQuery({ queryKey: ['guests'], queryFn: async () => (await api.get('/events/guests')).data as Guest[] });
+  const [name, setName] = useState('');
+  const [venue, setVenue] = useState('');
+  const [date, setDate] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [guestContact, setGuestContact] = useState('');
+
+  const { data: events = [] } = useQuery({
+    queryKey: ['events'],
+    queryFn: async () => (await api.get('/events')).data as WEvent[],
+  });
+  const { data: guests = [] } = useQuery({
+    queryKey: ['guests'],
+    queryFn: async () => (await api.get('/events/guests')).data as Guest[],
+  });
   const { data: guestList } = useQuery({
     queryKey: ['guest-list', selected],
     queryFn: async () => (await api.get(`/events/${selected}/guest-list`)).data,
-    enabled: !!selected,
+    enabled: Boolean(selected),
   });
+  const { data: vendors = [] } = useQuery<EventVendor[]>({
+    queryKey: ['event-vendors', selected],
+    queryFn: async () => (await api.get(`/events/${selected}/vendors`)).data,
+    enabled: Boolean(selected),
+  });
+
+  async function act(fn: () => Promise<unknown>, keys: string[]) {
+    setError('');
+    try {
+      await fn();
+      for (const key of keys) qc.invalidateQueries({ queryKey: [key] });
+    } catch (err) {
+      setError(apiMessage(err, 'That did not work.'));
+    }
+  }
 
   async function createEvent(e: FormEvent) {
     e.preventDefault();
-    await api.post('/events', { name: ename, venue });
-    setEname(''); setVenue('');
-    qc.invalidateQueries({ queryKey: ['events'] });
+    await act(
+      () =>
+        api.post('/events', {
+          name,
+          venue: venue || undefined,
+          eventDate: date || undefined,
+        }),
+      ['events'],
+    );
+    setName('');
+    setVenue('');
+    setDate('');
   }
+
   async function addGuest(e: FormEvent) {
     e.preventDefault();
-    await api.post('/events/guests', { name: gname });
-    setGname('');
-    qc.invalidateQueries({ queryKey: ['guests'] });
+    await act(
+      () => api.post('/events/guests', { name: guestName, contact: guestContact || undefined }),
+      ['guests'],
+    );
+    setGuestName('');
+    setGuestContact('');
   }
-  async function invite(eventId: string, guestId: string) {
-    await api.post(`/events/${eventId}/invite`, { guestId });
-    qc.invalidateQueries({ queryKey: ['guest-list', eventId] });
-  }
+
+  const current = events.find((e) => e.id === selected);
+  const invitedIds: string[] =
+    guestList?.invites?.map((i: { guestId: string }) => i.guestId) ?? [];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-brand-dark">Events and Guests</h1>
-      <div className="grid gap-4 md:grid-cols-2">
-        <form onSubmit={createEvent} className="card space-y-2">
-          <h2 className="font-semibold">Create an event</h2>
-          <input className="input" placeholder="Name (e.g. Mehendi)" value={ename} onChange={(e) => setEname(e.target.value)} required />
-          <input className="input" placeholder="Venue" value={venue} onChange={(e) => setVenue(e.target.value)} />
-          <button className="btn">Add event</button>
-        </form>
-        <form onSubmit={addGuest} className="card space-y-2">
-          <h2 className="font-semibold">Add a guest</h2>
-          <input className="input" placeholder="Guest name" value={gname} onChange={(e) => setGname(e.target.value)} required />
-          <button className="btn">Add guest</button>
-        </form>
+      <div>
+        <h1 className="text-xl font-bold text-brand-dark">Events</h1>
+        <p className="text-sm text-gray-600">
+          Each day of the wedding, with its guests and the vendors booked for it.
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="card">
-          <h2 className="mb-2 font-semibold">Your events</h2>
-          {(events ?? []).map((ev) => (
-            <button key={ev.id} onClick={() => setSelected(ev.id)} className={`mb-1 block w-full rounded px-3 py-2 text-left text-sm ${selected === ev.id ? 'bg-brand-light' : 'hover:bg-gray-100'}`}>
-              {ev.name} {ev.venue ? `at ${ev.venue}` : ''}
-            </button>
-          ))}
-          {!events?.length && <p className="text-sm text-gray-400">No events yet.</p>}
-        </div>
-        <div className="card">
-          <h2 className="mb-2 font-semibold">Invite guests {selected ? '' : '(select an event)'}</h2>
-          {selected && (guests ?? []).map((g) => (
-            <div key={g.id} className="mb-1 flex items-center justify-between text-sm">
-              <span>{g.name}</span>
-              <button className="btn-outline" onClick={() => invite(selected, g.id)}>Invite</button>
+      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4">
+          <div className="card">
+            <h2 className="mb-2 font-semibold text-gray-900">Your days</h2>
+            <div className="space-y-1">
+              {events.map((ev) => (
+                <div key={ev.id}>
+                  {editing === ev.id ? (
+                    <EditEvent
+                      event={ev}
+                      onCancel={() => setEditing(null)}
+                      onSave={async (body) => {
+                        await act(() => api.put(`/events/${ev.id}`, body), ['events']);
+                        setEditing(null);
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className={`flex items-center justify-between rounded px-3 py-2 ${
+                        selected === ev.id ? 'bg-brand-light' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <button className="flex-1 text-left" onClick={() => setSelected(ev.id)}>
+                        <span className="block text-sm font-medium text-gray-900">{ev.name}</span>
+                        <span className="block text-xs text-gray-500">
+                          {ev.eventDate
+                            ? new Date(`${ev.eventDate}T00:00:00`).toLocaleDateString(undefined, {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })
+                            : 'Date not set'}
+                          {ev.venue ? ` · ${ev.venue}` : ''}
+                        </span>
+                      </button>
+                      <div className="flex gap-1">
+                        <button
+                          className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                          onClick={() => setEditing(ev.id)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                          onClick={() =>
+                            act(() => api.delete(`/events/${ev.id}`), ['events'])
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {events.length === 0 && (
+                <p className="text-sm text-gray-400">Nothing planned yet.</p>
+              )}
             </div>
-          ))}
-          {selected && guestList && (
-            <p className="mt-3 text-sm text-gray-600">Attending {guestList.summary.attending} of {guestList.summary.total} invited.</p>
+          </div>
+
+          <form onSubmit={createEvent} className="card space-y-2">
+            <h2 className="font-semibold text-gray-900">Add a day</h2>
+            <input
+              className="input"
+              placeholder="Mehendi"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+            <input
+              className="input"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Venue"
+              value={venue}
+              onChange={(e) => setVenue(e.target.value)}
+            />
+            <button className="btn">Add</button>
+          </form>
+        </div>
+
+        <div className="space-y-4 lg:col-span-2">
+          {!current && (
+            <p className="card text-sm text-gray-500">
+              Pick a day on the left to see its guests and vendors.
+            </p>
+          )}
+
+          {current && (
+            <>
+              <div className="card">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-semibold text-gray-900">Vendors for {current.name}</h2>
+                  <Link className="btn-outline" to="/vendors">
+                    Book someone for this day
+                  </Link>
+                </div>
+                <div className="divide-y">
+                  {vendors.map((v) => (
+                    <div key={v.bookingId} className="flex items-center justify-between py-2 text-sm">
+                      <div>
+                        <p className="font-medium text-gray-900">{v.providerName}</p>
+                        <p className="text-xs uppercase tracking-wide text-gray-400">
+                          {v.category ?? 'Provider'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-gray-700">
+                          {Number(v.amount) > 0 ? `₹${Number(v.amount).toLocaleString('en-IN')}` : '—'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {BOOKING_STATUS_LABEL[v.status] ?? v.status}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {vendors.length === 0 && (
+                    <p className="py-2 text-sm text-gray-400">
+                      Nobody booked for this day yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Guests for {current.name}</h2>
+                  {guestList && (
+                    <p className="text-sm text-gray-600">
+                      {guestList.summary.attending} of {guestList.summary.total} attending
+                    </p>
+                  )}
+                </div>
+                <div className="divide-y">
+                  {guests.map((g) => (
+                    <div key={g.id} className="flex items-center justify-between py-2 text-sm">
+                      <span>
+                        {g.name}
+                        {g.contact ? <span className="text-gray-400"> · {g.contact}</span> : null}
+                      </span>
+                      {invitedIds.includes(g.id) ? (
+                        <span className="text-xs text-gray-400">Invited</span>
+                      ) : (
+                        <button
+                          className="btn-outline"
+                          onClick={() =>
+                            act(
+                              () => api.post(`/events/${current.id}/invite`, { guestId: g.id }),
+                              ['guest-list'],
+                            )
+                          }
+                        >
+                          Invite
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {guests.length === 0 && (
+                    <p className="py-2 text-sm text-gray-400">No guests on your list yet.</p>
+                  )}
+                </div>
+
+                <form onSubmit={addGuest} className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+                  <input
+                    className="input flex-1"
+                    placeholder="Guest name"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    required
+                  />
+                  <input
+                    className="input flex-1"
+                    placeholder="Email or phone"
+                    value={guestContact}
+                    onChange={(e) => setGuestContact(e.target.value)}
+                  />
+                  <button className="btn">Add guest</button>
+                </form>
+              </div>
+            </>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function EditEvent({
+  event,
+  onSave,
+  onCancel,
+}: {
+  event: WEvent;
+  onSave: (body: Record<string, string | undefined>) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(event.name);
+  const [date, setDate] = useState(event.eventDate ?? '');
+  const [venue, setVenue] = useState(event.venue ?? '');
+
+  return (
+    <form
+      className="space-y-2 rounded border border-brand/40 p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave({ name, eventDate: date || undefined, venue: venue || undefined });
+      }}
+    >
+      <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
+      <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <input
+        className="input"
+        placeholder="Venue"
+        value={venue}
+        onChange={(e) => setVenue(e.target.value)}
+      />
+      <div className="flex gap-2">
+        <button className="btn">Save</button>
+        <button type="button" className="btn-outline" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

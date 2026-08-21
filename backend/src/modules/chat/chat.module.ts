@@ -9,14 +9,15 @@ import { Profile } from '../users/entities/profile.entity';
 import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
+import { PresenceService } from './presence.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Conversation, Message, Interest, User, Profile]),
     JwtModule.register({}),
   ],
-  providers: [ChatService, ChatGateway],
+  providers: [ChatService, ChatGateway, PresenceService],
   controllers: [ChatController],
-  exports: [ChatService],
+  exports: [ChatService, PresenceService],
 })
 export class ChatModule {}

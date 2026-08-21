@@ -1,8 +1,9 @@
 import { Navigate, Route, Routes, Link, useLocation, useNavigate } from 'react-router-dom';
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './store/auth';
 import { api, bootstrapSession } from './lib/api';
-import { Permission, PermissionValue, ROLE_LABEL, canAny } from './lib/permissions';
+import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from './lib/permissions';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AcceptInvite from './pages/AcceptInvite';
@@ -36,6 +37,10 @@ import WeddingPlanners from './pages/WeddingPlanners';
 import Forbidden from './pages/Forbidden';
 import Verification from './pages/Verification';
 import SetPassword from './pages/SetPassword';
+import Availability from './pages/Availability';
+import Accounts from './pages/Accounts';
+import Notifications from './pages/Notifications';
+import Biodata from './pages/Biodata';
 
 /**
  * Every nav entry declares the capabilities it needs. A user sees an entry only
@@ -51,6 +56,11 @@ interface NavEntry {
 const NAV: NavEntry[] = [
   { to: '/', label: 'Dashboard', requires: [] },
   { to: '/matches', label: 'Matches', requires: [Permission.MATCH_BROWSE] },
+  {
+    to: '/biodata',
+    label: 'Biodata',
+    requires: [Permission.MATCH_BROWSE, Permission.MANAGED_PROFILE_MANAGE],
+  },
   { to: '/chat', label: 'Chat', requires: [Permission.CHAT_INQUIRE, Permission.CHAT_MATCH] },
   {
     to: '/client-profiles',
@@ -69,6 +79,8 @@ const NAV: NavEntry[] = [
     label: 'My Business',
     requires: [Permission.VENDOR_LISTING_MANAGE, Permission.PLANNER_LISTING_MANAGE],
   },
+  { to: '/availability', label: 'Availability', requires: [Permission.VENDOR_LISTING_MANAGE] },
+  { to: '/accounts', label: 'Accounts', requires: [Permission.BOOKING_READ_INCOMING] },
   {
     to: '/planner',
     label: 'Planner',
@@ -80,7 +92,7 @@ const NAV: NavEntry[] = [
     requires: [Permission.BOOKING_READ_OWN, Permission.BOOKING_READ_INCOMING],
   },
   { to: '/events', label: 'Events', requires: [Permission.EVENT_MANAGE_OWN] },
-  { to: '/travel', label: 'Travel', requires: [Permission.TRAVEL_BOOK] },
+  { to: '/travel', label: 'Honeymoon', requires: [Permission.TRAVEL_BOOK] },
   { to: '/media', label: 'Media', requires: [Permission.MEDIA_MANAGE_OWN] },
   { to: '/genie', label: 'WOW Genie', requires: [Permission.AI_ASSIST] },
   {
@@ -88,9 +100,116 @@ const NAV: NavEntry[] = [
     label: 'Verification',
     requires: [Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE],
   },
-  { to: '/security', label: 'Security', requires: [Permission.SESSION_MANAGE_OWN] },
+  { to: '/notifications', label: 'Notifications', requires: [] },
   { to: '/admin', label: 'Admin', requires: [Permission.ADMIN_ANALYTICS_READ] },
 ];
+
+/**
+ * The bell.
+ *
+ * Polled rather than pushed: the count is a single indexed count query, and a
+ * socket that has to survive sleeping laptops and flaky mobile networks is a
+ * lot of machinery for a number that can be a minute stale without anybody
+ * being worse off.
+ */
+function NotificationBell() {
+  const { data } = useQuery({
+    queryKey: ['unread-count'],
+    queryFn: async () => (await api.get('/notifications/unread-count')).data,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const unread: number = data?.unread ?? 0;
+
+  return (
+    <Link
+      to="/notifications"
+      className="relative rounded p-2 text-gray-500 hover:bg-gray-100"
+      aria-label={unread > 0 ? `${unread} unread notifications` : 'Notifications'}
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M13.7 21a2 2 0 0 1-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {unread > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-[18px] text-white">
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+/**
+ * The email dropdown.
+ *
+ * My Profile and Security live here rather than in the main navigation: they
+ * are about the account, not about the work, and a vendor scanning the bar for
+ * their bookings should not have to read past them.
+ */
+function AccountMenu({
+  email,
+  role,
+  onSignOut,
+}: {
+  email?: string;
+  role?: UserRole;
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const loc = useLocation();
+
+  // Any navigation closes it, including a click on one of its own entries.
+  useEffect(() => setOpen(false), [loc.pathname]);
+
+  return (
+    <div className="relative">
+      <button
+        className="flex items-center gap-2 rounded px-2 py-1 text-left hover:bg-gray-100"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <span className="hidden sm:block">
+          <span className="block text-sm text-gray-700">{email}</span>
+          <span className="block text-xs text-gray-400">
+            {role ? (ROLE_LABEL[role] ?? role) : ''}
+          </span>
+        </span>
+        <span className="text-gray-400">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <>
+          {/* Click-away. A bare document listener would fight the toggle above. */}
+          <button
+            className="fixed inset-0 z-10 cursor-default"
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="menu"
+            className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded border border-gray-200 bg-white shadow-lg"
+          >
+            <Link className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" to="/profile">
+              My Profile
+            </Link>
+            <Link className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" to="/security">
+              Security
+            </Link>
+            <button
+              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              onClick={onSignOut}
+            >
+              Logout
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function Layout({ children }: { children: ReactNode }) {
   const user = useAuth((s) => s.user);
@@ -149,15 +268,8 @@ function Layout({ children }: { children: ReactNode }) {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm text-gray-600">{user?.email}</p>
-              <p className="text-xs text-gray-400">
-                {user ? (ROLE_LABEL[user.role] ?? user.role) : ''}
-              </p>
-            </div>
-            <button className="btn-outline" onClick={signOut}>
-              Logout
-            </button>
+            <NotificationBell />
+            <AccountMenu email={user?.email} role={user?.role} onSignOut={signOut} />
           </div>
         </div>
       </header>
@@ -413,6 +525,38 @@ export default function App() {
         element={
           <Protected requires={[Permission.AI_ASSIST]}>
             <Genie />
+          </Protected>
+        }
+      />
+      <Route
+        path="/biodata"
+        element={
+          <Protected requires={[Permission.MATCH_BROWSE, Permission.MANAGED_PROFILE_MANAGE]}>
+            <Biodata />
+          </Protected>
+        }
+      />
+      <Route
+        path="/availability"
+        element={
+          <Protected requires={[Permission.VENDOR_LISTING_MANAGE]}>
+            <Availability />
+          </Protected>
+        }
+      />
+      <Route
+        path="/accounts"
+        element={
+          <Protected requires={[Permission.BOOKING_READ_INCOMING]}>
+            <Accounts />
+          </Protected>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <Protected>
+            <Notifications />
           </Protected>
         }
       />

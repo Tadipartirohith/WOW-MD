@@ -4,6 +4,7 @@ import { AxiosError } from 'axios';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import type { AccountType } from '../lib/permissions';
+import { EMAIL_PATTERN, MOBILE_10_PATTERN, NAME_PATTERN } from '../lib/permissions';
 
 /**
  * Sign-up is a two-step choice: first *what kind of account*, then the details.
@@ -63,17 +64,63 @@ export default function Register() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
   const selected = ACCOUNT_TYPES.find((a) => a.type === accountType)!;
+  // A business is reached on its number, so it is required; an individual can
+  // sign up on an email alone and add one later.
+  const phoneRequired = accountType !== 'individual';
+
+  /**
+   * The same rules the server applies, checked before the round trip.
+   *
+   * Field-level and specific: "Enter a 10-digit mobile number" beats a single
+   * banner saying the form is invalid, because it says which field and what to
+   * do about it. The server still enforces all of this.
+   */
+  function validate(): Record<string, string> {
+    const errors: Record<string, string> = {};
+    const name = displayName.trim();
+    const digits = phone.replace(/\s|-/g, '').replace(/^\+91/, '');
+
+    if (!name) errors.displayName = 'Enter your name';
+    else if (accountType === 'individual' && !NAME_PATTERN.test(name)) {
+      errors.displayName = 'A name may only contain letters and spaces';
+    }
+
+    if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Enter a valid email address';
+
+    if (phoneRequired && !digits) errors.phone = 'A business account needs a contact number';
+    else if (digits && !MOBILE_10_PATTERN.test(digits)) {
+      errors.phone = 'Enter a 10-digit Indian mobile number, starting 6 to 9';
+    }
+
+    if (password.length < 8) errors.password = 'At least 8 characters';
+    else if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      errors.password = 'Needs an uppercase letter, a lowercase letter and a digit';
+    }
+
+    return errors;
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
+
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setLoading(true);
     try {
-      const payload: Record<string, unknown> = { email, password, accountType, displayName };
-      if (phone) payload.phone = phone;
+      const payload: Record<string, unknown> = {
+        email: email.trim(),
+        password,
+        accountType,
+        displayName: displayName.trim(),
+      };
+      if (phone.trim()) payload.phone = phone.replace(/\s|-/g, '');
       // `role` is only meaningful for individual sign-ups; the server derives it
       // from accountType for every other persona.
       if (accountType === 'individual') payload.role = role;
@@ -99,7 +146,7 @@ export default function Register() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <form onSubmit={submit} className="card w-full max-w-2xl space-y-6">
+      <form onSubmit={submit} className="card w-full max-w-2xl space-y-6" noValidate>
         <div>
           <h1 className="text-2xl font-bold text-brand">Create your WOW account</h1>
           <p className="mt-1 text-sm text-gray-500">
@@ -161,7 +208,7 @@ export default function Register() {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="displayName">
-              {accountType === 'individual' ? 'Full name' : 'Business name'}
+              {accountType === 'individual' ? 'Full name' : 'Your name'}
             </label>
             <input
               id="displayName"
@@ -169,8 +216,11 @@ export default function Register() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               maxLength={120}
-              required
+              aria-invalid={Boolean(fieldErrors.displayName)}
             />
+            {fieldErrors.displayName && (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.displayName}</p>
+            )}
           </div>
           <div>
             <label className="label" htmlFor="email">
@@ -182,22 +232,36 @@ export default function Register() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              aria-invalid={Boolean(fieldErrors.email)}
             />
+            {fieldErrors.email && (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.email}</p>
+            )}
           </div>
         </div>
 
         <div>
           <label className="label" htmlFor="phone">
-            Mobile number <span className="font-normal text-gray-400">(optional)</span>
+            Mobile number{' '}
+            {!phoneRequired && <span className="font-normal text-gray-400">(optional)</span>}
           </label>
           <input
             id="phone"
             className="input"
-            placeholder="+919876543210"
+            inputMode="numeric"
+            placeholder="9876543210"
+            maxLength={13}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
+            aria-invalid={Boolean(fieldErrors.phone)}
           />
+          {fieldErrors.phone ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.phone}</p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500">
+              Ten digits, starting 6 to 9. The +91 is added for you.
+            </p>
+          )}
         </div>
 
         <div>
@@ -211,11 +275,15 @@ export default function Register() {
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
+            aria-invalid={Boolean(fieldErrors.password)}
           />
-          <p className="mt-1 text-xs text-gray-500">
-            At least 8 characters, with an uppercase letter, a lowercase letter and a digit.
-          </p>
+          {fieldErrors.password ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500">
+              At least 8 characters, with an uppercase letter, a lowercase letter and a digit.
+            </p>
+          )}
         </div>
 
         <button className="btn w-full" disabled={loading}>

@@ -113,7 +113,16 @@ export class VerificationService {
       throw new BadRequestException('That request has already been approved');
     }
 
-    const officer = await this.users.findOne({ where: { id: dto.officerUserId } });
+    // Named officer, or the lightest-loaded one. Allocation is the
+    // administrator's decision either way; this only saves them the arithmetic.
+    const officerUserId = dto.officerUserId ?? (await this.suggestOfficer());
+    if (!officerUserId) {
+      throw new BadRequestException(
+        'There are no active verification officers to allocate this to',
+      );
+    }
+
+    const officer = await this.users.findOne({ where: { id: officerUserId } });
     if (!officer || !officer.isActive) throw new NotFoundException('Verification officer not found');
     if (officer.role !== UserRole.IN_PERSON) {
       throw new BadRequestException('That account is not a verification officer');
@@ -311,12 +320,37 @@ export class VerificationService {
     return paginate(data, total, q.page, q.limit);
   }
 
-  async findOne(actor: AuthUser, id: string): Promise<VerificationRequest> {
+  /**
+   * The request, plus the record it is about.
+   *
+   * An officer sent to verify a business needs the business: its name, trade,
+   * registration numbers and the address they are going to stand outside. A
+   * queue row alone tells them nothing they can check.
+   */
+  async findOne(
+    actor: AuthUser,
+    id: string,
+  ): Promise<VerificationRequest & { applicant: unknown; subject: unknown }> {
     const request = await this.loadOrFail(id);
     if (actor.role === UserRole.IN_PERSON && request.assignedToUserId !== actor.userId) {
       throw new ForbiddenException('That request is not allocated to you');
     }
-    return request;
+
+    const applicant = await this.users.findOne({
+      where: { id: request.applicantUserId },
+      select: ['id', 'email', 'phone', 'role', 'isActive', 'createdAt'],
+    });
+
+    const subject =
+      request.applicantType === ApplicantType.AGENT
+        ? await this.agencies.findOne({ where: { ownerUserId: request.applicantUserId } })
+        : await this.vendors.findOne({
+            where: request.subjectId
+              ? { id: request.subjectId }
+              : { ownerUserId: request.applicantUserId },
+          });
+
+    return { ...request, applicant: applicant ?? null, subject: subject ?? null };
   }
 
   /** The applicant's own view: status and reason, nothing about the officer. */
@@ -364,23 +398,74 @@ export class VerificationService {
   }
 
   /** Per-officer workload, for allocation decisions. */
-  async workload(): Promise<{ officerUserId: string; open: number }[]> {
+  /**
+   * Every active officer with what they are carrying, lightest first.
+   *
+   * Officers with nothing on are included — they are precisely the ones an
+   * allocation should go to, and a query that only counts existing work would
+   * leave them invisible.
+   */
+  async workload(): Promise<
+    {
+      officerUserId: string;
+      open: number;
+      inProgress: number;
+      completed: number;
+      total: number;
+    }[]
+  > {
+    const officers = await this.users.find({
+      where: { role: UserRole.IN_PERSON, isActive: true },
+      select: ['id'],
+    });
+    if (officers.length === 0) return [];
+
     const rows = await this.requests
       .createQueryBuilder('r')
       .select('r."assignedToUserId"', 'officerUserId')
-      .addSelect('COUNT(r.id)', 'open')
+      .addSelect('r.status', 'status')
+      .addSelect('COUNT(r.id)', 'count')
       .where('r."assignedToUserId" IS NOT NULL')
-      .andWhere('r.status IN (:...open)', {
-        open: [
-          VerificationStatus.ASSIGNED,
-          VerificationStatus.IN_PROGRESS,
-          VerificationStatus.ADDITIONAL_REVIEW,
-          VerificationStatus.ISSUE,
-        ],
-      })
       .groupBy('r."assignedToUserId"')
-      .getRawMany<{ officerUserId: string; open: string }>();
-    return rows.map((r) => ({ officerUserId: r.officerUserId, open: Number(r.open) }));
+      .addGroupBy('r.status')
+      .getRawMany<{ officerUserId: string; status: VerificationStatus; count: string }>();
+
+    const OPEN = [
+      VerificationStatus.ASSIGNED,
+      VerificationStatus.ADDITIONAL_REVIEW,
+      VerificationStatus.ISSUE,
+    ];
+
+    const summary = officers.map((officer) => {
+      const mine = rows.filter((r) => r.officerUserId === officer.id);
+      const count = (statuses: VerificationStatus[]) =>
+        mine
+          .filter((r) => statuses.includes(r.status))
+          .reduce((total, r) => total + Number(r.count), 0);
+
+      const open = count(OPEN);
+      const inProgress = count([VerificationStatus.IN_PROGRESS]);
+      return {
+        officerUserId: officer.id,
+        open,
+        inProgress,
+        completed: count([VerificationStatus.APPROVED, VerificationStatus.REJECTED]),
+        // What allocation actually ranks on: work still on their plate.
+        total: open + inProgress,
+      };
+    });
+
+    return summary.sort((a, b) => a.total - b.total);
+  }
+
+  /**
+   * Who the next request should go to. The lightest-loaded active officer, or
+   * null when there are none — in which case the administrator has a staffing
+   * problem, not an allocation one.
+   */
+  async suggestOfficer(): Promise<string | null> {
+    const ranked = await this.workload();
+    return ranked[0]?.officerUserId ?? null;
   }
 
   private async loadOrFail(id: string): Promise<VerificationRequest> {

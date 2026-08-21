@@ -20,8 +20,10 @@ import {
 } from './dto/verification.dto';
 import { CreateOfficerDto, SetOfficerStatusDto } from './dto/officer.dto';
 import {
+  AddEvidenceDto,
   AllocateCaseDto,
   CaseQueryDto,
+  EscalateCaseDto,
   RaiseCaseDto,
   RecordFindingsDto,
   SettleCaseDto,
@@ -222,6 +224,47 @@ export class VerificationController {
     @Body() dto: RecordFindingsDto,
   ) {
     return this.cases.recordFindings(actor, id, dto);
+  }
+
+  @RequirePermissions(Permission.CASE_ALLOCATE)
+  @ApiOperation({
+    summary: 'Escalate a case to a physical visit',
+    description:
+      'For a dispute nobody can settle from a desk. Routes it to a field officer rather than ' +
+      'leaving it circling in a queue that cannot resolve it.',
+  })
+  @Put('cases/:id/escalate')
+  escalateCase(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EscalateCaseDto,
+  ) {
+    return this.cases.escalate(actor, id, dto.reason);
+  }
+
+  @RequirePermissions(Permission.CASE_INVESTIGATE)
+  @ApiOperation({
+    summary: 'Park the case on whoever owes an answer',
+    description: 'Distinct from in-progress: the clock is on one of the parties, not the officer.',
+  })
+  @Put('cases/:id/await-information')
+  awaitInformation(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EscalateCaseDto,
+  ) {
+    return this.cases.awaitInformation(actor, id, dto.reason);
+  }
+
+  @RequirePermissions(Permission.CASE_RAISE)
+  @ApiOperation({ summary: 'Add evidence to an open case' })
+  @Put('cases/:id/evidence')
+  addEvidence(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddEvidenceDto,
+  ) {
+    return this.cases.addEvidence(actor, id, dto.evidence);
   }
 
   @RequirePermissions(Permission.CASE_SETTLE)

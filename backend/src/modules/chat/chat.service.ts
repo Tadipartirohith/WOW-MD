@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
@@ -15,7 +15,21 @@ import {
 } from '../../common/enums';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { AppConfigService } from '../../config/app-config.service';
+import { PresenceService } from './presence.service';
 import { redactContacts } from '../../common/util/redaction';
+
+/** One row of the chat dashboard. */
+export interface ConversationSummary {
+  conversationId: string;
+  withUserId: string;
+  displayName: string;
+  photoUrl: string | null;
+  lastMessage: string | null;
+  lastMessageAt: Date | null;
+  lastMessageMine: boolean;
+  unread: number;
+  online: boolean;
+}
 
 @Injectable()
 export class ChatService {
@@ -26,6 +40,7 @@ export class ChatService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly cfg: AppConfigService,
+    private readonly presence: PresenceService,
   ) {}
 
   private async loadPair(a: string, b: string): Promise<[User, User]> {
@@ -182,11 +197,143 @@ export class ChatService {
     return paginate(data, total, page, limit);
   }
 
-  /** Threads the caller participates in, newest activity first. */
-  async listConversations(userId: string): Promise<Conversation[]> {
-    return this.conversations.find({
+  /**
+   * The chat dashboard: one row per person, most recently active first.
+   *
+   * The raw conversation rows were unusable on their own — two uuids and a
+   * creation date, in the order the conversations happened to be created. What
+   * somebody opening this screen actually needs is who it is with, what was
+   * said last, whether anything is waiting on them, and whether the other side
+   * is there right now.
+   */
+  async listConversations(userId: string): Promise<ConversationSummary[]> {
+    const rows = await this.conversations.find({
       where: [{ participantA: userId }, { participantB: userId }],
-      order: { createdAt: 'DESC' },
     });
+
+    const otherIds = rows.map((c) => (c.participantA === userId ? c.participantB : c.participantA));
+
+    // An accepted match with nothing said yet has no conversation row — one is
+    // only created on the first message. Leaving those out is what made a fresh
+    // match look unreachable: the two families had agreed to talk and the list
+    // was empty. They appear here as threads waiting to be started.
+    const pending = await this.matchedButSilent(userId, otherIds);
+    if (rows.length === 0 && pending.length === 0) return [];
+    otherIds.push(...pending);
+
+    const [profiles, online] = await Promise.all([
+      this.profiles.find({ where: { userId: In(otherIds) } }),
+      this.presence.onlineAmong(otherIds),
+    ]);
+    const profileByUser = new Map(profiles.map((p) => [p.userId as string, p]));
+
+    const silent: ConversationSummary[] = pending.map((otherUserId) => ({
+      conversationId: '',
+      withUserId: otherUserId,
+      displayName: profileByUser.get(otherUserId)?.displayName ?? 'Match',
+      photoUrl: profileByUser.get(otherUserId)?.photos?.[0] ?? null,
+      lastMessage: null,
+      lastMessageAt: null,
+      lastMessageMine: false,
+      unread: 0,
+      online: online.has(otherUserId),
+    }));
+
+    const summaries = await Promise.all(
+      rows.map(async (convo) => {
+        const otherUserId = convo.participantA === userId ? convo.participantB : convo.participantA;
+        const [last, unread] = await Promise.all([
+          this.messages.findOne({
+            where: { conversationId: convo.id },
+            order: { createdAt: 'DESC' },
+          }),
+          this.messages.count({
+            where: { conversationId: convo.id, senderId: otherUserId, readAt: IsNull() },
+          }),
+        ]);
+        const profile = profileByUser.get(otherUserId);
+
+        return {
+          conversationId: convo.id,
+          withUserId: otherUserId,
+          displayName: profile?.displayName ?? 'Match',
+          photoUrl: profile?.photos?.[0] ?? null,
+          lastMessage: last?.body ?? null,
+          lastMessageAt: last?.createdAt ?? null,
+          lastMessageMine: last ? last.senderId === userId : false,
+          unread,
+          online: online.has(otherUserId),
+        };
+      }),
+    );
+
+    // Most recent first, and a conversation nobody has spoken in yet sinks to
+    // the bottom rather than sitting at the top on its creation date.
+    return [...summaries, ...silent].sort((a, b) => {
+      const at = a.lastMessageAt?.getTime() ?? 0;
+      const bt = b.lastMessageAt?.getTime() ?? 0;
+      return bt - at;
+    });
+  }
+
+  /**
+   * Accounts this user has an accepted match with but no thread for yet.
+   *
+   * Keyed on profiles, because that is where an interest lives, then resolved
+   * back to accounts — a matched profile whose owner has not claimed it has no
+   * account to message, and is correctly absent.
+   */
+  private async matchedButSilent(userId: string, alreadyListed: string[]): Promise<string[]> {
+    const profile = await this.profiles.findOne({ where: { userId } });
+    if (!profile) return [];
+
+    const accepted = await this.interests.find({
+      where: [
+        { fromProfileId: profile.id, status: InterestStatus.ACCEPTED },
+        { toProfileId: profile.id, status: InterestStatus.ACCEPTED },
+      ],
+    });
+    if (accepted.length === 0) return [];
+
+    const otherProfileIds = accepted.map((i) =>
+      i.fromProfileId === profile.id ? i.toProfileId : i.fromProfileId,
+    );
+    const others = await this.profiles.find({ where: { id: In(otherProfileIds) } });
+
+    const seen = new Set(alreadyListed);
+    return others
+      .map((p) => p.userId)
+      .filter((id): id is string => Boolean(id) && !seen.has(id as string));
+  }
+
+  /**
+   * Marks everything the other person sent as read.
+   *
+   * Only their messages: marking your own read would be meaningless, and it is
+   * their unread badge that has to clear.
+   */
+  async markRead(userId: string, withUserId: string): Promise<{ marked: number }> {
+    const convo = await this.conversations.findOne({
+      where: [
+        { participantA: userId, participantB: withUserId },
+        { participantA: withUserId, participantB: userId },
+      ],
+    });
+    if (!convo) return { marked: 0 };
+
+    const result = await this.messages.update(
+      { conversationId: convo.id, senderId: withUserId, readAt: IsNull() },
+      { readAt: new Date() },
+    );
+    return { marked: result.affected ?? 0 };
+  }
+
+  /** Presence for one person, for the header of an open conversation. */
+  async presenceOf(withUserId: string): Promise<{ online: boolean; lastSeen: Date | null }> {
+    const [online, lastSeen] = await Promise.all([
+      this.presence.isOnline(withUserId),
+      this.presence.lastSeen(withUserId),
+    ]);
+    return { online, lastSeen };
   }
 }

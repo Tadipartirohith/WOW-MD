@@ -53,6 +53,15 @@ export class BookingsController {
     return this.bookings.listIncoming(actor, q);
   }
 
+  @RequirePermissions(Permission.BOOKING_READ_INCOMING)
+  @ApiOperation({
+    summary: 'Your account: earnings, money still in escrow, and the ledger behind both',
+  })
+  @Get('earnings')
+  earnings(@CurrentUser() actor: AuthUser) {
+    return this.bookings.earnings(actor);
+  }
+
   @RequirePermissions(Permission.BOOKING_PAY)
   @ApiOperation({
     summary: 'Pay an escrow milestone',

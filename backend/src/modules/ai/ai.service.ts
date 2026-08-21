@@ -29,8 +29,16 @@ export class AiService {
     @Inject(AI_PROVIDER) private readonly ai: AiProvider,
   ) {}
 
+  /**
+   * The recommended matches panel.
+   *
+   * Floored at fifty percent deliberately: a recommendation is a claim that
+   * this is worth the family's attention, and a list padded out with
+   * twelve-percent matches to reach five rows teaches people to ignore it.
+   * Fewer rows is the correct answer when there are fewer good matches.
+   */
   matchRecommendations(actor: AuthUser) {
-    return this.matchmaking.suggestions(actor, 1, 5);
+    return this.matchmaking.suggestions(actor, { page: 1, limit: 5, minScore: 50 } as never);
   }
 
   vendorRecommendations(category?: VendorCategory) {

@@ -184,7 +184,7 @@ check "officer approves after the visit" "$c" 200
 
 c=$(req GET /agents/agency "" "$AGENT")
 body_has '"isApproved":true' "the approval activated the agency"
-c=$(req POST /agents/profiles "{\"displayName\":\"Client $STAMP\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"$(phone 002)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Client\",\"contactEmail\":\"client-$STAMP@t.com\",\"contactPhone\":\"$(phone 002)\",\"gender\":\"female\",\"dateOfBirth\":\"1997-01-01\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
 check "and the agency can now build profiles" "$c" 201
 MANAGED=$(field /tmp/body id)
 
@@ -196,7 +196,7 @@ c=$(req POST "/users/profiles/$MANAGED/identity" "{\"idType\":\"passport\",\"idN
 check "agent records the client's identity document" "$c" 201
 body_has "\"last4\":\"$(echo "$PASSPORT_A" | tail -c 5)\"" "only the last four characters are kept"
 
-c=$(req POST /agents/profiles "{\"displayName\":\"Partner $STAMP\",\"contactPhone\":\"$(phone 003)\",\"gender\":\"male\",\"dateOfBirth\":\"1995-05-05\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Partner\",\"contactPhone\":\"$(phone 003)\",\"gender\":\"male\",\"dateOfBirth\":\"1995-05-05\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
 check "agent builds the counterpart profile" "$c" 201
 PARTNER=$(field /tmp/body id)
 c=$(req POST "/users/profiles/$PARTNER/identity" "{\"idType\":\"passport\",\"idNumber\":\"$PASSPORT_A\"}" "$AGENT")
@@ -259,13 +259,32 @@ check "a malformed GST number is refused" "$c" 400
 c=$(req GET /verification/me "" "$VENDOR")
 body_has '"applicantType":"vendor"' "listing queued the vendor for a visit too"
 
+c=$(req GET /verification/me "" "$VENDOR")
+VREQ=$(field /tmp/body id)
 c=$(req PUT "/admin/vendors/$LISTING/approve" "" "$ADMIN")
-check "admin approves the listing" "$c" 200
+check "there is no administrative shortcut past the visit" "$c" 404
+# Omitting the officer lets the platform pick the lightest-loaded one. Earlier
+# runs leave their own officers on duty, so the assertion is that it chose *an*
+# active officer, not which one.
+c=$(req PUT "/verification/requests/$VREQ/allocate" '{}' "$ADMIN")
+check "admin allocates the visit without naming an officer" "$c" 200
+body_has '"status":"assigned"' "the platform picked the lightest-loaded officer"
+
+# Re-allocated to this run's officer, whose token the suite holds.
+c=$(req PUT "/verification/requests/$VREQ/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN")
+check "an administrator can override the choice" "$c" 200
+c=$(req GET "/verification/requests/$VREQ" "" "$OFFICER")
+check "the officer opens the request" "$c" 200
+body_has '"subject"' "and gets the business record they are going to verify"
+c=$(req PUT "/verification/requests/$VREQ/decide" '{"status":"approved"}' "$OFFICER")
+check "officer approves the listing after the visit" "$c" 200
+c=$(req GET "/vendors/$LISTING" "")
+body_has '"isApproved":true' "the officer's decision is what activated it"
 
 # The bride needs a fixed match of her own before services open to her.
 PREFS='{"religion":"hindu","education":"masters","lifestyle":["vegetarian","non-smoker"]}'
-req PUT /users/me/profile "{\"displayName\":\"Bride $STAMP\",\"gender\":\"female\",\"dateOfBirth\":\"1997-07-11\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$BRIDE" >/dev/null
-req PUT /users/me/profile "{\"displayName\":\"Groom $STAMP\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Bride\",\"gender\":\"female\",\"dateOfBirth\":\"1997-07-11\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$BRIDE" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
 c=$(req GET /users/me "" "$GROOM")
 GROOM_PROFILE=$(field /tmp/body id)
 
@@ -436,7 +455,7 @@ grep -q '9876543210' /tmp/body && assert "a number leaked into the stored messag
 
 echo
 echo "== 12. The profile lifecycle =="
-c=$(req POST /agents/profiles "{\"displayName\":\"Paused $STAMP\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1998-08-08\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
+c=$(req POST /agents/profiles "{\"displayName\":\"Paused\",\"contactPhone\":\"$(phone 004)\",\"gender\":\"female\",\"dateOfBirth\":\"1998-08-08\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
 check "agent builds one more profile" "$c" 201
 PAUSED=$(field /tmp/body id)
 
