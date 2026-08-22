@@ -26,6 +26,35 @@ interface Message {
 }
 
 /**
+ * The other kind of thread: the two people *handling* a possible match talking
+ * to each other, which in this market is where most of the negotiation happens.
+ *
+ * It is a genuinely different conversation from the couple's, between different
+ * people, and it hangs off an interest rather than a pair of accounts. It is
+ * listed here rather than merged into the same store: an agency's working
+ * thread about a family is not the family's own chat, and quietly folding one
+ * into the other would put things in front of people who were never party to
+ * them.
+ */
+interface ProposalThread {
+  interestId: string;
+  status: string;
+  otherName: string;
+  otherPhotoUrl: string | null;
+  lastNote: string | null;
+  lastNoteAt: string | null;
+  lastNoteMine: boolean;
+  noteCount: number;
+}
+
+interface ProposalDetail {
+  interestId: string;
+  status: string;
+  sides: { profile: { displayName: string }; handledBy: string | null; isMine: boolean }[];
+  notes: { id: string; body: string; mine: boolean; createdAt: string }[];
+}
+
+/**
  * Messages.
  *
  * The conversation list is the screen, not a dropdown of user ids. Picking a
@@ -37,6 +66,8 @@ export default function Chat() {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [withUserId, setWithUserId] = useState(params.get('with') ?? '');
+  // Exactly one thread is open at a time, of either kind.
+  const [interestId, setInterestId] = useState(params.get('proposal') ?? '');
   const [body, setBody] = useState('');
   const [error, setError] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
@@ -44,6 +75,23 @@ export default function Chat() {
   const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ['conversations'],
     queryFn: async () => (await api.get('/chat/conversations')).data,
+    refetchInterval: 15_000,
+  });
+
+  // Agents were opening this page, finding "No conversations yet", and going
+  // back to Proposals — because their threads live in a different store and
+  // this list never asked for them.
+  const { data: proposals = [] } = useQuery<ProposalThread[]>({
+    queryKey: ['proposal-threads'],
+    queryFn: async () => (await api.get('/circulation/proposals')).data,
+    refetchInterval: 15_000,
+    retry: false,
+  });
+
+  const { data: proposal } = useQuery<ProposalDetail>({
+    queryKey: ['proposal-thread', interestId],
+    queryFn: async () => (await api.get(`/circulation/proposals/${interestId}`)).data,
+    enabled: Boolean(interestId),
     refetchInterval: 15_000,
   });
 
@@ -99,8 +147,9 @@ export default function Chat() {
       <div>
         <h1 className="text-xl font-bold text-brand-dark">Messages</h1>
         <p className="text-sm text-gray-600">
-          Phone numbers and email addresses are removed before a message is stored — keep the
-          conversation here until you are both ready.
+          Every conversation you are part of: direct messages, and the proposal threads you are
+          handling. Phone numbers and email addresses are removed from direct messages before they
+          are stored — keep the conversation here until you are both ready.
         </p>
       </div>
 
@@ -109,16 +158,24 @@ export default function Chat() {
       <div className="grid gap-4 md:grid-cols-[18rem,1fr]">
         <div className="card max-h-[32rem] overflow-y-auto p-0">
           {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
-          {!isLoading && conversations.length === 0 && (
+          {!isLoading && conversations.length === 0 && proposals.length === 0 && (
             <p className="p-4 text-sm text-gray-400">
               No conversations yet. They start when an interest is accepted, or when you message a
               vendor.
             </p>
           )}
+          {conversations.length > 0 && proposals.length > 0 && (
+            <p className="border-b border-gray-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Direct
+            </p>
+          )}
           {conversations.map((c) => (
             <button
               key={c.withUserId}
-              onClick={() => setWithUserId(c.withUserId)}
+              onClick={() => {
+                setWithUserId(c.withUserId);
+                setInterestId('');
+              }}
               className={`flex w-full items-start gap-3 border-b border-gray-100 p-3 text-left ${
                 withUserId === c.withUserId ? 'bg-brand-light' : 'hover:bg-gray-50'
               }`}
@@ -157,14 +214,77 @@ export default function Chat() {
               </span>
             </button>
           ))}
+
+          {proposals.length > 0 && (
+            <p className="border-b border-gray-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Proposals
+            </p>
+          )}
+          {proposals.map((t) => (
+            <button
+              key={t.interestId}
+              onClick={() => {
+                setInterestId(t.interestId);
+                setWithUserId('');
+              }}
+              className={`flex w-full items-start gap-3 border-b border-gray-100 p-3 text-left ${
+                interestId === t.interestId ? 'bg-brand-light' : 'hover:bg-gray-50'
+              }`}
+            >
+              <span className="shrink-0">
+                {t.otherPhotoUrl ? (
+                  <img
+                    src={t.otherPhotoUrl}
+                    alt=""
+                    className="h-10 w-10 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-600">
+                    {t.otherName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium text-gray-900">{t.otherName}</span>
+                  {/*
+                    There is no read state on a proposal note, so an unread
+                    count here would be invented. "They spoke last" is the
+                    honest version of the same signal.
+                  */}
+                  {t.lastNote && !t.lastNoteMine && (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-xs font-medium text-amber-800">
+                      reply
+                    </span>
+                  )}
+                </span>
+                <span className="block truncate text-xs text-gray-500">
+                  {t.lastNote
+                    ? `${t.lastNoteMine ? 'You: ' : ''}${t.lastNote}`
+                    : 'No notes yet'}
+                </span>
+              </span>
+            </button>
+          ))}
         </div>
 
         <div className="card flex min-h-[24rem] flex-col">
-          {!withUserId && (
+          {!withUserId && !interestId && (
             <p className="m-auto text-sm text-gray-400">Pick a conversation to open it.</p>
           )}
 
-          {withUserId && (
+          {interestId && proposal && (
+            <ProposalPane
+              thread={proposal}
+              onPosted={() => {
+                void qc.invalidateQueries({ queryKey: ['proposal-thread', interestId] });
+                void qc.invalidateQueries({ queryKey: ['proposal-threads'] });
+              }}
+              onError={setError}
+            />
+          )}
+
+          {withUserId && !interestId && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
                 <div>
@@ -256,5 +376,98 @@ export default function Chat() {
         onHangUp={call.hangUp}
       />
     </div>
+  );
+}
+
+/**
+ * The agent-to-agent thread on a pairing.
+ *
+ * Deliberately plainer than the direct chat: no presence, no calling, no
+ * redaction badge. This is two professionals comparing notes about a possible
+ * match, and dressing it up as the couple's own conversation would be the same
+ * mistake as merging the two stores.
+ */
+function ProposalPane({
+  thread,
+  onPosted,
+  onError,
+}: {
+  thread: ProposalDetail;
+  onPosted: () => void;
+  onError: (message: string) => void;
+}) {
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const bottom = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [thread.notes.length]);
+
+  async function post(e: FormEvent) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`/circulation/proposals/${thread.interestId}/notes`, { body: body.trim() });
+      setBody('');
+      onPosted();
+    } catch (err) {
+      onError(apiMessage(err, 'That note was not posted.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const mine = thread.sides.find((s) => s.isMine);
+  const theirs = thread.sides.find((s) => !s.isMine);
+
+  return (
+    <>
+      <div className="border-b pb-2">
+        <p className="font-semibold text-gray-900">
+          {mine?.profile.displayName ?? 'Your side'} &amp;{' '}
+          {theirs?.profile.displayName ?? 'the other side'}
+        </p>
+        <p className="text-xs text-gray-500">
+          Between the two people handling this pairing · {thread.status.replace(/_/g, ' ')}
+        </p>
+      </div>
+
+      <div className="flex-1 space-y-2 overflow-y-auto py-3">
+        {thread.notes.map((n) => (
+          <div key={n.id} className={`flex ${n.mine ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
+                n.mine ? 'bg-brand text-white' : 'bg-gray-100 text-gray-800'
+              }`}
+            >
+              <p className="whitespace-pre-wrap">{n.body}</p>
+              <p className={`mt-1 text-[10px] ${n.mine ? 'text-white/70' : 'text-gray-500'}`}>
+                {new Date(n.createdAt).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        ))}
+        {thread.notes.length === 0 && (
+          <p className="text-sm text-gray-400">
+            No notes yet. Open the conversation with the other side.
+          </p>
+        )}
+        <div ref={bottom} />
+      </div>
+
+      <form onSubmit={post} className="flex gap-2 border-t pt-2">
+        <input
+          className="input flex-1"
+          placeholder="A note to the other side"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+        <button className="btn" disabled={busy || !body.trim()}>
+          Send
+        </button>
+      </form>
+    </>
   );
 }

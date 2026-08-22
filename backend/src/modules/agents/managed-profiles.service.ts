@@ -221,7 +221,11 @@ export class ManagedProfilesService {
    */
   async findOneWithActions(actor: AuthUser, profileId: string) {
     const profile = await this.findOne(actor, profileId);
-    return { ...profile, actions: this.agencyActions(profile) };
+    return {
+      ...profile,
+      actions: this.agencyActions(profile),
+      circulation: await this.consent.stateFor(profile.id),
+    };
   }
 
   async update(actor: AuthUser, profileId: string, dto: UpdateManagedProfileDto): Promise<Profile> {
@@ -301,11 +305,18 @@ export class ManagedProfilesService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
+
+    // Whether each one may actually be circulated, in one query rather than
+    // forty. Without it the client shows a Circulate button that refuses, and
+    // the agent has no way of telling which profiles are ready.
+    const consent = await this.consent.stateForMany(data.map((p) => p.id));
+
     // Each row carries what the agency may still do to it, so the client
     // renders the same rule the server enforces.
     const withActions = data.map((profile) => ({
       ...profile,
       actions: this.agencyActions(profile),
+      circulation: consent.get(profile.id) ?? null,
     }));
     return paginate(withActions, total, q.page, q.limit);
   }

@@ -31,6 +31,19 @@ interface ManagedProfile {
   lifecycle?: ProfileLifecycle;
   lifecycleReason?: string | null;
   /**
+   * Whether this profile may actually be circulated, and why not when it may
+   * not. Decided at intake by a checkbox on the creation form, and changeable
+   * afterwards — families change their minds, and a decision taken at the desk
+   * on day one should not be permanent.
+   */
+  circulation?: {
+    intake: boolean;
+    circulation: boolean;
+    mayCirculate: boolean;
+    needsReconfirmation: boolean;
+    reason: string | null;
+  } | null;
+  /**
    * What the agency may still do to this row, decided by the server. Rendering
    * from this rather than re-deriving it here keeps the buttons and the rules
    * from drifting apart.
@@ -82,6 +95,7 @@ export default function ManagedProfiles() {
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [enabling, setEnabling] = useState<string | null>(null);
   const [reach, setReach] = useState<string | null>(null);
 
   const { data: agency } = useQuery({
@@ -375,14 +389,34 @@ export default function ManagedProfiles() {
                           {reach === p.id ? 'Hide reach' : 'Reach'}
                         </button>
                       )}
-                      {can(permissions, Permission.PROFILE_CIRCULATE) && allow?.canCirculate && (
-                        <button
-                          className="btn"
-                          onClick={() => setSharing(sharing === p.id ? null : p.id)}
-                        >
-                          {sharing === p.id ? 'Done' : 'Circulate'}
-                        </button>
-                      )}
+                      {/*
+                        Circulation is off until somebody says otherwise, and
+                        the button says which state it is in. A Circulate button
+                        that opens a dialog only to refuse is how an agent loses
+                        confidence in the whole screen.
+                      */}
+                      {can(permissions, Permission.PROFILE_CIRCULATE) &&
+                        allow?.canCirculate &&
+                        (p.circulation && !p.circulation.mayCirculate ? (
+                          <button
+                            className="btn-outline"
+                            title={p.circulation.reason ?? undefined}
+                            onClick={() => setEnabling(enabling === p.id ? null : p.id)}
+                          >
+                            {enabling === p.id
+                              ? 'Cancel'
+                              : p.circulation.needsReconfirmation
+                                ? 'Re-confirm circulation'
+                                : 'Enable circulation'}
+                          </button>
+                        ) : (
+                          <button
+                            className="btn"
+                            onClick={() => setSharing(sharing === p.id ? null : p.id)}
+                          >
+                            {sharing === p.id ? 'Done' : 'Circulate'}
+                          </button>
+                        ))}
                       {can(permissions, Permission.MANAGED_PROFILE_INVITE) && allow?.canInvite && (
                         <button className="btn-outline" onClick={() => invite.mutate(p.id)}>
                           {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
@@ -451,6 +485,19 @@ export default function ManagedProfiles() {
                   profileName={p.displayName}
                   pooled={p.networkVisibility === 'pool'}
                   onClose={() => setSharing(null)}
+                />
+              )}
+
+              {enabling === p.id && (
+                <EnableCirculation
+                  profileId={p.id}
+                  profileName={p.displayName}
+                  needsReconfirmation={p.circulation?.needsReconfirmation ?? false}
+                  onDone={() => {
+                    setEnabling(null);
+                    void qc.invalidateQueries({ queryKey: ['managed-profiles'] });
+                    void qc.invalidateQueries({ queryKey: ['consent', p.id] });
+                  }}
                 />
               )}
             </div>
@@ -601,5 +648,88 @@ function Metric({ label, value, note }: { label: string; value: number; note: st
       </p>
       <p className="text-xs text-gray-500">{note}</p>
     </div>
+  );
+}
+
+/**
+ * Turning circulation on after the fact.
+ *
+ * The checkbox on the intake form decides this on day one, and until now that
+ * was the only chance anybody got: a family who said "not yet" at the desk and
+ * changed their mind a month later had no way through. Consent is append-only,
+ * so this records a fresh one rather than editing the old — which is also the
+ * honest thing, because it *is* a fresh conversation with the family.
+ *
+ * The confirmation is not ceremony. Circulating a biodata puts somebody's
+ * photograph and horoscope in front of strangers, and an agent should have to
+ * say out loud who agreed to that.
+ */
+function EnableCirculation({
+  profileId,
+  profileName,
+  needsReconfirmation,
+  onDone,
+}: {
+  profileId: string;
+  profileName: string;
+  needsReconfirmation: boolean;
+  onDone: () => void;
+}) {
+  const [consent, setConsent] = useState<ConsentDraft>(emptyConsent());
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await api.post(`/circulation/profiles/${profileId}/consent`, {
+        scope: 'circulation',
+        ...consentPayload(consent, false),
+      });
+      onDone();
+    } catch (err) {
+      setError(apiMessage(err, 'That consent could not be recorded.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 space-y-3 rounded bg-amber-50/60 p-3">
+      <div>
+        <p className="text-sm font-medium text-gray-900">
+          {needsReconfirmation ? 'Re-confirm circulation' : 'Enable circulation'} for {profileName}
+        </p>
+        <p className="text-sm text-gray-600">
+          {needsReconfirmation
+            ? 'The earlier consent has lapsed. Ring the family and record the new one.'
+            : 'This profile was taken on without permission to share it. Record that permission here.'}
+        </p>
+      </div>
+
+      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+
+      <ConsentFields value={consent} onChange={setConsent} showCirculation={false} />
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4"
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+        />
+        <span className="text-gray-700">
+          I have spoken to the family and they agree to this biodata being shared with other
+          agencies and prospective families.
+        </span>
+      </label>
+
+      <button className="btn" disabled={!confirmed || busy}>
+        {busy ? 'Recording…' : 'Record consent'}
+      </button>
+    </form>
   );
 }

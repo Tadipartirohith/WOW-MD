@@ -37,6 +37,16 @@ check() {
   fi
 }
 
+body_has() {
+  if grep -q "$1" /tmp/body; then
+    printf '  PASS  %s
+' "$2"; PASS=$((PASS + 1))
+  else
+    printf '  FAIL  %s (looked for %s) %s
+' "$2" "$1" "$(head -c 250 /tmp/body)"; FAIL=$((FAIL + 1))
+  fi
+}
+
 assert() {
   name=$1; cond=$2
   if [ "$cond" = "1" ]; then printf '  PASS  %s\n' "$name"; PASS=$((PASS + 1));
@@ -324,6 +334,53 @@ c=$(req GET "/admin/audit?action=profile.shared" "" "$ADMIN")
 assert "every share is audited" "$(jqok '.data | length > 0')"
 c=$(req GET "/admin/audit?action=consent.revoked" "" "$ADMIN")
 assert "withdrawal is audited" "$(jqok '.data | length > 0')"
+
+echo
+echo "== 13. Circulation can be turned on after the fact =="
+# A family who said "not yet" at the desk and changed their mind a month later
+# used to have no way through: the checkbox on the intake form was the only
+# chance anybody got.
+NOCIRC='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Suresh Reddy","givenAt":"2026-08-01","allowsCirculation":false}'
+c=$(req POST /agents/profiles "{\"displayName\":\"Later Yes\",\"contactPhone\":\"$(phone 090)\",\"gender\":\"female\",\"dateOfBirth\":\"1998-02-02\",\"city\":\"Warangal\",$NOCIRC}" "$AGENT_A")
+check "a profile is taken on without permission to share it" "$c" 201
+LATER=$(field /tmp/body id)
+
+c=$(req GET /agents/profiles "" "$AGENT_A")
+check "the client book is readable" "$c" 200
+assert "and says outright that this one cannot be circulated" "$(jq -e --arg id "$LATER" '(.data // .)[] | select(.id == $id) | .circulation.mayCirculate == false' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "with the reason, rather than an unexplained refusal later" "$(jq -e --arg id "$LATER" '(.data // .)[] | select(.id == $id) | .circulation.reason != null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req POST /circulation/share/link "{\"profileId\":\"$LATER\"}" "$AGENT_A")
+check "and the server agrees — sharing it is refused" "$c" 403
+body_has 'no circulation consent' "on consent grounds specifically"
+
+c=$(req POST "/circulation/profiles/$LATER/consent" '{"scope":"circulation","method":"phone","givenByRelation":"father","givenByName":"Suresh Reddy","givenAt":"2026-09-01"}' "$AGENT_A")
+check "the agent rings the family and records the new consent" "$c" 201
+
+c=$(req GET /agents/profiles "" "$AGENT_A")
+assert "the book now says it can be circulated" "$(jq -e --arg id "$LATER" '(.data // .)[] | select(.id == $id) | .circulation.mayCirculate == true' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+# Consent is one gate; a biodata complete enough to be worth circulating is
+# another, and passing the first should leave only the second standing.
+c=$(req POST /circulation/share/link "{\"profileId\":\"$LATER\"}" "$AGENT_A")
+check "consent is no longer what stands in the way" "$c" 400
+grep -q 'circulation consent' /tmp/body && assert "still refused on consent grounds" 0 || assert "the refusal has moved on to the biodata itself" 1
+body_has 'not complete enough' "which is the next thing to fix, and it says so"
+
+# Consent is append-only, so this is a second record rather than an edit — the
+# history has to show both the refusal and the change of mind.
+c=$(req GET "/circulation/profiles/$LATER/consent/history" "" "$AGENT_A")
+check "the history is auditable" "$c" 200
+assert "and carries both the intake and the later circulation consent" "$(jq -e 'length >= 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 14. Proposal threads appear alongside direct messages =="
+# An agent opening Messages used to find "No conversations yet" while their
+# proposal threads sat in a different store on a different page.
+c=$(req GET /circulation/proposals "" "$AGENT_A")
+check "the agent's proposal threads are listed" "$c" 200
+assert "carrying who each one is with, not a bare interest id" "$(jq -e '. | length == 0 or (.[0] | has("otherName"))' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and what was last said" "$(jq -e '. | length == 0 or (.[0] | has("lastNote"))' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and whether the last word was theirs" "$(jq -e '. | length == 0 or (.[0] | has("lastNoteMine"))' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 echo
 echo "============================="

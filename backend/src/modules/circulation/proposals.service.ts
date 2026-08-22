@@ -23,6 +23,20 @@ export interface ProposalThread {
   }[];
 }
 
+/** One row in a list of proposal threads. */
+export interface ProposalThreadSummary {
+  interestId: string;
+  status: string;
+  myProfileId: string;
+  otherProfileId: string;
+  otherName: string;
+  otherPhotoUrl: string | null;
+  lastNote: string | null;
+  lastNoteAt: Date | null;
+  lastNoteMine: boolean;
+  noteCount: number;
+}
+
 /**
  * The conversation between the two people handling a possible match.
  *
@@ -135,15 +149,15 @@ export class ProposalsService {
   }
 
   /** Every pairing the caller is handling that has an open conversation. */
-  async myThreads(actor: AuthUser): Promise<{ interestId: string; status: string; lastNoteAt: Date | null }[]> {
+  async myThreads(actor: AuthUser): Promise<ProposalThreadSummary[]> {
     const controlled = await this.profiles.find({
       where: [{ userId: actor.userId }, { managedByUserId: actor.userId }],
     });
     if (controlled.length === 0) return [];
 
-    const ids = controlled.map((p) => p.id);
+    const ids = new Set(controlled.map((p) => p.id));
     const interests = await this.interests.find({
-      where: [{ fromProfileId: In(ids) }, { toProfileId: In(ids) }],
+      where: [{ fromProfileId: In([...ids]) }, { toProfileId: In([...ids]) }],
       order: { updatedAt: 'DESC' },
     });
     if (interests.length === 0) return [];
@@ -153,10 +167,38 @@ export class ProposalsService {
       order: { createdAt: 'DESC' },
     });
 
-    return interests.map((i) => ({
-      interestId: i.id,
-      status: i.status,
-      lastNoteAt: notes.find((n) => n.interestId === i.id)?.createdAt ?? null,
-    }));
+    // The other side of each pairing, so a list row can say who it is with
+    // rather than showing an interest id nobody recognises.
+    const otherIds = interests.map((i) => (ids.has(i.fromProfileId) ? i.toProfileId : i.fromProfileId));
+    const others = await this.profiles.find({ where: { id: In(otherIds) } });
+    const byId = new Map(others.map((p) => [p.id, p]));
+
+    return interests.map((interest) => {
+      const mineId = ids.has(interest.fromProfileId) ? interest.fromProfileId : interest.toProfileId;
+      const otherId =
+        interest.fromProfileId === mineId ? interest.toProfileId : interest.fromProfileId;
+      const last = notes.find((n) => n.interestId === interest.id);
+      const other = byId.get(otherId);
+
+      return {
+        interestId: interest.id,
+        status: interest.status,
+        myProfileId: mineId,
+        otherProfileId: otherId,
+        otherName: other?.displayName ?? 'The other side',
+        otherPhotoUrl: other?.photos?.[0] ?? null,
+        lastNote: last?.body ?? null,
+        lastNoteAt: last?.createdAt ?? null,
+        /**
+         * Whether the last word was ours.
+         *
+         * There is no read state on a proposal note, so an unread count here
+         * would be invented. This is the honest version of the same signal:
+         * if the other side spoke last, the ball is with us.
+         */
+        lastNoteMine: last ? ids.has(last.authorProfileId) : false,
+        noteCount: notes.filter((n) => n.interestId === interest.id).length,
+      };
+    });
   }
 }

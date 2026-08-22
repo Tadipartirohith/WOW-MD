@@ -67,6 +67,7 @@ export default function Proposals() {
         <h1 className="text-xl font-bold text-brand-dark">Proposals</h1>
         <p className="text-sm text-gray-500">
           Every pairing you are handling, and the conversation with the agent on the other side.
+          The same threads appear under Messages, alongside your direct conversations.
         </p>
       </div>
 

@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { ProfileConsent } from './entities/profile-consent.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { RecordConsentDto, RevokeConsentDto } from './dto/consent.dto';
@@ -90,6 +90,44 @@ export class ConsentService {
       needsReconfirmation,
       reason,
     };
+  }
+
+  /**
+   * The same answer for a page of profiles, in one query.
+   *
+   * A client book of forty profiles was otherwise forty round trips, so the
+   * list simply did not say which of them could be circulated — and an agent
+   * found out by clicking Circulate and being refused.
+   */
+  async stateForMany(profileIds: string[]): Promise<Map<string, ConsentState>> {
+    const out = new Map<string, ConsentState>();
+    if (profileIds.length === 0) return out;
+
+    const rows = await this.consents.find({ where: { profileId: In(profileIds) } });
+    for (const profileId of profileIds) {
+      const mine = rows.filter((r) => r.profileId === profileId);
+      const intake = this.live(mine, ConsentScope.INTAKE);
+      const circulation = this.live(mine, ConsentScope.CIRCULATION);
+      const hadCirculation = mine.some((c) => c.scope === ConsentScope.CIRCULATION);
+      const needsReconfirmation = !circulation && hadCirculation;
+
+      let reason: string | null = null;
+      if (!intake) reason = 'No intake consent has been recorded for this profile.';
+      else if (needsReconfirmation)
+        reason = 'Circulation consent has lapsed. Confirm with the family before sharing again.';
+      else if (!circulation)
+        reason =
+          'This profile has no circulation consent, so it cannot be shared outside the agency.';
+
+      out.set(profileId, {
+        intake,
+        circulation,
+        mayCirculate: Boolean(intake && circulation),
+        needsReconfirmation,
+        reason,
+      });
+    }
+    return out;
   }
 
   /**
