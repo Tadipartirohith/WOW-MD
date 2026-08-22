@@ -44,6 +44,31 @@ export class EventInvite {
   @Column({ type: 'timestamptz', nullable: true })
   respondedAt: Date | null;
 
+  /**
+   * How many are actually coming, as answered.
+   *
+   * Distinct from the guest's `partySize`, which is how many were invited: a
+   * family of six may send two. The organiser orders catering from this one.
+   */
+  @Column({ type: 'int', nullable: true })
+  attendingCount: number | null;
+
+  /** Why they cannot come, when they volunteered it. Never demanded. */
+  @Column({ type: 'text', nullable: true })
+  declineReason: string | null;
+
+  /**
+   * When somebody last chased them.
+   *
+   * The whole value of a "not responded" list is knowing who has already been
+   * asked twice, so this is recorded rather than left to the organiser's memory.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastRemindedAt: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  reminderCount: number;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

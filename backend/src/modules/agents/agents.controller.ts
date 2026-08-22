@@ -107,7 +107,7 @@ export class AgentsController {
   @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
   @Get('profiles/:id')
   getProfile(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.managed.findOne(actor, id);
+    return this.managed.findOneWithActions(actor, id);
   }
 
   @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)

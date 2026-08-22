@@ -1,5 +1,15 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { EventsService } from './events.service';
 import {
   CreateEventDto,
@@ -7,6 +17,7 @@ import {
   GuestRsvpDto,
   InviteDto,
   UpdateEventDto,
+  UpdateGuestDto,
   UpdateRsvpDto,
 } from './dto/event.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -69,9 +80,61 @@ export class EventsController {
     return this.events.invite(userId, id, dto.guestId);
   }
 
+  @Put('guests/:id')
+  updateGuest(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateGuestDto,
+  ) {
+    return this.events.updateGuest(userId, id, dto);
+  }
+
   @Get(':id/guest-list')
   guestList(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.events.guestList(userId, id);
+  }
+
+  // ------------------------------------------------------------------ RSVP
+
+  @ApiOperation({
+    summary: 'The numbers an organiser plans from',
+    description:
+      'Total invited, coming, not coming and not responded — each as both invitations and ' +
+      'people, because an invitation goes to a family and the caterer counts heads. "Maybe" ' +
+      'is reported separately rather than folded into either side: somebody who answered ' +
+      '"probably" has answered.',
+  })
+  @Get(':id/rsvp')
+  rsvpDashboard(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.rsvpDashboard(userId, id);
+  }
+
+  @ApiOperation({
+    summary: 'The guests behind one number on the dashboard',
+    description:
+      'coming | not_coming | maybe | not_responded | all. Every row carries the name, the ' +
+      'mobile number, the head count, the reason for a refusal and when they were last chased.',
+  })
+  @Get(':id/rsvp/:category')
+  rsvpGuests(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('category') category: string,
+  ) {
+    return this.events.rsvpGuests(userId, id, category);
+  }
+
+  @ApiOperation({
+    summary: 'Chase an invitation nobody has answered',
+    description:
+      'Records the chase whether or not there is an email address to send to — an organiser ' +
+      'who rang them still needs the list to say so.',
+  })
+  // A chase is not a creation — it updates an invitation that already exists.
+  @HttpCode(200)
+  @Post('invites/:id/remind')
+  remind(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.remind(userId, id);
   }
 
   /**

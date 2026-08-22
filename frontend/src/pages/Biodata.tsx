@@ -14,6 +14,7 @@ import {
   can,
 } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
+import ProfilePhotos from '../components/ProfilePhotos';
 
 interface Section {
   section: string;
@@ -27,6 +28,22 @@ interface Completion {
   percent: number;
   sections: Section[];
   missing: string[];
+}
+
+/**
+ * The two numbers, each labelled.
+ *
+ * They live in different places for good reasons — the primary is on the
+ * account because it signs you in, the alternate is on the biodata because it
+ * is usually the family's — but a page showing one without the other reads as
+ * though the primary is missing.
+ */
+interface ContactBlock {
+  primaryMobile: string | null;
+  primaryMobileVerified: boolean;
+  primaryMobileSource: 'account' | 'agency_record';
+  alternateMobile: string | null;
+  email: string | null;
 }
 
 interface Sibling {
@@ -87,6 +104,7 @@ export default function Biodata() {
   });
 
   const details = data?.details ?? {};
+  const contact: ContactBlock | undefined = data?.contact;
   const completion: Completion | undefined = data?.completion;
   const siblings: Sibling[] = data?.siblings ?? [];
   const assets: Asset[] = data?.assets ?? [];
@@ -175,8 +193,16 @@ export default function Biodata() {
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
       {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
+      <Accordion title="Photographs" name="photos" open={open} setOpen={setOpen}>
+        {targetId ? (
+          <ProfilePhotos profileId={targetId} />
+        ) : (
+          <p className="text-sm text-gray-400">Pick a profile first.</p>
+        )}
+      </Accordion>
+
       <Accordion title="Personal details" name="personal" open={open} setOpen={setOpen}>
-        <PersonalForm initial={details} onSave={(b) => save('personal', b)} />
+        <PersonalForm initial={details} contact={contact} onSave={(b) => save('personal', b)} />
       </Accordion>
 
       <Accordion title="Religion and community" name="religion" open={open} setOpen={setOpen}>
@@ -285,7 +311,15 @@ function useDraft(initial: Draft, keys: string[]) {
   return { draft, setDraft, set };
 }
 
-function PersonalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
+function PersonalForm({
+  initial,
+  contact,
+  onSave,
+}: {
+  initial: Draft;
+  contact?: ContactBlock;
+  onSave: (b: Draft) => void;
+}) {
   const keys = [
     'firstName',
     'surname',
@@ -312,13 +346,19 @@ function PersonalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) 
   return (
     <form onSubmit={submit} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="First name">
+        <Field label="First name" hint="What people call you">
           <input className="input mt-1" value={String(draft.firstName ?? '')} onChange={set('firstName')} required />
         </Field>
-        <Field label="Surname">
+        {/*
+          Surname and last name are separate on purpose and were being read as
+          duplicates. The hints are the fix: in much of India the house or
+          gothram name comes first and the family name last, and they are not
+          the same word.
+        */}
+        <Field label="Surname" hint="House or gothram name, if your family uses one">
           <input className="input mt-1" value={String(draft.surname ?? '')} onChange={set('surname')} />
         </Field>
-        <Field label="Last name">
+        <Field label="Last name" hint="Family name, as on your documents">
           <input className="input mt-1" value={String(draft.lastName ?? '')} onChange={set('lastName')} required />
         </Field>
         <Field label="Height (cm)">
@@ -341,8 +381,43 @@ function PersonalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) 
         <Field label="Place of birth">
           <input className="input mt-1" value={String(draft.placeOfBirth ?? '')} onChange={set('placeOfBirth')} required />
         </Field>
+        {/*
+          The primary number lives on the account, not the biodata, so it is
+          shown here rather than edited here. Without it the page appeared to
+          have lost the main number entirely, which is what was reported.
+        */}
+        <Field
+          label="Primary mobile"
+          hint={
+            contact?.primaryMobileSource === 'agency_record'
+              ? 'Taken by the agency. Changes when the profile is claimed.'
+              : 'Your sign-in number. Change it under Security.'
+          }
+        >
+          <div className="input mt-1 flex items-center justify-between bg-gray-50">
+            <span className={contact?.primaryMobile ? 'text-gray-900' : 'text-gray-400'}>
+              {contact?.primaryMobile ?? 'Not on file'}
+            </span>
+            {contact?.primaryMobile && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  contact.primaryMobileVerified
+                    ? 'bg-emerald-50 text-emerald-800'
+                    : 'bg-amber-50 text-amber-800'
+                }`}
+              >
+                {contact.primaryMobileVerified ? 'Verified' : 'Not verified'}
+              </span>
+            )}
+          </div>
+        </Field>
         <Field label="Alternate mobile" hint="Optional — often the family's number">
-          <input className="input mt-1" value={String(draft.alternateMobile ?? '')} onChange={set('alternateMobile')} />
+          <input
+            className="input mt-1"
+            inputMode="tel"
+            value={String(draft.alternateMobile ?? '')}
+            onChange={set('alternateMobile')}
+          />
         </Field>
       </div>
       <Field label="Communication address">

@@ -406,6 +406,126 @@ c=$(req GET "/catalog/categories?includeInactive=true" "" "$ADMIN")
 grep -q "$CAT" /tmp/body && assert "but is still readable, so old bookings keep loading" 1 || assert "a retired category vanished entirely" 0
 
 echo
+echo "== 15. RSVP: two head counts, not one =="
+c=$(req POST /events "{\"name\":\"Reception $STAMP\",\"eventDate\":\"$SLOT_DATE\",\"venue\":\"Taj Krishna\"}" "$BRIDE")
+check "the couple add a function" "$c" 201
+EVENT=$(field /tmp/body id)
+
+c=$(req POST /events/guests "{\"name\":\"Ramesh Sharma\",\"contact\":\"ramesh-$STAMP@t.com\",\"phone\":\"9876543210\",\"partySize\":4,\"relation\":\"Uncle\"}" "$BRIDE")
+check "a guest is added with a mobile and a head count" "$c" 201
+G1=$(field /tmp/body id)
+c=$(req POST /events/guests "{\"name\":\"Sita Rao\",\"phone\":\"9876543211\",\"partySize\":2}" "$BRIDE")
+check "and one with no email at all" "$c" 201
+G2=$(field /tmp/body id)
+c=$(req POST /events/guests "{\"name\":\"Anil Kumar\",\"phone\":\"9876543212\",\"partySize\":3}" "$BRIDE")
+check "and a third" "$c" 201
+G3=$(field /tmp/body id)
+
+c=$(req POST /events/guests "{\"name\":\"Bad Number\",\"phone\":\"12345\"}" "$BRIDE")
+check "a malformed mobile number is refused" "$c" 400
+
+for G in "$G1" "$G2" "$G3"; do
+  req POST "/events/$EVENT/invite" "{\"guestId\":\"$G\"}" "$BRIDE" >/dev/null
+done
+
+c=$(req GET "/events/$EVENT/rsvp" "" "$BRIDE")
+check "the RSVP dashboard is served" "$c" 200
+body_has '"totalInvited":3' "three invitations went out"
+body_has '"totalInvitedHeadcount":9' "covering nine people, not three"
+body_has '"notResponded":{"invitations":3,"people":9}' "and nobody has answered yet"
+
+c=$(req GET "/events/$EVENT/rsvp/not_responded" "" "$BRIDE")
+check "the not-responded card opens its guests" "$c" 200
+body_has '"phone":"+919876543210"' "carrying the mobile number to ring"
+body_has '"invitationSent":true' "and whether the invitation actually went out"
+
+echo
+echo "== 16. Answering, and what it does to the numbers =="
+INVITE=$(jq -r --arg g "$G1" '.[] | select(.guestId == $g) | .inviteId' /tmp/body)
+c=$(req PUT "/events/invites/$INVITE/rsvp" '{"status":"attending","attendingCount":3}' "$BRIDE")
+check "the host records a reply taken over the phone" "$c" 200
+
+c=$(req GET "/events/$EVENT/rsvp" "" "$BRIDE")
+body_has '"coming":{"invitations":1,"people":3}' "three of the four invited are coming"
+body_has '"notResponded":{"invitations":2,"people":5}' "and five people are still unaccounted for"
+
+INV2=$(req GET "/events/$EVENT/rsvp/not_responded" "" "$BRIDE" >/dev/null; jq -r --arg g "$G2" '.[] | select(.guestId == $g) | .inviteId' /tmp/body)
+c=$(req PUT "/events/invites/$INV2/rsvp" '{"status":"declined","declineReason":"Travelling that week"}' "$BRIDE")
+check "a refusal is recorded with the reason they gave" "$c" 200
+c=$(req GET "/events/$EVENT/rsvp" "" "$BRIDE")
+body_has '"notComing":{"invitations":1,"people":0}' "nobody is coming from a refusal, whatever the family size"
+
+c=$(req GET "/events/$EVENT/rsvp/not_coming" "" "$BRIDE")
+check "the not-coming card opens" "$c" 200
+body_has 'Travelling that week' "carrying the reason"
+
+# Changing your mind has to clear the reason, or the organiser's list keeps
+# showing an excuse that is no longer true.
+c=$(req PUT "/events/invites/$INV2/rsvp" '{"status":"attending","attendingCount":2}' "$BRIDE")
+check "they change their mind" "$c" 200
+c=$(req GET "/events/$EVENT/rsvp/coming" "" "$BRIDE")
+grep -q 'Travelling that week' /tmp/body && assert "the stale refusal reason is still on the record" 0 || assert "changing their mind clears the reason they gave" 1
+
+echo
+echo "== 17. Chasing the ones who have not answered =="
+INV3=$(req GET "/events/$EVENT/rsvp/not_responded" "" "$BRIDE" >/dev/null; jq -r --arg g "$G3" '.[] | select(.guestId == $g) | .inviteId' /tmp/body)
+c=$(req POST "/events/invites/$INV3/remind" "" "$BRIDE")
+check "the organiser chases them" "$c" 200
+body_has '"reminderCount":1' "and the chase is on the record"
+c=$(req GET "/events/$EVENT/rsvp/not_responded" "" "$BRIDE")
+body_has '"reminderCount":1' "so the list shows who has already been asked"
+
+c=$(req POST "/events/invites/$INVITE/remind" "" "$BRIDE")
+check "somebody who has already answered cannot be chased" "$c" 400
+
+c=$(req GET "/events/$EVENT/rsvp" "" "$OTHER")
+check "somebody else's guest list is nobody else's business" "$c" 403
+c=$(req GET "/events/$EVENT/rsvp/coming" "" "$OTHER")
+check "nor are the guests behind it" "$c" 403
+c=$(req GET "/events/$EVENT/rsvp/nonsense" "" "$BRIDE")
+check "an unknown category is refused rather than silently empty" "$c" 400
+
+echo
+echo "== 18. A profile can have photographs of its own =="
+c=$(req GET /users/me "" "$BRIDE")
+BRIDE_PROFILE=$(field /tmp/body id)
+
+c=$(req GET "/profiles/$BRIDE_PROFILE/details/photos" "" "$BRIDE")
+check "the photo list is readable" "$c" 200
+body_has '"photos":\[\]' "and starts empty"
+
+c=$(req POST "/profiles/$BRIDE_PROFILE/details/photos" '{"url":"https://cdn.example.com/a.jpg"}' "$BRIDE")
+check "the subject adds one themselves" "$c" 201
+body_has '"primaryPhotoUrl":"https://cdn.example.com/a.jpg"' "the first one becomes the one shown first"
+
+c=$(req POST "/profiles/$BRIDE_PROFILE/details/photos" '{"url":"not-a-url"}' "$BRIDE")
+check "something that is not an uploaded photo is refused" "$c" 400
+
+c=$(req POST "/profiles/$BRIDE_PROFILE/details/photos" '{"url":"https://cdn.example.com/b.jpg"}' "$BRIDE")
+check "a second is added" "$c" 201
+c=$(req POST "/profiles/$BRIDE_PROFILE/details/photos" '{"url":"https://cdn.example.com/a.jpg"}' "$BRIDE")
+check "adding the same one twice is a no-op rather than a duplicate" "$c" 201
+c=$(req GET "/profiles/$BRIDE_PROFILE/details/photos" "" "$BRIDE")
+assert "there are two, not three" "$(jq -e '.photos | length == 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req PUT "/profiles/$BRIDE_PROFILE/details/primary-photo" '{"url":"https://cdn.example.com/b.jpg"}' "$BRIDE")
+check "another can be promoted" "$c" 200
+c=$(req DELETE "/profiles/$BRIDE_PROFILE/details/photos" '{"url":"https://cdn.example.com/b.jpg"}' "$BRIDE")
+check "and removed" "$c" 200
+body_has '"primaryPhotoUrl":"https://cdn.example.com/a.jpg"' "removing the primary moves it rather than leaving it dangling"
+
+c=$(req POST "/profiles/$BRIDE_PROFILE/details/photos" '{"url":"https://cdn.example.com/x.jpg"}' "$OTHER")
+check "somebody else cannot put photographs on your profile" "$c" 403
+
+echo
+echo "== 19. Both numbers, each labelled =="
+c=$(req GET "/profiles/$BRIDE_PROFILE/details" "" "$BRIDE")
+check "the biodata carries a contact block" "$c" 200
+body_has '"primaryMobileSource":"account"' "saying where the primary number lives"
+body_has '"primaryMobileVerified":false' "and whether it has been verified"
+assert "the primary number is present, not missing" "$(jq -e '.contact.primaryMobile != null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

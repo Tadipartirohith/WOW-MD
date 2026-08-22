@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
+import RsvpDashboard from '../components/RsvpDashboard';
 
 interface WEvent {
   id: string;
@@ -14,7 +15,12 @@ interface WEvent {
 interface Guest {
   id: string;
   name: string;
+  /** Email address, where there is one. */
   contact?: string;
+  phone?: string | null;
+  /** How many people the invitation covers — the family, not the person. */
+  partySize?: number | null;
+  relation?: string | null;
 }
 
 interface EventVendor {
@@ -45,6 +51,8 @@ export default function Events() {
   const [date, setDate] = useState('');
   const [guestName, setGuestName] = useState('');
   const [guestContact, setGuestContact] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestParty, setGuestParty] = useState('');
 
   const { data: events = [] } = useQuery({
     queryKey: ['events'],
@@ -94,11 +102,19 @@ export default function Events() {
   async function addGuest(e: FormEvent) {
     e.preventDefault();
     await act(
-      () => api.post('/events/guests', { name: guestName, contact: guestContact || undefined }),
+      () =>
+        api.post('/events/guests', {
+          name: guestName,
+          contact: guestContact || undefined,
+          phone: guestPhone || undefined,
+          partySize: guestParty ? Number(guestParty) : undefined,
+        }),
       ['guests'],
     );
     setGuestName('');
     setGuestContact('');
+    setGuestPhone('');
+    setGuestParty('');
   }
 
   const current = events.find((e) => e.id === selected);
@@ -245,6 +261,8 @@ export default function Events() {
                 </div>
               </div>
 
+              <RsvpDashboard eventId={current.id} />
+
               <div className="card">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="font-semibold text-gray-900">Guests for {current.name}</h2>
@@ -259,7 +277,11 @@ export default function Events() {
                     <div key={g.id} className="flex items-center justify-between py-2 text-sm">
                       <span>
                         {g.name}
+                        {g.phone ? <span className="text-gray-500"> · {g.phone}</span> : null}
                         {g.contact ? <span className="text-gray-400"> · {g.contact}</span> : null}
+                        {g.partySize && g.partySize > 1 ? (
+                          <span className="text-gray-400"> · party of {g.partySize}</span>
+                        ) : null}
                       </span>
                       {invitedIds.includes(g.id) ? (
                         <span className="text-xs text-gray-400">Invited</span>
@@ -293,9 +315,31 @@ export default function Events() {
                   />
                   <input
                     className="input flex-1"
-                    placeholder="Email or phone"
+                    placeholder="Email"
+                    type="email"
                     value={guestContact}
                     onChange={(e) => setGuestContact(e.target.value)}
+                  />
+                  {/*
+                    A separate mobile column, because chasing an RSVP happens by
+                    phone and "email or phone" in one box means neither can be
+                    dialled or written to reliably.
+                  */}
+                  <input
+                    className="input w-40"
+                    placeholder="Mobile"
+                    inputMode="tel"
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                  />
+                  <input
+                    className="input w-28"
+                    type="number"
+                    min={1}
+                    placeholder="Party of"
+                    title="How many people this invitation covers"
+                    value={guestParty}
+                    onChange={(e) => setGuestParty(e.target.value)}
                   />
                   <button className="btn">Add guest</button>
                 </form>

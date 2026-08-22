@@ -10,6 +10,7 @@ import {
   PartnerPreferencesDto,
   PersonalDetailsDto,
   ReligionDetailsDto,
+  ProfilePhotoDto,
   SetPrimaryPhotoDto,
   SiblingDto,
 } from './dto/profile-details.dto';
@@ -114,6 +115,38 @@ export class ProfileDetailsController {
   }
 
   @ApiOperation({ summary: 'Choose which photo leads the profile' })
+  // -------------------------------------------------------------- photographs
+
+  @ApiOperation({
+    summary: 'The photographs on this profile',
+    description:
+      'Kept on the profile rather than the biodata, because matchmaking and circulation both ' +
+      'show them. Until these routes existed the only way to attach one was through the agency ' +
+      'console, so a self-managed profile could never have a photograph.',
+  })
+  @Get('details/photos')
+  listPhotos(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.details.listPhotos(actor, id);
+  }
+
+  @Post('details/photos')
+  addPhoto(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ProfilePhotoDto,
+  ) {
+    return this.details.addPhoto(actor, id, dto.url);
+  }
+
+  @Delete('details/photos')
+  removePhoto(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ProfilePhotoDto,
+  ) {
+    return this.details.removePhoto(actor, id, dto.url);
+  }
+
   @Put('details/primary-photo')
   primaryPhoto(
     @CurrentUser() actor: AuthUser,

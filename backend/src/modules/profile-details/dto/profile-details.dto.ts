@@ -436,3 +436,12 @@ export class SetPrimaryPhotoDto {
   @IsUrl({ require_protocol: true })
   url: string;
 }
+
+/** One photograph, addressed by the URL it was uploaded to. */
+export class ProfilePhotoDto {
+  @ApiProperty({ example: 'https://cdn.example.com/profiles/a1b2.jpg' })
+  @IsString()
+  @Matches(/^https?:\/\/\S+$/i, { message: 'That is not an uploaded photo' })
+  @MaxLength(2000)
+  url: string;
+}

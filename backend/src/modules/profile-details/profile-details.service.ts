@@ -5,6 +5,7 @@ import { ProfileDetails } from './entities/profile-details.entity';
 import { ProfileSibling } from './entities/profile-sibling.entity';
 import { ProfileAsset } from './entities/profile-asset.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { User } from '../auth/entities/user.entity';
 import {
   AssetDto,
   EducationDetailsDto,
@@ -69,6 +70,7 @@ export class ProfileDetailsService {
     @InjectRepository(ProfileSibling) private readonly siblings: Repository<ProfileSibling>,
     @InjectRepository(ProfileAsset) private readonly assets: Repository<ProfileAsset>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(User) private readonly users: Repository<User>,
   ) {}
 
   // ------------------------------------------------------------- sections
@@ -175,6 +177,77 @@ export class ProfileDetailsService {
     return this.persist(profileId, row);
   }
 
+  // ------------------------------------------------------------- photographs
+  //
+  // Photographs hang off the profile, not off `profile_details`, because they
+  // are what matchmaking and circulation both show. The routes live here
+  // because this is the screen the subject actually fills their biodata in on
+  // — until now the only way to attach one was through the agency console,
+  // which is why a self-managed profile could never have a photograph at all.
+
+  /** How many photographs one profile may carry. */
+  private static readonly MAX_PHOTOS = 20;
+
+  async addPhoto(actor: AuthUser, profileId: string, url: string) {
+    await this.editable(actor, profileId);
+    const profile = await this.load(profileId);
+
+    const photos = profile.photos ?? [];
+    if (photos.includes(url)) return this.photoState(profile);
+    if (photos.length >= ProfileDetailsService.MAX_PHOTOS) {
+      throw new BadRequestException(
+        `A profile can hold at most ${ProfileDetailsService.MAX_PHOTOS} photos.`,
+      );
+    }
+
+    profile.photos = [...photos, url];
+    const saved = await this.profiles.save(profile);
+
+    // The first photograph somebody uploads becomes the one shown first,
+    // because the alternative is a profile with pictures on it and a blank
+    // avatar next to them.
+    const row = await this.details.findOne({ where: { profileId } });
+    if (row && !row.primaryPhotoUrl) {
+      row.primaryPhotoUrl = url;
+      await this.details.save(row);
+    }
+
+    return this.photoState(saved);
+  }
+
+  async removePhoto(actor: AuthUser, profileId: string, url: string) {
+    await this.editable(actor, profileId);
+    const profile = await this.load(profileId);
+
+    profile.photos = (profile.photos ?? []).filter((p) => p !== url);
+    const saved = await this.profiles.save(profile);
+
+    // Removing the primary leaves the pointer dangling, so it moves to whatever
+    // is left rather than to nothing.
+    const row = await this.details.findOne({ where: { profileId } });
+    if (row?.primaryPhotoUrl === url) {
+      row.primaryPhotoUrl = saved.photos[0] ?? null;
+      await this.details.save(row);
+    }
+
+    return this.photoState(saved);
+  }
+
+  async listPhotos(actor: AuthUser, profileId: string) {
+    const profile = await this.load(profileId);
+    this.assertMayRead(actor, profile);
+    return this.photoState(profile);
+  }
+
+  private async photoState(profile: Profile) {
+    const row = await this.details.findOne({ where: { profileId: profile.id } });
+    return {
+      photos: profile.photos ?? [],
+      primaryPhotoUrl: row?.primaryPhotoUrl ?? profile.photos?.[0] ?? null,
+      max: ProfileDetailsService.MAX_PHOTOS,
+    };
+  }
+
   /** The photo shown first. Must be one the profile already has. */
   async setPrimaryPhoto(actor: AuthUser, profileId: string, dto: SetPrimaryPhotoDto) {
     const row = await this.editable(actor, profileId);
@@ -242,7 +315,53 @@ export class ProfileDetailsService {
       details: details ?? null,
       siblings,
       assets,
+      contact: await this.contactFor(profile),
       completion: this.report(profileId, profile, details, siblings),
+    };
+  }
+
+  /**
+   * Which number is which.
+   *
+   * The two live in different places for good reasons — the primary is on the
+   * account because it is what signs you in and what an OTP goes to, and the
+   * alternate is on the biodata because it is usually the family's landline —
+   * but a page that shows one without the other reads as though the primary is
+   * missing. That was the reported defect. They are returned together, each
+   * labelled, with the verified state of the one that has one.
+   */
+  private async contactFor(profile: Profile): Promise<{
+    primaryMobile: string | null;
+    primaryMobileVerified: boolean;
+    /** Where the primary lives: the account, so it is edited under Security. */
+    primaryMobileSource: 'account' | 'agency_record';
+    alternateMobile: string | null;
+    email: string | null;
+  }> {
+    // An agent-built profile has no account behind it yet, so the number the
+    // agency took at the desk is the primary one there is.
+    if (!profile.userId) {
+      return {
+        primaryMobile: profile.contactPhone,
+        primaryMobileVerified: false,
+        primaryMobileSource: 'agency_record',
+        alternateMobile: null,
+        email: profile.contactEmail,
+      };
+    }
+
+    const user = await this.users.findOne({
+      where: { id: profile.userId },
+      select: ['id', 'phone', 'phoneVerifiedAt', 'email'],
+    });
+    const details = await this.details.findOne({ where: { profileId: profile.id } });
+
+    return {
+      primaryMobile: user?.phone ?? profile.contactPhone ?? null,
+      primaryMobileVerified: Boolean(user?.phoneVerifiedAt),
+      primaryMobileSource: 'account',
+      alternateMobile: details?.alternateMobile ?? null,
+      email: user?.email ?? profile.contactEmail ?? null,
     };
   }
 

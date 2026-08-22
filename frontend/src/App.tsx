@@ -73,7 +73,10 @@ const NAV: NavEntry[] = [
   { to: '/clients', label: 'My Clients', requires: [Permission.CLIENT_READ] },
   { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE] },
   { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE] },
-  { to: '/wedding-planners', label: 'Planners', requires: [Permission.BOOKING_CREATE] },
+  // "Planners" and "Planner" next to each other were indistinguishable. One is
+  // the marketplace where a planner is hired; the other is the couple's own
+  // timeline. The labels now say which is which.
+  { to: '/wedding-planners', label: 'Hire a Planner', requires: [Permission.BOOKING_CREATE] },
   {
     to: '/console',
     label: 'My Business',
@@ -83,7 +86,7 @@ const NAV: NavEntry[] = [
   { to: '/accounts', label: 'Accounts', requires: [Permission.BOOKING_READ_INCOMING] },
   {
     to: '/planner',
-    label: 'Planner',
+    label: 'My Wedding Plan',
     requires: [Permission.PLAN_MANAGE_OWN, Permission.PLAN_MANAGE_ENGAGED],
   },
   {

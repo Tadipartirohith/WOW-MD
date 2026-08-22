@@ -57,7 +57,7 @@ export default function WeddingPlanners() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-xl font-bold text-brand-dark">Wedding Planners</h1>
+        <h1 className="text-xl font-bold text-brand-dark">Hire a Wedding Planner</h1>
         <div className="flex flex-wrap items-end gap-3">
           {isAgent && <ClientSelector value={onBehalfOf} onChange={setOnBehalfOf} />}
           <div>

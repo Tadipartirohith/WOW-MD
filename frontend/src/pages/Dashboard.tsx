@@ -86,8 +86,8 @@ const TILES: Tile[] = [
   },
   {
     to: '/wedding-planners',
-    title: 'Wedding Planners',
-    desc: 'Find a planner to run your wedding end to end',
+    title: 'Hire a Planner',
+    desc: 'Find somebody to run your wedding end to end',
     requires: [Permission.BOOKING_CREATE],
   },
   {
@@ -122,8 +122,8 @@ const TILES: Tile[] = [
   },
   {
     to: '/planner',
-    title: 'Wedding Planner',
-    desc: 'Auto-generated timeline and tasks',
+    title: 'My Wedding Plan',
+    desc: 'Your own timeline, worked back from the date',
     requires: [Permission.PLAN_MANAGE_OWN, Permission.PLAN_MANAGE_ENGAGED],
   },
   {

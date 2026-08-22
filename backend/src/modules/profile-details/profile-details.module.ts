@@ -5,6 +5,7 @@ import { ProfileSibling } from './entities/profile-sibling.entity';
 import { ProfileAsset } from './entities/profile-asset.entity';
 import { IdentityOtpSession } from './entities/identity-otp-session.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { User } from '../auth/entities/user.entity';
 import { ProfileDetailsService } from './profile-details.service';
 import { ProfileDetailsController } from './profile-details.controller';
 import { AadhaarService } from './aadhaar.service';
@@ -23,6 +24,7 @@ import {
       ProfileAsset,
       IdentityOtpSession,
       Profile,
+      User,
     ]),
   ],
   providers: [

@@ -35,9 +35,13 @@ import { ProfileClaimStatus, UserRole } from '../../common/enums';
  * first-class matchmaking citizen from the moment it is saved; the account only
  * appears if and when the subject accepts an invitation.
  *
- * The steward's write access ends the moment the profile is claimed. After that
- * they keep read access (it is still their client) but the owner controls the
- * content.
+ * Claiming does not end the engagement. The agency keeps circulating the
+ * profile, managing its photographs and running its lifecycle, because the
+ * family hired them to find a match and the subject getting an account is
+ * usually the point at which that work matters most. What the agency loses is
+ * the biodata — two writers with no rule about who wins produces a profile that
+ * contradicts itself — and the ability to delete, since a claimed profile is
+ * somebody's account profile.
  */
 @Injectable()
 export class ManagedProfilesService {
@@ -208,6 +212,18 @@ export class ManagedProfilesService {
     return profile;
   }
 
+  /**
+   * One profile, with what the agency may still do to it.
+   *
+   * The list route has carried this since the actions were introduced; opening
+   * a single profile did not, so the same screen got a different answer
+   * depending on how it was reached.
+   */
+  async findOneWithActions(actor: AuthUser, profileId: string) {
+    const profile = await this.findOne(actor, profileId);
+    return { ...profile, actions: this.agencyActions(profile) };
+  }
+
   async update(actor: AuthUser, profileId: string, dto: UpdateManagedProfileDto): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
 
@@ -242,8 +258,8 @@ export class ManagedProfilesService {
   /** Photo management, kept explicit so the array cap is enforced server-side. */
   async addPhoto(actor: AuthUser, profileId: string, dto: AddProfilePhotoDto): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
-    if (profile.claimStatus === ProfileClaimStatus.CLAIMED) {
-      throw new ForbiddenException('This profile is owned by its subject now.');
+    if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
+      throw new ForbiddenException('This profile is closed.');
     }
     const photos = profile.photos ?? [];
     if (photos.length >= 20) throw new BadRequestException('A profile can hold at most 20 photos.');
@@ -255,8 +271,8 @@ export class ManagedProfilesService {
 
   async removePhoto(actor: AuthUser, profileId: string, url: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
-    if (profile.claimStatus === ProfileClaimStatus.CLAIMED) {
-      throw new ForbiddenException('This profile is owned by its subject now.');
+    if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
+      throw new ForbiddenException('This profile is closed.');
     }
     profile.photos = (profile.photos ?? []).filter((p) => p !== url);
     return this.profiles.save(profile);
@@ -297,10 +313,17 @@ export class ManagedProfilesService {
   /**
    * The line an agency stops at once the subject owns their profile.
    *
-   * Editing was already refused, but pausing, closing and deleting were not —
-   * so an agency could still take a claimed profile out of matchmaking behind
-   * its owner's back. The agency keeps read access, because it is still their
-   * client; what it loses is the ability to act as them.
+   * That line used to sit at the claim itself: pausing, closing, circulating
+   * and photographs all stopped the moment somebody took ownership. It now
+   * sits much later, because the engagement does not end when the subject gets
+   * an account — the family hired the agency to find a match, and that is
+   * usually the point at which the work matters most.
+   *
+   * Two things stay refused, for reasons that are about the data rather than
+   * about the engagement. Editing the biodata, because two writers with no rule
+   * about who wins produces a profile that contradicts itself. And deleting,
+   * because a claimed profile *is* somebody's account profile — removing it
+   * would leave a real person signed in to nothing.
    */
   private assertNotClaimed(profile: Profile, action: string): void {
     if (profile.claimStatus === ProfileClaimStatus.CLAIMED) {
@@ -319,7 +342,6 @@ export class ManagedProfilesService {
    */
   async deactivate(actor: AuthUser, profileId: string, reason?: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
-    this.assertNotClaimed(profile, 'pause');
     if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
       throw new BadRequestException('That profile is archived');
     }
@@ -345,7 +367,6 @@ export class ManagedProfilesService {
   /** Brings a paused profile back. Circulation stays off until re-consented. */
   async reactivate(actor: AuthUser, profileId: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
-    this.assertNotClaimed(profile, 'resume');
     if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
       throw new BadRequestException('An archived profile cannot be reactivated');
     }
@@ -374,7 +395,6 @@ export class ManagedProfilesService {
    */
   async archive(actor: AuthUser, profileId: string, reason?: string): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
-    this.assertNotClaimed(profile, 'close');
 
     profile.lifecycle = ProfileLifecycle.ARCHIVED;
     profile.archivedAt = new Date();
@@ -410,15 +430,29 @@ export class ManagedProfilesService {
     canClose: boolean;
     canDelete: boolean;
   } {
-    const claimed = profile.claimStatus === ProfileClaimStatus.CLAIMED;
     const archived = profile.lifecycle === ProfileLifecycle.ARCHIVED;
+
+    // Claiming used to end every agency action. It no longer does: the family
+    // engaged the agency to find a match, and the subject getting an account
+    // does not end that engagement — it is usually the point at which the
+    // agency's work becomes most useful. What claiming changes is that the
+    // subject can now act for themselves as well.
+    //
+    // The one thing an agency still cannot do is edit the biodata of somebody
+    // who is sitting there editing it themselves, because two writers and no
+    // rule about who wins is how a profile ends up with a contradiction on it.
+    const claimed = profile.claimStatus === ProfileClaimStatus.CLAIMED;
+
     return {
       canEdit: !claimed && !archived,
-      canManagePhotos: !claimed && !archived,
-      canCirculate: !claimed && !archived,
+      canManagePhotos: !archived,
+      canCirculate: !archived,
       canInvite: !claimed && Boolean(profile.contactEmail),
-      canPause: !claimed && !archived,
-      canClose: !claimed && !archived,
+      canPause: !archived,
+      canClose: !archived,
+      // Deleting stays refused: a claimed profile *is* somebody's account
+      // profile, and removing it would leave a real person signed in to
+      // nothing. Every other action survives the claim.
       canDelete: !claimed,
     };
   }

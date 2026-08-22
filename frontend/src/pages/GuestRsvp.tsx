@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
@@ -11,6 +11,9 @@ interface RsvpView {
   status: 'invited' | 'attending' | 'declined' | 'maybe';
   seat: string | null;
   respondedAt: string | null;
+  attendingCount: number | null;
+  declineReason: string | null;
+  invitedPartySize: number | null;
 }
 
 const CHOICES = [
@@ -25,11 +28,20 @@ const CHOICES = [
  * Guests are not platform users, so there is nothing to sign in to. Their link
  * carries a signed, single-purpose token that addresses exactly one invite —
  * it grants no access to the event, the guest list, or anyone else's reply.
+ *
+ * Two things are asked beyond yes or no, because both are things the host
+ * otherwise spends a fortnight on the phone collecting: how many are coming,
+ * and — only if they are not — whether they want to say why. The second is
+ * never required; a guest who would rather not explain should not be blocked
+ * from replying at all.
  */
 export default function GuestRsvp() {
   const { token = '' } = useParams();
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [choice, setChoice] = useState<string>('');
+  const [count, setCount] = useState('');
+  const [reason, setReason] = useState('');
 
   const { data, isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ['rsvp', token],
@@ -38,13 +50,23 @@ export default function GuestRsvp() {
     enabled: Boolean(token),
   });
 
-  async function respond(status: string) {
+  // Read their previous answer back so changing one detail does not mean
+  // retyping the rest.
+  useEffect(() => {
+    if (!data) return;
+    if (data.status !== 'invited') setChoice(data.status);
+    setCount(String(data.attendingCount ?? data.invitedPartySize ?? ''));
+    setReason(data.declineReason ?? '');
+  }, [data]);
+
+  async function respond(status: string, extra: Record<string, unknown> = {}) {
     setError('');
     try {
-      await api.put(`/events/rsvp/${token}`, { status });
+      await api.put(`/events/rsvp/${token}`, { status, ...extra });
       setSaved(true);
       await refetch();
     } catch (err) {
+      setSaved(false);
       setError(apiMessage(err, 'We could not record your reply.'));
     }
   }
@@ -69,6 +91,8 @@ export default function GuestRsvp() {
       </div>
     );
   }
+
+  const coming = choice === 'attending' || choice === 'maybe';
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
@@ -99,14 +123,73 @@ export default function GuestRsvp() {
           {CHOICES.map((c) => (
             <button
               key={c.value}
-              className={data.status === c.value ? 'btn w-full' : 'btn-outline w-full'}
-              onClick={() => respond(c.value)}
+              className={choice === c.value ? 'btn w-full' : 'btn-outline w-full'}
+              onClick={() => {
+                setChoice(c.value);
+                setSaved(false);
+                // A refusal needs nothing more, so it is recorded straight away
+                // rather than made to wait behind an optional question.
+                if (c.value === 'declined') void respond(c.value, { declineReason: reason.trim() });
+              }}
             >
               {c.label}
               {data.status === c.value ? ' ✓' : ''}
             </button>
           ))}
         </div>
+
+        {coming && (
+          <div className="space-y-3 border-t pt-3 text-left">
+            <label className="block text-sm">
+              <span className="font-medium text-gray-700">How many of you are coming?</span>
+              <input
+                className="input mt-1"
+                type="number"
+                min={1}
+                max={100}
+                value={count}
+                onChange={(e) => setCount(e.target.value)}
+              />
+              {data.invitedPartySize && (
+                <span className="mt-1 block text-xs text-gray-500">
+                  The invitation is for {data.invitedPartySize}. Fewer is absolutely fine — it just
+                  helps us get the catering right.
+                </span>
+              )}
+            </label>
+            <button
+              className="btn w-full"
+              disabled={!count || Number(count) < 1}
+              onClick={() => respond(choice, { attendingCount: Number(count) })}
+            >
+              Send my reply
+            </button>
+          </div>
+        )}
+
+        {choice === 'declined' && (
+          <div className="space-y-2 border-t pt-3 text-left">
+            <label className="block text-sm">
+              <span className="font-medium text-gray-700">Anything you would like to add?</span>
+              <input
+                className="input mt-1"
+                placeholder="Optional"
+                maxLength={500}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Entirely up to you — your reply is already recorded.
+              </span>
+            </label>
+            <button
+              className="btn-outline w-full"
+              onClick={() => respond('declined', { declineReason: reason.trim() })}
+            >
+              Send that too
+            </button>
+          </div>
+        )}
 
         {data.seat && (
           <p className="text-sm text-gray-500">Your seat: <strong>{data.seat}</strong></p>

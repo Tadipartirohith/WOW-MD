@@ -14,6 +14,7 @@ import {
   CreateEventDto,
   CreateGuestDto,
   GuestRsvpDto,
+  UpdateGuestDto,
   UpdateEventDto,
   UpdateRsvpDto,
 } from './dto/event.dto';
@@ -33,6 +34,11 @@ export interface GuestRsvpView {
   status: RsvpStatus;
   seat: string | null;
   respondedAt: Date | null;
+  /** What they said when they answered, so the page reads back their own reply. */
+  attendingCount: number | null;
+  declineReason: string | null;
+  /** How many the invitation covers, which is what the head-count box defaults to. */
+  invitedPartySize: number | null;
 }
 
 @Injectable()
@@ -115,6 +121,19 @@ export class EventsService {
     return this.guests.save(this.guests.create({ userId, ...dto }));
   }
 
+  /**
+   * Correcting a guest record.
+   *
+   * Worth having on its own because the head count and the mobile number are
+   * exactly the two things that turn out to be wrong on the day somebody starts
+   * chasing RSVPs, and re-creating the guest would lose their invitation.
+   */
+  async updateGuest(userId: string, guestId: string, dto: UpdateGuestDto) {
+    const guest = await this.ownedGuest(userId, guestId);
+    Object.assign(guest, dto);
+    return this.guests.save(guest);
+  }
+
   listGuests(userId: string) {
     return this.guests.find({ where: { userId }, order: { createdAt: 'DESC' } });
   }
@@ -180,9 +199,8 @@ export class EventsService {
     if (!invite) throw new NotFoundException('Invite not found');
     await this.ownedEvent(userId, invite.eventId);
 
-    invite.status = dto.status;
+    this.applyRsvp(invite, dto.status, dto.attendingCount, dto.declineReason);
     if (dto.seat !== undefined) invite.seat = dto.seat;
-    invite.respondedAt = new Date();
     return this.invites.save(invite);
   }
 
@@ -212,6 +230,9 @@ export class EventsService {
       status: invite.status,
       seat: invite.seat ?? null,
       respondedAt: invite.respondedAt,
+      attendingCount: invite.attendingCount,
+      declineReason: invite.declineReason,
+      invitedPartySize: guest.partySize,
     };
   }
 
@@ -224,10 +245,36 @@ export class EventsService {
    */
   async respondByToken(token: string, dto: GuestRsvpDto): Promise<GuestRsvpView> {
     const invite = await this.inviteByToken(token);
-    invite.status = dto.status;
-    invite.respondedAt = new Date();
+    this.applyRsvp(invite, dto.status, dto.attendingCount, dto.declineReason);
     await this.invites.save(invite);
     return this.previewByToken(token);
+  }
+
+  /**
+   * The one place an RSVP is written, wherever it came from.
+   *
+   * Two rules that are easy to get wrong separately and impossible to get wrong
+   * here: a refusal carries no head count, and changing your mind from "not
+   * coming" back to "coming" clears the reason you gave for the refusal — it is
+   * no longer true, and leaving it on the record makes the organiser's list
+   * read as though it still is.
+   */
+  private applyRsvp(
+    invite: EventInvite,
+    status: RsvpStatus,
+    attendingCount?: number,
+    declineReason?: string,
+  ): void {
+    invite.status = status;
+    invite.respondedAt = new Date();
+
+    if (status === RsvpStatus.DECLINED) {
+      invite.attendingCount = 0;
+      if (declineReason !== undefined) invite.declineReason = declineReason || null;
+    } else {
+      invite.declineReason = null;
+      if (attendingCount !== undefined) invite.attendingCount = attendingCount;
+    }
   }
 
   /** RSVP + seating summary for an event the caller hosts. */
@@ -247,5 +294,167 @@ export class EventsService {
       return rest;
     });
     return { summary, invites: rows };
+  }
+
+  // ------------------------------------------------------------------ RSVP
+
+  /**
+   * The numbers an organiser plans from.
+   *
+   * Two head counts, not one. `invitations` is how many invitations are in each
+   * state; `people` is how many human beings that comes to, because an
+   * invitation goes to a family and the caterer counts heads. The gap between
+   * invited and attending is the thing worth chasing.
+   *
+   * "Maybe" is reported on its own rather than folded into either side.
+   * Somebody who answered "probably" has answered, and counting them as
+   * unresponsive sends them a reminder they have already replied to.
+   */
+  async rsvpDashboard(userId: string, eventId: string) {
+    const event = await this.ownedEvent(userId, eventId);
+    const invites = await this.invites.find({ where: { eventId } });
+    const guests = await this.guestsFor(invites);
+
+    // How many people an invitation covers: what they said when they answered,
+    // otherwise how many were invited, otherwise one.
+    const heads = (i: EventInvite) =>
+      i.attendingCount ?? guests.get(i.guestId)?.partySize ?? 1;
+    const sum = (rows: EventInvite[]) => rows.reduce((n, i) => n + heads(i), 0);
+
+    const of = (status: RsvpStatus) => invites.filter((i) => i.status === status);
+    const coming = of(RsvpStatus.ATTENDING);
+    const notComing = of(RsvpStatus.DECLINED);
+    const maybe = of(RsvpStatus.MAYBE);
+    const notResponded = of(RsvpStatus.INVITED);
+
+    const WEEK = 7 * 24 * 60 * 60 * 1000;
+
+    return {
+      event: { id: event.id, name: event.name, eventDate: event.eventDate, venue: event.venue },
+      totalInvited: invites.length,
+      totalInvitedHeadcount: invites.reduce(
+        (n, i) => n + (guests.get(i.guestId)?.partySize ?? 1),
+        0,
+      ),
+      categories: {
+        coming: { invitations: coming.length, people: sum(coming) },
+        // Nobody is coming from a refusal, whatever the family size.
+        notComing: { invitations: notComing.length, people: 0 },
+        maybe: { invitations: maybe.length, people: sum(maybe) },
+        notResponded: { invitations: notResponded.length, people: sum(notResponded) },
+      },
+      /** Not chased yet, or not for a week. */
+      awaitingReminder: notResponded.filter(
+        (i) => !i.lastRemindedAt || Date.now() - i.lastRemindedAt.getTime() > WEEK,
+      ).length,
+    };
+  }
+
+  /**
+   * The guests behind one number on the dashboard.
+   *
+   * Every category returns the same row shape, carrying the fields that
+   * category's follow-up needs: a head count for the people coming, a reason
+   * for those who cannot, and a last-reminded date for those who have not said
+   * — because the point of a "not responded" list is knowing who has already
+   * been asked twice.
+   */
+  async rsvpGuests(userId: string, eventId: string, category: string) {
+    await this.ownedEvent(userId, eventId);
+
+    const wanted: Record<string, RsvpStatus | null> = {
+      coming: RsvpStatus.ATTENDING,
+      not_coming: RsvpStatus.DECLINED,
+      maybe: RsvpStatus.MAYBE,
+      not_responded: RsvpStatus.INVITED,
+      all: null,
+    };
+    if (!(category in wanted)) {
+      throw new BadRequestException(
+        'Ask for coming, not_coming, maybe, not_responded or all',
+      );
+    }
+    const status = wanted[category];
+
+    const invites = await this.invites.find({
+      where: status === null ? { eventId } : { eventId, status },
+      order: { updatedAt: 'DESC' },
+    });
+    const guests = await this.guestsFor(invites);
+
+    return invites.map((invite) => {
+      const guest = guests.get(invite.guestId);
+      return {
+        inviteId: invite.id,
+        guestId: invite.guestId,
+        name: guest?.name ?? 'Guest',
+        phone: guest?.phone ?? null,
+        email: guest?.contact ?? null,
+        relation: guest?.relation ?? null,
+        invitedPartySize: guest?.partySize ?? null,
+        status: invite.status,
+        attendingCount: invite.attendingCount,
+        respondedAt: invite.respondedAt,
+        declineReason: invite.declineReason,
+        // Whether the invitation ever actually went out, which is a different
+        // question from whether they answered it.
+        invitationSent: invite.rsvpTokenHash !== null,
+        lastRemindedAt: invite.lastRemindedAt,
+        reminderCount: invite.reminderCount,
+        seat: invite.seat,
+      };
+    });
+  }
+
+  /**
+   * Records that somebody has been chased.
+   *
+   * The reminder only goes out by email if there is an address; the record is
+   * kept either way, because an organiser who rang them still needs the list to
+   * say so. A fresh token is issued with it, since the plaintext one only ever
+   * existed inside the original invitation.
+   */
+  async remind(userId: string, inviteId: string) {
+    const invite = await this.invites.findOne({ where: { id: inviteId } });
+    if (!invite) throw new NotFoundException('Invite not found');
+    const event = await this.ownedEvent(userId, invite.eventId);
+
+    if (invite.status !== RsvpStatus.INVITED) {
+      throw new BadRequestException('They have already answered');
+    }
+
+    const guest = await this.guests.findOne({ where: { id: invite.guestId } });
+    invite.lastRemindedAt = new Date();
+    invite.reminderCount += 1;
+
+    let emailSent = false;
+    if (guest?.contact && guest.contact.includes('@')) {
+      const { token, tokenHash } = generateToken();
+      invite.rsvpTokenHash = tokenHash;
+      invite.rsvpTokenExpiresAt = expiresIn(this.cfg.auth.rsvpTokenTtlDays * 86_400);
+      const hostProfile = await this.profiles.findOne({ where: { userId } });
+      await this.mail.sendRsvpInvitation({
+        to: guest.contact,
+        guestName: guest.name,
+        eventName: event.name,
+        hostName: hostProfile?.displayName ?? 'Your host',
+        token,
+      });
+      emailSent = true;
+    }
+
+    const saved = await this.invites.save(invite);
+    return {
+      inviteId: saved.id,
+      lastRemindedAt: saved.lastRemindedAt,
+      reminderCount: saved.reminderCount,
+      emailSent,
+    };
+  }
+
+  private async guestsFor(invites: EventInvite[]): Promise<Map<string, Guest>> {
+    if (invites.length === 0) return new Map();
+    const rows = await this.guests.find({ where: { id: In(invites.map((i) => i.guestId)) } });
+    return new Map(rows.map((g) => [g.id, g]));
   }
 }

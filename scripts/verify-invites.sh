@@ -256,8 +256,31 @@ else
   c=$(req POST /auth/login "{\"email\":\"priya-$STAMP@t.com\",\"password\":\"ClaimedPass1\"}")
   check "the claimed user signs in with their OWN password" "$c" 200
 
+  # Claiming no longer ends the engagement. The family hired the agency to find
+  # a match, and the subject getting an account of their own is usually the
+  # point at which the agency's work matters most. What the agency loses is the
+  # biodata itself: two people writing the same profile with no rule about who
+  # wins is how it ends up contradicting itself.
   c=$(req PUT "/agents/profiles/$MANAGED" '{"city":"Chennai"}' "$AGENT")
-  check "the agent can no longer edit the claimed profile" "$c" 403
+  check "the agent can no longer edit the claimed profile's biodata" "$c" 403
+
+  c=$(req GET "/agents/profiles/$MANAGED" "" "$AGENT")
+  check "but they can still open it" "$c" 200
+  jq -e '.actions.canCirculate == true' /tmp/body >/dev/null \
+    && assert "and still circulate it" 1 \
+    || assert "circulation was wrongly withdrawn at claim" 0
+  jq -e '.actions.canManagePhotos == true' /tmp/body >/dev/null \
+    && assert "and still manage its photographs" 1 \
+    || assert "photograph management was wrongly withdrawn at claim" 0
+  jq -e '.actions.canPause == true' /tmp/body >/dev/null \
+    && assert "and still pause it" 1 \
+    || assert "pausing was wrongly withdrawn at claim" 0
+  jq -e '.actions.canDelete == false' /tmp/body >/dev/null \
+    && assert "but cannot delete something its owner now controls" 1 \
+    || assert "a claimed profile can be deleted by the agency" 0
+
+  c=$(req POST "/agents/profiles/$MANAGED/photos" '{"url":"https://cdn.example.com/claimed.jpg"}' "$AGENT")
+  check "the server agrees: a photograph still goes on" "$c" 201
 
   c=$(req GET /agents/clients "" "$AGENT")
   check "the claimed user appears on the agent book" "$c" 200
