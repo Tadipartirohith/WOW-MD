@@ -127,16 +127,17 @@ docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 
   sh -c "apk add --no-cache curl jq openssl redis >/dev/null && sh /scripts/verify-phase1.sh"
 ```
 
-Six suites, 618 live assertions between them. Swap the name at the end of the command above to run a different one.
+Seven suites, 854 live assertions between them. Swap the name at the end of the command above to run a different one.
 
 - `verify-rbac.sh` — 147 checks: privilege escalation at registration, per-persona permissions, agency vetting, profile-level scoping, booking IDOR, escrow transitions, the Match Fixed gate on services, review gating, event ownership, request validation and token handling.
-- `verify-invites.sh` — 73 checks: agency approval, profiles built for people with no account, invitation and claim, the profile-completion gate, multi-device sessions, brute-force lockout, signed payment webhooks, the audit trail, two-factor and pagination bounds.
-- `verify-circulation.sh` — 78 checks: phone-first intake, duplicate detection, consent in both scopes, the biodata-completeness gate, all five circulation paths, read-only enforcement on shares, withdrawal pulling everything back, and cross-agent proposal threads.
-- `verify-phase1.sh` — 151 checks: officer accounts and the forced password reset, the verification queue and the separations that hold it honest, identity documents and the duplicate they refuse, agency fees through escrow, Match Fixed and customer provisioning, vendor compliance, quotations, escrow milestones, a case freezing the money, chat redaction, the profile lifecycle and the admin dashboard.
+- `verify-invites.sh` — 79 checks: agency approval, profiles built for people with no account, invitation and claim, the profile-completion gate, multi-device sessions, brute-force lockout, signed payment webhooks, the audit trail, two-factor and pagination bounds.
+- `verify-circulation.sh` — 95 checks: phone-first intake, duplicate detection, consent in both scopes, the biodata-completeness gate, all five circulation paths, read-only enforcement on shares, withdrawal pulling everything back, and cross-agent proposal threads.
+- `verify-phase1.sh` — 160 checks: officer accounts and the forced password reset, the verification queue and the separations that hold it honest, identity documents and the duplicate they refuse, agency fees through escrow, Match Fixed and customer provisioning, vendor compliance, quotations, escrow milestones, a case freezing the money, chat redaction, the profile lifecycle and the admin dashboard.
 - `verify-phase2.sh` — 108 checks: the sectioned client biodata and its completion report, Aadhaar OTP and the one-document-one-profile rule, notifications, the provider's accounts ledger, the chat dashboard and presence, event management with per-event vendors, honeymoon package search, the match filters, and disputes carrying a milestone and evidence.
 - `verify-phase3.sh` — 61 checks: SMS delivery, phone verification, an invitation that goes out by SMS alone, profile claim requests, MFA recovery codes, data export and erasure, the network-pool quota, circulation reach, and profile-photo uploads.
+- `verify-phase4.sh` — 204 checks: the service catalog as configuration rather than code, attribute validation across all fifteen types, pricing constrained by the definition, the generated booking form, capacity and what a request is worth, the fact that accepting a job is what spends a window, the RSVP dashboard and its two head counts, chasing the people who have not answered, photographs on a self-managed profile, and the verification chain from allocation through findings to a decision.
 
-Alongside them: 103 backend unit tests, 27 e2e tests against real Postgres and Redis, and 7 frontend tests — one of which reads the backend permission enum off disk and fails if the client's hand-written mirror has drifted from it.
+Alongside them: 136 backend unit tests, 27 e2e tests against real Postgres and Redis, and 7 frontend tests — one of which reads the backend permission enum off disk and fails if the client's hand-written mirror has drifted from it.
 
 A k6 load test lives in `backend/test/k6`.
 

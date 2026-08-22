@@ -39,6 +39,7 @@ demands, and the phone number rather than the email address is the identity.
 | [CIRCULATION.md](CIRCULATION.md) | Phone-first intake, the two consent scopes, the five circulation paths |
 | [PHASE-1-OPERATIONS.md](PHASE-1-OPERATIONS.md) | Field verification, support cases and frozen escrow, Match Fixed and provisioning, agency fees, quotations, escrow milestones, identity, chat redaction, the profile lifecycle |
 | [ISSUE-REGISTER.md](ISSUE-REGISTER.md) | The 115-page specification, item by item, with what is deferred and why |
+| [NEW-ISSUE-REGISTER.md](NEW-ISSUE-REGISTER.md) | The 74-page follow-up, item by item — including the two places it reverses the first, and the one place the implementation diverges from it |
 | [SELF-REVIEW.md](SELF-REVIEW.md) | Six rounds of work, every defect found, and what is deliberately still open |
 | [SETUP-GUIDE.md](SETUP-GUIDE.md) | Getting it running, with and without Docker |
 | [DOCKER-AND-TESTING.md](DOCKER-AND-TESTING.md) | Container and test-stack detail, and how to run all six verification suites |

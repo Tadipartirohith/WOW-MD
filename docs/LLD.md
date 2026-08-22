@@ -23,9 +23,9 @@ Tables, routes, algorithms, configuration. The altitudes above are
 
 ## 1. Data model
 
-43 application tables across 43 entities, plus TypeORM's own `migrations`
-ledger. The core cluster is shown below; the marketplace, planning and media
-clusters hang off `users` in the same way.
+48 application tables across 48 entities, plus TypeORM's own `migrations`
+ledger. The core cluster is shown below; the marketplace, catalog, planning and
+media clusters hang off `users` in the same way.
 
 ```mermaid
 erDiagram
@@ -66,9 +66,10 @@ Note the two distinct `users → profiles` edges: ownership and stewardship.
 | Stewardship | `agent_profiles`, `agent_charges`, `invitations`, `profile_claim_requests` | Agency approval gate; hashed single-use claim tokens. `invitations.email` is nullable, so an invitation can go out by SMS alone. One live claim request per profile, enforced by a partial unique index |
 | Circulation | `profile_consents`, `profile_shares`, `proposal_notes` | Append-only consent; shares carry view counts and a revoke timestamp |
 | Matchmaking | `interests`, `conversations`, `messages` | Interests are profile-keyed; chat is account-keyed. Messages carry `redactedCount` so repeated attempts to pass a number across are visible without storing the number |
-| Marketplace | `vendors`, `planner_profiles`, `vendor_reviews`, `vendor_availability_slots`, `bookings`, `payments`, `quotations`, `disputes` | Payments hold the commission split and an idempotency key. A slot is a time window on a date, reserved under a row lock inside the booking transaction |
+| Marketplace | `vendors`, `planner_profiles`, `vendor_reviews`, `vendor_availability_slots`, `bookings`, `payments`, `quotations`, `disputes` | Payments hold the commission split and an idempotency key. A slot is a time window on a date carrying `capacity`, `confirmed` and `pending`; only `confirmed` is measured against capacity, and it moves when the vendor accepts the job |
+| Catalog | `service_categories`, `service_definitions`, `service_attributes`, `vendor_services`, `service_offerings` | Configuration rather than code: a new trade is rows an administrator writes. Answers live in validated jsonb, so an administrator adds a question without a migration and the validator stops that becoming a free-for-all |
 | Verification | `verification_requests`, `support_cases` | Both carry an append-only `history`. A case records which instalment it disputes, its evidence, whether it needs a physical visit, and the booking status to restore on settlement |
-| Planning | `wedding_plans`, `plan_tasks`, `events`, `guests`, `event_invites` | Invites carry a hashed RSVP token for guests with no account |
+| Planning | `wedding_plans`, `plan_tasks`, `events`, `guests`, `event_invites` | Invites carry a hashed RSVP token for guests with no account, plus two head counts — how many were invited and how many are actually coming, which is what the caterer is ordered from |
 | Content | `albums`, `media_items`, `destinations`, `travel_packages`, `itineraries` | Albums support a public share token |
 | Platform | `audit_events`, `outbox_events`, `notifications` | Audit is append-only by design — no update or delete path exists |
 
@@ -84,12 +85,16 @@ Not every index is about speed. These encode an invariant:
 | partial unique on `profileId` where `status = 'pending'` | `profile_claim_requests` | One live request per profile; an agent tapping twice does not produce two decisions |
 | unique on `tokenHash` | `invitations`, `email_tokens` | A token addresses exactly one row |
 | composite on `(subjectType, subjectId)` | `support_cases` | Finding every case against one booking |
+| unique on `(vendorId, definitionId)` | `vendor_services` | One business offers a given service once. Two rows is a duplicate listing, not two products — the products are the offerings underneath |
+| unique on `(definitionId, scope, key)` | `service_attributes` | The same word can be asked of the vendor and of the buyer without one overwriting the other |
+| check: price present unless quote-only | `service_offerings` | A priced offering with a null price is unrenderable, and the database is the one place that cannot be bypassed |
+| check: `confirmed <= capacity` | `vendor_availability_slots` | Six bookings in a window built for five is the one failure a wedding vendor cannot recover from |
 
 ---
 
 ## 2. Permission matrix
 
-51 permissions across 8 roles. Admin is computed as `Object.values(Permission)`,
+52 permissions across 8 roles. Admin is computed as `Object.values(Permission)`,
 so a new capability is never accidentally withheld from support staff.
 
 | Role | Permissions held |
@@ -100,7 +105,7 @@ so a new capability is never accidentally withheld from support staff.
 | `planner` | 14 |
 | `vendor` | 10 |
 | `in_person` | 9 |
-| `admin` | 51 |
+| `admin` | 52 |
 
 B/G = bride and groom, F = family, O = in-person officer.
 
@@ -137,6 +142,7 @@ B/G = bride and groom, F = family, O = in-person officer.
 | `verification:allocate` | · | · | · | · | · | · | ● |
 | `case:investigate` / `settle` | · | · | · | · | · | ● | ● |
 | `case:allocate` | · | · | · | · | · | · | ● |
+| `catalog:manage` | · | · | · | · | · | · | ● |
 | `admin:*` (6 capabilities) | · | · | · | · | · | · | ● |
 
 Three rows are worth reading twice:
@@ -154,7 +160,7 @@ Three rows are worth reading twice:
 
 ## 3. API surface
 
-225 routes over 21 controllers, prefixed `/api` and documented at `/api/docs`
+256 routes over 26 controllers, prefixed `/api` and documented at `/api/docs`
 via Swagger. 24 are public; everything else requires a bearer token and clears
 the guard chain in [§4](#4-request-lifecycle).
 
@@ -591,7 +597,7 @@ containers and exit non-zero on any failure.
 | `verify-phase2.sh` | 108 | The sectioned biodata and its completion report, Aadhaar OTP and one-document-one-profile, notifications, the accounts ledger, the chat dashboard and presence, events with per-event vendors, honeymoon search, match filters, disputes with milestone and evidence |
 | `verify-phase3.sh` | 61 | SMS delivery, phone verification, phone-only invitations, profile claim requests, recovery codes, data export and erasure, the pool quota, circulation reach, photo uploads |
 
-**618 live assertions plus 137 automated tests.** Each shell suite clears its
+**854 live assertions plus 170 automated tests.** Each shell suite clears its
 own Redis rate-limit counters first, since those deliberately survive restarts,
 and varies the data that carries a uniqueness constraint — phone numbers,
 identity documents, GST, Aadhaar — so a second run does not collide with the

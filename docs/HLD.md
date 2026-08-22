@@ -166,7 +166,7 @@ transport, not unpicking its data.
 | --- | --- |
 | **Edge** | nginx — serves the SPA, proxies `/api` and the Socket.io upgrade |
 | **HTTP** | Controllers, DTOs, global `ValidationPipe` (whitelist + forbid unknown), four chained guards |
-| **Domain** | 19 feature modules — services own the business rules and every ownership check |
+| **Domain** | 20 feature modules — services own the business rules and every ownership check |
 | **Platform** | 11 shared modules — audit, mail, SMS, jobs, throttling, Redis, outbox, Neo4j, Kafka, health, websocket adapter |
 | **Persistence** | TypeORM entities, hand-authored migrations, `synchronize: false` always |
 

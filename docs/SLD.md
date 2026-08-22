@@ -12,6 +12,7 @@ other. The altitude above is [HLD.md](HLD.md); below is [LLD.md](LLD.md).
 - [3. Authorization: two layers](#3-authorization-two-layers-that-answer-different-questions)
 - [4. Consent and circulation](#4-consent-and-circulation)
 - [5. Verification: the human in the loop](#5-verification-the-human-in-the-loop)
+- [5.5 The service catalog](#55-the-service-catalog-configuration-instead-of-code)
 - [6. Money: escrow, milestones, settlement](#6-money-escrow-milestones-settlement)
 - [7. Scheduled work](#7-scheduled-work)
 - [8. Communications](#8-communications)
@@ -22,7 +23,7 @@ other. The altitude above is [HLD.md](HLD.md); below is [LLD.md](LLD.md).
 
 ## 1. Module map
 
-Nineteen domain modules and eleven platform modules. Platform modules are
+Twenty domain modules and eleven platform modules. Platform modules are
 global — any domain module can inject audit, mail or SMS without re-importing a
 transport.
 
@@ -38,12 +39,13 @@ transport.
 | `circulation` | Consent, the five sharing paths, network pool, proposals, reach | 20 |
 | `matchmaking` | Suggestions with filters, interests, compatibility, Match Fixed | 13 |
 | `chat` | Threads, presence, REST + WebSocket, call signalling | 5 |
-| `vendors` | Listings, search, time-slot availability, gated reviews | 16 |
+| `vendors` | Listings, search, time-slot availability with capacity, gated reviews | 17 |
+| `catalog` | Service categories, definitions, attributes, vendor services, prices, generated booking forms | 16 |
 | `wedding-planners` | Planner listings and search | 4 |
 | `bookings` | Lifecycle, quotations, escrow milestones, earnings, webhooks | 16 |
-| `verification` | Field verification requests, officers, support cases, settlements | 22 |
+| `verification` | Field verification requests, officers, findings and review, support cases, settlements | 24 |
 | `planner` | Wedding plan, timeline, tasks | 7 |
-| `events` | Ceremonies, guests, RSVP links, per-event vendors | 12 |
+| `events` | Ceremonies, guests, RSVP links and tracking, per-event vendors | 16 |
 | `media` | Albums, presigned upload, profile photos, shared links | 7 |
 | `travel` | Destinations, honeymoon packages, itineraries | 5 |
 | `notifications` | Fan-out from domain events; unread counts | 4 |
@@ -72,9 +74,12 @@ transport.
   repositories directly, and never its internals.
 - Cross-module writes that would need a shared transaction go through the
   **outbox** instead.
-- Two cycles are broken explicitly with `forwardRef`: bookings ↔ verification
-  (a case freezes a booking; settling one restores it) and matchmaking ↔ agents
-  (an agent acts as a client; a fixed match settles the agency fee).
+- Four cycles are broken explicitly with `forwardRef`: bookings ↔ verification
+  (a case freezes a booking; settling one restores it), matchmaking ↔ agents
+  (an agent acts as a client; a fixed match settles the agency fee), vendors ↔
+  catalog (the catalog proves ownership against `vendors`; availability reads a
+  service to know a window's capacity) and bookings ↔ catalog (a request is
+  validated against the form it was generated from).
 - `UsersModule` deliberately does **not** import `AgentsModule`, because
   `AgentsModule → VerificationModule → UsersModule` would close a cycle. The
   subject-side claim routes therefore live in a controller inside
@@ -113,12 +118,21 @@ stateDiagram-v2
   end note
   note right of CLAIMED
     subject owns it
-    steward loses write access
+    steward loses the biodata
+    keeps circulation and lifecycle
     stays on the agency book
   end note
 ```
 
 Claiming is optional; a great many profiles stay agent-managed forever.
+
+Claiming does not end the engagement. The family hired the agency to find a
+match, and the subject getting an account of their own is usually the point at
+which that work matters most — so circulation, photographs and the profile's
+lifecycle all survive it. What the agency loses is the biodata itself, because
+two writers with no rule about who wins produces a profile that contradicts
+itself, and the ability to delete, because a claimed profile *is* somebody's
+account profile.
 
 ### 2.1 Two routes into CLAIMED, because there are two real situations
 
@@ -247,28 +261,47 @@ stateDiagram-v2
   [*] --> NEW: applicant submits details
   NEW --> ASSIGNED: admin allocates (or the system picks the lightest load)
   ASSIGNED --> IN_PROGRESS: officer starts the visit
-  IN_PROGRESS --> APPROVED: officer approves
-  IN_PROGRESS --> REJECTED: officer rejects, with a reason
-  IN_PROGRESS --> ADDITIONAL_REVIEW: needs another look
+  IN_PROGRESS --> SUBMITTED: officer writes up what they found
+  SUBMITTED --> ADMIN_REVIEW: an administrator takes it
+  ADMIN_REVIEW --> APPROVED: approved on the strength of the findings
+  ADMIN_REVIEW --> REJECTED: rejected, with a reason
+  ADMIN_REVIEW --> ADDITIONAL_REVIEW: go back and look again
+  ADDITIONAL_REVIEW --> IN_PROGRESS: officer returns
   IN_PROGRESS --> ISSUE: something is wrong on the ground
-  ADDITIONAL_REVIEW --> IN_PROGRESS
   ISSUE --> IN_PROGRESS
   APPROVED --> [*]
   REJECTED --> [*]
 ```
 
-Three separations make this a control rather than a formality:
+Four separations make this a control rather than a formality:
 
-1. **An admin cannot approve.** The direct approval route was removed outright.
-   Only an allocated officer decides.
-2. **An officer cannot allocate to themselves.** Choosing your own visits is
+1. **An officer reports; somebody else decides.** SUBMITTED and ADMIN_REVIEW
+   are the two states that make that true. Without them an officer could
+   approve a business straight from ASSIGNED, and the whole step is a checkbox.
+2. **An approval cannot rest on nothing.** It is refused outright until
+   findings exist — a visit somebody actually made and wrote up.
+3. **An officer cannot allocate to themselves.** Choosing your own visits is
    not an allocation.
-3. **A rejection requires a reason.** Anything other than an approval refuses a
+4. **A rejection requires a reason.** Anything other than an approval refuses a
    blank remark.
+
+Findings are structured — visited, observations, issues, evidence,
+recommendation — because "what did you see" and "why are you rejecting this" are
+different questions that were collapsing into one remarks field.
+
+Sending a request back clears the findings and returns it to the officer's
+queue, and the revisits are counted: a third visit usually means the request is
+unanswerable rather than merely incomplete, and somebody should look at why.
 
 Allocation defaults to the officer carrying the fewest open cases, and the
 picker ranks by that — a name picked off an unsorted list is how one officer
-ends up with everything.
+ends up with everything. Work an officer has *submitted* is reported but not
+counted against them: their part is finished, and holding it against them would
+starve the busiest officer of new work while an administrator sat on a backlog.
+
+Allocating tells the officer, and the notification is written **after** the
+allocation is stored. One written before would, on a failed save, send somebody
+looking for a visit that is not on their queue.
 
 ### 5.1 Support cases and frozen money
 
@@ -285,6 +318,61 @@ in a queue.
 Settlement restores the booking to where it stood before the freeze, which is
 why the previous status is recorded when the case is raised: a dispute raised
 mid-job ends with the job still mid-job.
+
+---
+
+## 5.5 The service catalog: configuration instead of code
+
+A wedding needs trades nobody thought to list. The obvious way to serve them is
+a module per type — one for catering, one for photography, one for priests —
+and it does not survive contact with the tenth trade: ten booking forms, ten
+pricing rules, ten sets of validation, all subtly different and none of them
+searchable together.
+
+So a service type is data. Five tables, and a validator that makes storing the
+answers as jsonb safe:
+
+```
+ServiceCategory → ServiceDefinition → ServiceAttribute
+                        ↓
+                  VendorService → ServiceOffering
+```
+
+| Table | Owned by | Holds |
+| --- | --- | --- |
+| `service_categories` | Admin | Photography, Catering, Priest, Transportation |
+| `service_definitions` | Admin | A sellable thing, plus which pricing models it allows, how it takes time, and whether it is sold as a package at all |
+| `service_attributes` | Admin | The questions. SERVICE scope asks the vendor; BOOKING scope asks the buyer |
+| `vendor_services` | Vendor | Their answers, and how many they can run at once |
+| `service_offerings` | Vendor | What it costs |
+
+Three decisions carry the design.
+
+**The definition constrains the vendor.** A venue is sensibly per-day; a caterer
+is per-person; a priest sells one ceremony rather than three tiers. Encoding
+that on the definition is what stops a listing nobody can read.
+
+**The validator is the price of jsonb.** Every answer is checked against the
+attribute that asked for it before it is written. Without that, "guest count"
+becomes 250, "250" and "around 250" in three rows and nothing can filter on it
+again. A number arriving as a string from a form is coerced; an unknown key is
+dropped rather than rejected, so an administrator retiring a question does not
+turn every listing that still carries its answer into a 400.
+
+**The form is generated from the rows the validator uses.** A form the client
+renders and a payload the server accepts cannot drift, because they are the same
+configuration read twice.
+
+Nothing is ever deleted once anything references it. Retiring means
+`active = false`, which stops a category appearing on new listings while leaving
+every booking already made under it readable — and withdrawing a pricing model
+vendors are still selling on is refused outright, because the alternative is a
+listing they cannot edit for reasons the error does not explain.
+
+`concurrentCapacity` on a vendor service is where "five catering teams" and "one
+convention hall" are actually recorded, and it seeds the capacity of every
+window published against that service — which is the join between this section
+and the calendar.
 
 ---
 
