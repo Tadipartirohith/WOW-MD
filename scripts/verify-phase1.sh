@@ -320,8 +320,17 @@ check "an end time before the start is refused" "$c" 400
 c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\",\"note\":\"Afternoon\"}" "$VENDOR")
 check "vendor publishes an afternoon slot" "$c" 201
 SLOT_A=$(field /tmp/body id)
+# Overlap is no longer refused: capacity governs how much a vendor can do at
+# once, not the clock. A caterer whose lunch and evening share an hour of setup
+# is normal. Publishing the *same* window twice is still refused, because that
+# is a mis-click that splits one capacity across two rows.
 c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"14:00\",\"endTime\":\"18:00\"}" "$VENDOR")
-check "an overlapping slot is refused" "$c" 400
+check "an overlapping slot is allowed — capacity decides, not the clock" "$c" 201
+SLOT_OVERLAP=$(field /tmp/body id)
+c=$(req DELETE "/vendors/$LISTING/availability/slots/$SLOT_OVERLAP" "" "$VENDOR")
+check "and it can be withdrawn again while nobody has asked for it" "$c" 200
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\"}" "$VENDOR")
+check "publishing the identical window twice is refused" "$c" 400
 c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"18:00\",\"endTime\":\"22:00\",\"note\":\"Evening\"}" "$VENDOR")
 check "a back-to-back slot is fine" "$c" 201
 SLOT_B=$(field /tmp/body id)
@@ -337,7 +346,7 @@ check "vendor opens it again" "$c" 200
 
 c=$(req GET "/vendors/$LISTING/availability/summary" "" "$VENDOR")
 check "the availability summary counts the window" "$c" 200
-body_has '"availableSlots":2' "both slots read as available"
+body_has '"openSlots":2' "both slots read as open"
 
 c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"slotId\":\"$SLOT_A\",\"eventDate\":\"$SLOT_DATE\",\"requirements\":\"Catering for 300 guests, vegetarian and non-vegetarian.\",\"expectedBudget\":50000}" "$BRIDE")
 check "bride requests the afternoon slot" "$c" 201
@@ -348,8 +357,13 @@ c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\"
 check "a second request for the same slot is refused" "$c" 409
 body_has 'DUPLICATE_BOOKING_REQUEST' "the refusal names the request they already have"
 
+# A request is a question, not a booking. It must not take the window off sale
+# — that is what stopped a caterer's five-team afternoon being bookable because
+# one family had enquired about it.
 c=$(req GET "/vendors/$LISTING/availability?from=$SLOT_DATE&to=$SLOT_DATE" "")
-grep -q "$SLOT_A" /tmp/body && assert "a requested slot is still offered to others" 0 || assert "a requested slot is held, not offered to others" 1
+grep -q "$SLOT_A" /tmp/body && assert "a requested slot stays open — a request does not consume capacity" 1 || assert "a requested slot was wrongly taken off sale" 0
+body_has '"pending":1' "the request is counted separately from bookings"
+body_has '"confirmed":0' "and consumes no capacity"
 
 c=$(req DELETE "/vendors/$LISTING/availability/slots/$SLOT_A" "" "$VENDOR")
 check "a slot with a live request cannot be deleted" "$c" 400
@@ -389,6 +403,14 @@ c=$(req PUT "/bookings/$BOOKING/confirm" "" "$BRIDE")
 check "the buyer cannot accept the job on the vendor's behalf" "$c" 403
 c=$(req PUT "/bookings/$BOOKING/confirm" "" "$VENDOR")
 check "vendor accepts the job" "$c" 200
+
+# Accepting is the moment the window is actually spent — not the request, not
+# the quotation, and not the advance.
+c=$(req GET "/vendors/$LISTING/availability/slots?from=$SLOT_DATE&to=$SLOT_DATE" "" "$VENDOR")
+body_has '"confirmed":1' "accepting the job is what consumes capacity"
+body_has '"pending":0' "and clears the request it came from"
+c=$(req GET "/vendors/$LISTING/availability?from=$SLOT_DATE&to=$SLOT_DATE" "")
+grep -q "$SLOT_A" /tmp/body && assert "a full slot is still offered" 0 || assert "a slot at capacity leaves the buyer list" 1
 
 c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
 check "vendor cannot start before the advance is held" "$c" 400

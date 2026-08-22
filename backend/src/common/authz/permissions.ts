@@ -103,6 +103,16 @@ export enum Permission {
   ADMIN_VENDOR_APPROVE = 'admin:vendor:approve',
   ADMIN_ANALYTICS_READ = 'admin:analytics:read',
   ADMIN_DISPUTE_RESOLVE = 'admin:dispute:resolve',
+  /**
+   * Configure the service catalog: categories, service definitions, the
+   * attributes that make up their forms, and which pricing models each
+   * service may be sold on.
+   *
+   * Admin only, and deliberately separate from `ADMIN_VENDOR_APPROVE`. This is
+   * the capability that decides what every vendor on the platform is able to
+   * sell, so it is worth being able to grant one without the other.
+   */
+  CATALOG_MANAGE = 'catalog:manage',
 }
 
 /** Everything an individual (bride/groom/family) can do. */

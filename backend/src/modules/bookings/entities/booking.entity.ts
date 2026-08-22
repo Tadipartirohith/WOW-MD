@@ -73,6 +73,33 @@ export class Booking {
   @Column({ type: 'text', nullable: true })
   requirements: string | null;
 
+  // ------------------------------------------------------------ the catalog
+  //
+  // Which service was booked, at which published price, and the answers to
+  // that service's booking form. All three are nullable: a booking made before
+  // the catalog existed has no service to point at and must keep loading.
+
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  vendorServiceId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  offeringId: string | null;
+
+  /**
+   * The buyer's answers to the service's BOOKING-scope attributes, validated
+   * against them at request time.
+   *
+   * Structured, unlike `requirements` above, which stays because a buyer
+   * always has something to say that no form thought to ask.
+   */
+  @Column({ type: 'jsonb', default: {} })
+  serviceAnswers: Record<string, unknown>;
+
+  /** Plates, hours, days — whatever the offering's pricing model counts. */
+  @Column({ type: 'int', nullable: true })
+  quantity: number | null;
+
   /**
    * What the buyer hopes to spend. Optional on purpose — the provider quotes
    * against the requirements, and forcing a number out of someone who does not

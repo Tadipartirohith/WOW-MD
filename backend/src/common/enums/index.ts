@@ -251,9 +251,21 @@ export enum GovernmentIdType {
  * decision on it, so a second buyer cannot take the same window while the first
  * is waiting on a quotation.
  */
+/**
+ * What the *vendor* set a window to.
+ *
+ * Only three of these are ever written now. Whether a window has bookings, and
+ * whether it can take another, are arithmetic over capacity and the two
+ * counters — see `AvailabilityService.view`. Keeping them out of the status
+ * column is what stops "has confirmed bookings" and "cannot take another"
+ * collapsing into one flag.
+ */
 export enum SlotStatus {
+  /** Published and on sale. May still have confirmed bookings against it. */
   AVAILABLE = 'available',
+  /** Historic. A request used to take the whole window off sale; it no longer does. */
   PENDING = 'pending',
+  /** Historic. Being at capacity is now read from `confirmed >= capacity`. */
   BOOKED = 'booked',
   BLOCKED = 'blocked',
   CANCELLED = 'cancelled',
@@ -507,4 +519,83 @@ export enum ThreadKind {
   MATCH = 'match',
   INQUIRY = 'inquiry',
   REPRESENTATION = 'representation',
+}
+
+// ---------------------------------------------------------------- catalog
+//
+// The service catalog is configuration, not code. A new vendor type — a
+// mehendi artist, a drone crew, a horse for the baraat — is a row an
+// administrator writes, not a module somebody ships. These three enums are
+// the vocabulary that configuration is written in.
+
+/**
+ * What kind of answer an attribute takes.
+ *
+ * The set is deliberately closed: every type here has a validator, a form
+ * control and a way of being searched. Adding a sixteenth means writing all
+ * three, which is the point — an open-ended "any JSON" attribute would make
+ * the catalog unqueryable within a month.
+ */
+export enum ServiceAttributeType {
+  TEXT = 'text',
+  NUMBER = 'number',
+  DECIMAL = 'decimal',
+  BOOLEAN = 'boolean',
+  SINGLE_SELECT = 'single_select',
+  MULTI_SELECT = 'multi_select',
+  DATE = 'date',
+  TIME = 'time',
+  DATE_TIME = 'date_time',
+  DURATION = 'duration',
+  CURRENCY = 'currency',
+  FILE = 'file',
+  URL = 'url',
+  LOCATION = 'location',
+  RANGE = 'range',
+}
+
+/**
+ * How an offering is priced.
+ *
+ * `CUSTOM_QUOTE` and `NO_PUBLIC_PRICE` differ in what the buyer is told: the
+ * first invites them to ask, the second says the vendor does not publish. Both
+ * carry no amount, and the booking flow treats them the same way — quotation
+ * first, price second.
+ */
+export enum PricingModel {
+  FIXED = 'fixed',
+  PER_PERSON = 'per_person',
+  PER_HOUR = 'per_hour',
+  PER_DAY = 'per_day',
+  PER_SESSION = 'per_session',
+  PER_ITEM = 'per_item',
+  STARTING_FROM = 'starting_from',
+  CUSTOM_QUOTE = 'custom_quote',
+  NO_PUBLIC_PRICE = 'no_public_price',
+}
+
+/**
+ * How a service occupies a vendor's day.
+ *
+ * This is what tells the availability module whether a booking consumes a
+ * window (a photographer's afternoon), a share of a window (one of a caterer's
+ * five teams), or nothing at all (a downloadable itinerary).
+ */
+export enum AvailabilityModel {
+  /** Needs a published time window, and takes one unit of its capacity. */
+  SLOT = 'slot',
+  /** Occupies the whole day, whatever windows are published on it. */
+  FULL_DAY = 'full_day',
+  /** Runs across a date range — a decorator on site for three days. */
+  MULTI_DAY = 'multi_day',
+  /** No calendar involvement at all. */
+  ALWAYS = 'always',
+}
+
+/** Where a piece of the catalog is used: on the vendor's listing, or in the buyer's request. */
+export enum AttributeScope {
+  /** Describes what the vendor offers. Shown on the listing, filterable. */
+  SERVICE = 'service',
+  /** Asked of the buyer when they request. The dynamic booking form. */
+  BOOKING = 'booking',
 }

@@ -8,11 +8,13 @@ import { AvailabilityService } from './availability.service';
 import { VendorsController } from './vendors.controller';
 import { BookingsModule } from '../bookings/bookings.module';
 import { VerificationModule } from '../verification/verification.module';
+import { CatalogModule } from '../catalog/catalog.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Vendor, VendorReview, VendorAvailabilitySlot]),
     forwardRef(() => BookingsModule),
+    forwardRef(() => CatalogModule),
     VerificationModule,
   ],
   providers: [VendorsService, AvailabilityService],

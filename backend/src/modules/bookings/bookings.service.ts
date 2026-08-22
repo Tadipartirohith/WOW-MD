@@ -31,6 +31,7 @@ import { AgentsService } from '../agents/agents.service';
 import { SupportCasesService } from '../verification/support-cases.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { AvailabilityService } from '../vendors/availability.service';
+import { VendorServicesService } from '../catalog/vendor-services.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
@@ -140,6 +141,11 @@ export class BookingsService {
     // here rather than by duplicating the capacity rule in two places.
     @Inject(forwardRef(() => AvailabilityService))
     private readonly availability: AvailabilityService,
+    // The catalog validates a buyer's answers against the same rows the form
+    // they filled in was generated from. Keeping that in one place is what
+    // stops the form and its submission drifting apart.
+    @Inject(forwardRef(() => VendorServicesService))
+    private readonly vendorServices: VendorServicesService,
     @Inject(PAYMENT_PROVIDER) private readonly gateway: PaymentProvider,
   ) {}
 
@@ -280,6 +286,51 @@ export class BookingsService {
       if (dto.eventDate && dto.eventDate !== slot.date) {
         throw new BadRequestException('The event date does not match the slot you chose');
       }
+      // The window is re-checked here as well as under the lock below, so a
+      // buyer working from a page that went stale while they filled the form
+      // in is told now rather than after their answers are thrown away.
+      if (!(await this.availability.isBookable(dto.providerId, dto.slotId))) {
+        throw new BadRequestException('That time slot is no longer open. Pick another.');
+      }
+    }
+
+    // What the catalog contributes: the buyer's answers are validated against
+    // the same rows the form they filled in was generated from, and the chosen
+    // price is proved to belong to the service they chose.
+    let serviceAnswers: Record<string, unknown> = {};
+    if (dto.vendorServiceId) {
+      const { service, answers } = await this.vendorServices.validateBookingAnswers(
+        dto.vendorServiceId,
+        dto.serviceAnswers,
+      );
+      if (service.vendorId !== dto.providerId) {
+        throw new BadRequestException('That service does not belong to this provider');
+      }
+      serviceAnswers = answers;
+
+      if (dto.offeringId) {
+        const offering = await this.vendorServices.findOffering(dto.offeringId);
+        if (!offering || offering.vendorServiceId !== service.id) {
+          throw new BadRequestException('That price is not on the service you chose');
+        }
+        if (!offering.active) {
+          throw new BadRequestException('That price is no longer offered');
+        }
+        if (offering.minQuantity && (dto.quantity ?? 0) < offering.minQuantity) {
+          throw new BadRequestException(
+            `${offering.name} starts at ${offering.minQuantity}${offering.unitLabel ? ' ' + offering.unitLabel : ''}`,
+          );
+        }
+        if (offering.maxQuantity && (dto.quantity ?? 0) > offering.maxQuantity) {
+          throw new BadRequestException(
+            `${offering.name} tops out at ${offering.maxQuantity}${offering.unitLabel ? ' ' + offering.unitLabel : ''}`,
+          );
+        }
+      }
+    } else if (dto.serviceAnswers && Object.keys(dto.serviceAnswers).length > 0) {
+      // Answers with nothing to validate them against would be stored
+      // unchecked, which is the one thing the catalog exists to prevent.
+      throw new BadRequestException('Choose a service before answering its questions');
     }
 
     return this.dataSource.transaction(async (manager) => {
@@ -298,13 +349,17 @@ export class BookingsService {
           currency: this.cfg.payments.currency,
           eventDate: dto.eventDate ?? null,
           requirements: dto.requirements ?? null,
+          vendorServiceId: dto.vendorServiceId ?? null,
+          offeringId: dto.offeringId ?? null,
+          serviceAnswers,
+          quantity: dto.quantity ?? null,
           expectedBudget: dto.expectedBudget !== undefined ? dto.expectedBudget.toFixed(2) : null,
           notes: dto.notes,
           status: BookingStatus.REQUESTED,
         }),
       );
 
-      if (dto.slotId) await this.availability.reserve(manager, dto.slotId, booking.id);
+      if (dto.slotId) await this.availability.reserve(manager, dto.slotId);
 
       await this.outbox.record(
         {
@@ -457,7 +512,9 @@ export class BookingsService {
       if (milestone === PaymentMilestone.ADVANCE) {
         this.assertTransition(booking.status, BookingStatus.CONFIRMED);
         booking.status = BookingStatus.CONFIRMED;
-        if (booking.slotId) await this.availability.confirm(manager, booking.slotId);
+        // Capacity was consumed when the provider accepted the job, not here.
+        // The window has been theirs since then; the advance only releases
+        // them to start work.
       } else if (milestone === PaymentMilestone.FINAL) {
         this.assertTransition(booking.status, BookingStatus.COMPLETED);
         booking.status = BookingStatus.COMPLETED;
@@ -541,14 +598,34 @@ export class BookingsService {
     if (parseFloat(booking.amount) <= 0) {
       throw new BadRequestException('Send a quotation before accepting this job');
     }
-    const saved = await this.transition(booking, BookingStatus.PAYMENT_PENDING);
 
-    await this.outbox.record({
-      eventType: 'booking.confirmed',
-      aggregateType: 'booking',
-      payload: { bookingId, providerId: booking.providerId, amount: booking.amount },
+    // This is the moment the window is actually spent.
+    //
+    // Not when the buyer asked, not when the quotation went out, not when the
+    // buyer accepted it — a request is a question and this is the answer. And
+    // not at the advance either: by then the provider has already promised the
+    // day, and discovering a clash at payment time is discovering it too late.
+    //
+    // The capacity re-check lives under a row lock inside `availability.confirm`,
+    // because between the family asking and the provider answering, other
+    // people may have been confirmed into the same window.
+    return this.dataSource.transaction(async (manager) => {
+      if (booking.slotId) await this.availability.confirm(manager, booking.slotId);
+
+      this.assertTransition(booking.status, BookingStatus.PAYMENT_PENDING);
+      booking.status = BookingStatus.PAYMENT_PENDING;
+      const saved = await manager.getRepository(Booking).save(booking);
+
+      await this.outbox.record(
+        {
+          eventType: 'booking.confirmed',
+          aggregateType: 'booking',
+          payload: { bookingId, providerId: booking.providerId, amount: booking.amount },
+        },
+        manager,
+      );
+      return saved;
     });
-    return saved;
   }
 
   /**
@@ -687,7 +764,11 @@ export class BookingsService {
       );
     }
 
+    // "Confirmed" here means the provider had accepted the job and the window
+    // was spent — which now happens at PAYMENT_PENDING, not at the advance.
+    // Cancelling from earlier than that gives back a pending request instead.
     const wasConfirmed = [
+      BookingStatus.PAYMENT_PENDING,
       BookingStatus.CONFIRMED,
       BookingStatus.IN_PROGRESS,
       BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT,

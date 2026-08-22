@@ -32,6 +32,7 @@ import { ProfileDetailsModule } from './modules/profile-details/profile-details.
 import { MatchmakingModule } from './modules/matchmaking/matchmaking.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 import { PlannerModule } from './modules/planner/planner.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
@@ -92,6 +93,7 @@ import { AiModule } from './modules/ai/ai.module';
     MatchmakingModule,
     ChatModule,
     VendorsModule,
+    CatalogModule,
     PlannerModule,
     NotificationsModule,
     BookingsModule,

@@ -2,7 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsEnum,
+  IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -45,6 +47,46 @@ export class CreateBookingDto {
   @IsOptional()
   @IsUUID('4')
   eventId?: string;
+
+  // --------------------------------------------------------------- catalog
+  //
+  // Which service is being booked, at which published price, and the buyer's
+  // answers to that service's booking form. Optional so that a provider who
+  // has not moved onto the catalog can still take a request the old way.
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'The vendor service being requested. Its booking form decides what is asked.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  vendorServiceId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid', description: 'Which published price was chosen.' })
+  @IsOptional()
+  @IsUUID('4')
+  offeringId?: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Answers to the service’s booking form, validated against the same rows the form was ' +
+      'generated from.',
+  })
+  @IsOptional()
+  @IsObject()
+  serviceAnswers?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    description: 'Plates, hours, days — whatever the chosen price counts.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  quantity?: number;
 
   /**
    * What the provider needs to know to price the job: guest count, menu,

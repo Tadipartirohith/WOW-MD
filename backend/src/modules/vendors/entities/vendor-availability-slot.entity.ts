@@ -11,15 +11,23 @@ import { SlotStatus } from '../../../common/enums';
 /**
  * One bookable window in a vendor's calendar.
  *
- * A slot is **not** the booking. It is the thing a booking points at, and it
- * outlives one: when a booking is confirmed the slot goes to BOOKED and stays
- * in the table, because the vendor's history, the payment trail and any later
- * dispute all need to know which window was sold. Only the buyer's list of
- * choices loses it.
+ * A slot is **not** the booking. It is the thing bookings point at, and it
+ * outlives them: the vendor's history, the payment trail and any later dispute
+ * all need to know which window was sold, so the row stays whatever happens to
+ * the bookings against it.
  *
- * Capacity and bookability are deliberately separate. A hall that seats 20 is
- * still one event: `capacity` describes the venue, `booked` counts confirmed
- * events against it, and for the common case both are one.
+ * `status` records the vendor's own decision — published, blocked, cancelled.
+ * Everything a reader actually wants is arithmetic over `capacity`,
+ * `confirmed` and `pending`, computed in `AvailabilityService.view`:
+ *
+ *   remaining = capacity - confirmed
+ *   open      = published and remaining > 0
+ *   booked    = confirmed > 0            (may still be open)
+ *   full      = remaining === 0          (cannot take another)
+ *
+ * Keeping those derived rather than stored is what stops "has bookings" and
+ * "cannot take another" collapsing into one flag, and what makes `remaining`
+ * impossible to get out of step with reality.
  */
 @Entity('vendor_availability_slots')
 @Index(['vendorId', 'date'])
@@ -49,18 +57,52 @@ export class VendorAvailabilitySlot {
   @Column({ type: 'int', default: 1 })
   capacity: number;
 
-  /** Confirmed bookings against the window. Never exceeds `capacity`. */
+  /**
+   * Confirmed bookings against the window. Never exceeds `capacity`.
+   *
+   * This is the only counter capacity is measured against: `remaining` is
+   * `capacity - confirmed`, and nothing else.
+   */
   @Column({ type: 'int', default: 0 })
-  booked: number;
+  confirmed: number;
+
+  /**
+   * Requests waiting on the vendor's answer.
+   *
+   * Deliberately **not** subtracted from capacity. A request is a question; a
+   * booking is the answer. Counting the question would take a caterer's
+   * five-team afternoon off sale because one family enquired about it — which
+   * is exactly what the previous design did.
+   */
+  @Column({ type: 'int', default: 0 })
+  pending: number;
 
   @Index()
   @Column({ type: 'enum', enum: SlotStatus, default: SlotStatus.AVAILABLE })
   status: SlotStatus;
 
-  /** The booking currently holding it, once one does. */
+  /**
+   * Historic. A window used to hold exactly one booking, and this was it.
+   *
+   * Kept so existing rows still load, and never written to now: with capacity
+   * a window holds several bookings, and `bookings.slotId` is the edge that
+   * carries them.
+   */
   @Index()
   @Column({ type: 'uuid', nullable: true })
   bookingId: string | null;
+
+  /**
+   * Which of the vendor's services this window is for.
+   *
+   * Null on a window published before the catalog existed, and on a vendor who
+   * has not moved onto it. When it is set, the service's `concurrentCapacity`
+   * is where this slot's capacity comes from — which is how a caterer runs
+   * five teams in one afternoon and a convention hall runs one.
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  vendorServiceId: string | null;
 
   @Column({ type: 'varchar', length: 200, nullable: true })
   note: string | null;

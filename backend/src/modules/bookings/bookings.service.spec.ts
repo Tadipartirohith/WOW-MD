@@ -16,6 +16,7 @@ import { AuditService } from '../../platform/audit/audit.service';
 import { SupportCasesService } from '../verification/support-cases.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { AvailabilityService } from '../vendors/availability.service';
+import { VendorServicesService } from '../catalog/vendor-services.service';
 import { PAYMENT_PROVIDER } from './payment.provider';
 import { BookingStatus, ProviderType, UserRole } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -70,10 +71,20 @@ describe('BookingsService', () => {
   const cases = { hasOpenCaseFor: jest.fn(async () => false) } as unknown as SupportCasesService;
   const matchmaking = { isMatchFixed: jest.fn(async () => true) } as unknown as MatchmakingService;
   const availability = {
-    isAvailable: jest.fn(async () => true),
+    isBookable: jest.fn(async () => true),
+    findSlot: jest.fn(async () => null),
     reserve: jest.fn(),
+    confirm: jest.fn(),
     release: jest.fn(),
   } as unknown as AvailabilityService;
+  // The catalog is what validates a buyer's answers against the form they were
+  // generated from. These tests never send answers, so it is only here to
+  // satisfy the constructor.
+  const vendorServices = {
+    validateBookingAnswers: jest.fn(async () => ({ service: { vendorId: 'v1' }, answers: {} })),
+    findOffering: jest.fn(async () => null),
+    findService: jest.fn(async () => null),
+  } as unknown as VendorServicesService;
   const cfg = {
     payments: {
       currency: 'INR',
@@ -134,6 +145,7 @@ describe('BookingsService', () => {
         { provide: SupportCasesService, useValue: cases },
         { provide: MatchmakingService, useValue: matchmaking },
         { provide: AvailabilityService, useValue: availability },
+        { provide: VendorServicesService, useValue: vendorServices },
         { provide: PAYMENT_PROVIDER, useValue: gateway },
       ],
     }).compile();

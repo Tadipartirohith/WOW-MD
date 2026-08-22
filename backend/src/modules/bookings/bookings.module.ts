@@ -11,6 +11,7 @@ import { AgentsModule } from '../agents/agents.module';
 import { VerificationModule } from '../verification/verification.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { VendorsModule } from '../vendors/vendors.module';
+import { CatalogModule } from '../catalog/catalog.module';
 import { BookingsService } from './bookings.service';
 import { QuotationsService } from './quotations.service';
 import { BookingsController } from './bookings.controller';
@@ -28,6 +29,7 @@ import {
     VerificationModule,
     MatchmakingModule,
     forwardRef(() => VendorsModule),
+    forwardRef(() => CatalogModule),
   ],
   providers: [
     BookingsService,

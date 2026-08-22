@@ -134,6 +134,23 @@ export class VendorsController {
 
   @ApiBearerAuth()
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'The slots behind one summary card',
+    description:
+      'Every counter the summary reports opens here. A card that shows a number nothing can ' +
+      'be done with is a card that appears clickable and does nothing.',
+  })
+  @Get(':id/availability/slots/by/:bucket')
+  availabilityBucket(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bucket') bucket: 'published' | 'open' | 'requested' | 'booked' | 'full' | 'blocked',
+    @Query() q: AvailabilityQueryDto,
+  ) {
+    return this.availability.filtered(id, bucket, q.from, q.to);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @ApiOperation({ summary: 'Per-date rollup, for painting the calendar' })
   @Get(':id/availability/calendar')
   availabilityCalendar(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
@@ -143,7 +160,10 @@ export class VendorsController {
   @Public()
   @ApiOperation({
     summary: 'Slots a buyer can actually book',
-    description: 'Blocked, pending and booked windows are absent rather than shown greyed out.',
+    description:
+      'Full and blocked windows are absent rather than greyed out. A window with confirmed ' +
+      'bookings but capacity left is present, with its counts, so the buyer sees ' +
+      '"3 of 5 taken, 2 left" rather than nothing.',
   })
   @Get(':id/availability')
   bookableSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {

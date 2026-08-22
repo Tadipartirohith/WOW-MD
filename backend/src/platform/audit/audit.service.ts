@@ -86,6 +86,13 @@ export const AuditAction = {
   USER_SUSPENDED: 'user.suspended',
   USER_REINSTATED: 'user.reinstated',
   DISPUTE_RESOLVED: 'dispute.resolved',
+
+  // The catalog is configuration that changes what every vendor can sell, so
+  // a change to it is a privileged action like any other. Auditing it is what
+  // lets somebody answer "when did this service stop allowing per-plate?".
+  CATALOG_CATEGORY_CHANGED: 'catalog.category_changed',
+  CATALOG_DEFINITION_CHANGED: 'catalog.definition_changed',
+  CATALOG_ATTRIBUTE_CHANGED: 'catalog.attribute_changed',
 } as const;
 
 export type AuditActionName = (typeof AuditAction)[keyof typeof AuditAction];

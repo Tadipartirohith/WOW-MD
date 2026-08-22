@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -29,15 +30,26 @@ export class CreateSlotDto {
 
   @ApiPropertyOptional({
     minimum: 1,
-    maximum: 50,
-    default: 1,
-    description: 'How many events this window can take. One for most vendors.',
+    maximum: 500,
+    description:
+      'How many bookings this window can take at once. Defaults to the service’s configured ' +
+      'capacity — five for a caterer running five teams, one for a convention hall.',
   })
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(50)
+  @Max(500)
   capacity?: number;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Which of the vendor’s services this window is for. Publishing per service is what lets ' +
+      'one afternoon be five catering bookings and one tasting.',
+  })
+  @IsOptional()
+  @IsUUID()
+  vendorServiceId?: string;
 
   @ApiPropertyOptional({ maxLength: 200 })
   @IsOptional()
@@ -57,11 +69,11 @@ export class UpdateSlotDto {
   @Matches(TIME_PATTERN, { message: TIME_MESSAGE })
   endTime?: string;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 50 })
+  @ApiPropertyOptional({ minimum: 1, maximum: 500 })
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(50)
+  @Max(500)
   capacity?: number;
 
   @ApiPropertyOptional({ maxLength: 200 })
