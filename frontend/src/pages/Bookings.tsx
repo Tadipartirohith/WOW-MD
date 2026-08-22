@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/permissions';
+import ProviderBookings from '../components/ProviderBookings';
 
 interface Booking {
   id: string;
@@ -84,6 +85,8 @@ export default function Bookings() {
   const canBuy = can(permissions, Permission.BOOKING_READ_OWN);
   const canPay = can(permissions, Permission.BOOKING_PAY);
   const canRaiseCase = can(permissions, Permission.CASE_RAISE);
+  const canSell = can(permissions, Permission.BOOKING_READ_INCOMING);
+  const canQuote = can(permissions, Permission.VENDOR_LISTING_MANAGE);
 
   const [params] = useSearchParams();
   const highlight = params.get('highlight');
@@ -113,14 +116,30 @@ export default function Bookings() {
     }
   }
 
+  // A provider does not buy; they answer. Same module, the other side of it —
+  // which is where the work belongs, rather than duplicated on the business
+  // page where it drifts out of step.
   if (!canBuy) {
+    if (!canSell) {
+      return (
+        <div className="card">
+          <h1 className="text-xl font-bold text-brand-dark">Bookings</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Your account does not book services.
+          </p>
+        </div>
+      );
+    }
     return (
-      <div className="card">
-        <h1 className="text-xl font-bold text-brand-dark">Bookings</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          Your account sells services rather than buying them. Bookings made against your listings
-          are in <strong>My Business</strong>.
-        </p>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-bold text-brand-dark">Bookings</h1>
+          <p className="text-sm text-gray-500">
+            Everything coming in against your listings, in the order the work moves. Accepting a
+            job is what takes the window off your calendar.
+          </p>
+        </div>
+        <ProviderBookings canQuote={canQuote} />
       </div>
     );
   }

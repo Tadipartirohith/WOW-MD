@@ -62,6 +62,19 @@ export class VendorServicesService {
   }
 
   /**
+   * Whether this caller owns the business, without refusing if they do not.
+   *
+   * The listing read is open to every signed-in account — a buyer choosing a
+   * service and a vendor editing one look at the same rows — so the answer
+   * decides how much of it comes back rather than whether anything does.
+   */
+  async ownsVendor(actor: AuthUser, vendorId: string): Promise<boolean> {
+    const vendor = await this.vendors.findOne({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException('Business not found');
+    return actor.role === UserRole.ADMIN || vendor.ownerUserId === actor.userId;
+  }
+
+  /**
    * Loads a vendor service and proves it belongs to the caller.
    *
    * Offerings are addressed by their own id, so without this an offering id

@@ -72,6 +72,7 @@ export const Permission = {
   ADMIN_VENDOR_APPROVE: 'admin:vendor:approve',
   ADMIN_ANALYTICS_READ: 'admin:analytics:read',
   ADMIN_DISPUTE_RESOLVE: 'admin:dispute:resolve',
+  CATALOG_MANAGE: 'catalog:manage',
 } as const;
 
 export type PermissionValue = (typeof Permission)[keyof typeof Permission];
@@ -194,23 +195,30 @@ export const MILESTONE_LABEL: Record<string, string> = {
   final: 'Balance',
 };
 
-/** Where a bookable window stands. */
-export type SlotStatus = 'available' | 'pending' | 'booked' | 'blocked' | 'cancelled';
+/**
+ * What a published window actually is, as the server reports it.
+ *
+ * Not the same as the vendor's own status. `booked` means the window has
+ * confirmed bookings and can still take more; `full` means it cannot. Keeping
+ * those apart is the whole point — a caterer with two of five teams booked is
+ * booked *and* open, and collapsing that into one flag is what took their
+ * afternoon off sale.
+ */
+export type SlotState = 'open' | 'booked' | 'full' | 'blocked' | 'cancelled';
 
-export const SLOT_STATUS_LABEL: Record<SlotStatus, string> = {
-  available: 'Available',
-  pending: 'Requested',
+export const SLOT_STATE_LABEL: Record<SlotState, string> = {
+  open: 'Open',
   booked: 'Booked',
+  full: 'Full',
   blocked: 'Blocked',
   cancelled: 'Cancelled',
 };
 
 /** How a calendar day reads at a glance. */
 export const DAY_STATE_LABEL: Record<string, string> = {
-  available: 'Available',
+  available: 'Open',
   partially_booked: 'Part booked',
   fully_booked: 'Fully booked',
-  pending: 'Requested',
   blocked: 'Blocked',
   no_availability: 'Nothing published',
 };

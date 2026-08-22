@@ -24,12 +24,15 @@ export class VendorServicesController {
     description:
       'Each service expanded with its catalog definition, the form its buyers will be asked, ' +
       'its prices, and whether it is bookable today — a service with no live price is a ' +
-      'description with nothing to submit against.',
+      'description with nothing to submit against. ' +
+      'Readable by anyone signed in, because a buyer choosing a service and a vendor editing ' +
+      'one are looking at the same rows; a caller who does not own the business sees only the ' +
+      'live services and prices.',
   })
-  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @Get()
-  list(@Param('vendorId', ParseUUIDPipe) vendorId: string) {
-    return this.services.listForVendor(vendorId);
+  async list(@CurrentUser() actor: AuthUser, @Param('vendorId', ParseUUIDPipe) vendorId: string) {
+    const mine = await this.services.ownsVendor(actor, vendorId);
+    return this.services.listForVendor(vendorId, !mine);
   }
 
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)

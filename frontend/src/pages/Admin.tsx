@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
+import CatalogAdmin from '../components/CatalogAdmin';
 
 interface Vendor {
   id: string;
@@ -127,6 +128,8 @@ export default function Admin() {
           </div>
         ))}
       </div>
+
+      <CatalogAdmin />
 
       {analytics?.matchmaking && (
         <div className="grid gap-4 lg:grid-cols-3">

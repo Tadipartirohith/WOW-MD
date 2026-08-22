@@ -360,6 +360,26 @@ c=$(req GET "/vendors/$LISTING/availability/summary?from=$SLOT_DATE&to=$SLOT_DAT
 body_has '"fullSlots":1' "the summary follows without being maintained by hand"
 
 echo
+echo "== 12b. A buyer reads the listing, but only the live parts of it =="
+# The vendor console and the buyer's request dialog read the same rows. What
+# differs is how much comes back: a retired service or a withdrawn price is the
+# vendor's business, not the buyer's.
+c=$(req PUT "/vendors/$LISTING/services/$VS/offerings/$OFFER" "{\"name\":\"Hourly\",\"pricingModel\":\"per_hour\",\"price\":\"8000\",\"unitLabel\":\"per hour\",\"minQuantity\":2,\"maxQuantity\":8,\"active\":true}" "$VENDOR")
+check "the hourly price stays live" "$c" 200
+
+c=$(req POST "/vendors/$LISTING/services/$VS/offerings" "{\"name\":\"Withdrawn\",\"pricingModel\":\"fixed\",\"price\":\"1\",\"active\":false}" "$VENDOR")
+check "vendor adds a price and immediately retires it" "$c" 201
+
+c=$(req GET "/vendors/$LISTING/services" "" "$VENDOR")
+check "the vendor sees their own listing" "$c" 200
+grep -q 'Withdrawn' /tmp/body && assert "including the retired price" 1 || assert "the retired price is missing from the vendor's own view" 0
+
+c=$(req GET "/vendors/$LISTING/services" "" "$BRIDE")
+check "a buyer can read the listing too" "$c" 200
+grep -q 'Withdrawn' /tmp/body && assert "a buyer was shown a withdrawn price" 0 || assert "but not the withdrawn price" 1
+body_has '"bookingForm"' "and gets the questions they will be asked"
+
+echo
 echo "== 13. Ownership =="
 reg other vendor ""
 OTHER=$(field /tmp/other.json accessToken)

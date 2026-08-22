@@ -101,43 +101,34 @@ const NAV: NavEntry[] = [
     requires: [Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE],
   },
   { to: '/notifications', label: 'Notifications', requires: [] },
+  // Security sits in the navigation rather than under the email dropdown:
+  // sessions, two-factor and recovery codes are things people go looking for,
+  // and a menu they have to discover first is a menu they never open.
+  { to: '/security', label: 'Security', requires: [] },
   { to: '/admin', label: 'Admin', requires: [Permission.ADMIN_ANALYTICS_READ] },
 ];
 
 /**
- * The bell.
+ * The unread count, shown on the Notifications tab.
+ *
+ * There used to be a bell here as well as the tab, which meant two controls
+ * for one thing and a count that could be a minute apart between them. The tab
+ * won: it is where the whole feed lives, and a badge on it says the same thing
+ * the bell did.
  *
  * Polled rather than pushed: the count is a single indexed count query, and a
  * socket that has to survive sleeping laptops and flaky mobile networks is a
  * lot of machinery for a number that can be a minute stale without anybody
  * being worse off.
  */
-function NotificationBell() {
+function useUnreadCount(): number {
   const { data } = useQuery({
     queryKey: ['unread-count'],
     queryFn: async () => (await api.get('/notifications/unread-count')).data,
     refetchInterval: 60_000,
     retry: false,
   });
-  const unread: number = data?.unread ?? 0;
-
-  return (
-    <Link
-      to="/notifications"
-      className="relative rounded p-2 text-gray-500 hover:bg-gray-100"
-      aria-label={unread > 0 ? `${unread} unread notifications` : 'Notifications'}
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M13.7 21a2 2 0 0 1-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      {unread > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-[18px] text-white">
-          {unread > 99 ? '99+' : unread}
-        </span>
-      )}
-    </Link>
-  );
+  return data?.unread ?? 0;
 }
 
 /**
@@ -195,9 +186,6 @@ function AccountMenu({
             <Link className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" to="/profile">
               My Profile
             </Link>
-            <Link className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" to="/security">
-              Security
-            </Link>
             <button
               className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
               onClick={onSignOut}
@@ -244,6 +232,7 @@ function Layout({ children }: { children: ReactNode }) {
 
   const permissions = user?.permissions ?? [];
   const visible = NAV.filter((n) => n.requires.length === 0 || canAny(permissions, n.requires));
+  const unread = useUnreadCount();
 
   return (
     <div className="min-h-screen">
@@ -264,11 +253,18 @@ function Layout({ children }: { children: ReactNode }) {
                 }`}
               >
                 {n.label}
+                {n.to === '/notifications' && unread > 0 && (
+                  <span
+                    className="ml-1.5 inline-block min-w-[18px] rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-[18px] text-white"
+                    aria-label={`${unread} unread`}
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            <NotificationBell />
             <AccountMenu email={user?.email} role={user?.role} onSignOut={signOut} />
           </div>
         </div>

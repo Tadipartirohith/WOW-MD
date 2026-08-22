@@ -129,8 +129,10 @@ const TILES: Tile[] = [
   {
     to: '/bookings',
     title: 'Bookings',
-    desc: 'Manage bookings and escrow',
-    requires: [Permission.BOOKING_READ_OWN],
+    // A provider reaches the same page from the other side — the work coming
+    // in against their listings, which used to be duplicated on My Business.
+    desc: 'Requests, quotations, confirmations and escrow',
+    requires: [Permission.BOOKING_READ_OWN, Permission.BOOKING_READ_INCOMING],
   },
   {
     to: '/genie',
