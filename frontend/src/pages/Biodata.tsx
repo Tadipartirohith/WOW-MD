@@ -15,6 +15,8 @@ import {
 } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
 import ProfilePhotos from '../components/ProfilePhotos';
+import SavedBiodata from '../components/SavedBiodata';
+import { formatDate } from '../lib/dates';
 
 interface Section {
   section: string;
@@ -192,6 +194,15 @@ export default function Biodata() {
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
       {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+
+      {/*
+        Read-back first, forms after. A form full of your own answers looks
+        exactly like a form you have not filled in yet, which is why people
+        saved, saw the same boxes and concluded nothing had been stored.
+      */}
+      <Accordion title="Saved details" name="saved" open={open} setOpen={setOpen}>
+        <SavedBiodata details={details} siblings={siblings} assets={assets} />
+      </Accordion>
 
       <Accordion title="Photographs" name="photos" open={open} setOpen={setOpen}>
         {targetId ? (
@@ -1092,8 +1103,12 @@ function AadhaarPanel({ profileId }: { profileId: string }) {
   if (data?.verifiedAt) {
     return (
       <div className="space-y-1">
-        <p className="text-sm text-gray-800">
-          Verified — Aadhaar ending <strong>{data.last4}</strong>
+        <p className="flex flex-wrap items-center gap-2 text-sm text-gray-800">
+          <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
+            Verified
+          </span>
+          Aadhaar ending <strong>{data.last4}</strong>
+          <span className="text-xs text-gray-500">on {formatDate(data.verifiedAt)}</span>
         </p>
         <p className="text-xs text-gray-500">
           The number itself was never stored. Only these four digits and a one-way fingerprint are
@@ -1132,6 +1147,26 @@ function AadhaarPanel({ profileId }: { profileId: string }) {
 
   return (
     <div className="space-y-3">
+      {/*
+        The half-finished state used to look identical to never having started:
+        somebody whose code expired saw a blank form and no idea whether their
+        earlier attempt had counted for anything.
+      */}
+      <p className="flex flex-wrap items-center gap-2 text-sm">
+        <span
+          className={`rounded-full px-2 py-1 text-xs font-medium ${
+            data?.submittedAt ? 'bg-amber-50 text-amber-800' : 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {data?.submittedAt ? 'Started, not verified' : 'Not verified'}
+        </span>
+        {data?.last4 && (
+          <span className="text-gray-700">
+            Aadhaar ending <strong>{data.last4}</strong> is on file
+          </span>
+        )}
+      </p>
+
       <p className="text-sm text-gray-600">
         One document, one profile — this is what keeps duplicates off the platform. The number is
         checked, turned into a fingerprint and discarded; only the last four digits are kept.

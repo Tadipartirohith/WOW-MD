@@ -57,7 +57,21 @@ export default function IdentityPanel({ profileId }: { profileId: string }) {
     return (
       <div className="card space-y-1">
         <h2 className="font-semibold text-gray-900">Identity</h2>
-        <p className="text-sm text-gray-700">
+        <p className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+          {/*
+            Said as a badge rather than buried in a sentence: whether a document
+            is merely on file or has actually been confirmed is the difference
+            people are looking for when they open this.
+          */}
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-medium ${
+              data.verifiedAt
+                ? 'bg-emerald-50 text-emerald-800'
+                : 'bg-amber-50 text-amber-800'
+            }`}
+          >
+            {data.verifiedAt ? 'Verified' : 'Awaiting verification'}
+          </span>
           {TYPES.find((t) => t.value === data.idType)?.label ?? data.idType} ending{' '}
           <strong>{data.last4}</strong>
         </p>
