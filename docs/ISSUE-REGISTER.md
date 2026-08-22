@@ -7,10 +7,9 @@ Status values:
 | --- | --- |
 | **done** | Implemented and covered by a live assertion |
 | **partial** | Implemented in part; what is missing is named |
-| **deferred** | Needs something the platform does not yet have (named below) |
 
-Live coverage referenced below comes from `scripts/verify-*.sh` — 618 assertions
-against a running stack, plus 137 automated tests. See
+Live coverage referenced below comes from `scripts/verify-*.sh` — 898 assertions
+against a running stack, plus 181 automated tests. See
 [DOCKER-AND-TESTING.md](DOCKER-AND-TESTING.md) for how to run them.
 
 ---
@@ -158,28 +157,21 @@ no.
 
 ---
 
-## Deferred, and why
+## Once deferred, now closed
 
-Two items need something the platform does not have yet. Both are named rather
-than quietly dropped:
+Four items were carried in this register as deferred, each for a stated reason.
+All four are built; see
+[NEW-ISSUE-REGISTER.md](NEW-ISSUE-REGISTER.md#nothing-deferred) for what each
+one turned out to need.
 
-- **TURN relays for the tail of calls (part of ENH-12).** Calling is built and
-  works peer-to-peer, which covers most home and mobile networks. A symmetric
-  NAT on either side needs a relay, and a relay costs money because it carries
-  the audio. `TURN_URL` and its credentials are read from the environment and
-  handed to the client on the offer, so enabling it is a deployment change.
-- **Real escrow payout.** `RazorpayPaymentProvider.release` logs rather than
-  transferring. Needs Razorpay Route, linked accounts, and per-vendor KYC. The
-  commission split is computed and recorded correctly throughout; nothing moves
-  until Route is configured.
-- **Geography-aware officer allocation.** `region` is recorded on an officer and
-  allocation still ranks purely by open workload. Doing it properly needs a
-  service-area model that does not exist, and guessing at one would allocate
-  worse than ignoring geography does.
-- **Live Aadhaar verification** runs against a mock provider today. The
-  interface, the OTP session, the hashing and the one-document-one-profile rule
-  are all real and tested; `AADHAAR_PROVIDER=licensed` switches to a live
-  provider once UIDAI credentials exist. Nothing about the stored data changes.
+- **TURN relays** — ephemeral coturn credentials, so a relay can be pointed at
+  safely rather than by handing every browser a permanent one.
+- **Real escrow payout** — Route transfers, plus a `PENDING_PAYOUT` state for
+  money that is earned but has nowhere to go yet.
+- **Geography-aware officer allocation** — a service-area model rather than the
+  guess that was worth avoiding.
+- **Live Aadhaar verification** — a real AUA/KUA integration behind the same
+  interface the mock implements.
 
 ---
 

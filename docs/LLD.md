@@ -23,7 +23,7 @@ Tables, routes, algorithms, configuration. The altitudes above are
 
 ## 1. Data model
 
-48 application tables across 48 entities, plus TypeORM's own `migrations`
+49 application tables across 49 entities, plus TypeORM's own `migrations`
 ledger. The core cluster is shown below; the marketplace, catalog, planning and
 media clusters hang off `users` in the same way.
 
@@ -68,7 +68,7 @@ Note the two distinct `users → profiles` edges: ownership and stewardship.
 | Matchmaking | `interests`, `conversations`, `messages` | Interests are profile-keyed; chat is account-keyed. Messages carry `redactedCount` so repeated attempts to pass a number across are visible without storing the number |
 | Marketplace | `vendors`, `planner_profiles`, `vendor_reviews`, `vendor_availability_slots`, `bookings`, `payments`, `quotations`, `disputes` | Payments hold the commission split and an idempotency key. A slot is a time window on a date carrying `capacity`, `confirmed` and `pending`; only `confirmed` is measured against capacity, and it moves when the vendor accepts the job |
 | Catalog | `service_categories`, `service_definitions`, `service_attributes`, `vendor_services`, `service_offerings` | Configuration rather than code: a new trade is rows an administrator writes. Answers live in validated jsonb, so an administrator adds a question without a migration and the validator stops that becoming a free-for-all |
-| Verification | `verification_requests`, `support_cases` | Both carry an append-only `history`. A case records which instalment it disputes, its evidence, whether it needs a physical visit, and the booking status to restore on settlement |
+| Verification | `verification_requests`, `officer_service_areas`, `support_cases` | A request carries the officer's findings and what the allocation went on. Coverage is rows rather than a region string, so a near-miss on a place name cannot read as no coverage. Both requests and cases carry an append-only `history`. A case records which instalment it disputes, its evidence, whether it needs a physical visit, and the booking status to restore on settlement |
 | Planning | `wedding_plans`, `plan_tasks`, `events`, `guests`, `event_invites` | Invites carry a hashed RSVP token for guests with no account, plus two head counts — how many were invited and how many are actually coming, which is what the caterer is ordered from |
 | Content | `albums`, `media_items`, `destinations`, `travel_packages`, `itineraries` | Albums support a public share token |
 | Platform | `audit_events`, `outbox_events`, `notifications` | Audit is append-only by design — no update or delete path exists |
@@ -160,7 +160,7 @@ Three rows are worth reading twice:
 
 ## 3. API surface
 
-256 routes over 26 controllers, prefixed `/api` and documented at `/api/docs`
+261 routes over 26 controllers, prefixed `/api` and documented at `/api/docs`
 via Swagger. 24 are public; everything else requires a bearer token and clears
 the guard chain in [§4](#4-request-lifecycle).
 
@@ -458,7 +458,7 @@ never `process.env`.
 | Mail | `MAIL_PROVIDER`, `MAIL_FROM`, `SMTP_*`, `APP_BASE_URL` |
 | SMS | `SMS_PROVIDER`, `SMS_URL`, `SMS_API_KEY`, `SMS_SENDER_ID`, `SMS_TEMPLATE_ID`, `PHONE_VERIFY_TTL_MINUTES` |
 | Identity | `AADHAAR_PROVIDER`, `GOVERNMENT_ID_PEPPER` |
-| Calling | `STUN_URLS`, `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` |
+| Calling | `STUN_URLS`, `TURN_URL`, `TURN_STATIC_AUTH_SECRET` (preferred), `TURN_REALM`, `TURN_CREDENTIAL_TTL_SECONDS`; `TURN_USERNAME` / `TURN_CREDENTIAL` for a relay that only does static auth |
 | Limits | `RATE_LIMIT_TTL`, `RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_MAX`, `PAGINATION_DEFAULT_LIMIT`, `PAGINATION_MAX_LIMIT` |
 | Optional | `NEO4J_ENABLED`, `KAFKA_ENABLED`, `MEDIA_STORAGE_PROVIDER`, `AI_PROVIDER` |
 
@@ -597,7 +597,7 @@ containers and exit non-zero on any failure.
 | `verify-phase2.sh` | 108 | The sectioned biodata and its completion report, Aadhaar OTP and one-document-one-profile, notifications, the accounts ledger, the chat dashboard and presence, events with per-event vendors, honeymoon search, match filters, disputes with milestone and evidence |
 | `verify-phase3.sh` | 61 | SMS delivery, phone verification, phone-only invitations, profile claim requests, recovery codes, data export and erasure, the pool quota, circulation reach, photo uploads |
 
-**854 live assertions plus 170 automated tests.** Each shell suite clears its
+**898 live assertions plus 181 automated tests.** Each shell suite clears its
 own Redis rate-limit counters first, since those deliberately survive restarts,
 and varies the data that carries a uniqueness constraint — phone numbers,
 identity documents, GST, Aadhaar — so a second run does not collide with the

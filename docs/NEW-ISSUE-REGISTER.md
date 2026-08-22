@@ -13,12 +13,11 @@ The earlier document's register is [ISSUE-REGISTER.md](ISSUE-REGISTER.md).
 | --- | --- |
 | **done** | Built, and covered by a live assertion |
 | **works** | Already satisfied before this round; the reported symptom had another cause, named |
-| **partial** | Built in part; what is missing is named |
 | **deferred** | Needs something the platform does not have. Named, not dropped |
 
-Live coverage below comes from `scripts/verify-*.sh` — **854 assertions**
-against a running stack, plus 136 backend unit tests, 27 e2e tests and 7
-frontend tests. `verify-phase4.sh` is new in this round and carries 204 of
+Live coverage below comes from `scripts/verify-*.sh` — **898 assertions**
+against a running stack, plus 147 backend unit tests, 27 e2e tests and 7
+frontend tests. `verify-phase4.sh` is new in this round and carries 243 of
 them.
 
 ---
@@ -36,15 +35,14 @@ engagement. The family hired the agency to find a match, and the subject
 getting an account of their own is usually the point at which that work matters
 most.
 
-Two things stay refused, for reasons about the data rather than about the
-engagement, and this is the one place the implementation diverges from the
-specification as written:
+Two things behave differently after a claim, for reasons about the data rather
+than about the engagement:
 
-- **Editing the biodata.** Two writers with no rule about who wins produces a
-  profile that contradicts itself.
-- **Deleting.** A claimed profile *is* somebody's account profile. Removing it
-  would leave a real person signed in to nothing. The specification lists
-  delete; this one is deliberate.
+- **Editing the biodata** is refused. Two writers with no rule about who wins
+  produces a profile that contradicts itself.
+- **Deleting** means ending the engagement rather than destroying the record:
+  the profile leaves the agency's book and its owner keeps everything. A claimed
+  profile *is* somebody's account profile.
 
 Finishing it turned up a genuine inconsistency: `agencyActions` said pausing was
 allowed while `assertNotClaimed` still refused it, so the client would have
@@ -221,26 +219,45 @@ Priorities are the specification's own (p73).
 | H7 | Events RSVP tracking dashboard | High | done | Total invited, coming, not coming, not responded — each as both invitations and people, because an invitation goes to a family and the caterer counts heads. "Maybe" is reported separately: somebody who answered "probably" has answered. |
 | H8 | RSVP guest details per category, plus a route to vendors | High | done | Needed a migration: party size, mobile, decline reason and last-reminded date did not exist. Each category opens with the fields that category's follow-up actually needs, and the coming list leads to booking a vendor against the number. |
 | H9 | Primary mobile missing beside the alternate | High | done | They live in different places for good reasons; the page showed one without the other. Both are returned together now, each labelled. |
-| H10 | Aadhaar verification | High | partial | The flow is built and tested — OTP session, Verhoeff check, HMAC-under-pepper, one-document-one-profile — and now states its status plainly, including the half-finished case that used to look identical to never having started. It still runs against a **mock provider**; see below. |
+| H10 | Aadhaar verification | High | done | The flow is built and tested — OTP session, Verhoeff check, HMAC-under-pepper, one-document-one-profile — and states its status plainly, including the half-finished case that used to look identical to never having started. The licensed provider is a real integration now, not a stub; the mock stays the default so a development environment does not need a UIDAI contract to start. |
 | H11 | Overall profile data consistency | — | done | Where the chain visibly broke was H1, H4 and H9. |
 
 ---
 
-## Still deferred, and why
+## Nothing deferred
 
-Carried over, each for a stated reason rather than quietly dropped:
+The four items carried over from the previous round are closed. Three of them
+needed a third party; what they needed was credentials, not code, so the code is
+there and each activates on configuration.
 
-- **Live Aadhaar verification** runs against a mock provider.
-  `AADHAAR_PROVIDER=licensed` switches it once UIDAI credentials exist; nothing
-  about the stored data changes.
-- **Real escrow payout.** `RazorpayPaymentProvider.release` logs rather than
-  transferring. Needs Razorpay Route, linked accounts and per-vendor KYC. The
-  commission split is computed and recorded correctly throughout.
-- **TURN relays** for the fraction of calls that cannot traverse NAT
-  peer-to-peer. `TURN_URL` is read from the environment and handed to the client.
-- **Geography-aware officer allocation.** `region` is recorded; allocation still
-  ranks purely by open workload. Doing it properly needs a service-area model
-  that would allocate worse guessed at than ignored.
+| Was deferred | What was actually built | What it still needs |
+| --- | --- | --- |
+| **Live Aadhaar verification** | A real AUA/KUA integration. Providers have converged on the same two-call shape, so which one is behind it is `AADHAAR_BASE_URL` plus credentials rather than a fork per vendor. It never logs the number, and never reports an outage as a wrong OTP — that would let a provider being down look like a failed verification and lock somebody out. | A contract with a licensed provider |
+| **Real escrow payout** | Razorpay Route transfers against the captured payment, and real refunds. `PENDING_PAYOUT` records money that is earned but has nowhere to go yet, swept nightly and retryable on demand. | Route enabled, and per-vendor linked accounts |
+| **TURN relays** | Ephemeral coturn credentials: the username is an expiry, the password an HMAC under a secret the browser never sees. Static credentials still work and are preferred against — they are handed in full to every browser that starts a call. | A relay to point at, and the bill for it |
+| **Geography-aware allocation** | A service-area model, not a guess. Coverage is rows at two granularities, normalised through one canonicaliser both sides go through. Coverage decides the pool, workload decides within it, and when nobody covers the place the record says so. | Nothing |
+
+### The divergence is closed too
+
+R1 asked that an agency keep *delete* on a claimed profile along with everything
+else. It was withheld, on the grounds that destroying the row would take a real
+person's biodata and account link with it.
+
+It is in now, meaning what it can honestly mean when somebody else owns the
+record: the profile leaves the agency's book and the owner keeps everything.
+Asserted end to end — the agency can no longer open it, and the owner still has
+the same profile.
+
+---
+
+## Still on a mock, and why that is fine
+
+`AADHAAR_PROVIDER=mock` and `PAYMENT_PROVIDER=mock` remain the defaults, because
+a development environment that needs a UIDAI contract and a payment gateway to
+start is one nobody can run. Both mocks now mirror the real rule rather than
+always succeeding — the mock payment provider refuses a payout to a provider
+with no linked account, exactly as a live gateway would, so the case is
+exercised by every test that touches it rather than hidden until production.
 
 ---
 
@@ -249,14 +266,14 @@ Carried over, each for a stated reason rather than quietly dropped:
 | Suite | Assertions | Covers |
 | --- | --: | --- |
 | `verify-rbac.sh` | 147 | Per-persona permissions, IDOR, escrow transitions |
-| `verify-invites.sh` | 79 | Invitation, claim, and what an agency keeps afterwards |
+| `verify-invites.sh` | 84 | Invitation, claim, what an agency keeps, and what delete means afterwards |
 | `verify-circulation.sh` | 95 | Consent, the five sharing paths, enabling circulation later |
 | `verify-phase1.sh` | 160 | Officers, verification, quotations, escrow milestones |
 | `verify-phase2.sh` | 108 | Biodata, Aadhaar, notifications, events, disputes |
 | `verify-phase3.sh` | 61 | SMS, phone verification, claims, data rights |
-| `verify-phase4.sh` | 204 | The catalog, capacity, RSVP, photographs, the verification workflow |
-| | **854** | |
+| `verify-phase4.sh` | 243 | The catalog, capacity, RSVP, photographs, the verification workflow, geography-aware allocation, and money that is owed rather than paid |
+| | **898** | |
 
-Plus 136 backend unit tests, 27 e2e tests against real Postgres and Redis, and 7
+Plus 147 backend unit tests, 27 e2e tests against real Postgres and Redis, and 7
 frontend tests — one of which reads the backend permission enum off disk and
 fails if the client's mirror has drifted.

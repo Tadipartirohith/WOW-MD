@@ -263,15 +263,20 @@ platform therefore never stores the number: it is checked, turned into an HMAC
 under a server-side pepper, and discarded, leaving only the last four digits.
 This is a design constraint that improved the design.
 
-**Commercial.** Real escrow *payout* needs Razorpay Route with linked accounts
-and per-vendor KYC. Until that exists the split is computed and recorded
-correctly, and release is a logged no-op. This is the largest gap between the
-system as designed and the system as deployable.
+**Commercial.** Escrow *payout* runs through Razorpay Route, which needs a
+linked account per provider and their KYC. That is a fact about the provider
+rather than about the platform, and it does not arrive on the day they finish a
+job — so a completed booking whose provider has no account yet leaves the money
+in `PENDING_PAYOUT`: earned, owed, and not yet moved. Saying that plainly is the
+whole point. A platform that marked it released would be reporting a payment it
+had not made.
 
 **Physical.** Roughly one network in ten cannot traverse NAT peer-to-peer, so a
 fraction of calls need a TURN relay — which costs money precisely because it
-carries the audio. The ICE configuration is environment-driven so enabling it
-is a deployment change.
+carries the audio. Enabling one is a deployment change. The credentials handed
+to the browser are ephemeral rather than static: a static pair reaches every
+caller in full, and the first person to open developer tools has a relay they
+can use for anything, on your bill.
 
 **Market.** SMS in India requires DLT-registered templates per message type.
 The SMS provider interface takes a template id for exactly this reason.

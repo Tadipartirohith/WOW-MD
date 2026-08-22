@@ -293,9 +293,16 @@ Sending a request back clears the findings and returns it to the officer's
 queue, and the revisits are counted: a third visit usually means the request is
 unanswerable rather than merely incomplete, and somebody should look at why.
 
-Allocation defaults to the officer carrying the fewest open cases, and the
-picker ranks by that — a name picked off an unsorted list is how one officer
-ends up with everything. Work an officer has *submitted* is reported but not
+Allocation considers where the applicant actually is. Coverage decides the pool
+— officers whose service areas include that city, then that state — and workload
+decides within it, so the visit goes to the nearest officer who is not already
+buried rather than to whoever happens to be free four hundred kilometres away.
+
+Place names are matched through one canonicaliser both sides go through, since
+"Hyderabad", "hyderabad " and "Hyderabad, Telangana" are one city and an
+equality check reads two of them as no coverage at all. When nobody covers the
+place, the allocation falls back to workload and *records that it did* — a
+staffing gap nobody can see is one nobody fixes. Work an officer has *submitted* is reported but not
 counted against them: their part is finished, and holding it against them would
 starve the busiest officer of new work while an administrator sat on a backlog.
 
@@ -485,7 +492,8 @@ Call authorization reuses the chat rule exactly: if you may not message
 somebody, you may not ring them. The honest consequence is that a call behind a
 symmetric NAT will not connect without a TURN relay; the ICE configuration comes
 from the environment, and a call that cannot traverse says so rather than
-ringing forever.
+ringing forever. The relay credentials are minted per call and expire, because
+whatever is in that configuration reaches every browser that starts one.
 
 ---
 
