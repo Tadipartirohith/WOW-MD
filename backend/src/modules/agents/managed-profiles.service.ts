@@ -39,9 +39,9 @@ import { ProfileClaimStatus, UserRole } from '../../common/enums';
  * profile, managing its photographs and running its lifecycle, because the
  * family hired them to find a match and the subject getting an account is
  * usually the point at which that work matters most. What the agency loses is
- * the biodata — two writers with no rule about who wins produces a profile that
- * contradicts itself — and the ability to delete, since a claimed profile is
- * somebody's account profile.
+ * the biodata: two writers with no rule about who wins produces a profile that
+ * contradicts itself. Delete stays available, but on a claimed profile it ends
+ * the engagement rather than destroying a record its owner now depends on.
  */
 @Injectable()
 export class ManagedProfilesService {
@@ -461,20 +461,83 @@ export class ManagedProfilesService {
       canInvite: !claimed && Boolean(profile.contactEmail),
       canPause: !archived,
       canClose: !archived,
-      // Deleting stays refused: a claimed profile *is* somebody's account
-      // profile, and removing it would leave a real person signed in to
-      // nothing. Every other action survives the claim.
-      canDelete: !claimed,
+      // Available after a claim too, but it means something different there:
+      // ending the engagement rather than destroying somebody's account
+      // profile. `remove()` carries that distinction, and says which happened.
+      canDelete: true,
     };
   }
 
-  async remove(actor: AuthUser, profileId: string): Promise<{ success: true }> {
+  /**
+   * Take a profile off the agency's book.
+   *
+   * What that means depends on who owns the record, and the difference is not
+   * cosmetic.
+   *
+   * An **unclaimed** profile exists only because the agency wrote it up. There
+   * is no account behind it and nobody else has a claim on it, so deleting
+   * removes it.
+   *
+   * A **claimed** profile is somebody's own. The specification asks for delete
+   * to remain available after a claim, and it now is — but destroying the row
+   * would take a real person's biodata, consents and matchmaking history with
+   * it and leave them signed in to nothing. So for a claimed profile this ends
+   * the *engagement*: the profile leaves the agency's book and the owner keeps
+   * everything. That is what the button means to an agent either way — "get
+   * this off my list" — and it is the only reading where it cannot destroy an
+   * account that is not theirs.
+   *
+   * The consent record and the agency's own billing history survive both paths.
+   * They are what the platform answers for its own conduct with, and an agency
+   * closing a file is not a reason to lose them.
+   */
+  async remove(
+    actor: AuthUser,
+    profileId: string,
+  ): Promise<{ success: true; released: boolean; message: string }> {
     const profile = await this.findOne(actor, profileId);
-    if (profile.claimStatus === ProfileClaimStatus.CLAIMED) {
-      throw new ForbiddenException('A claimed profile belongs to its owner and cannot be deleted here.');
+    const claimed = profile.claimStatus === ProfileClaimStatus.CLAIMED;
+
+    if (claimed) {
+      profile.managedByUserId = null;
+      // Circulation runs on the agency's consent record and their reach. With
+      // the engagement over, neither applies, so the profile goes back to
+      // private rather than staying in a pool it was put into on the agency's
+      // account.
+      profile.networkVisibility = NetworkVisibility.PRIVATE;
+      await this.profiles.save(profile);
+
+      await this.audit.record({
+        action: AuditAction.PROFILE_ARCHIVED,
+        actor,
+        resourceType: 'profile',
+        resourceId: profileId,
+        metadata: { released: true, ownerUserId: profile.userId },
+      });
+
+      return {
+        success: true,
+        released: true,
+        message:
+          'Removed from your book. The profile belongs to its owner, so their details and ' +
+          'history stay with them.',
+      };
     }
+
     await this.profiles.remove(profile);
-    return { success: true };
+    await this.audit.record({
+      action: AuditAction.PROFILE_ARCHIVED,
+      actor,
+      resourceType: 'profile',
+      resourceId: profileId,
+      metadata: { released: false, deleted: true },
+    });
+
+    return {
+      success: true,
+      released: false,
+      message: 'Deleted. Nobody had claimed this profile, so nothing of theirs was attached to it.',
+    };
   }
 
   /**

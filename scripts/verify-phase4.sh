@@ -646,6 +646,121 @@ c=$(req GET /notifications "" "$GROOM")
 body_has '"type":"booking_quotation"' "and the buyer hears about the quotation"
 
 echo
+echo "== 23. Allocation that knows where the applicant is =="
+# Two officers, one covering the applicant's city and carrying work, one
+# covering nowhere and carrying nothing. Workload alone picks the wrong one.
+req POST /verification/officers "{\"email\":\"geo-a-$STAMP@wow.local\",\"name\":\"Geo A $STAMP\"}" "$ADMIN" >/dev/null
+GEO_A=$(field /tmp/body id)
+req POST /verification/officers "{\"email\":\"geo-b-$STAMP@wow.local\",\"name\":\"Geo B $STAMP\"}" "$ADMIN" >/dev/null
+GEO_B=$(field /tmp/body id)
+
+c=$(req POST "/verification/officers/$GEO_A/areas" '{"city":"Hyderabad"}' "$ADMIN")
+check "an officer is given a city to cover" "$c" 201
+c=$(req POST "/verification/officers/$GEO_A/areas" '{"city":"Bangalore"}' "$ADMIN")
+check "and a second one" "$c" 201
+
+# The whole reason this was deferred: "Bengaluru" and "Bangalore" are one city,
+# and a matcher that misses that sends the visit to the wrong person.
+c=$(req POST "/verification/officers/$GEO_A/areas" '{"city":"Bengaluru"}' "$ADMIN")
+check "adding the same city under its other name is caught" "$c" 400
+body_has 'already cover' "and says so rather than silently duplicating"
+
+c=$(req POST "/verification/officers/$GEO_B/areas" '{}' "$ADMIN")
+check "an area with neither a city nor a state is refused" "$c" 400
+
+c=$(req GET "/verification/officers/$GEO_A/areas" "" "$ADMIN")
+check "their coverage is readable" "$c" 200
+assert "two areas, not three" "$(jq -e 'length == 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# A third business, in Hyderabad, allocated automatically.
+reg vendor3 vendor ""
+VENDOR3=$(field /tmp/vendor3.json accessToken)
+GST3=$(printf '36QWERT%04dG1Z5' "$(( (RANDOM + 311) % 10000 ))")
+c=$(req POST /vendors "{\"name\":\"Geo $STAMP\",\"category\":\"decor\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GST3\",\"panNumber\":\"QWERT4321H\",\"registeredAddress\":\"4 Kondapur, Hyderabad\",\"contactPhone\":\"9876543288\"}" "$VENDOR3")
+check "a Hyderabad business applies" "$c" 201
+LISTING3=$(field /tmp/body id)
+
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+REQ3=$(jq -r --arg id "$LISTING3" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
+assert "it raised a request" "$([ -n "$REQ3" ] && echo 1 || echo 0)"
+
+c=$(req PUT "/verification/requests/$REQ3/allocate" '{}' "$ADMIN")
+check "the platform allocates it without being told who to" "$c" 200
+body_has '"allocationBasis":"primary_area"' "on coverage rather than workload alone"
+# Stored as the applicant wrote it, not normalised: the normalised form is for
+# matching, and an administrator reading the record wants the real spelling.
+body_has '"applicantCity":"Hyderabad"' "recording where the applicant actually is"
+assert "and it went to the officer who covers Hyderabad" "$(jq -e --arg o "$GEO_A" '.assignedToUserId == $o' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# An officer covering a whole state, for a city nobody lists individually.
+c=$(req POST "/verification/officers/$GEO_B/areas" '{"state":"Telangana"}' "$ADMIN")
+check "another officer covers a whole state" "$c" 201
+
+reg vendor4 vendor ""
+VENDOR4=$(field /tmp/vendor4.json accessToken)
+GST4=$(printf '36ASDFG%04dJ1Z5' "$(( (RANDOM + 577) % 10000 ))")
+c=$(req POST /vendors "{\"name\":\"Warangal $STAMP\",\"category\":\"decor\",\"city\":\"Warangal, Telangana\",\"gstNumber\":\"$GST4\",\"panNumber\":\"ASDFG8765K\",\"registeredAddress\":\"2 Hanamkonda, Warangal\",\"contactPhone\":\"9876543277\"}" "$VENDOR4")
+check "a business applies from a city nobody lists" "$c" 201
+LISTING4=$(field /tmp/body id)
+
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+REQ4=$(jq -r --arg id "$LISTING4" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
+c=$(req PUT "/verification/requests/$REQ4/allocate" '{}' "$ADMIN")
+check "it is allocated" "$c" 200
+body_has '"allocationBasis":"state"' "falling back to whoever covers the state"
+
+c=$(req DELETE "/verification/areas/$(req GET "/verification/officers/$GEO_A/areas" "" "$ADMIN" >/dev/null; jq -r '.[0].id' /tmp/body)" "" "$ADMIN")
+check "coverage can be withdrawn" "$c" 200
+
+echo
+echo "== 24. Escrow knows the difference between paid and owed =="
+# The vendor from section 4 has no payout account, so completing a job cannot
+# move the money — and that has to be visible rather than silently "released".
+# Money and work alternate all the way down, so the whole ladder is walked.
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
+check "the buyer pays the advance" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
+check "the vendor starts work" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"second"}' "$BRIDE")
+check "the second instalment goes in" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")
+check "the vendor delivers the job" "$c" 200
+c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
+check "the buyer pays the balance" "$c" 200
+
+# Settling is what actually moves the money, and it is the step that discovers
+# there is nowhere to move it to.
+c=$(req PUT "/bookings/$BOOKING/settle" "" "$VENDOR")
+check "the escrow is settled" "$c" 200
+
+c=$(req GET /bookings/earnings "" "$VENDOR")
+check "the vendor's ledger is readable" "$c" 200
+grep -q 'pending_payout' /tmp/body && assert "money the platform owes is marked owed, not paid" 1 || assert "an unpayable release was recorded as paid" 0
+assert "and reported as its own figure rather than dropping out of the totals" "$(jq -e '.pendingPayout != "0.00"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "with nothing claimed as released" "$(jq -e '.released == "0.00"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+grep -q 'payout onboarding\|payout account' /tmp/body && assert "with the reason on the row, not only in a log" 1 || assert "nothing says why it has not been paid" 0
+
+c=$(req PUT "/vendors/$LISTING/payout-account" '{"payoutAccountId":"not-an-account"}' "$VENDOR")
+check "a payout account that is not one is refused" "$c" 400
+c=$(req PUT "/vendors/$LISTING/payout-account" '{"payoutAccountId":"acc_TESTLINKED001"}' "$VENDOR")
+check "the vendor registers their linked account" "$c" 200
+c=$(req PUT "/vendors/$LISTING/payout-account" '{"payoutAccountId":"acc_OTHER"}' "$VENDOR2")
+check "somebody else cannot redirect their payouts" "$c" 403
+
+# The loop closes when the provider finishes onboarding, which happens long
+# after the job did — so it is swept rather than waited for.
+c=$(req POST /admin/payouts/retry "" "$ADMIN")
+check "an administrator can run the payout sweep" "$c" 200
+body_has '"released"' "and it reports what it moved"
+
+c=$(req GET /bookings/earnings "" "$VENDOR")
+assert "the money that was owed has now been paid" "$(jq -e '.pendingPayout == "0.00" and .released != "0.00"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+grep -q 'mock_txn_' /tmp/body && assert "with the gateway reference on the row" 1 || assert "no transfer reference was recorded" 0
+
+c=$(req POST /admin/payouts/retry "" "$VENDOR")
+check "a vendor cannot run it" "$c" 403
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

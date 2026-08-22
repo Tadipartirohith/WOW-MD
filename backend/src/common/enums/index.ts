@@ -311,6 +311,16 @@ export enum PaymentStatus {
    */
   DISPUTED = 'disputed',
   RELEASED = 'released',
+  /**
+   * Owed to the provider, but not yet moved.
+   *
+   * The work is done and the money is no longer the buyer's, but the provider
+   * has no linked payout account for the gateway to transfer to — usually
+   * because their onboarding is still clearing. Distinct from RELEASED because
+   * "we paid them" and "we owe them" are different facts, and collapsing them
+   * is how a platform loses track of money it is holding.
+   */
+  PENDING_PAYOUT = 'pending_payout',
   REFUNDED = 'refunded',
   /** Partially settled: some released, the remainder refunded. */
   PARTIALLY_SETTLED = 'partially_settled',

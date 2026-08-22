@@ -20,6 +20,7 @@ import {
   CreateVendorDto,
   UpdateVendorDto,
   VendorSearchDto,
+  PayoutAccountDto,
 } from './dto/vendor.dto';
 import {
   AvailabilityQueryDto,
@@ -190,6 +191,23 @@ export class VendorsController {
   @Get('me')
   listOwn(@CurrentUser('userId') userId: string) {
     return this.vendors.listOwn(userId);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'Where escrow pays out to',
+    description:
+      'The gateway linked account for this business. Its own route rather than a field on the ' +
+      'listing form: it is the one value on a business record that decides where money lands.',
+  })
+  @Put(':id/payout-account')
+  setPayoutAccount(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PayoutAccountDto,
+  ) {
+    return this.vendors.setPayoutAccount(userId, id, dto.payoutAccountId);
   }
 
   @ApiBearerAuth()

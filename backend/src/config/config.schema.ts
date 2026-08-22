@@ -75,6 +75,17 @@ export const configValidationSchema = Joi.object({
   // Identity verification. 'mock' returns the OTP on the response for local
   // use; anything else needs a licensed AUA/KUA integration.
   AADHAAR_PROVIDER: Joi.string().valid('mock', 'licensed').default('mock'),
+  // Required together once the provider is licensed: two out of three is a
+  // deployment that starts cleanly and fails on the first person who tries to
+  // verify, which is the worst moment to find out.
+  AADHAAR_BASE_URL: Joi.string()
+    .uri()
+    .allow('')
+    .when('AADHAAR_PROVIDER', { is: 'licensed', then: Joi.string().uri().required() }),
+  AADHAAR_CLIENT_ID: Joi.string().allow('').optional(),
+  AADHAAR_CLIENT_SECRET: Joi.string().allow('').optional(),
+  AADHAAR_TIMEOUT_MS: Joi.number().min(1000).max(60_000).optional(),
+  /** The former names for CLIENT_ID / CLIENT_SECRET. Still honoured. */
   AADHAAR_API_KEY: Joi.string().allow('').optional(),
   AADHAAR_API_SECRET: Joi.string().allow('').optional(),
 
@@ -135,8 +146,15 @@ export const configValidationSchema = Joi.object({
   POOL_QUOTA_PER_AGENCY: Joi.number().min(1).max(10000).default(50),
   STUN_URLS: Joi.string().allow('').optional(),
   TURN_URL: Joi.string().allow('').optional(),
+  // Static credentials are handed in full to every browser that starts a call.
+  // They work, and the first person to open developer tools has your relay.
   TURN_USERNAME: Joi.string().allow('').optional(),
   TURN_CREDENTIAL: Joi.string().allow('').optional(),
+  // coturn's REST convention: the browser gets a credential that expires, and
+  // the secret behind it never leaves the server. Preferred when both are set.
+  TURN_STATIC_AUTH_SECRET: Joi.string().allow('').optional(),
+  TURN_REALM: Joi.string().allow('').optional(),
+  TURN_CREDENTIAL_TTL_SECONDS: Joi.number().min(300).max(86_400).optional(),
   SMS_PROVIDER: Joi.string().valid('log', 'http').default('log'),
   SMS_URL: Joi.string().allow('').optional(),
   SMS_API_KEY: Joi.string().allow('').optional(),

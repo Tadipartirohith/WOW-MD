@@ -160,7 +160,18 @@ export class AgentBillingService {
     const released: AgentCharge[] = [];
     for (const charge of held) {
       if (charge.providerRef) {
-        await this.gateway.release(charge.providerRef, charge.payoutAmount, charge.currency);
+        // An agency fee is collected by the platform and settled to the agency
+        // out of band — there is no linked account per agency, so this releases
+        // the hold rather than transferring. Recorded either way, so the ledger
+        // shows what the gateway actually did.
+        const result = await this.gateway.release(
+          charge.providerRef,
+          charge.payoutAmount,
+          charge.currency,
+          { accountId: null, label: 'agency fee' },
+        );
+        charge.payoutRef = result.transferRef;
+        charge.payoutNote = result.reason;
       }
       charge.status = PaymentStatus.RELEASED;
       charge.releasedAt = new Date();

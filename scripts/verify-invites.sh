@@ -275,9 +275,9 @@ else
   jq -e '.actions.canPause == true' /tmp/body >/dev/null \
     && assert "and still pause it" 1 \
     || assert "pausing was wrongly withdrawn at claim" 0
-  jq -e '.actions.canDelete == false' /tmp/body >/dev/null \
-    && assert "but cannot delete something its owner now controls" 1 \
-    || assert "a claimed profile can be deleted by the agency" 0
+  jq -e '.actions.canDelete == true' /tmp/body >/dev/null \
+    && assert "and can take it off their book" 1 \
+    || assert "delete was withheld after the claim" 0
 
   c=$(req POST "/agents/profiles/$MANAGED/photos" '{"url":"https://cdn.example.com/claimed.jpg"}' "$AGENT")
   check "the server agrees: a photograph still goes on" "$c" 201
@@ -287,6 +287,24 @@ else
   grep -q "priya-$STAMP@t.com" /tmp/body \
     && assert "book of business retained after claiming" 1 \
     || assert "book of business retained after claiming" 0
+
+  # Delete means something different once somebody owns the record: it ends the
+  # engagement rather than destroying a profile they now depend on. Anything
+  # else would leave a real person signed in to nothing.
+  c=$(req DELETE "/agents/profiles/$MANAGED" "" "$AGENT")
+  check "the agency takes it off their book" "$c" 200
+  grep -q '"released":true' /tmp/body \
+    && assert "released rather than destroyed" 1 \
+    || assert "a claimed profile was destroyed outright" 0
+
+  c=$(req GET "/agents/profiles/$MANAGED" "" "$AGENT")
+  check "and it is no longer theirs to open" "$c" 403
+
+  c=$(req GET /users/me "" "$CLAIMED")
+  check "while the owner still has their profile" "$c" 200
+  grep -q "$MANAGED" /tmp/body \
+    && assert "the same one, intact" 1 \
+    || assert "the owner lost their profile when the agency closed the file" 0
 fi
 
 echo

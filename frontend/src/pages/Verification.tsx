@@ -31,6 +31,9 @@ interface VerificationRequest {
   createdAt: string;
   findings: VerificationFindings | null;
   revisitCount: number;
+  /** What the automatic allocation went on. Absent on an older request. */
+  allocationBasis?: string | null;
+  applicantCity?: string | null;
 }
 
 interface SupportCase {
@@ -410,7 +413,18 @@ function RequestRow({
           <p className="font-medium capitalize">{request.applicantType} verification</p>
           <p className="text-xs text-gray-500">
             Raised {new Date(request.createdAt).toLocaleDateString()}
+            {request.applicantCity ? ` · ${request.applicantCity}` : ''}
           </p>
+          {/*
+            An allocation made on workload alone because nobody covers that city
+            is a staffing gap, and it is invisible once the allocation has
+            happened unless it is said here.
+          */}
+          {request.allocationBasis === 'workload_only' && request.applicantCity && (
+            <p className="mt-0.5 text-xs text-amber-700">
+              Nobody covers {request.applicantCity} — allocated on workload alone
+            </p>
+          )}
         </div>
         <Pill status={request.status} />
       </div>
@@ -1006,9 +1020,10 @@ function OfficersPanel({
             key={o.id}
             className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
           >
-            <div>
+            <div className="min-w-0">
               <p className="font-medium">{o.name}</p>
               <p className="text-xs text-gray-500">{o.email}</p>
+              <ServiceAreas officerId={o.id} onRun={onRun} />
             </div>
             <button
               className="btn-outline"
@@ -1135,6 +1150,125 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
     <div>
       <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
       <dd className="text-gray-800">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * Where an officer will actually travel.
+ *
+ * Allocation ranked on open workload alone until this existed, which sends the
+ * lightest-loaded officer four hundred kilometres to look at a kitchen.
+ * Coverage decides the pool and workload decides within it, so an officer with
+ * no areas is only ever a fallback — worth being able to see at a glance.
+ */
+function ServiceAreas({
+  officerId,
+  onRun,
+}: {
+  officerId: string;
+  onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
+}) {
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [place, setPlace] = useState('');
+  const [scope, setScope] = useState<'city' | 'state'>('city');
+  const [primary, setPrimary] = useState(true);
+
+  const { data: areas = [] } = useQuery<
+    { id: string; label: string; city: string | null; state: string | null; primary: boolean }[]
+  >({
+    queryKey: ['officer-areas', officerId],
+    queryFn: async () => (await api.get(`/verification/officers/${officerId}/areas`)).data,
+    retry: false,
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['officer-areas', officerId] });
+
+  return (
+    <div className="mt-1">
+      <div className="flex flex-wrap items-center gap-1">
+        {areas.map((a) => (
+          <span
+            key={a.id}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+              a.primary ? 'bg-brand/10 text-brand' : 'bg-gray-100 text-gray-600'
+            }`}
+            title={a.state && !a.city ? 'Whole state' : a.primary ? 'Primary area' : 'Will travel'}
+          >
+            {a.label}
+            {a.state && !a.city ? ' (state)' : ''}
+            <button
+              type="button"
+              className="text-gray-400 hover:text-red-600"
+              onClick={() =>
+                onRun(async () => {
+                  await api.delete(`/verification/areas/${a.id}`);
+                  await refresh();
+                })
+              }
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {areas.length === 0 && (
+          <span className="text-xs text-amber-700">
+            Covers nowhere — only allocated when nobody else fits
+          </span>
+        )}
+        <button
+          type="button"
+          className="text-xs text-brand underline"
+          onClick={() => setAdding(!adding)}
+        >
+          {adding ? 'cancel' : '+ area'}
+        </button>
+      </div>
+
+      {adding && (
+        <form
+          className="mt-2 flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!place.trim()) return;
+            void onRun(async () => {
+              await api.post(`/verification/officers/${officerId}/areas`, {
+                [scope]: place.trim(),
+                primary,
+              });
+              await refresh();
+              setPlace('');
+              setAdding(false);
+            }, 'Coverage added.');
+          }}
+        >
+          <select
+            className="input w-28 text-sm"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as 'city' | 'state')}
+          >
+            <option value="city">City</option>
+            <option value="state">State</option>
+          </select>
+          <input
+            className="input w-44 text-sm"
+            placeholder={scope === 'city' ? 'Hyderabad' : 'Telangana'}
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+          />
+          <label className="flex items-center gap-1 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={primary}
+              onChange={(e) => setPrimary(e.target.checked)}
+            />
+            Primary
+          </label>
+          <button className="btn-outline text-sm">Add</button>
+        </form>
+      )}
     </div>
   );
 }

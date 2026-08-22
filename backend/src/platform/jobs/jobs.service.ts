@@ -13,6 +13,7 @@ import { NotificationsService } from '../../modules/notifications/notifications.
 import { SmsService } from '../sms/sms.service';
 import { DataRightsService } from '../../modules/users/data-rights.service';
 import { AuditAction, AuditService } from '../audit/audit.service';
+import { BookingsService } from '../../modules/bookings/bookings.service';
 import {
   BookingStatus,
   ConsentScope,
@@ -56,6 +57,7 @@ export class JobsService {
     private readonly sms: SmsService,
     private readonly audit: AuditService,
     private readonly dataRights: DataRightsService,
+    private readonly bookingsService: BookingsService,
   ) {}
 
   /**
@@ -236,6 +238,42 @@ export class JobsService {
    *
    * Pulled a week early, so it lapses before it lapses rather than after.
    */
+  /**
+   * Pays out what the platform owes but could not move.
+   *
+   * A provider can take bookings and finish the work before their payout
+   * onboarding clears, and when that happens the money sits in
+   * `PENDING_PAYOUT` — no longer the buyer's, not yet the seller's. There is no
+   * event to hang the retry on, because the thing that changed happened at the
+   * gateway rather than here, so it is swept.
+   *
+   * It never invents a payout: `retryPendingPayouts` only moves money for a
+   * provider who now genuinely has a linked account, and leaves the rest where
+   * it is.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_5AM)
+  async settlePendingPayouts(): Promise<void> {
+    try {
+      const { attempted, released } = await this.bookingsService.retryPendingPayouts();
+      if (attempted === 0) return;
+
+      this.logger.log(`Payout sweep: ${released} of ${attempted} pending payment(s) released`);
+
+      // Still owed after a sweep is worth surfacing rather than logging: it
+      // means a provider has been waiting since the last one.
+      if (attempted > released) {
+        await this.audit.record({
+          action: AuditAction.BOOKING_ESCROW_RELEASED,
+          resourceType: 'payment',
+          resourceId: 'payout-sweep',
+          metadata: { attempted, released, stillOwed: attempted - released },
+        });
+      }
+    } catch (err) {
+      this.logger.error('Payout sweep failed', err as Error);
+    }
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async delistLapsingConsent(): Promise<void> {
     try {

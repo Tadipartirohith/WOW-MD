@@ -16,6 +16,8 @@ interface LedgerRow {
 
 interface Earnings {
   heldInEscrow: string;
+  /** Earned and owed, but not yet transferred — usually payout onboarding. */
+  pendingPayout: string;
   released: string;
   refunded: string;
   commission: string;
@@ -29,6 +31,7 @@ const STATUS_LABEL: Record<string, string> = {
   held_in_escrow: 'In escrow',
   disputed: 'Frozen — case open',
   released: 'Paid out',
+  pending_payout: 'Owed to you',
   refunded: 'Refunded',
   partially_settled: 'Part settled',
 };
@@ -87,6 +90,19 @@ export default function Accounts() {
               tone="text-amber-700"
               note="Yours once the work is signed off"
             />
+            {/*
+              Only shown when there is some. "Owed" is a different fact from
+              "held" — the work is done and the money is no longer the buyer's —
+              and a provider seeing a zero here every day would stop reading it.
+            */}
+            {Number(data.pendingPayout) > 0 && (
+              <Figure
+                label="Owed to you"
+                value={money(data.pendingPayout)}
+                tone="text-amber-700"
+                note="Earned. Waiting on a payout account to send it to."
+              />
+            )}
             <Figure
               label="Platform commission"
               value={money(data.commission)}

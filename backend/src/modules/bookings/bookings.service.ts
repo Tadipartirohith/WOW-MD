@@ -26,7 +26,7 @@ import {
 } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
-import { PAYMENT_PROVIDER, PaymentProvider } from './payment.provider';
+import { PAYMENT_PROVIDER, PaymentProvider, PayoutDestination } from './payment.provider';
 import { AgentsService } from '../agents/agents.service';
 import { SupportCasesService } from '../verification/support-cases.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
@@ -702,12 +702,28 @@ export class BookingsService {
     return booking;
   }
 
-  /** Moves every held payment on a booking to the provider. */
+  /**
+   * Moves every held payment on a booking to the provider.
+   *
+   * A provider whose payout onboarding is not finished has no account to
+   * transfer to. That is a normal state — they can take bookings and complete
+   * work while their KYC clears — so the money stays in escrow with the reason
+   * recorded, rather than being marked released against a transfer that never
+   * happened. `PENDING_PAYOUT` is the difference between "we paid them" and "we
+   * owe them", and collapsing those two was the thing worth avoiding.
+   */
   private async releaseHeld(actor: AuthUser | undefined, bookingId: string): Promise<number> {
     const held = await this.payments.find({
       where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
     });
+    if (held.length === 0) return 0;
 
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    const destination = booking
+      ? await this.payoutDestination(booking)
+      : { accountId: null, label: 'unknown provider' };
+
+    let moved = 0;
     for (const payment of held) {
       if (!payment.providerRef) continue;
       // Release only the seller share; the commission stays with the platform.
@@ -717,12 +733,22 @@ export class BookingsService {
         ? { payout: payment.payoutAmount, commission: payment.commissionAmount }
         : this.splitAmount(payment.amount);
 
-      await this.gateway.release(payment.providerRef, split.payout, payment.currency);
+      const result = await this.gateway.release(
+        payment.providerRef,
+        split.payout,
+        payment.currency,
+        destination,
+      );
+
       await this.payments.update(payment.id, {
-        status: PaymentStatus.RELEASED,
+        status: result.transferred ? PaymentStatus.RELEASED : PaymentStatus.PENDING_PAYOUT,
         payoutAmount: split.payout,
         commissionAmount: split.commission,
+        payoutRef: result.transferRef,
+        payoutNote: result.reason,
       });
+      if (result.transferred) moved += 1;
+
       await this.audit.record({
         action: AuditAction.BOOKING_ESCROW_RELEASED,
         actor,
@@ -733,10 +759,61 @@ export class BookingsService {
           milestone: payment.milestone,
           payout: split.payout,
           commission: split.commission,
+          transferred: result.transferred,
+          reason: result.reason,
         },
       });
     }
-    return held.length;
+    return moved;
+  }
+
+  /** The seller's linked account on the gateway, and who they are. */
+  private async payoutDestination(booking: Booking): Promise<PayoutDestination> {
+    if (booking.providerType === ProviderType.VENDOR) {
+      const vendor = await this.vendors.findOne({ where: { id: booking.providerId } });
+      return { accountId: vendor?.payoutAccountId ?? null, label: vendor?.name ?? 'vendor' };
+    }
+    const planner = await this.planners.findOne({ where: { id: booking.providerId } });
+    return { accountId: planner?.payoutAccountId ?? null, label: planner?.agencyName ?? 'planner' };
+  }
+
+  /**
+   * Retries a payout that could not be made when the work was completed.
+   *
+   * Run on a schedule rather than left for somebody to notice: the usual reason
+   * is a provider finishing their onboarding a week after finishing the job,
+   * and there is no event to hang that on.
+   */
+  async retryPendingPayouts(): Promise<{ attempted: number; released: number }> {
+    const pending = await this.payments.find({
+      where: { status: PaymentStatus.PENDING_PAYOUT },
+    });
+
+    let released = 0;
+    for (const payment of pending) {
+      if (!payment.providerRef) continue;
+      const booking = await this.bookings.findOne({ where: { id: payment.bookingId } });
+      if (!booking) continue;
+
+      const destination = await this.payoutDestination(booking);
+      if (!destination.accountId) continue;
+
+      const result = await this.gateway.release(
+        payment.providerRef,
+        payment.payoutAmount,
+        payment.currency,
+        destination,
+      );
+      if (!result.transferred) continue;
+
+      await this.payments.update(payment.id, {
+        status: PaymentStatus.RELEASED,
+        payoutRef: result.transferRef,
+        payoutNote: null,
+      });
+      released += 1;
+    }
+    return { attempted: pending.length, released };
   }
 
   /** Is this instalment held (or already released) on this booking? */
@@ -911,6 +988,8 @@ export class BookingsService {
    */
   async earnings(actor: AuthUser): Promise<{
     heldInEscrow: string;
+    /** Earned and owed, but not yet transferred. Usually payout onboarding. */
+    pendingPayout: string;
     released: string;
     refunded: string;
     commission: string;
@@ -924,6 +1003,10 @@ export class BookingsService {
       amount: string;
       commissionAmount: string;
       payoutAmount: string;
+      /** The gateway's reference for the transfer, once one is made. */
+      payoutRef: string | null;
+      /** Why a payout has not happened, when it has not. */
+      payoutNote: string | null;
       confirmedAt: Date | null;
       createdAt: Date;
     }[];
@@ -931,6 +1014,7 @@ export class BookingsService {
     const providerIds = await this.ownedProviderIds(actor);
     const empty = {
       heldInEscrow: '0.00',
+      pendingPayout: '0.00',
       released: '0.00',
       refunded: '0.00',
       commission: '0.00',
@@ -954,6 +1038,7 @@ export class BookingsService {
     // Money is added in minor units. Summing the decimal strings directly would
     // drift a paisa at a time and eventually disagree with the ledger below it.
     let held = 0;
+    let owed = 0;
     let released = 0;
     let refunded = 0;
     let commission = 0;
@@ -967,6 +1052,15 @@ export class BookingsService {
       if (payment.status === PaymentStatus.HELD_IN_ESCROW || payment.status === PaymentStatus.DISPUTED) {
         held += payout;
       }
+      // Owed is its own figure, not folded into either side. Counting it as
+      // held would say the buyer might still get it back; counting it as
+      // released would say the provider has been paid. Neither is true, and a
+      // status with no bucket would drop the money out of the totals entirely.
+      if (payment.status === PaymentStatus.PENDING_PAYOUT) {
+        owed += payout;
+        commission += fee;
+        gross += total;
+      }
       if (payment.status === PaymentStatus.RELEASED || payment.status === PaymentStatus.PARTIALLY_SETTLED) {
         released += payout;
         commission += fee;
@@ -979,6 +1073,8 @@ export class BookingsService {
 
     return {
       heldInEscrow: toMajor(held),
+      /** Earned, and not yet transferred. Usually payout onboarding. */
+      pendingPayout: toMajor(owed),
       released: toMajor(released),
       refunded: toMajor(refunded),
       commission: toMajor(commission),
@@ -992,6 +1088,8 @@ export class BookingsService {
         amount: p.amount,
         commissionAmount: p.commissionAmount,
         payoutAmount: p.payoutAmount,
+        payoutRef: p.payoutRef ?? null,
+        payoutNote: p.payoutNote ?? null,
         confirmedAt: p.webhookVerifiedAt ?? null,
         createdAt: p.createdAt,
       })),

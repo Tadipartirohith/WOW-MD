@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
+import { OfficerServiceArea } from './entities/officer-service-area.entity';
 import { SupportCase } from './entities/support-case.entity';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
@@ -20,6 +21,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [
     TypeOrmModule.forFeature([
       VerificationRequest,
+      OfficerServiceArea,
       SupportCase,
       User,
       AgentProfile,

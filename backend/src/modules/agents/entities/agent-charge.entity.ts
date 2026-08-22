@@ -84,6 +84,14 @@ export class AgentCharge {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /** The gateway's reference for the payout, when one was made. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  payoutRef: string | null;
+
+  /** Why it was not, when it was not. An agency fee settles out of band. */
+  @Column({ type: 'text', nullable: true })
+  payoutNote: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

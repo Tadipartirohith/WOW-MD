@@ -204,3 +204,24 @@ export class CreateReviewDto {
   @MaxLength(1500)
   comment?: string;
 }
+
+/**
+ * The gateway's linked account for a provider, so escrow has somewhere to go.
+ *
+ * Set by the provider themselves once they have completed payout onboarding.
+ * Deliberately its own route rather than a field on the listing form: it is the
+ * one value on a business record that decides where money lands, and burying it
+ * among the portfolio URLs is how it gets changed by accident.
+ */
+export class PayoutAccountDto {
+  @ApiProperty({
+    example: 'acc_JDQrLYlYnCTZKp',
+    description: "Razorpay Route linked account id. Empty string clears it.",
+  })
+  @IsString()
+  @MaxLength(64)
+  @Matches(/^(acc_[A-Za-z0-9]+)?$/, {
+    message: 'That is not a linked account id — they look like acc_XXXXXXXX',
+  })
+  payoutAccountId: string;
+}

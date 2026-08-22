@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AgencyService } from '../agents/agency.service';
@@ -15,6 +25,7 @@ import {
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
+import { BookingsService } from '../bookings/bookings.service';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -24,6 +35,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly agency: AgencyService,
     private readonly audit: AuditService,
+    private readonly bookings: BookingsService,
   ) {}
 
   // -------------------------------------------------------- agency vetting
@@ -106,6 +118,21 @@ export class AdminController {
   @Put('planners/:id/approve')
   approvePlanner(@Param('id', ParseUUIDPipe) id: string) {
     return this.admin.approvePlanner(id);
+  }
+
+  /**
+   * Pays out what the platform owes but could not move.
+   *
+   * Runs nightly on its own; this is the same sweep on demand, for when a
+   * provider rings up to say their onboarding has cleared and they would like
+   * their money today rather than tomorrow.
+   */
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({ summary: 'Retry payouts that had nowhere to go' })
+  @HttpCode(200)
+  @Post('payouts/retry')
+  retryPayouts() {
+    return this.bookings.retryPendingPayouts();
   }
 
   @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)

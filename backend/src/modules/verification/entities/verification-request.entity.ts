@@ -112,6 +112,20 @@ export class VerificationRequest {
   reviewedByUserId: string | null;
 
   /**
+   * What the automatic allocation went on.
+   *
+   * Recorded rather than inferred, because "nobody covers that city so it went
+   * on workload alone" is a staffing gap an administrator should be able to
+   * see, and it is invisible once the allocation has happened.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  allocationBasis: string | null;
+
+  /** Where the applicant is, as it stood when the request was allocated. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  applicantCity: string | null;
+
+  /**
    * How many times this has been sent back for another look.
    *
    * Worth counting: a third visit usually means the request is unanswerable

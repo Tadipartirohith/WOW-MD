@@ -24,10 +24,43 @@ export interface WebhookEvent {
  *
  * `release` takes the payout amount rather than the gross: the platform's
  * commission is withheld, so the seller receives less than was held in escrow.
+ * It also takes where the money is going — a gateway that actually moves money
+ * needs a destination, and inferring one inside the provider would put the
+ * question of *who gets paid* somewhere nobody thinks to look.
  */
+/**
+ * Where a payout is going.
+ *
+ * `accountId` is the seller's linked account on the gateway — a Razorpay Route
+ * `acc_...`. Null means the seller has not been onboarded yet, which is a
+ * normal state (they can take bookings before their KYC clears) and not an
+ * error: the release is recorded as pending rather than attempted, so the money
+ * stays in escrow with a reason attached instead of vanishing into a failed
+ * transfer.
+ */
+export interface PayoutDestination {
+  accountId: string | null;
+  /** Who this is, for the transfer's own notes. */
+  label: string;
+}
+
+export interface PayoutResult {
+  /** Whether money actually moved. */
+  transferred: boolean;
+  /** The gateway's reference for the transfer, when one happened. */
+  transferRef: string | null;
+  /** Why not, when it did not. Surfaced to the operator, never swallowed. */
+  reason: string | null;
+}
+
 export interface PaymentProvider {
   createEscrowHold(amount: string, currency: string): Promise<PaymentIntent>;
-  release(providerRef: string, payoutAmount: string, currency: string): Promise<void>;
+  release(
+    providerRef: string,
+    payoutAmount: string,
+    currency: string,
+    destination: PayoutDestination,
+  ): Promise<PayoutResult>;
   refund(providerRef: string, amount: string): Promise<void>;
   /**
    * Verifies the signature on an inbound webhook and normalises it. Returning
@@ -44,8 +77,24 @@ export class MockPaymentProvider implements PaymentProvider {
     return { providerRef: `mock_${randomUUID()}`, clientSecret: 'mock_secret' };
   }
 
-  async release(providerRef: string, payoutAmount: string): Promise<void> {
+  async release(
+    providerRef: string,
+    payoutAmount: string,
+    _currency: string,
+    destination: PayoutDestination,
+  ): Promise<PayoutResult> {
+    // The mock mirrors the real rule rather than always succeeding: a seller
+    // with no linked account cannot be paid by a live gateway either, and a
+    // mock that pretends otherwise hides the case in every test that uses it.
+    if (!destination.accountId) {
+      return {
+        transferred: false,
+        transferRef: null,
+        reason: 'The provider has no payout account yet.',
+      };
+    }
     this.logger.debug(`[mock] release ${payoutAmount} for ${providerRef}`);
+    return { transferred: true, transferRef: `mock_txn_${randomUUID()}`, reason: null };
   }
 
   async refund(providerRef: string, amount: string): Promise<void> {
@@ -115,16 +164,119 @@ export class RazorpayPaymentProvider implements PaymentProvider {
     return { providerRef: order.id, clientSecret: this.cfg.payments.razorpayKeyId };
   }
 
-  async release(providerRef: string, payoutAmount: string, currency: string): Promise<void> {
-    // With Razorpay Route this creates a transfer of exactly the payout amount
-    // to the seller's linked account, leaving the commission on the platform.
-    this.logger.log(
-      `Release ${currency} ${payoutAmount} for ${providerRef} (configure Razorpay Route for real transfers)`,
-    );
+  /**
+   * Moves the seller's share out of escrow, through Razorpay Route.
+   *
+   * Route transfers are created against the *payment*, not the order, so the
+   * captured payment id is resolved first. Transferring exactly the payout
+   * amount is what leaves the commission on the platform account — there is no
+   * separate commission transfer, and adding one would be a second way for the
+   * split to be wrong.
+   *
+   * A seller with no linked account is reported rather than thrown: they can
+   * take bookings before their KYC clears, and the money should stay in escrow
+   * with a reason attached rather than failing a request the buyer already
+   * completed.
+   */
+  async release(
+    providerRef: string,
+    payoutAmount: string,
+    currency: string,
+    destination: PayoutDestination,
+  ): Promise<PayoutResult> {
+    if (!destination.accountId) {
+      return {
+        transferred: false,
+        transferRef: null,
+        reason: 'The provider has not completed payout onboarding.',
+      };
+    }
+
+    const paymentId = await this.capturedPaymentFor(providerRef);
+    if (!paymentId) {
+      return {
+        transferred: false,
+        transferRef: null,
+        reason: `No captured payment found against ${providerRef}.`,
+      };
+    }
+
+    const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: this.authHeader() },
+      body: JSON.stringify({
+        transfers: [
+          {
+            account: destination.accountId,
+            amount: this.toMinorUnits(payoutAmount),
+            currency,
+            notes: { booking: providerRef, provider: destination.label },
+            // The platform has already taken its commission by transferring
+            // less than it holds, so nothing further is withheld here.
+            on_hold: false,
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      // Not thrown: the booking is complete and the buyer has paid. An
+      // exception here would roll back a completion that genuinely happened.
+      this.logger.error(`Route transfer failed for ${providerRef}: ${res.status} ${body}`);
+      return { transferred: false, transferRef: null, reason: `Gateway refused: ${res.status}` };
+    }
+
+    const parsed = (await res.json()) as { items?: { id?: string }[] };
+    return {
+      transferred: true,
+      transferRef: parsed.items?.[0]?.id ?? null,
+      reason: null,
+    };
   }
 
+  /**
+   * The captured payment behind an order.
+   *
+   * An order can carry several attempts — a failed card, then a successful UPI
+   * — and only the captured one can be transferred from.
+   */
+  private async capturedPaymentFor(orderId: string): Promise<string | null> {
+    const res = await fetch(`https://api.razorpay.com/v1/orders/${orderId}/payments`, {
+      headers: { authorization: this.authHeader() },
+    });
+    if (!res.ok) return null;
+    const parsed = (await res.json()) as { items?: { id: string; status: string }[] };
+    return parsed.items?.find((p) => p.status === 'captured')?.id ?? null;
+  }
+
+  /**
+   * Returns the buyer's money.
+   *
+   * The full amount, always: the platform earns no commission on a booking that
+   * did not happen. Refunding an order means refunding the payment that
+   * captured against it.
+   */
   async refund(providerRef: string, amount: string): Promise<void> {
-    this.logger.log(`Refund ${amount} requested for ${providerRef}`);
+    const paymentId = await this.capturedPaymentFor(providerRef);
+    if (!paymentId) {
+      this.logger.error(`Refund for ${providerRef} found no captured payment`);
+      return;
+    }
+
+    const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: this.authHeader() },
+      body: JSON.stringify({
+        amount: this.toMinorUnits(amount),
+        // Razorpay dedupes on this, so a retried cancellation refunds once.
+        speed: 'normal',
+        notes: { order: providerRef },
+      }),
+    });
+    if (!res.ok) {
+      this.logger.error(`Refund failed for ${providerRef}: ${res.status} ${await res.text()}`);
+    }
   }
 
   /**

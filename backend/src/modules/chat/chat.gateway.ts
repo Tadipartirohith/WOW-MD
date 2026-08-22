@@ -18,6 +18,7 @@ import { SendMessageDto } from './dto/chat.dto';
 import { User } from '../auth/entities/user.entity';
 import { Permission, roleHasPermission } from '../../common/authz/permissions';
 import { PresenceService } from './presence.service';
+import { buildIceServers } from './ice-servers';
 
 /**
  * Real-time chat. Authenticated on the handshake via JWT. Runs behind the Redis
@@ -137,7 +138,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sdp: payload.sdp,
       media: payload.media === 'video' ? 'video' : 'audio',
     });
-    return { ringing: true, iceServers: this.cfg.webrtc.iceServers };
+    return { ringing: true, iceServers: buildIceServers(process.env) };
   }
 
   /** The callee picks up. */
@@ -162,7 +163,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       fromUserId: userId,
       sdp: payload.sdp,
     });
-    return { ok: true, iceServers: this.cfg.webrtc.iceServers };
+    return { ok: true, iceServers: buildIceServers(process.env) };
   }
 
   /**

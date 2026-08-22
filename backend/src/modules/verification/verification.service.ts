@@ -7,6 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
+import { OfficerServiceArea } from './entities/officer-service-area.entity';
+import { canonicalCity, normalisePlace, stateOf } from './service-area';
 import { NotificationsService } from '../notifications/notifications.service';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
@@ -51,6 +53,8 @@ export class VerificationService {
   constructor(
     @InjectRepository(VerificationRequest)
     private readonly requests: Repository<VerificationRequest>,
+    @InjectRepository(OfficerServiceArea)
+    private readonly areas: Repository<OfficerServiceArea>,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
@@ -117,9 +121,17 @@ export class VerificationService {
       throw new BadRequestException('That request has already been approved');
     }
 
-    // Named officer, or the lightest-loaded one. Allocation is the
+    // Named officer, or the best automatic pick. Allocation is the
     // administrator's decision either way; this only saves them the arithmetic.
-    const officerUserId = dto.officerUserId ?? (await this.suggestOfficer());
+    //
+    // The automatic pick now considers where the applicant actually is, and
+    // records what it went on — an allocation made on workload alone because
+    // nobody covers that city is a staffing gap somebody should see.
+    const city = await this.applicantCity(request);
+    const suggestion = dto.officerUserId
+      ? null
+      : await this.suggestOfficerWithReason(city);
+    const officerUserId = dto.officerUserId ?? suggestion?.officerUserId ?? null;
     if (!officerUserId) {
       throw new BadRequestException(
         'There are no active verification officers to allocate this to',
@@ -146,6 +158,8 @@ export class VerificationService {
         remarks: dto.note,
       },
     ];
+    request.allocationBasis = dto.officerUserId ? 'named' : (suggestion?.basis ?? 'workload_only');
+    request.applicantCity = city;
     const saved = await this.requests.save(request);
 
     await this.audit.record({
@@ -605,13 +619,166 @@ export class VerificationService {
   }
 
   /**
-   * Who the next request should go to. The lightest-loaded active officer, or
-   * null when there are none — in which case the administrator has a staffing
-   * problem, not an allocation one.
+   * Who the next request should go to.
+   *
+   * Workload alone sends the lightest-loaded officer four hundred kilometres to
+   * look at a catering kitchen. Geography alone sends every visit in a city to
+   * whoever happens to cover it, however buried they already are. So coverage
+   * decides the *pool* and workload decides within it:
+   *
+   * 1. Officers whose primary areas cover the applicant's city.
+   * 2. Failing that, officers who cover it as a secondary area.
+   * 3. Failing that, officers covering the whole state.
+   * 4. Failing that, everyone — and `basis` says so, because an administrator
+   *    who can see that nobody covers Warangal can go and fix that, whereas a
+   *    silent fallback just looks like a bad allocation.
+   *
+   * Returning the basis rather than only the id is the part that matters: this
+   * was deferred precisely because a geography guess that fails quietly is
+   * worse than no geography at all.
    */
-  async suggestOfficer(): Promise<string | null> {
+  async suggestOfficer(applicantCity?: string | null): Promise<string | null> {
+    const { officerUserId } = await this.suggestOfficerWithReason(applicantCity);
+    return officerUserId;
+  }
+
+  async suggestOfficerWithReason(applicantCity?: string | null): Promise<{
+    officerUserId: string | null;
+    basis: 'primary_area' | 'secondary_area' | 'state' | 'workload_only';
+    city: string | null;
+  }> {
     const ranked = await this.workload();
-    return ranked[0]?.officerUserId ?? null;
+    if (ranked.length === 0) return { officerUserId: null, basis: 'workload_only', city: null };
+
+    const city = canonicalCity(applicantCity);
+    if (!city) {
+      return { officerUserId: ranked[0].officerUserId, basis: 'workload_only', city: null };
+    }
+
+    const covering = await this.officersCovering(applicantCity);
+
+    // `ranked` is already sorted lightest-first, so the first match in each
+    // tier is both covered and least loaded.
+    for (const [tier, ids] of [
+      ['primary_area', covering.primary],
+      ['secondary_area', covering.secondary],
+      ['state', covering.state],
+    ] as const) {
+      const pick = ranked.find((r) => ids.has(r.officerUserId));
+      if (pick) return { officerUserId: pick.officerUserId, basis: tier, city };
+    }
+
+    return { officerUserId: ranked[0].officerUserId, basis: 'workload_only', city };
+  }
+
+  /** Which officers cover a place, split by how directly they cover it. */
+  private async officersCovering(place: string | null | undefined): Promise<{
+    primary: Set<string>;
+    secondary: Set<string>;
+    state: Set<string>;
+  }> {
+    const city = canonicalCity(place);
+    const state = stateOf(place);
+    const out = { primary: new Set<string>(), secondary: new Set<string>(), state: new Set<string>() };
+    if (!city) return out;
+
+    const rows = await this.areas.find();
+    for (const area of rows) {
+      // A city row is matched through the same canonicaliser both sides went
+      // through, so a rename or a trailing state does not read as a miss.
+      if (area.city && canonicalCity(area.city) === city) {
+        (area.primary ? out.primary : out.secondary).add(area.officerUserId);
+        continue;
+      }
+      if (area.state && state && normalisePlace(area.state) === state) {
+        out.state.add(area.officerUserId);
+      }
+    }
+
+    // An officer who covers the city directly should not also be offered as a
+    // state-level fallback for the same request.
+    for (const id of [...out.primary, ...out.secondary]) out.state.delete(id);
+    for (const id of out.primary) out.secondary.delete(id);
+    return out;
+  }
+
+  // ------------------------------------------------------------ service areas
+
+  async listAreas(officerUserId: string): Promise<OfficerServiceArea[]> {
+    return this.areas.find({
+      where: { officerUserId },
+      order: { primary: 'DESC', label: 'ASC' },
+    });
+  }
+
+  async addArea(
+    actor: AuthUser,
+    officerUserId: string,
+    dto: { city?: string; state?: string; primary?: boolean },
+  ): Promise<OfficerServiceArea> {
+    const officer = await this.users.findOne({ where: { id: officerUserId } });
+    if (!officer || officer.role !== UserRole.IN_PERSON) {
+      throw new NotFoundException('Verification officer not found');
+    }
+    if (!dto.city && !dto.state) {
+      throw new BadRequestException('Give a city, or a state for somebody who covers a whole one');
+    }
+
+    const label = dto.city?.trim() || dto.state?.trim() || '';
+    const row = this.areas.create({
+      officerUserId,
+      city: dto.city ? canonicalCity(dto.city) : null,
+      state: dto.state ? normalisePlace(dto.state) : null,
+      label,
+      primary: dto.primary ?? true,
+    });
+
+    // The unique index is on the normalised pair, so adding "Bangalore" to an
+    // officer who already covers "Bengaluru" is caught rather than duplicated.
+    // TypeORM's `where` cannot express "this column IS NULL" through a plain
+    // null, so the comparison is done over the officer's own rows instead.
+    const existing = await this.areas.find({ where: { officerUserId } });
+    const clash = existing.find((a) => a.city === row.city && a.state === row.state);
+    if (clash) {
+      throw new BadRequestException(`They already cover ${clash.label}`);
+    }
+
+    const saved = await this.areas.save(row);
+    await this.audit.record({
+      action: AuditAction.VERIFICATION_ALLOCATED,
+      actor,
+      resourceType: 'officer_service_area',
+      resourceId: saved.id,
+      metadata: { officerUserId, label, primary: saved.primary },
+    });
+    return saved;
+  }
+
+  async removeArea(actor: AuthUser, areaId: string): Promise<{ success: true }> {
+    const area = await this.areas.findOne({ where: { id: areaId } });
+    if (!area) throw new NotFoundException('That service area does not exist');
+    await this.areas.remove(area);
+    await this.audit.record({
+      action: AuditAction.VERIFICATION_ALLOCATED,
+      actor,
+      resourceType: 'officer_service_area',
+      resourceId: areaId,
+      metadata: { removed: true, officerUserId: area.officerUserId },
+    });
+    return { success: true };
+  }
+
+  /** Where the applicant on a request actually is. */
+  async applicantCity(request: VerificationRequest): Promise<string | null> {
+    if (request.applicantType === ApplicantType.VENDOR && request.subjectId) {
+      const vendor = await this.vendors.findOne({ where: { id: request.subjectId } });
+      return vendor?.city ?? null;
+    }
+    if (request.applicantType === ApplicantType.AGENT && request.subjectId) {
+      const agency = await this.agencies.findOne({ where: { id: request.subjectId } });
+      return agency?.city ?? null;
+    }
+    return null;
   }
 
   private async loadOrFail(id: string): Promise<VerificationRequest> {

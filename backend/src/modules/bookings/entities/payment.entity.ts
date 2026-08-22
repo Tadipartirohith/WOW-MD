@@ -63,6 +63,19 @@ export class Payment {
   @Column({ type: 'varchar', nullable: true })
   idempotencyKey: string | null;
 
+  /** The gateway's reference for the payout transfer, once one is made. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  payoutRef: string | null;
+
+  /**
+   * Why the payout has not happened, when it has not.
+   *
+   * Kept on the row rather than only in the log, because the operator who needs
+   * it is looking at a ledger showing money owed, not at yesterday's stdout.
+   */
+  @Column({ type: 'text', nullable: true })
+  payoutNote: string | null;
+
   /** Last status string the gateway reported, verbatim, for reconciliation. */
   @Column({ type: 'varchar', nullable: true })
   providerStatus: string | null;

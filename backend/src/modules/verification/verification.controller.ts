@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -19,7 +20,7 @@ import {
   SubmitFindingsDto,
   VerificationQueryDto,
 } from './dto/verification.dto';
-import { CreateOfficerDto, SetOfficerStatusDto } from './dto/officer.dto';
+import { CreateOfficerDto, ServiceAreaDto, SetOfficerStatusDto } from './dto/officer.dto';
 import {
   AddEvidenceDto,
   AllocateCaseDto,
@@ -134,6 +135,37 @@ export class VerificationController {
   @Put('requests/:id/start')
   start(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.verification.start(actor, id);
+  }
+
+  // -------------------------------------------------------- service areas
+
+  @RequirePermissions(Permission.ADMIN_OFFICER_MANAGE)
+  @ApiOperation({
+    summary: 'Where an officer will travel',
+    description:
+      'Allocation ranked on workload alone until this existed, which sends the lightest-loaded ' +
+      'officer four hundred kilometres to look at a kitchen. Coverage decides the pool; workload ' +
+      'decides within it.',
+  })
+  @Get('officers/:id/areas')
+  listAreas(@Param('id', ParseUUIDPipe) id: string) {
+    return this.verification.listAreas(id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_OFFICER_MANAGE)
+  @Post('officers/:id/areas')
+  addArea(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ServiceAreaDto,
+  ) {
+    return this.verification.addArea(actor, id, dto);
+  }
+
+  @RequirePermissions(Permission.ADMIN_OFFICER_MANAGE)
+  @Delete('areas/:id')
+  removeArea(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.verification.removeArea(actor, id);
   }
 
   @RequirePermissions(Permission.VERIFICATION_PROCESS)

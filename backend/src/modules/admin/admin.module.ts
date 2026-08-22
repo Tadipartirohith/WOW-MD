@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -12,6 +12,7 @@ import { AgentCharge } from '../agents/entities/agent-charge.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
 import { SupportCase } from '../verification/entities/support-case.entity';
 import { AgentsModule } from '../agents/agents.module';
+import { BookingsModule } from '../bookings/bookings.module';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 
@@ -31,6 +32,9 @@ import { AdminController } from './admin.controller';
       SupportCase,
     ]),
     AgentsModule,
+    // For the on-demand payout sweep: the retry lives with the booking service
+    // so the split and the gateway call stay in one place.
+    forwardRef(() => BookingsModule),
   ],
   providers: [AdminService],
   controllers: [AdminController],

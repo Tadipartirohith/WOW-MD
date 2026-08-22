@@ -137,23 +137,21 @@ export default () => ({
    * which is what makes calling affordable at all.
    *
    * Public STUN covers most home and mobile networks. A symmetric NAT on either
-   * side needs a TURN relay, which costs money because it carries the audio;
-   * set TURN_URL and its credentials when you are ready to pay for the tail of
-   * calls that cannot connect without one.
+   * side needs a TURN relay, which carries the audio and therefore costs real
+   * money. Set `TURN_URL` plus `TURN_STATIC_AUTH_SECRET` and the relay is live.
+   *
+   * The ICE list is built per call rather than read from here, because
+   * ephemeral TURN credentials expire — see `modules/chat/ice-servers.ts`. Only
+   * the static shape is exposed here, for anything that wants to know whether a
+   * relay is configured at all.
    */
   webrtc: {
-    iceServers: [
-      { urls: (process.env.STUN_URLS || 'stun:stun.l.google.com:19302').split(',') },
-      ...(process.env.TURN_URL
-        ? [
-            {
-              urls: process.env.TURN_URL.split(','),
-              username: process.env.TURN_USERNAME || '',
-              credential: process.env.TURN_CREDENTIAL || '',
-            },
-          ]
-        : []),
-    ],
+    turnConfigured: Boolean(process.env.TURN_URL?.trim()),
+    /**
+     * Whether the relay is using credentials a leaked one cannot outlive.
+     * Reported so an operator can see, from /health, which mode they are in.
+     */
+    turnEphemeral: Boolean(process.env.TURN_STATIC_AUTH_SECRET?.trim()),
   },
 
   security: {
@@ -259,8 +257,23 @@ export default () => ({
      * the setting in production.
      */
     aadhaarProvider: process.env.AADHAAR_PROVIDER || 'mock',
-    aadhaarApiKey: process.env.AADHAAR_API_KEY || '',
-    aadhaarApiSecret: process.env.AADHAAR_API_SECRET || '',
+
+    /**
+     * The licensed provider's endpoint and credentials.
+     *
+     * Which provider is behind this is configuration rather than a code fork:
+     * they have converged on the same two-call conversation, and only the base
+     * URL and the credential names differ.
+     *
+     * AADHAAR_API_KEY / _SECRET are the older names for the same two values,
+     * kept working so an existing deployment does not break on upgrade.
+     */
+    aadhaarBaseUrl: process.env.AADHAAR_BASE_URL || '',
+    aadhaarClientId: process.env.AADHAAR_CLIENT_ID || process.env.AADHAAR_API_KEY || '',
+    aadhaarClientSecret:
+      process.env.AADHAAR_CLIENT_SECRET || process.env.AADHAAR_API_SECRET || '',
+    /** A verification provider that hangs must not hold a request worker with it. */
+    aadhaarTimeoutMs: toNumber(process.env.AADHAAR_TIMEOUT_MS, 15_000),
   },
 
   ai: {
