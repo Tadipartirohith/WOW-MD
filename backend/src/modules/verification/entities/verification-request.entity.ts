@@ -17,6 +17,26 @@ import { ApplicantType, VerificationStatus } from '../../../common/enums';
  * access changes until that decision lands — which is the whole point of the
  * gate.
  */
+/**
+ * What an officer writes up after a visit.
+ *
+ * `verified` is the single question the decision turns on; everything else is
+ * the evidence for it. `issues` is a list rather than prose so an administrator
+ * sending the request back can point at one.
+ */
+export interface VerificationFindings {
+  /** Did the officer confirm the business exists and is what it claims? */
+  visited: boolean;
+  /** What they saw. */
+  observations: string;
+  /** Anything that did not check out. Empty means nothing did. */
+  issues: string[];
+  /** Documents seen at the address, as media URLs. */
+  evidence: string[];
+  /** The officer's own recommendation. An administrator still decides. */
+  recommendation: 'approve' | 'reject' | 'revisit';
+}
+
 @Entity('verification_requests')
 @Index(['applicantType', 'status'])
 export class VerificationRequest {
@@ -69,6 +89,36 @@ export class VerificationRequest {
   /** Free-form detail the officer recorded while investigating. */
   @Column({ type: 'jsonb', default: [] })
   history: { at: string; byUserId: string; status: string; remarks?: string }[];
+
+  // ------------------------------------------------------------ the report
+  //
+  // What the officer actually found, kept apart from `remarks` because "what
+  // did you see" and "why are you rejecting this" are different questions.
+  // Collapsing them meant an approval carried no record of the visit at all.
+
+  @Column({ type: 'jsonb', nullable: true })
+  findings: VerificationFindings | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  submittedAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  submittedByUserId: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewStartedAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  reviewedByUserId: string | null;
+
+  /**
+   * How many times this has been sent back for another look.
+   *
+   * Worth counting: a third visit usually means the request is unanswerable
+   * rather than merely incomplete, and somebody should look at why.
+   */
+  @Column({ type: 'int', default: 0 })
+  revisitCount: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

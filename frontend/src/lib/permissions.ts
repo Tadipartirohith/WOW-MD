@@ -143,6 +143,8 @@ export type VerificationStatus =
   | 'new'
   | 'assigned'
   | 'in_progress'
+  | 'submitted'
+  | 'admin_review'
   | 'approved'
   | 'rejected'
   | 'issue'
@@ -152,6 +154,8 @@ export const VERIFICATION_LABEL: Record<VerificationStatus, string> = {
   new: 'Waiting for allocation',
   assigned: 'Allocated to an officer',
   in_progress: 'Visit in progress',
+  submitted: 'Findings submitted',
+  admin_review: 'Under review',
   approved: 'Approved',
   rejected: 'Rejected',
   issue: 'Issue raised',

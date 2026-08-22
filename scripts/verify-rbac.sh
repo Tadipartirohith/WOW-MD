@@ -99,6 +99,9 @@ verify_applicant() {
   [ -z "$vreq" ] && return 1
   req PUT "/verification/requests/$vreq/allocate" "{\"officerUserId\":\"$OFFICER_USER_ID\"}" "$ADMIN" >/dev/null
   req PUT "/verification/requests/$vreq/start" "" "$OFFICER_TOKEN" >/dev/null
+  # An approval rests on a visit somebody wrote up. Without the findings the
+  # decision is refused, which is the point of having a verification step.
+  req PUT "/verification/requests/$vreq/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER_TOKEN" >/dev/null
   req PUT "/verification/requests/$vreq/decide" '{"status":"approved"}' "$OFFICER_TOKEN" >/dev/null
 }
 

@@ -1,5 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { ApplicantType, VerificationStatus } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -82,4 +93,51 @@ export class CreateOfficerDto {
   @IsString()
   @MaxLength(80)
   city?: string;
+}
+
+/**
+ * What an officer writes up after a visit.
+ *
+ * `visited` is separate from `observations` because "I went and it checked out"
+ * and "I could not find the address" are both findings, and the second is the
+ * one that matters most.
+ */
+export class SubmitFindingsDto {
+  @ApiProperty({ description: 'Did the officer actually attend the address?' })
+  @IsBoolean()
+  visited: boolean;
+
+  @ApiProperty({
+    minLength: 10,
+    maxLength: 4000,
+    example: 'Attended the address. Kitchen and two vans present; GST certificate on the wall.',
+  })
+  @IsString()
+  @MinLength(10, { message: 'Write up what you actually saw' })
+  @MaxLength(4000)
+  observations: string;
+
+  @ApiProperty({
+    type: [String],
+    description: 'Anything that did not check out. Required unless recommending approval.',
+  })
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MaxLength(500, { each: true })
+  issues: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Photographs or documents, as media URLs.' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  evidence?: string[];
+
+  @ApiProperty({
+    enum: ['approve', 'reject', 'revisit'],
+    description: 'The officer recommends; an administrator decides.',
+  })
+  @IsIn(['approve', 'reject', 'revisit'])
+  recommendation: 'approve' | 'reject' | 'revisit';
 }

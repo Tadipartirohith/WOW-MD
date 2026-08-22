@@ -105,6 +105,7 @@ c=$(req GET /verification/requests "" "$ADMIN")
 VR=$(jq -r --arg me "$(jq -r '.user.id' /tmp/agent.json)" '[.data[] | select(.applicantUserId == $me)] | .[0].id // empty' /tmp/body)
 req PUT "/verification/requests/$VR/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN" >/dev/null
 req PUT "/verification/requests/$VR/start" '' "$OFFICER" >/dev/null
+req PUT "/verification/requests/$VR/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER" >/dev/null
 c=$(req PUT "/verification/requests/$VR/decide" '{"status":"approved"}' "$OFFICER")
 check "the agency is approved by an officer, not by an admin" "$c" 200
 

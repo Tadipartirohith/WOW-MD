@@ -179,8 +179,15 @@ c=$(req PUT "/verification/requests/$REQ/start" "" "$OFFICER")
 check "officer picks it up" "$c" 200
 c=$(req PUT "/verification/requests/$REQ/decide" '{"status":"rejected"}' "$OFFICER")
 check "a rejection without a reason is refused" "$c" 400
+
+# An approval has to rest on a visit somebody actually made and wrote up.
+# Without this the whole verification step is a checkbox.
 c=$(req PUT "/verification/requests/$REQ/decide" '{"status":"approved"}' "$OFFICER")
-check "officer approves after the visit" "$c" 200
+check "and an approval before anybody has been anywhere is refused too" "$c" 400
+c=$(req PUT "/verification/requests/$REQ/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER")
+check "officer writes up the visit" "$c" 200
+c=$(req PUT "/verification/requests/$REQ/decide" '{"status":"approved"}' "$OFFICER")
+check "officer approves on the strength of it" "$c" 200
 
 c=$(req GET /agents/agency "" "$AGENT")
 body_has '"isApproved":true' "the approval activated the agency"
@@ -276,6 +283,7 @@ check "an administrator can override the choice" "$c" 200
 c=$(req GET "/verification/requests/$VREQ" "" "$OFFICER")
 check "the officer opens the request" "$c" 200
 body_has '"subject"' "and gets the business record they are going to verify"
+req PUT "/verification/requests/$VREQ/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER" >/dev/null
 c=$(req PUT "/verification/requests/$VREQ/decide" '{"status":"approved"}' "$OFFICER")
 check "officer approves the listing after the visit" "$c" 200
 c=$(req GET "/vendors/$LISTING" "")

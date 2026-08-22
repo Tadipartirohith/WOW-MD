@@ -119,7 +119,28 @@ export enum NotificationType {
   MATCH_ACCEPTED = 'match_accepted',
   NEW_MESSAGE = 'new_message',
   TASK_REMINDER = 'task_reminder',
+  /** Kept for rows written before the booking types below existed. */
   BOOKING_UPDATE = 'booking_update',
+
+  // Booking notifications are split by what the recipient has to *do*. One
+  // "booking_update" for everything from a new request to a settled dispute
+  // meant a vendor could not tell, from the list, whether anything needed
+  // them — which is the entire job of a notifications page.
+  BOOKING_REQUEST = 'booking_request',
+  BOOKING_QUOTATION = 'booking_quotation',
+  BOOKING_CONFIRMED = 'booking_confirmed',
+  BOOKING_PAYMENT = 'booking_payment',
+  BOOKING_STARTED = 'booking_started',
+  BOOKING_COMPLETED = 'booking_completed',
+  BOOKING_CANCELLED = 'booking_cancelled',
+
+  /** A verification officer has been given a visit to make. */
+  VERIFICATION_ASSIGNED = 'verification_assigned',
+  /** A verification reached a decision the applicant needs to know about. */
+  VERIFICATION_DECIDED = 'verification_decided',
+  /** An officer submitted their findings; an administrator has to review them. */
+  VERIFICATION_SUBMITTED = 'verification_submitted',
+  DISPUTE_UPDATE = 'dispute_update',
 }
 
 /**
@@ -412,13 +433,34 @@ export enum ApplicantType {
  * outright rejections, which is what the business needs for "we found a
  * discrepancy" versus "we are not satisfied".
  */
+/**
+ * Where a verification request stands.
+ *
+ * The chain has two stages the earlier design skipped, and skipping them was
+ * the reported problem: an officer could approve a business straight from
+ * ASSIGNED without recording that they had been anywhere, and nobody ever
+ * reviewed what they found.
+ *
+ *   NEW → ASSIGNED → IN_PROGRESS → SUBMITTED → ADMIN_REVIEW
+ *                                              → APPROVED
+ *                                              → REJECTED
+ *                                              → ADDITIONAL_REVIEW → ASSIGNED
+ *
+ * The officer reports; an administrator decides. That separation is the whole
+ * point of having a verification step rather than a checkbox.
+ */
 export enum VerificationStatus {
   NEW = 'new',
   ASSIGNED = 'assigned',
   IN_PROGRESS = 'in_progress',
+  /** The officer has been and written up what they found. */
+  SUBMITTED = 'submitted',
+  /** An administrator has picked the findings up. */
+  ADMIN_REVIEW = 'admin_review',
   APPROVED = 'approved',
   REJECTED = 'rejected',
   ISSUE = 'issue',
+  /** Sent back for another visit. Re-allocating returns it to ASSIGNED. */
   ADDITIONAL_REVIEW = 'additional_review',
 }
 

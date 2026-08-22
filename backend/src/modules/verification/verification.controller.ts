@@ -16,6 +16,7 @@ import { IdentityService } from '../users/identity.service';
 import {
   AllocateRequestDto,
   DecideVerificationDto,
+  SubmitFindingsDto,
   VerificationQueryDto,
 } from './dto/verification.dto';
 import { CreateOfficerDto, SetOfficerStatusDto } from './dto/officer.dto';
@@ -133,6 +134,35 @@ export class VerificationController {
   @Put('requests/:id/start')
   start(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.verification.start(actor, id);
+  }
+
+  @RequirePermissions(Permission.VERIFICATION_PROCESS)
+  @ApiOperation({
+    summary: 'Write up what the visit found',
+    description:
+      'The step between attending and deciding. The officer reports; an administrator decides. ' +
+      'Without it an approval carries no record that anybody went anywhere, which makes the ' +
+      'whole verification a checkbox.',
+  })
+  @Put('requests/:id/findings')
+  submitFindings(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SubmitFindingsDto,
+  ) {
+    return this.verification.submitFindings(actor, id, dto);
+  }
+
+  @RequirePermissions(Permission.VERIFICATION_DECIDE)
+  @ApiOperation({
+    summary: 'Pick up submitted findings for review',
+    description:
+      'Stops two administrators reviewing the same report and reaching different conclusions ' +
+      'ten seconds apart.',
+  })
+  @Put('requests/:id/review')
+  beginReview(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.verification.beginReview(actor, id);
   }
 
   @RequirePermissions(Permission.VERIFICATION_DECIDE)

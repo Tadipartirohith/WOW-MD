@@ -11,6 +11,15 @@ import {
   can,
 } from '../lib/permissions';
 
+/** What an officer wrote up after attending. */
+interface VerificationFindings {
+  visited: boolean;
+  observations: string;
+  issues: string[];
+  evidence: string[];
+  recommendation: 'approve' | 'reject' | 'revisit';
+}
+
 interface VerificationRequest {
   id: string;
   applicantType: string;
@@ -20,6 +29,8 @@ interface VerificationRequest {
   assignedToUserId: string | null;
   remarks: string | null;
   createdAt: string;
+  findings: VerificationFindings | null;
+  revisitCount: number;
 }
 
 interface SupportCase {
@@ -63,6 +74,64 @@ const STATUS_TONE: Record<string, string> = {
   additional_review: 'bg-amber-50 text-amber-800',
 };
 
+/**
+ * The in-person portal, section by section.
+ *
+ * Each one is a question somebody actually has: what is waiting on me, what am
+ * I part-way through, what have I handed on, what came back. Ordered the way
+ * work moves rather than by status name.
+ */
+const SECTIONS: { key: string; label: string; blurb: string; statuses: string[] }[] = [
+  {
+    key: 'new',
+    label: 'New',
+    blurb: 'Raised and waiting for an administrator to allocate',
+    statuses: ['new'],
+  },
+  {
+    key: 'assigned',
+    label: 'Assigned',
+    blurb: 'Allocated to an officer, not yet started',
+    statuses: ['assigned'],
+  },
+  {
+    key: 'in_progress',
+    label: 'In progress',
+    blurb: 'An officer is out on it',
+    statuses: ['in_progress'],
+  },
+  {
+    key: 'submitted',
+    label: 'Submitted',
+    blurb: 'Findings are in and somebody has to read them',
+    statuses: ['submitted', 'admin_review'],
+  },
+  {
+    key: 'revisit',
+    label: 'Needs another look',
+    blurb: 'Sent back for a second visit',
+    statuses: ['additional_review'],
+  },
+  {
+    key: 'issues',
+    label: 'Issues',
+    blurb: 'Parked on something that has to be resolved elsewhere',
+    statuses: ['issue'],
+  },
+  {
+    key: 'approved',
+    label: 'Approved',
+    blurb: 'Done. The applicant is operating',
+    statuses: ['approved'],
+  },
+  {
+    key: 'rejected',
+    label: 'Rejected',
+    blurb: 'Refused, with the reason on the record',
+    statuses: ['rejected'],
+  },
+];
+
 function Pill({ status }: { status: string }) {
   return (
     <span
@@ -91,6 +160,10 @@ export default function Verification() {
   const canManageOfficers = can(permissions, Permission.ADMIN_OFFICER_MANAGE);
 
   const [tab, setTab] = useState<'requests' | 'cases' | 'officers'>('requests');
+  // Null shows every section at once, which is what somebody with four visits
+  // wants; picking one is for somebody with forty.
+  const [section_, setSection] = useState<string | null>(null);
+  const visibleSections = section_ ? SECTIONS.filter((x) => x.key === section_) : SECTIONS;
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -197,17 +270,65 @@ export default function Verification() {
 
       {tab === 'requests' && (
         <div className="space-y-3">
+          {/*
+            One long queue is unusable to somebody carrying twenty visits. Each
+            section is a question the officer or administrator has, in the order
+            work moves — and a section with nothing in it is not shown, so the
+            list does not fill up with empty headings.
+          */}
+          <div className="flex flex-wrap gap-2">
+            {SECTIONS.map((section) => {
+              const count = rows.filter((r) => section.statuses.includes(r.status)).length;
+              return (
+                <button
+                  key={section.key}
+                  onClick={() => setSection(section.key === section_ ? null : section.key)}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    section.key === section_
+                      ? 'border-brand bg-brand text-white'
+                      : count > 0
+                        ? 'border-gray-300 text-gray-700 hover:border-brand'
+                        : 'border-gray-200 text-gray-400'
+                  }`}
+                >
+                  {section.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {visibleSections.map((section) => {
+            const sectionRows = rows.filter((r) => section.statuses.includes(r.status));
+            if (sectionRows.length === 0) return null;
+            return (
+              <div key={section.key} className="space-y-3">
+                <div>
+                  <h2 className="font-semibold text-gray-900">
+                    {section.label}{' '}
+                    <span className="text-sm font-normal text-gray-400">
+                      ({sectionRows.length})
+                    </span>
+                  </h2>
+                  <p className="text-sm text-gray-600">{section.blurb}</p>
+                </div>
+                {sectionRows.map((r) => (
+                  <RequestRow
+                    key={r.id}
+                    request={r}
+                    officers={activeOfficers}
+                    canAllocate={canAllocate}
+                    canDecide={canDecide}
+                    onRun={run}
+                  />
+                ))}
+              </div>
+            );
+          })}
+
           {rows.length === 0 && <p className="card text-sm text-gray-500">Nothing in the queue.</p>}
-          {rows.map((r) => (
-            <RequestRow
-              key={r.id}
-              request={r}
-              officers={activeOfficers}
-              canAllocate={canAllocate}
-              canDecide={canDecide}
-              onRun={run}
-            />
-          ))}
+          {rows.length > 0 && visibleSections.every(
+            (section) => rows.filter((r) => section.statuses.includes(r.status)).length === 0,
+          ) && <p className="card text-sm text-gray-500">Nothing in that group.</p>}
         </div>
       )}
 
@@ -279,6 +400,8 @@ function RequestRow({
   const [officerUserId, setOfficerUserId] = useState('');
   const [remarks, setRemarks] = useState('');
   const decided = request.status === 'approved' || request.status === 'rejected';
+  // Findings are in; somebody has to read them and decide.
+  const awaitingDecision = request.status === 'submitted' || request.status === 'admin_review';
 
   return (
     <div className="card space-y-3">
@@ -338,20 +461,91 @@ function RequestRow({
         </div>
       )}
 
-      {canDecide && !decided && (
+      {/* What the officer wrote up, once they have. */}
+      {request.findings && (
+        <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+          <p className="font-medium text-gray-900">
+            {request.findings.visited ? 'Visited' : 'Could not attend'}
+            <span className="ml-2 font-normal text-gray-500">
+              recommends {RECOMMENDATION_LABEL[request.findings.recommendation]}
+            </span>
+            {request.revisitCount > 0 && (
+              <span className="ml-2 text-xs text-amber-700">
+                visit {request.revisitCount + 1}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-gray-700">
+            {request.findings.observations}
+          </p>
+          {request.findings.issues.length > 0 && (
+            <ul className="mt-2 list-inside list-disc text-red-700">
+              {request.findings.issues.map((issue, i) => (
+                <li key={i}>{issue}</li>
+              ))}
+            </ul>
+          )}
+          {request.findings.evidence.length > 0 && (
+            <p className="mt-2 flex flex-wrap gap-2">
+              {request.findings.evidence.map((url, i) => (
+                <a
+                  key={url}
+                  className="text-xs text-brand underline"
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Evidence {i + 1}
+                </a>
+              ))}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/*
+        The officer's half: attend, then write up what they saw. Deciding on
+        the strength of it is a separate step, below — an approval that rests
+        on nothing is what makes a verification a checkbox.
+      */}
+      {canDecide && !decided && !awaitingDecision && (
         <div className="space-y-2 border-t pt-3">
-          {request.status === 'assigned' && (
+          {(request.status === 'assigned' || request.status === 'additional_review') && (
             <button
               className="btn-outline"
               onClick={() => onRun(() => api.put(`/verification/requests/${request.id}/start`))}
             >
-              Start the visit
+              {request.status === 'additional_review' ? 'Go back out' : 'Start the visit'}
+            </button>
+          )}
+          <FindingsForm
+            requestId={request.id}
+            onRun={onRun}
+            revisit={request.revisitCount > 0}
+          />
+        </div>
+      )}
+
+      {/* The reviewer's half. */}
+      {canDecide && awaitingDecision && (
+        <div className="space-y-2 border-t pt-3">
+          {request.status === 'submitted' && (
+            <button
+              className="btn-outline"
+              onClick={() =>
+                onRun(
+                  () => api.put(`/verification/requests/${request.id}/review`),
+                  'Yours to decide. Nobody else will pick it up.',
+                )
+              }
+            >
+              Take this for review
             </button>
           )}
           <textarea
             className="input"
             rows={2}
-            placeholder="What you found on the visit. Required for anything other than an approval."
+            placeholder="Your reasoning. Required for anything other than an approval."
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
           />
@@ -374,11 +568,13 @@ function RequestRow({
             <button
               className="btn-outline"
               onClick={() =>
-                onRun(() =>
-                  api.put(`/verification/requests/${request.id}/decide`, {
-                    status: 'additional_review',
-                    remarks,
-                  }),
+                onRun(
+                  () =>
+                    api.put(`/verification/requests/${request.id}/decide`, {
+                      status: 'additional_review',
+                      remarks,
+                    }),
+                  'Sent back. It is on the officer\u2019s queue again.',
                 )
               }
             >
@@ -398,8 +594,120 @@ function RequestRow({
               Reject
             </button>
           </div>
+          <p className="text-xs text-gray-500">
+            Sending it back clears the findings and returns it to the officer, who visits again.
+          </p>
         </div>
       )}
+    </div>
+  );
+}
+
+const RECOMMENDATION_LABEL: Record<string, string> = {
+  approve: 'approval',
+  reject: 'rejection',
+  revisit: 'another visit',
+};
+
+/**
+ * What the officer writes up after attending.
+ *
+ * `visited` is asked separately from the observations because "I went and it
+ * checked out" and "I could not find the address" are both findings, and the
+ * second is the one that matters most.
+ */
+function FindingsForm({
+  requestId,
+  onRun,
+  revisit,
+}: {
+  requestId: string;
+  onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
+  revisit: boolean;
+}) {
+  const [visited, setVisited] = useState(true);
+  const [observations, setObservations] = useState('');
+  const [issues, setIssues] = useState('');
+  const [recommendation, setRecommendation] = useState<'approve' | 'reject' | 'revisit'>('approve');
+  const [problem, setProblem] = useState('');
+
+  const issueList = issues
+    .split('\n')
+    .map((i) => i.trim())
+    .filter(Boolean);
+
+  function submit() {
+    if (observations.trim().length < 10) {
+      setProblem('Write up what you actually saw.');
+      return;
+    }
+    if (recommendation !== 'approve' && issueList.length === 0) {
+      setProblem('List what did not check out — one per line.');
+      return;
+    }
+    setProblem('');
+    void onRun(
+      () =>
+        api.put(`/verification/requests/${requestId}/findings`, {
+          visited,
+          observations: observations.trim(),
+          issues: issueList,
+          recommendation,
+        }),
+      'Submitted. An administrator decides from here.',
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded bg-gray-50 p-3">
+      <p className="text-sm font-medium text-gray-800">
+        {revisit ? 'Write up the return visit' : 'Write up the visit'}
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={visited}
+          onChange={(e) => setVisited(e.target.checked)}
+        />
+        <span className="text-gray-700">I attended the address</span>
+      </label>
+      <textarea
+        className="input"
+        rows={3}
+        placeholder="Attended the address. Kitchen and two vans present; GST certificate on the wall."
+        value={observations}
+        onChange={(e) => setObservations(e.target.value)}
+      />
+      <label className="block text-sm">
+        <span className="text-gray-700">Anything that did not check out</span>
+        <textarea
+          className="input mt-1"
+          rows={2}
+          placeholder="One per line"
+          value={issues}
+          onChange={(e) => setIssues(e.target.value)}
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-gray-700">What you recommend</span>
+        <select
+          className="input mt-1"
+          value={recommendation}
+          onChange={(e) => setRecommendation(e.target.value as 'approve' | 'reject' | 'revisit')}
+        >
+          <option value="approve">Approve</option>
+          <option value="reject">Reject</option>
+          <option value="revisit">Somebody should go again</option>
+        </select>
+        <span className="mt-1 block text-xs text-gray-500">
+          A recommendation, not a decision. An administrator reads this and decides.
+        </span>
+      </label>
+      {problem && <p className="text-sm text-red-600">{problem}</p>}
+      <button className="btn" onClick={submit}>
+        Submit findings
+      </button>
     </div>
   );
 }

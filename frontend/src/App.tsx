@@ -32,6 +32,7 @@ import Proposals from './pages/Proposals';
 import SharedBiodata from './pages/SharedBiodata';
 import Agency from './pages/Agency';
 import Security from './pages/Security';
+import Support from './pages/Support';
 import ProviderConsole from './pages/ProviderConsole';
 import WeddingPlanners from './pages/WeddingPlanners';
 import Forbidden from './pages/Forbidden';
@@ -104,6 +105,9 @@ const NAV: NavEntry[] = [
     requires: [Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE],
   },
   { to: '/notifications', label: 'Notifications', requires: [] },
+  // Vendors had nowhere at all to say something had gone wrong outside a
+  // booking they were already inside. Everyone who can raise a case gets it.
+  { to: '/support', label: 'Support', requires: [Permission.CASE_RAISE] },
   // Security sits in the navigation rather than under the email dropdown:
   // sessions, two-factor and recovery codes are things people go looking for,
   // and a menu they have to discover first is a menu they never open.
@@ -492,6 +496,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.BOOKING_READ_OWN, Permission.BOOKING_READ_INCOMING]}>
             <Bookings />
+          </Protected>
+        }
+      />
+      <Route
+        path="/support"
+        element={
+          <Protected requires={[Permission.CASE_RAISE]}>
+            <Support />
           </Protected>
         }
       />

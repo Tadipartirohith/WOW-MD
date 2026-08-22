@@ -179,12 +179,13 @@ req POST /auth/password/change "{\"currentPassword\":\"$OFFICER_TEMP\",\"newPass
 req POST /auth/login "{\"email\":\"officer-$STAMP@wow.local\",\"password\":\"OfficerPass1\"}" >/dev/null
 OFFICER=$(field /tmp/body accessToken)
 
-c=$(req GET "/verification/requests?applicantType=vendor" "" "$ADMIN")
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
 REQ=$(jq -r --arg id "$LISTING" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
-[ -z "$REQ" ] && REQ=$(jq -r '(.data // .)[-1].id' /tmp/body)
+assert "the application raised a verification request of its own" "$([ -n "$REQ" ] && echo 1 || echo 0)"
 c=$(req PUT "/verification/requests/$REQ/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN")
 check "admin allocates the visit to the officer" "$c" 200
 req PUT "/verification/requests/$REQ/start" "" "$OFFICER" >/dev/null
+req PUT "/verification/requests/$REQ/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER" >/dev/null
 c=$(req PUT "/verification/requests/$REQ/decide" '{"status":"approved"}' "$OFFICER")
 check "officer approves the business after the visit" "$c" 200
 
@@ -524,6 +525,125 @@ check "the biodata carries a contact block" "$c" 200
 body_has '"primaryMobileSource":"account"' "saying where the primary number lives"
 body_has '"primaryMobileVerified":false' "and whether it has been verified"
 assert "the primary number is present, not missing" "$(jq -e '.contact.primaryMobile != null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 20. The officer reports; an administrator decides =="
+# A second business, so the chain can be walked from the start without
+# disturbing the one section 4 already approved.
+reg vendor2 vendor ""
+VENDOR2=$(field /tmp/vendor2.json accessToken)
+GST2=$(printf '29ZYXWV%04dF1Z5' "$(( (RANDOM + 137) % 10000 ))")
+c=$(req POST /vendors "{\"name\":\"Second $STAMP\",\"category\":\"catering\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GST2\",\"panNumber\":\"ZYXWV9876E\",\"registeredAddress\":\"9 Jubilee Hills, Hyderabad\",\"contactPhone\":\"9876543299\"}" "$VENDOR2")
+check "a second business applies" "$c" 201
+LISTING2=$(field /tmp/body id)
+
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+REQ2=$(jq -r --arg id "$LISTING2" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
+assert "the application raised a verification request" "$([ -n "$REQ2" ] && echo 1 || echo 0)"
+
+c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
+check "it cannot be approved before anybody has been anywhere" "$c" 400
+body_has 'submitted findings' "and the refusal says what is missing"
+
+c=$(req PUT "/verification/requests/$REQ2/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN")
+check "admin allocates it" "$c" 200
+
+# The notification is the point of D4: allocation that nobody is told about is
+# a queue somebody has to remember to check.
+c=$(req GET /notifications "" "$OFFICER")
+check "the officer has notifications" "$c" 200
+body_has '"type":"verification_assigned"' "including one for the visit they have just been given"
+grep -q "$REQ2" /tmp/body && assert "carrying the request it refers to" 1 || assert "the notification does not say which request" 0
+
+c=$(req PUT "/verification/requests/$REQ2/start" "" "$OFFICER")
+check "the officer picks it up" "$c" 200
+
+c=$(req PUT "/verification/requests/$REQ2/findings" '{"visited":true,"observations":"Short","issues":[],"recommendation":"approve"}' "$OFFICER")
+check "a write-up too short to mean anything is refused" "$c" 400
+c=$(req PUT "/verification/requests/$REQ2/findings" '{"visited":false,"observations":"Could not find the address at all.","issues":[],"recommendation":"reject"}' "$OFFICER")
+check "recommending a rejection without saying what went wrong is refused" "$c" 400
+
+c=$(req PUT "/verification/requests/$REQ2/findings" '{"visited":true,"observations":"Attended. Kitchen and two vans present, GST certificate on the wall.","issues":[],"evidence":["https://cdn.example.com/gst.jpg"],"recommendation":"approve"}' "$OFFICER")
+check "the officer submits their findings" "$c" 200
+body_has '"status":"submitted"' "which moves it out of their queue"
+
+c=$(req PUT "/verification/requests/$REQ2/findings" '{"visited":true,"observations":"Trying to submit twice over.","issues":[],"recommendation":"approve"}' "$OFFICER")
+check "and cannot be submitted twice" "$c" 400
+
+c=$(req GET "/verification/workload" "" "$ADMIN")
+check "the workload is readable" "$c" 200
+body_has '"submitted":1' "submitted work is reported"
+assert "but does not count against the officer, whose part is done" "$(jq -e --arg o "$OFFICER_ID" '.[] | select(.officerUserId == $o) | .total == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 21. Admin review, and sending it back =="
+c=$(req PUT "/verification/requests/$REQ/review" "" "$ADMIN")
+check "a request with nothing submitted has nothing to review" "$c" 400
+c=$(req PUT "/verification/requests/$REQ2/review" "" "$ADMIN")
+check "an administrator picks the findings up" "$c" 200
+body_has '"status":"admin_review"' "so two administrators do not both decide it"
+
+c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"additional_review","remarks":"Go back and photograph the second kitchen."}' "$ADMIN")
+check "it is sent back for another look" "$c" 200
+body_has '"revisitCount":1' "and the platform counts how many times that has happened"
+
+c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
+check "with the findings cleared, it cannot be approved on the old ones" "$c" 400
+
+c=$(req PUT "/verification/requests/$REQ2/findings" '{"visited":true,"observations":"Went back. Second kitchen photographed, everything in order.","issues":[],"evidence":["https://cdn.example.com/kitchen2.jpg"],"recommendation":"approve"}' "$OFFICER")
+check "the officer goes back and writes it up again" "$c" 200
+c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
+check "and now it can be approved" "$c" 200
+
+c=$(req GET /vendors/me "" "$VENDOR2")
+body_has '"isApproved":true' "which is what puts the business in front of buyers"
+
+echo
+echo "== 22. A vendor hears about the work coming in =="
+SLOT_DATE2=$(days_from_now 55)
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE2\",\"startTime\":\"10:00\",\"endTime\":\"14:00\",\"vendorServiceId\":\"$VS\",\"capacity\":2}" "$VENDOR")
+check "the first vendor publishes another window" "$c" 201
+SLOT_N=$(field /tmp/body id)
+
+c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"slotId\":\"$SLOT_N\",\"eventDate\":\"$SLOT_DATE2\",\"vendorServiceId\":\"$VS\",\"offeringId\":\"$OFFER\",\"quantity\":3,\"serviceAnswers\":{\"shoot_time\":\"11:00\",\"permission\":\"yes\"},\"requirements\":\"A request the vendor should hear about.\"}" "$GROOM")
+check "a family sends a request" "$c" 201
+BOOKING3=$(field /tmp/body id)
+
+# Domain events reach notifications through the outbox, which is deliberately
+# asynchronous — a notification that fails to send must never roll back the
+# booking it describes. So this waits for delivery rather than assuming it.
+await_notification() {
+  token=$1; needle=$2; n=0
+  while [ "$n" -lt 20 ]; do
+    req GET /notifications "" "$token" >/dev/null
+    grep -q "$needle" /tmp/body && return 0
+    n=$((n + 1))
+    sleep 1
+  done
+  return 1
+}
+
+await_notification "$VENDOR" "$BOOKING3"
+c=$(req GET /notifications "" "$VENDOR")
+check "the vendor has notifications" "$c" 200
+body_has '"type":"booking_request"' "including one for the new request"
+body_has '"reference"' "carrying a reference short enough to read out"
+grep -q "$SLOT_DATE2" /tmp/body && assert "and the date it is for" 1 || assert "the notification does not say when" 0
+grep -q "$BOOKING3" /tmp/body && assert "and the request it points at" 1 || assert "the notification does not say which request" 0
+
+c=$(req GET /notifications/unread-count "" "$VENDOR")
+check "the unread count is served" "$c" 200
+assert "and is not zero" "$(jq -e '.unread > 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# The buyer placed it, so they are not told about their own action.
+c=$(req GET /notifications "" "$GROOM")
+grep -q '"type":"booking_request"' /tmp/body && assert "the buyer was told about their own request" 0 || assert "the buyer is not told about their own request" 1
+
+c=$(req POST "/bookings/$BOOKING3/quotations" '{"amount":26000}' "$VENDOR")
+check "the vendor quotes" "$c" 201
+await_notification "$GROOM" '"type":"booking_quotation"'
+c=$(req GET /notifications "" "$GROOM")
+body_has '"type":"booking_quotation"' "and the buyer hears about the quotation"
 
 echo
 echo "============================="

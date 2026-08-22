@@ -7,12 +7,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import {
   AllocateRequestDto,
   DecideVerificationDto,
+  SubmitFindingsDto,
   VerificationQueryDto,
 } from './dto/verification.dto';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
@@ -21,6 +23,7 @@ import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
   ApplicantType,
+  NotificationType,
   UserRole,
   VerificationStatus,
 } from '../../common/enums';
@@ -52,6 +55,7 @@ export class VerificationService {
     @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
     private readonly mail: MailService,
   ) {}
 
@@ -151,6 +155,18 @@ export class VerificationService {
       resourceId: request.id,
       metadata: { officerUserId: officer.id },
     });
+
+    // Told *after* the allocation is stored, never before. A notification for
+    // work that then failed to save sends an officer looking for a visit that
+    // is not on their queue, which is worse than no notification at all.
+    await this.notifications.create(officer.id, NotificationType.VERIFICATION_ASSIGNED, {
+      requestId: saved.id,
+      applicantType: saved.applicantType,
+      subjectId: saved.subjectId,
+      allocatedByUserId: actor.userId,
+      note: dto.note ?? null,
+    });
+
     return saved;
   }
 
@@ -180,10 +196,33 @@ export class VerificationService {
       throw new BadRequestException('Record the reason for anything other than an approval');
     }
 
+    // An approval has to rest on a visit somebody actually made and wrote up.
+    // Without this an officer could approve a business straight from ASSIGNED,
+    // which makes the whole verification step a checkbox.
+    if (dto.status === VerificationStatus.APPROVED && !request.findings) {
+      throw new BadRequestException(
+        'Nobody has submitted findings for this request yet. It cannot be approved.',
+      );
+    }
+    if (
+      dto.status === VerificationStatus.ADDITIONAL_REVIEW &&
+      request.status === VerificationStatus.NEW
+    ) {
+      throw new BadRequestException('Allocate this request before sending it back for a revisit');
+    }
+
     request.status = dto.status;
     request.remarks = dto.remarks ?? null;
     request.decidedAt = new Date();
     request.decidedByUserId = actor.userId;
+    request.reviewedByUserId = actor.userId;
+    if (dto.status === VerificationStatus.ADDITIONAL_REVIEW) {
+      // Sending it back is a real workflow step, not a dead end: the request
+      // returns to the officer's queue and the count says how many times.
+      request.revisitCount += 1;
+      request.assignedToUserId = request.assignedToUserId ?? null;
+      request.findings = null;
+    }
     request.history = [
       ...request.history,
       {
@@ -216,13 +255,115 @@ export class VerificationService {
     return saved;
   }
 
+  /**
+   * The officer writes up what they found.
+   *
+   * This is the step the old chain was missing. An officer reports; an
+   * administrator decides. Keeping those apart is the whole point of having a
+   * verification step rather than a checkbox, and it is what makes an approval
+   * something you can audit six months later.
+   */
+  async submitFindings(
+    actor: AuthUser,
+    requestId: string,
+    dto: SubmitFindingsDto,
+  ): Promise<VerificationRequest> {
+    const request = await this.loadOrFail(requestId);
+
+    if (actor.role !== UserRole.ADMIN && request.assignedToUserId !== actor.userId) {
+      throw new ForbiddenException('That request is not allocated to you');
+    }
+    if (
+      request.status !== VerificationStatus.ASSIGNED &&
+      request.status !== VerificationStatus.IN_PROGRESS &&
+      request.status !== VerificationStatus.ADDITIONAL_REVIEW
+    ) {
+      throw new BadRequestException(
+        `Findings can only be submitted on a request you are working on — this one is ${request.status}`,
+      );
+    }
+    // A recommendation to reject or revisit has to say what went wrong, or the
+    // administrator reviewing it has nothing to act on.
+    if (dto.recommendation !== 'approve' && dto.issues.length === 0) {
+      throw new BadRequestException('List what did not check out');
+    }
+
+    request.findings = {
+      visited: dto.visited,
+      observations: dto.observations,
+      issues: dto.issues,
+      evidence: dto.evidence ?? [],
+      recommendation: dto.recommendation,
+    };
+    request.status = VerificationStatus.SUBMITTED;
+    request.submittedAt = new Date();
+    request.submittedByUserId = actor.userId;
+    request.history = [
+      ...request.history,
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: VerificationStatus.SUBMITTED,
+        remarks: dto.observations.slice(0, 500),
+      },
+    ];
+    const saved = await this.requests.save(request);
+
+    // Whoever allocated it is the person waiting on the answer.
+    if (request.allocatedByUserId) {
+      await this.notifications.create(
+        request.allocatedByUserId,
+        NotificationType.VERIFICATION_SUBMITTED,
+        {
+          requestId: saved.id,
+          applicantType: saved.applicantType,
+          recommendation: dto.recommendation,
+          issues: dto.issues.length,
+        },
+      );
+    }
+    return saved;
+  }
+
+  /**
+   * An administrator picks the findings up.
+   *
+   * Purely a signal, like `start` on the officer side, but it is the one that
+   * stops two administrators reviewing the same report and reaching different
+   * conclusions ten seconds apart.
+   */
+  async beginReview(actor: AuthUser, requestId: string): Promise<VerificationRequest> {
+    const request = await this.loadOrFail(requestId);
+    if (request.status !== VerificationStatus.SUBMITTED) {
+      throw new BadRequestException('There are no findings waiting on this request');
+    }
+
+    request.status = VerificationStatus.ADMIN_REVIEW;
+    request.reviewStartedAt = new Date();
+    request.reviewedByUserId = actor.userId;
+    request.history = [
+      ...request.history,
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: VerificationStatus.ADMIN_REVIEW,
+      },
+    ];
+    return this.requests.save(request);
+  }
+
   /** Officer picks up an allocated request. Purely a workload signal. */
   async start(actor: AuthUser, requestId: string): Promise<VerificationRequest> {
     const request = await this.loadOrFail(requestId);
     if (request.assignedToUserId !== actor.userId && actor.role !== UserRole.ADMIN) {
       throw new ForbiddenException('That request is not allocated to you');
     }
-    if (request.status !== VerificationStatus.ASSIGNED) return request;
+    if (
+      request.status !== VerificationStatus.ASSIGNED &&
+      request.status !== VerificationStatus.ADDITIONAL_REVIEW
+    ) {
+      return request;
+    }
 
     request.status = VerificationStatus.IN_PROGRESS;
     request.history = [
@@ -449,6 +590,11 @@ export class VerificationService {
         officerUserId: officer.id,
         open,
         inProgress,
+        // Written up and waiting on an administrator. Reported, but deliberately
+        // not counted below: the officer's part is finished, and holding it
+        // against them would starve the busiest officer of new work while an
+        // administrator sat on a backlog.
+        submitted: count([VerificationStatus.SUBMITTED, VerificationStatus.ADMIN_REVIEW]),
         completed: count([VerificationStatus.APPROVED, VerificationStatus.REJECTED]),
         // What allocation actually ranks on: work still on their plate.
         total: open + inProgress,

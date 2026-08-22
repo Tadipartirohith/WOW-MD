@@ -14,6 +14,7 @@ import { SupportCasesService } from './support-cases.service';
 import { OfficersService } from './officers.service';
 import { VerificationController } from './verification.controller';
 import { UsersModule } from '../users/users.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { UsersModule } from '../users/users.module';
       Profile,
     ]),
     UsersModule,
+    NotificationsModule,
   ],
   providers: [VerificationService, SupportCasesService, OfficersService],
   controllers: [VerificationController],

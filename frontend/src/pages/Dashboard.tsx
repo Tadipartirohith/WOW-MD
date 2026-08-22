@@ -188,6 +188,17 @@ export default function Dashboard() {
     enabled: isProvider,
   });
 
+  // "Bookings against your listing" counts everything ever, including jobs
+  // finished last year. What a vendor opens the app to find out is how many
+  // people are waiting on a price from them right now.
+  const { data: newRequests } = useQuery({
+    queryKey: ['new-requests-count'],
+    queryFn: async () =>
+      (await api.get('/bookings/incoming', { params: { limit: 1, status: 'requested' } })).data,
+    retry: false,
+    enabled: isProvider,
+  });
+
   const { data: earnings } = useQuery({
     queryKey: ['earnings'],
     queryFn: async () => (await api.get('/bookings/earnings')).data,
@@ -218,7 +229,7 @@ export default function Dashboard() {
       </div>
       <ClaimRequests />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Counter
           label="Unread notifications"
           value={unread?.unread ?? 0}
@@ -226,7 +237,17 @@ export default function Dashboard() {
         />
         {isProvider && (
           <>
-            <Counter label="Bookings against your listing" value={incoming?.total ?? 0} to="/bookings" />
+            <Counter
+              label="New requests"
+              value={newRequests?.total ?? 0}
+              to="/bookings"
+              tone={(newRequests?.total ?? 0) > 0 ? 'text-amber-700' : undefined}
+            />
+            <Counter
+              label="Bookings in total"
+              value={incoming?.total ?? 0}
+              to="/bookings"
+            />
             <Counter
               label="Held in escrow"
               value={`\u20b9${Number(earnings?.heldInEscrow ?? 0).toLocaleString('en-IN')}`}
@@ -255,16 +276,19 @@ function Counter({
   label,
   value,
   to,
+  tone,
 }: {
   label: string;
   value: ReactNode;
   to: string;
+  /** Set only when the number means somebody has to do something. */
+  tone?: string;
 }) {
   return (
     <Link to={to} className="card transition hover:shadow-md">
       <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
       <p
-        className="mt-1 text-2xl font-semibold text-gray-900"
+        className={`mt-1 text-2xl font-semibold ${tone ?? 'text-gray-900'}`}
         style={{ fontVariantNumeric: 'tabular-nums' }}
       >
         {value}
