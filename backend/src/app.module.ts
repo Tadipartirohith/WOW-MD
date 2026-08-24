@@ -14,6 +14,7 @@ import { MailModule } from './platform/mail/mail.module';
 import { SmsModule } from './platform/sms/sms.module';
 import { JobsModule } from './platform/jobs/jobs.module';
 import { AuditModule } from './platform/audit/audit.module';
+import { ModerationModule } from './platform/moderation/moderation.module';
 import { ThrottlingModule } from './platform/throttling/throttling.module';
 import { RedisThrottlerStorage } from './platform/throttling/redis-throttler.storage';
 import { AccountThrottlerGuard } from './platform/throttling/account-throttler.guard';
@@ -81,6 +82,7 @@ import { AiModule } from './modules/ai/ai.module';
     SmsModule,
     JobsModule,
     AuditModule,
+    ModerationModule,
 
     AuthModule,
     InvitationsModule,

@@ -60,6 +60,15 @@ body_has() {
 
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Three photographs before the details. A biodata with no picture is one
+# nobody looks at, so the section that starts the form now requires them.
+seed_photos() { # seed_photos <profileId> <token>
+  for n in 1 2 3; do
+    req POST "/profiles/$1/details/photos" "{\"url\":\"https://cdn.example.com/seed-$1-$n.jpg\"}" "$2" >/dev/null
+  done
+}
+
+
 REG_PHONE_BASE=$(date +%s | tail -c 7)
 REG_N=0
 reg() {
@@ -814,13 +823,14 @@ assert "and a comma-separated location list, split" "$(jq -e '.preferences.prefe
 
 echo
 echo "== 27. One name field, and a plan that cannot run backwards =="
-c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","lastName":"Reddy","heightCm":163,"complexion":"Fair","nativePlace":"Warangal","placeOfBirth":"Hyderabad","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
+seed_photos "$PREF_PROFILE" "$BRIDE"
+c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","lastName":"Reddy","heightCm":163,"complexion":"Fair","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
 check "personal details save with a single name field" "$c" 200
 c=$(req GET "/profiles/$PREF_PROFILE/details" "" "$BRIDE")
 assert "the surname column is no longer written" "$(jq -e '.details.surname == null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # A client still sending a surname must not lose the name it carries.
-c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","surname":"Kondapur","lastName":"","heightCm":163,"complexion":"Fair","nativePlace":"Warangal","placeOfBirth":"Hyderabad","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
+c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","surname":"Kondapur","lastName":"","heightCm":163,"complexion":"Fair","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
 check "an older client sending only a surname is still accepted" "$c" 200
 c=$(req GET "/profiles/$PREF_PROFILE/details" "" "$BRIDE")
 assert "and its value became the last name rather than being dropped" "$(jq -e '.details.lastName == "Kondapur"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -851,6 +861,89 @@ grep -q '"counterpartName"' /tmp/body \
 grep -q '"counterpartProfileId"' /tmp/body \
   && assert "and carries the profile to open from it" 1 \
   || assert "there is nothing to open from the notification" 0
+
+echo
+echo "== 29. A photograph has to be a photograph =="
+# A matrimonial profile is a claim about a real person. A generated face makes
+# the government ID, the officer's visit and the family's consent all attach to
+# somebody who does not exist.
+reg genuine individual bride
+GEN=$(field /tmp/genuine.json accessToken)
+c=$(req GET /users/me "" "$GEN")
+GEN_PROFILE=$(field /tmp/body id)
+
+c=$(req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/holiday.jpg"}' "$GEN")
+check "an ordinary photograph goes on" "$c" 201
+
+c=$(req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/midjourney-portrait.png"}' "$GEN")
+check "one straight out of a generator is refused" "$c" 400
+body_has 'authentic photograph' "and says what to do instead"
+
+c=$(req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/ai-generated-face.png"}' "$GEN")
+check "so is one that says so in its name" "$c" 400
+
+c=$(req GET "/profiles/$GEN_PROFILE/details/photos" "" "$GEN")
+assert "and neither was stored" "$(jq -e '.photos | length == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 30. Photographs before the rest of the biodata =="
+# Asking at the end means asking somebody who has already finished.
+c=$(req PUT "/profiles/$GEN_PROFILE/details/personal" '{"firstName":"Meera","lastName":"Nair","heightCm":160,"complexion":"Fair","communicationAddress":"3 Kondapur, Hyderabad"}' "$GEN")
+check "one photograph is not enough to start the details" "$c" 400
+body_has 'photographs before' "and says how many are needed"
+body_has '1 so far' "and how many there are"
+
+req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/second.jpg"}' "$GEN" >/dev/null
+req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/third.jpg"}' "$GEN" >/dev/null
+c=$(req PUT "/profiles/$GEN_PROFILE/details/personal" '{"firstName":"Meera","lastName":"Nair","heightCm":160,"complexion":"Fair","communicationAddress":"3 Kondapur, Hyderabad"}' "$GEN")
+check "with three, the details save" "$c" 200
+
+echo
+echo "== 31. Native place moved, and a divorce may be explained =="
+c=$(req PUT "/profiles/$GEN_PROFILE/details/family" '{"father":{"name":"Rajan Nair","profession":"Teacher"},"mother":{"name":"Latha Nair","profession":"Homemaker"},"familyType":"nuclear","familyStatus":"middle","brothers":1,"sisters":0,"nativePlace":"Palakkad"}' "$GEN")
+check "the native place is asked with the family now" "$c" 200
+c=$(req GET "/profiles/$GEN_PROFILE/details" "" "$GEN")
+assert "and stored there" "$(jq -e '.details.nativePlace == "Palakkad"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Never required: somebody who would rather not explain must still be able to
+# complete the section.
+c=$(req PUT "/profiles/$GEN_PROFILE/details/marital" '{"maritalStatus":"divorced","divorceDate":"2023-06-01"}' "$GEN")
+check "a divorce can be recorded without explaining it" "$c" 200
+c=$(req PUT "/profiles/$GEN_PROFILE/details/marital" '{"maritalStatus":"divorced","divorceDate":"2023-06-01","reason":"We married young and grew apart. It was settled by mutual consent."}' "$GEN")
+check "and with a reason, in their own words" "$c" 200
+c=$(req GET "/profiles/$GEN_PROFILE/details" "" "$GEN")
+body_has 'grew apart' "which is kept"
+
+# Never married carries no history at all, which is the existing rule.
+c=$(req PUT "/profiles/$GEN_PROFILE/details/marital" '{"maritalStatus":"never_married"}' "$GEN")
+check "going back to never-married is accepted" "$c" 200
+c=$(req GET "/profiles/$GEN_PROFILE/details" "" "$GEN")
+grep -q 'grew apart' /tmp/body && assert "the old reason is still on the record" 0 || assert "and clears the history with it" 1
+
+echo
+echo "== 32. Clearing a biodata is not closing an account =="
+c=$(req GET "/profiles/$GEN_PROFILE/details" "" "$GEN")
+check "the biodata is there" "$c" 200
+assert "with details on it" "$(jq -e '.details != null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req DELETE "/profiles/$GEN_PROFILE/details" "" "$OTHER")
+check "somebody else cannot clear it" "$c" 403
+
+c=$(req DELETE "/profiles/$GEN_PROFILE/details" "" "$GEN")
+check "its owner can" "$c" 200
+
+c=$(req GET "/profiles/$GEN_PROFILE/details" "" "$GEN")
+check "and the profile still exists" "$c" 200
+assert "with the details gone" "$(jq -e '.details == null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and the photographs with them" "$(jq -e '(.assets | length) == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET "/profiles/$GEN_PROFILE/details/photos" "" "$GEN")
+assert "no photographs left" "$(jq -e '.photos | length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# The account is untouched: clearing a biodata and closing an account are
+# different actions with different consequences.
+c=$(req GET /users/me "" "$GEN")
+check "the account is still signed in and intact" "$c" 200
+assert "and no longer counts as complete" "$(jq -e '.profileCompleted == false' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 echo
 echo "============================="

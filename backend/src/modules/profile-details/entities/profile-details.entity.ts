@@ -49,6 +49,22 @@ export class ProfileDetails {
   @Column({ type: 'varchar', length: 40, nullable: true })
   complexion: string | null;
 
+  /**
+   * The family's native place, not the candidate's.
+   *
+   * It sits with the family details now rather than the personal ones: it is a
+   * fact about where a family is from, which is what the other side is asking
+   * when they ask, and it was being answered twice — once here and once as a
+   * place of birth that meant something different.
+   */
+  /**
+   * The family's native place, not the candidate's.
+   *
+   * It sits with the family details now rather than the personal ones: it is a
+   * fact about where a family is from, which is what the other side is asking
+   * when they ask, and it was being answered twice — once here and once as a
+   * place of birth that meant something different.
+   */
   @Column({ type: 'varchar', length: 120, nullable: true })
   nativePlace: string | null;
 

@@ -7,6 +7,7 @@ import { ProfileAsset } from './entities/profile-asset.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { RedisService } from '../../platform/redis/redis.service';
+import { ModerationService } from '../../platform/moderation/moderation.service';
 import {
   AssetDto,
   EducationDetailsDto,
@@ -73,12 +74,28 @@ export class ProfileDetailsService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly redis: RedisService,
+    private readonly moderation: ModerationService,
   ) {}
 
   // ------------------------------------------------------------- sections
 
+  /** How many photographs a profile needs before the rest can be filled in. */
+  private static readonly REQUIRED_PHOTOS = 3;
+
   async savePersonal(actor: AuthUser, profileId: string, dto: PersonalDetailsDto) {
     const row = await this.editable(actor, profileId);
+
+    // Photographs first. A biodata with no picture is one nobody looks at, and
+    // asking at the end means asking somebody who has already finished — so the
+    // section that starts the form is the one that requires them.
+    const profile = await this.load(profileId);
+    const photos = profile.photos?.length ?? 0;
+    if (photos < ProfileDetailsService.REQUIRED_PHOTOS) {
+      throw new BadRequestException(
+        `Add ${ProfileDetailsService.REQUIRED_PHOTOS} photographs before filling in the details — ` +
+          `${photos} so far.`,
+      );
+    }
 
     // Surname and last name were two fields and are now one. A client that has
     // not been updated still sends a surname, and dropping it would lose a name
@@ -96,8 +113,10 @@ export class ProfileDetailsService {
       lastName: lastName,
       heightCm: dto.heightCm,
       complexion: dto.complexion,
-      nativePlace: dto.nativePlace,
-      placeOfBirth: dto.placeOfBirth,
+      // Native place moved to the family section. A client still sending it
+      // here has it routed rather than dropped; place of birth is no longer
+      // collected and is ignored.
+      ...(dto.nativePlace ? { nativePlace: dto.nativePlace } : {}),
       communicationAddress: dto.communicationAddress,
       alternateMobile: dto.alternateMobile ?? null,
       residence: (dto.residence ?? {}) as Record<string, string>,
@@ -149,6 +168,7 @@ export class ProfileDetailsService {
       mother: dto.mother as unknown as Record<string, unknown>,
       familyType: dto.familyType,
       familyStatus: dto.familyStatus,
+      ...(dto.nativePlace ? { nativePlace: dto.nativePlace } : {}),
       brothers: dto.brothers,
       sisters: dto.sisters,
     });
@@ -267,6 +287,14 @@ export class ProfileDetailsService {
 
   async addPhoto(actor: AuthUser, profileId: string, url: string) {
     await this.editable(actor, profileId);
+
+    // A matrimonial profile is a claim about a real person. A generated face
+    // makes the government ID, the officer's visit and the family's consent all
+    // attach to somebody who does not exist, so this is an identity control
+    // rather than a content filter — and it runs before anything is stored
+    // against the profile.
+    await this.moderation.assertGenuinePhoto(url, { userId: actor.userId, kind: 'biodata' });
+
     const profile = await this.load(profileId);
 
     const photos = profile.photos ?? [];
@@ -308,6 +336,38 @@ export class ProfileDetailsService {
     }
 
     return this.photoState(saved);
+  }
+
+  /**
+   * Clears the biodata: the details, the siblings, the family assets and the
+   * photographs.
+   *
+   * Deliberately *not* the account, and not the profile row. "Delete profile"
+   * on a biodata screen means "I want to start this again" far more often than
+   * it means "close my account", and the second is a different action with
+   * different consequences — it lives under Security, needs a password, and
+   * refuses while money is in flight.
+   *
+   * What survives: the account, the consent record, the agency's books, and any
+   * interests already sent or received. Those are either somebody else's
+   * record or the platform's own, and a person clearing their biodata is not a
+   * reason to lose them. The profile does become incomplete, which is what
+   * takes it out of matchmaking.
+   */
+  async clearBiodata(actor: AuthUser, profileId: string): Promise<{ success: true }> {
+    await this.editable(actor, profileId);
+
+    await this.siblings.delete({ profileId });
+    await this.assets.delete({ profileId });
+    await this.details.delete({ profileId });
+
+    const profile = await this.load(profileId);
+    profile.photos = [];
+    profile.profileCompleted = false;
+    await this.profiles.save(profile);
+    if (profile.userId) await this.redis.del(`profile:${profile.userId}`);
+
+    return { success: true };
   }
 
   async listPhotos(actor: AuthUser, profileId: string) {
@@ -514,14 +574,16 @@ export class ProfileDetailsService {
       !(typeof value === 'object' && Object.keys(value as object).length === 0);
 
     const done: Record<ProfileSection, boolean> = {
+      // Native place moved to the family section and place of birth is no
+      // longer collected, so neither can be a condition of this one being
+      // complete — every existing profile would otherwise become incomplete on
+      // deploy, and the fix would look like data loss.
       personal: Boolean(
         details &&
           has(details.firstName) &&
           has(details.lastName) &&
           has(details.heightCm) &&
           has(details.complexion) &&
-          has(details.nativePlace) &&
-          has(details.placeOfBirth) &&
           has(details.communicationAddress),
       ),
       religion: Boolean(
@@ -533,6 +595,7 @@ export class ProfileDetailsService {
         details && (details.horoscopeAvailable === false || has(details.horoscope)),
       ),
       marital: Boolean(details && has(details.maritalStatus)),
+      // The native place is asked here now.
       family: Boolean(
         details &&
           has(details.father) &&

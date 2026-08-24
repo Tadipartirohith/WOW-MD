@@ -74,6 +74,15 @@ export const configValidationSchema = Joi.object({
 
   // Identity verification. 'mock' returns the OTP on the response for local
   // use; anything else needs a licensed AUA/KUA integration.
+  IMAGE_MODERATION_PROVIDER: Joi.string().valid('heuristic', 'hosted').default('heuristic'),
+  IMAGE_MODERATION_URL: Joi.string()
+    .uri()
+    .allow('')
+    .when('IMAGE_MODERATION_PROVIDER', { is: 'hosted', then: Joi.string().uri().required() }),
+  IMAGE_MODERATION_KEY: Joi.string().allow('').optional(),
+  IMAGE_MODERATION_THRESHOLD: Joi.number().min(0).max(1).optional(),
+  IMAGE_MODERATION_TIMEOUT_MS: Joi.number().min(1000).max(30_000).optional(),
+
   AADHAAR_PROVIDER: Joi.string().valid('mock', 'licensed').default('mock'),
   // Required together once the provider is licensed: two out of three is a
   // deployment that starts cleanly and fails on the first person who tries to

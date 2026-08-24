@@ -8,6 +8,7 @@ import { AddMediaItemDto, CreateAlbumDto } from './dto/media.dto';
 import { MediaStorageProvider } from './media-storage.provider';
 import { AppConfigService } from '../../config/app-config.service';
 import { MediaType } from '../../common/enums';
+import { ModerationService } from '../../platform/moderation/moderation.service';
 
 @Injectable()
 export class MediaService {
@@ -16,6 +17,7 @@ export class MediaService {
     @InjectRepository(MediaItem) private readonly items: Repository<MediaItem>,
     private readonly storage: MediaStorageProvider,
     private readonly cfg: AppConfigService,
+    private readonly moderation: ModerationService,
   ) {}
 
   createAlbum(userId: string, dto: CreateAlbumDto) {
@@ -39,6 +41,14 @@ export class MediaService {
 
   async addItem(userId: string, albumId: string, dto: AddMediaItemDto) {
     const album = await this.getOwnedAlbum(userId, albumId);
+
+    // Album photographs are shareable, and a shared album is a claim about a
+    // real wedding in the same way a profile is a claim about a real person.
+    // Videos are left alone: the detector scores stills.
+    if ((dto.type ?? MediaType.IMAGE) === MediaType.IMAGE) {
+      await this.moderation.assertGenuinePhoto(dto.url, { userId, kind: 'album' });
+    }
+
     return this.items.save(
       this.items.create({
         albumId: album.id,

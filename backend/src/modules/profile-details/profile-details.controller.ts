@@ -115,6 +115,19 @@ export class ProfileDetailsController {
   }
 
   @ApiOperation({ summary: 'Choose which photo leads the profile' })
+  @ApiOperation({
+    summary: 'Clear the biodata and start again',
+    description:
+      'Removes the details, siblings, family assets and photographs. Not the account — that is ' +
+      'under Security, needs a password, and refuses while money is in flight. The consent ' +
+      'record and any interests already exchanged survive: those are somebody else\'s record ' +
+      'or the platform\'s own.',
+  })
+  @Delete('details')
+  clearBiodata(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.details.clearBiodata(actor, id);
+  }
+
   // -------------------------------------------------------------- photographs
 
   @ApiOperation({

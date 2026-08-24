@@ -21,6 +21,7 @@ import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { ConsentService } from '../circulation/consent.service';
 import { AgentBillingService } from './agent-billing.service';
+import { ModerationService } from '../../platform/moderation/moderation.service';
 import { ConsentScope, NetworkVisibility, ProfileLifecycle, ProfileVisibility } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
@@ -54,6 +55,7 @@ export class ManagedProfilesService {
     private readonly invitations: InvitationsService,
     private readonly consent: ConsentService,
     private readonly billing: AgentBillingService,
+    private readonly moderation: ModerationService,
   ) {}
 
   /**
@@ -262,6 +264,13 @@ export class ManagedProfilesService {
   /** Photo management, kept explicit so the array cap is enforced server-side. */
   async addPhoto(actor: AuthUser, profileId: string, dto: AddProfilePhotoDto): Promise<Profile> {
     const profile = await this.findOne(actor, profileId);
+    // The same rule as the subject's own upload. An agency photographing a
+    // walk-in client is exactly the path where a stock or generated face is
+    // most tempting, and least likely to be noticed.
+    await this.moderation.assertGenuinePhoto(dto.url, {
+      userId: actor.userId,
+      kind: 'managed_profile',
+    });
     if (profile.lifecycle === ProfileLifecycle.ARCHIVED) {
       throw new ForbiddenException('This profile is closed.');
     }

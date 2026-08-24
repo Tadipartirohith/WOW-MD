@@ -60,6 +60,9 @@ export class AppConfigService {
   get identity() {
     return this.section('identity');
   }
+  get moderation() {
+    return this.section('moderation');
+  }
   get ai() {
     return this.section('ai');
   }

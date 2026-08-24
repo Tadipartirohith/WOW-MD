@@ -16,6 +16,7 @@ import {
 import ProfileSelector from '../components/ProfileSelector';
 import ProfilePhotos from '../components/ProfilePhotos';
 import SavedBiodata from '../components/SavedBiodata';
+import ProfileCard from '../components/ProfileCard';
 import { formatDate } from '../lib/dates';
 
 interface Section {
@@ -116,8 +117,20 @@ export default function Biodata() {
     setNotice('');
     try {
       await api.put(`/profiles/${targetId}/details/${section}`, body);
-      setNotice('Saved.');
-      qc.invalidateQueries({ queryKey: ['biodata', targetId] });
+      await qc.invalidateQueries({ queryKey: ['biodata', targetId] });
+
+      // Straight on to the next section. Leaving the page where it was meant
+      // scrolling back up to find the next thing, which is where people
+      // stopped.
+      const next = nextSection(section);
+      if (next) {
+        setOpen(next);
+        setNotice(`Saved. Next: ${SECTION_LABEL[next] ?? next}.`);
+        // The next section opens below the fold on a phone otherwise.
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setNotice('Saved. That is the last section.');
+      }
     } catch (err) {
       setError(apiMessage(err, 'That section could not be saved.'));
     }
@@ -196,6 +209,24 @@ export default function Biodata() {
       {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
       {/*
+        The thing they made, before the forms that made it. A read-back list is
+        still a list; what somebody wants after filling this in is to see a
+        photograph and a name.
+      */}
+      {targetId && Object.keys(details).length > 0 && (
+        <ProfileCard
+          profileId={targetId}
+          profile={me ?? null}
+          details={details}
+          complete={completion?.complete ?? false}
+          percent={completion?.percent ?? 0}
+          onEdit={() => setOpen('personal')}
+          onPhotos={() => setOpen('photos')}
+          onView={() => setOpen('saved')}
+        />
+      )}
+
+      {/*
         Read-back first, forms after. A form full of your own answers looks
         exactly like a form you have not filled in yet, which is why people
         saved, saw the same boxes and concluded nothing had been stored.
@@ -260,6 +291,45 @@ export default function Biodata() {
   );
 }
 
+/**
+ * The order the form is filled in.
+ *
+ * Saving a section moves to the next one rather than leaving somebody scrolling
+ * back up to find where they were — which is the reported complaint, and the
+ * reason people stopped halfway. Photographs come first because the details
+ * cannot be saved without three of them.
+ */
+/** What each section is called, for the "next" line after a save. */
+const SECTION_LABEL: Record<string, string> = {
+  photos: 'Photographs',
+  personal: 'Personal details',
+  religion: 'Religion and community',
+  horoscope: 'Horoscope',
+  marital: 'Marital status',
+  family: 'Family',
+  education: 'Education and occupation',
+  preferences: 'Partner preferences',
+  identity: 'Identity verification',
+};
+
+const SECTION_ORDER = [
+  'photos',
+  'personal',
+  'religion',
+  'horoscope',
+  'marital',
+  'family',
+  'education',
+  'preferences',
+  'identity',
+] as const;
+
+function nextSection(current: string): string | null {
+  const i = SECTION_ORDER.indexOf(current as (typeof SECTION_ORDER)[number]);
+  if (i === -1 || i === SECTION_ORDER.length - 1) return null;
+  return SECTION_ORDER[i + 1];
+}
+
 function Accordion({
   title,
   name,
@@ -274,13 +344,22 @@ function Accordion({
   children: ReactNode;
 }) {
   const isOpen = open === name;
+  const step = SECTION_ORDER.indexOf(name as (typeof SECTION_ORDER)[number]);
   return (
     <div className="card">
       <button
         className="flex w-full items-center justify-between text-left"
         onClick={() => setOpen(isOpen ? '' : name)}
       >
-        <span className="font-semibold text-gray-900">{title}</span>
+        <span className="font-semibold text-gray-900">
+          {/* Which of how many, so the form has a visible end. */}
+          {step >= 0 && (
+            <span className="mr-2 text-xs font-normal text-gray-400">
+              {step + 1} of {SECTION_ORDER.length}
+            </span>
+          )}
+          {title}
+        </span>
         <span className="text-gray-400">{isOpen ? '−' : '+'}</span>
       </button>
       {isOpen && <div className="mt-4">{children}</div>}
@@ -336,8 +415,6 @@ function PersonalForm({
     'lastName',
     'heightCm',
     'complexion',
-    'nativePlace',
-    'placeOfBirth',
     'communicationAddress',
     'alternateMobile',
   ];
@@ -380,12 +457,6 @@ function PersonalForm({
         </Field>
         <Field label="Complexion">
           <input className="input mt-1" value={String(draft.complexion ?? '')} onChange={set('complexion')} required />
-        </Field>
-        <Field label="Native place">
-          <input className="input mt-1" value={String(draft.nativePlace ?? '')} onChange={set('nativePlace')} required />
-        </Field>
-        <Field label="Place of birth">
-          <input className="input mt-1" value={String(draft.placeOfBirth ?? '')} onChange={set('placeOfBirth')} required />
         </Field>
         {/*
           The primary number lives on the account, not the biodata, so it is
@@ -575,6 +646,7 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
       boys: history.boys ?? '',
       girls: history.girls ?? '',
       childrenLivingWith: history.childrenLivingWith ?? '',
+      reason: history.reason ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
@@ -595,6 +667,7 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
           if (values.boys !== '') body.boys = Number(values.boys);
           if (values.girls !== '') body.girls = Number(values.girls);
           if (values.childrenLivingWith) body.childrenLivingWith = values.childrenLivingWith;
+          if (values.reason) body.reason = values.reason;
         }
         onSave(body);
       }}
@@ -613,6 +686,27 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
           ))}
         </select>
       </Field>
+
+      {/*
+        Asked only where it applies, and never required. Somebody who would
+        rather not explain must still be able to finish the section — a
+        mandatory box here gets answered with a full stop, which is worse than
+        silence because it looks like an answer.
+      */}
+      {(status === 'divorced' || status === 'separated') && (
+        <Field
+          label="What happened, if you would like to say"
+          hint="Optional. Shown only to people who can already see your marital history."
+        >
+          <textarea
+            className="input mt-1"
+            rows={3}
+            maxLength={2000}
+            value={String(values.reason ?? '')}
+            onChange={set('reason')}
+          />
+        </Field>
+      )}
 
       {status !== 'never_married' && (
         <div className="grid gap-3 sm:grid-cols-3">
@@ -653,6 +747,14 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
   );
 }
 
+/**
+ * Where the family is from.
+ *
+ * Asked here rather than in the personal section: it is a fact about a family,
+ * which is what the other side is asking when they ask, and it used to sit
+ * beside a "place of birth" that people answered as though it were the same
+ * question.
+ */
 function FamilyForm({
   initial,
   siblings,
@@ -686,6 +788,7 @@ function FamilyForm({
       motherProfession: mother.profession ?? '',
       familyType: initial?.familyType ?? 'nuclear',
       familyStatus: initial?.familyStatus ?? '',
+      nativePlace: initial?.nativePlace ?? '',
       brothers: initial?.brothers ?? 0,
       sisters: initial?.sisters ?? 0,
     });
@@ -705,6 +808,7 @@ function FamilyForm({
             mother: { name: values.motherName, profession: values.motherProfession || undefined },
             familyType: values.familyType,
             familyStatus: values.familyStatus,
+            nativePlace: values.nativePlace || undefined,
             brothers: Number(values.brothers) || 0,
             sisters: Number(values.sisters) || 0,
           });
@@ -735,6 +839,9 @@ function FamilyForm({
           </Field>
           <Field label="Family status">
             <input className="input mt-1" value={String(values.familyStatus ?? '')} onChange={set('familyStatus')} required />
+          </Field>
+          <Field label="Native place" hint="Where the family is from">
+            <input className="input mt-1" value={String(values.nativePlace ?? '')} onChange={set('nativePlace')} />
           </Field>
           <Field label="Brothers">
             <input className="input mt-1" type="number" min={0} value={String(values.brothers ?? 0)} onChange={set('brothers')} />

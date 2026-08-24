@@ -58,6 +58,13 @@ export const AuditAction = {
   PROFILE_DEACTIVATED: 'profile.deactivated',
   PROFILE_REACTIVATED: 'profile.reactivated',
   PROFILE_ARCHIVED: 'profile.archived',
+  /**
+   * A photograph refused as generated rather than taken.
+   *
+   * Recorded because a run of these against one account is worth somebody
+   * looking at, and a refusal message alone tells nobody.
+   */
+  PROFILE_PHOTO_REJECTED: 'profile.photo_rejected',
 
   AGENT_APPROVED: 'agent.approved',
   AGENT_REJECTED: 'agent.rejected',

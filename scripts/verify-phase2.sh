@@ -51,6 +51,15 @@ assert() {
 jqok() { jq -e "$1" /tmp/body >/dev/null 2>&1 && echo 1 || echo 0; }
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Three photographs before the details. A biodata with no picture is one
+# nobody looks at, so the section that starts the form now requires them.
+seed_photos() { # seed_photos <profileId> <token>
+  for n in 1 2 3; do
+    req POST "/profiles/$1/details/photos" "{\"url\":\"https://cdn.example.com/seed-$1-$n.jpg\"}" "$2" >/dev/null
+  done
+}
+
+
 # An Aadhaar number carries a Verhoeff check digit and is unique platform-wide
 # by design, so the suite cannot reuse a fixed one — the second run would
 # collide with the first and fail for a reason that has nothing to do with what
@@ -163,7 +172,8 @@ check "an empty biodata still reads" "$c" 200
 assert "nothing is complete yet" "$(jqok '.completion.complete == false')"
 assert "and every required section is listed as missing" "$(jqok '.completion.missing | length >= 7')"
 
-c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Anjali","lastName":"Kumari","heightCm":163,"complexion":"Fair","nativePlace":"Guntur","placeOfBirth":"Hyderabad","communicationAddress":"14 Banjara Hills, Hyderabad"}' "$BRIDE")
+seed_photos "$BRIDE_PROFILE" "$BRIDE"
+c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Anjali","lastName":"Kumari","heightCm":163,"complexion":"Fair","communicationAddress":"14 Banjara Hills, Hyderabad"}' "$BRIDE")
 check "personal details save on their own" "$c" 200
 
 c=$(req GET "/profiles/$BRIDE_PROFILE/details" "" "$BRIDE")
@@ -227,7 +237,7 @@ echo
 echo "== 5. Somebody else's biodata is not yours to edit =="
 c=$(req GET "/profiles/$BRIDE_PROFILE/details" "" "$GROOM")
 check "another user cannot read it" "$c" 403
-c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Someone","lastName":"Else","heightCm":170,"complexion":"Fair","nativePlace":"X","placeOfBirth":"Y","communicationAddress":"Z"}' "$GROOM")
+c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Someone","lastName":"Else","heightCm":170,"complexion":"Fair","communicationAddress":"Z"}' "$GROOM")
 check "nor write to it" "$c" 403
 
 echo

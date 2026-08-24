@@ -276,6 +276,24 @@ export default () => ({
     aadhaarTimeoutMs: toNumber(process.env.AADHAAR_TIMEOUT_MS, 15_000),
   },
 
+  /**
+   * Whether a photograph is a photograph.
+   *
+   * A matrimonial profile is a claim about a real person; a generated face
+   * makes the government ID, the in-person visit and the family's consent all
+   * attach to somebody who does not exist. The default provider refuses what is
+   * plainly labelled and allows the rest, which keeps the rejection path
+   * exercised without needing a contract to run the application.
+   */
+  moderation: {
+    imageProvider: process.env.IMAGE_MODERATION_PROVIDER || 'heuristic',
+    imageModerationUrl: process.env.IMAGE_MODERATION_URL || '',
+    imageModerationKey: process.env.IMAGE_MODERATION_KEY || '',
+    /** Detectors score differently and drift; a compiled-in number cannot be tuned. */
+    imageModerationThreshold: Number(process.env.IMAGE_MODERATION_THRESHOLD) || 0.85,
+    imageModerationTimeoutMs: toNumber(process.env.IMAGE_MODERATION_TIMEOUT_MS, 8_000),
+  },
+
   ai: {
     // 'mock' uses deterministic, rule-based responses; 'openai' calls an LLM.
     provider: process.env.AI_PROVIDER || 'mock',

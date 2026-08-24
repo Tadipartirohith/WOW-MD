@@ -77,8 +77,6 @@ export default function SavedBiodata({
         </Row>
         <Row label="Height">{height ? `${height} cm` : null}</Row>
         <Row label="Complexion">{str('complexion')}</Row>
-        <Row label="Native place">{str('nativePlace')}</Row>
-        <Row label="Place of birth">{str('placeOfBirth')}</Row>
         <Row label="Alternate mobile">{str('alternateMobile')}</Row>
         <Row label="Address">{str('communicationAddress')}</Row>
       </Group>
@@ -119,6 +117,9 @@ export default function SavedBiodata({
         <Row label="Ended">
           {inBag('maritalHistory', 'divorceDate') ?? inBag('maritalHistory', 'separationDate')}
         </Row>
+        {inBag('maritalHistory', 'reason') && (
+          <Row label="What happened">{inBag('maritalHistory', 'reason')}</Row>
+        )}
       </Group>
 
       <Group title="Family">
@@ -128,6 +129,7 @@ export default function SavedBiodata({
         <Row label="Mother">
           {[mother.name, mother.profession, mother.lifeStatus].filter(Boolean).join(' · ') || null}
         </Row>
+        <Row label="Native place">{str('nativePlace')}</Row>
         <Row label="Family type">{str('familyType')}</Row>
         <Row label="Family status">{str('familyStatus')}</Row>
         <Row label="Brothers / sisters">

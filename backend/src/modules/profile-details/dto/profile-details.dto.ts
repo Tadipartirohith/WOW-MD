@@ -89,15 +89,26 @@ export class PersonalDetailsDto {
   @MaxLength(40)
   complexion: string;
 
-  @ApiProperty({ example: 'Warangal' })
+  /**
+   * Both moved out of this section.
+   *
+   * Native place belongs with the family — it is a fact about where a family is
+   * from — and place of birth was being read as the same question, so people
+   * answered it twice with different words. Still accepted here so a client
+   * that has not been updated does not start failing mid-deploy; the service
+   * routes the native place to where it now lives and ignores the other.
+   */
+  @ApiPropertyOptional({ deprecated: true, description: 'Moved to Family details.' })
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  nativePlace: string;
+  nativePlace?: string;
 
-  @ApiProperty({ example: 'Hyderabad' })
+  @ApiPropertyOptional({ deprecated: true, description: 'No longer collected.' })
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  placeOfBirth: string;
+  placeOfBirth?: string;
 
   @ApiProperty({ example: '12 Banjara Hills, Hyderabad 500034' })
   @IsString()
@@ -212,10 +223,21 @@ export class MaritalDetailsDto {
   @IsDateString()
   separationDate?: string;
 
-  @ApiPropertyOptional({ maxLength: 500 })
+  /**
+   * Why a previous marriage ended, in the person's own words.
+   *
+   * Never required. Somebody who would rather not explain must still be able to
+   * complete the section, and a mandatory box here would be answered with a
+   * full stop by everyone who felt that way — which is worse than silence
+   * because it looks like an answer.
+   */
+  @ApiPropertyOptional({
+    maxLength: 2000,
+    description: 'Optional. Shown only to people who may already see the marital history.',
+  })
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(2000)
   reason?: string;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 80 })
@@ -280,6 +302,15 @@ class ParentDto {
 }
 
 export class FamilyDetailsDto {
+  @ApiPropertyOptional({
+    example: 'Warangal',
+    description: "The family's native place. Asked here rather than in personal details.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  nativePlace?: string;
+
   @ApiProperty({ type: ParentDto })
   @ValidateNested()
   @Type(() => ParentDto)

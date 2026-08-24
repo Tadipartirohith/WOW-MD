@@ -55,6 +55,15 @@ assert() {
 
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Three photographs before the details. A biodata with no picture is one
+# nobody looks at, so the section that starts the form now requires them.
+seed_photos() { # seed_photos <profileId> <token>
+  for n in 1 2 3; do
+    req POST "/profiles/$1/details/photos" "{\"url\":\"https://cdn.example.com/seed-$1-$n.jpg\"}" "$2" >/dev/null
+  done
+}
+
+
 # Phone is the duplicate key for an agency-built profile, and the check is
 # global by design — the same number twice means the same person twice. So the
 # numbers have to be unique per run, or a second run of this suite collides
@@ -130,7 +139,8 @@ approve_agency "$AGENT_B" "Agency B $STAMP"
 fill_biodata() {
   pid=$1
   tok=$2
-  req PUT "/profiles/$pid/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"Fair","nativePlace":"Guntur","placeOfBirth":"Hyderabad","communicationAddress":"12 Jubilee Hills, Hyderabad"}' "$tok" >/dev/null
+  seed_photos "$pid" "$tok"
+  req PUT "/profiles/$pid/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"Fair","communicationAddress":"12 Jubilee Hills, Hyderabad"}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/religion" '{"religion":"Hindu","caste":"Kamma","subCaste":"None","motherTongue":"Telugu"}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/horoscope" '{"horoscopeAvailable":false}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/marital" '{"maritalStatus":"never_married"}' "$tok" >/dev/null
