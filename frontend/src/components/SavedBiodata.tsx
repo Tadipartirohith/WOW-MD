@@ -73,7 +73,7 @@ export default function SavedBiodata({
     <div className="space-y-5 text-sm">
       <Group title="Personal">
         <Row label="Name">
-          {[str('firstName'), str('surname'), str('lastName')].filter(Boolean).join(' ') || null}
+          {[str('firstName'), str('lastName')].filter(Boolean).join(' ') || null}
         </Row>
         <Row label="Height">{height ? `${height} cm` : null}</Row>
         <Row label="Complexion">{str('complexion')}</Row>

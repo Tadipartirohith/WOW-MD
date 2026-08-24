@@ -333,7 +333,6 @@ function PersonalForm({
 }) {
   const keys = [
     'firstName',
-    'surname',
     'lastName',
     'heightCm',
     'complexion',
@@ -349,7 +348,6 @@ function PersonalForm({
     onSave({
       ...draft,
       heightCm: Number(draft.heightCm) || undefined,
-      surname: draft.surname || undefined,
       alternateMobile: draft.alternateMobile || undefined,
     });
   }
@@ -361,14 +359,11 @@ function PersonalForm({
           <input className="input mt-1" value={String(draft.firstName ?? '')} onChange={set('firstName')} required />
         </Field>
         {/*
-          Surname and last name are separate on purpose and were being read as
-          duplicates. The hints are the fix: in much of India the house or
-          gothram name comes first and the family name last, and they are not
-          the same word.
+          One name field. The two used to be separate — in much of India the
+          house or gothram name and the family name are different words — but
+          they were read as duplicates often enough that a single field is the
+          clearer answer.
         */}
-        <Field label="Surname" hint="House or gothram name, if your family uses one">
-          <input className="input mt-1" value={String(draft.surname ?? '')} onChange={set('surname')} />
-        </Field>
         <Field label="Last name" hint="Family name, as on your documents">
           <input className="input mt-1" value={String(draft.lastName ?? '')} onChange={set('lastName')} required />
         </Field>

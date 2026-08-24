@@ -63,19 +63,39 @@ export class PlannerService {
       hostUserId = dto.onBehalfOfUserId;
     }
 
+    // A wedding cannot be planned backwards. The form accepted a date in the
+    // past and then generated a timeline entirely in the past — every task
+    // overdue on the day it was created, which is not a plan.
+    const wedding = new Date(`${dto.weddingDate}T00:00:00`);
+    const today = startOfDay(new Date());
+    if (Number.isNaN(wedding.getTime())) {
+      throw new BadRequestException('That is not a date');
+    }
+    if (wedding < today) {
+      throw new BadRequestException(
+        'That date has already passed. Pick the wedding date you are planning towards.',
+      );
+    }
+
     const plan = await this.plans.save(
       this.plans.create({ userId: hostUserId, weddingDate: dto.weddingDate }),
     );
 
-    const wedding = new Date(dto.weddingDate);
     const tasks = DEFAULT_TIMELINE_TEMPLATE.map((item) => {
       const due = new Date(wedding);
       due.setDate(due.getDate() - item.daysBefore);
+
+      // A wedding six weeks away still needs the venue booked, but "180 days
+      // before" would date that task to last year. Anything the template puts
+      // in the past is due now instead — late, which is true, rather than
+      // impossible, which is not useful.
+      const clamped = due < today ? today : due;
+
       return this.tasks.create({
         planId: plan.id,
         title: item.title,
         category: item.category,
-        dueDate: due.toISOString().slice(0, 10),
+        dueDate: clamped.toISOString().slice(0, 10),
         status: TaskStatus.PENDING,
       });
     });
@@ -222,4 +242,11 @@ export class PlannerService {
       return false;
     }
   }
+}
+
+/** Midnight local, so "in the past" is a day rather than a moment. */
+function startOfDay(d: Date): Date {
+  const copy = new Date(d);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
 }

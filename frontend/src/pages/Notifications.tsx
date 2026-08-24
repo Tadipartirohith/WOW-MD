@@ -213,7 +213,12 @@ function linkFor(n: Notification): string | null {
   if (n.type === 'dispute_update') return '/bookings';
   if (n.type === 'new_message') return '/chat';
   if (n.type === 'task_reminder') return '/planner';
-  if (n.type.startsWith('match_')) return '/matches';
+  // Straight to the profile it is about, rather than to a list the reader
+  // then has to search.
+  if (n.type.startsWith('match_')) {
+    const profileId = typeof p.counterpartProfileId === 'string' ? p.counterpartProfileId : null;
+    return profileId ? `/matches?profile=${profileId}` : '/matches';
+  }
   return null;
 }
 
@@ -258,9 +263,15 @@ function describe(n: Notification): string {
     case 'new_message':
       return str('preview') ?? 'Someone replied to you.';
     case 'match_interest':
-      return 'Someone would like to take your profile forward.';
+      return str('counterpartName')
+        ? `${str('counterpartName')}${str('counterpartCity') ? ` from ${str('counterpartCity')}` : ''} would like to take your profile forward.`
+        : 'Someone would like to take your profile forward.';
     case 'match_accepted':
-      return 'Your interest was accepted.';
+      // Naming them is the whole point: somebody who has sent five interests
+      // cannot act on "your interest was accepted".
+      return str('counterpartName')
+        ? `${str('counterpartName')} accepted your interest.`
+        : 'Your interest was accepted.';
     case 'task_reminder':
       return str('title') ?? 'A planning task is due.';
     default:

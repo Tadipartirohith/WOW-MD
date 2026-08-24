@@ -24,6 +24,7 @@ import {
   NAME_PATTERN,
   normaliseMobile,
   normaliseName,
+  normaliseOptionalName,
 } from '../../../common/util/identity-fields';
 
 /**
@@ -49,20 +50,33 @@ export class PersonalDetailsDto {
   @MaxLength(80)
   firstName: string;
 
-  @ApiPropertyOptional({ example: 'Kumar' })
+  /**
+   * Accepted, no longer stored separately.
+   *
+   * Kept on the DTO so a client that has not been updated does not start
+   * failing validation mid-deploy; the service folds it into `lastName` when
+   * that is empty and otherwise ignores it. Removing it outright would turn a
+   * rolling deploy into an outage for anyone on the old bundle.
+   */
+  @ApiPropertyOptional({ deprecated: true, description: 'Folded into lastName.' })
   @IsOptional()
   @IsString()
-  @Transform(normaliseName)
+  @Transform(normaliseOptionalName)
   @Matches(NAME_PATTERN, { message: NAME_MESSAGE })
   @MaxLength(80)
   surname?: string;
 
-  @ApiProperty({ example: 'Rao' })
+  /**
+   * Optional only so a client still sending the old `surname` is accepted; the
+   * service refuses a request that carries neither. Required in the form.
+   */
+  @ApiPropertyOptional({ example: 'Rao', description: 'Family name, as on the documents.' })
+  @IsOptional()
   @IsString()
-  @Transform(normaliseName)
+  @Transform(normaliseOptionalName)
   @Matches(NAME_PATTERN, { message: NAME_MESSAGE })
   @MaxLength(80)
-  lastName: string;
+  lastName?: string;
 
   @ApiProperty({ example: 170, minimum: 120, maximum: 230, description: 'Height in centimetres' })
   @IsInt()

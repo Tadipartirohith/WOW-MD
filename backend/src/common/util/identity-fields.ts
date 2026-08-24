@@ -26,6 +26,21 @@ export const normaliseName = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : value;
 
 /**
+ * The same, except that a blank string means "not given" rather than "given, and
+ * empty".
+ *
+ * `@IsOptional()` only skips `undefined`, so a form that submits an empty box
+ * for a field nobody filled in gets the pattern applied to '' and fails with a
+ * message about special characters — which is both wrong and confusing. Used on
+ * fields where absent is genuinely allowed.
+ */
+export const normaliseOptionalName = ({ value }: { value: unknown }): unknown => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.replace(/\s+/g, ' ').trim();
+  return trimmed === '' ? undefined : trimmed;
+};
+
+/**
  * Indian mobile numbers are ten digits beginning 6–9. People type them with
  * spaces, dashes, a `+91`, a bare `91` or a leading `0`, and every one of those
  * is the same number — so the transform strips the decoration, and what is

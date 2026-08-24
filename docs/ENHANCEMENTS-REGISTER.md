@@ -56,36 +56,57 @@ data-integrity bug. It needs fixing regardless of how much else gets built.
 
 ---
 
-## Reversals — these need a decision
+## Reversals — decided
 
-### V1 — Services before a match is fixed
+### V1 — Services before a match is fixed — **not applied**
 
 > ">> INDIVIDUAL USER SHOULD ABLE TO BOOK THE SERVICES EVEN MATCH IS NOT FIXED <<"
 > — page 2
 
-The platform locks the wedding marketplace until a match is fixed. That was the
-earlier specification's rule, it is enforced in `assertServicesUnlocked`, and
-`verify-rbac.sh` asserts a booking attempt returns 403 before the match is
-fixed.
+The platform locks the wedding marketplace until a match is fixed, and
+`verify-rbac.sh` asserts a booking attempt returns 403 before then.
 
-The good news: it is already behind `SERVICES_REQUIRE_MATCH_FIXED`, which exists
-precisely because "an operator running the services side as a standalone
-marketplace turns it off". So this is a **default change plus a test change**,
-not surgery — but it is a change to what the product is, so it is your call
-rather than mine.
+**Decision: keep it locked.** This document's line is treated as aspirational
+rather than a change to the product. The behaviour is already behind
+`SERVICES_REQUIRE_MATCH_FIXED`, so an operator running the services side as a
+standalone marketplace still turns it off with one environment variable — but
+the default stays on, because services being what a couple graduates into is
+what the platform is for.
 
-### V2 — Vendors lose the Chat module
+This is a deliberate divergence from the document, taken knowingly.
+
+### V2 — Vendors lose the Chat module — **applied**
 
 > "remove the separate Chat module. Chat belongs inside the individual booking."
 > — section 32
 
-This is vendor-scoped and consistent: a vendor's conversations are always about
-a booking, and one thread per vendor gets confusing the moment the same vendor
-has three jobs for three families. It does **not** conflict with the Chat work
-just delivered, which was about agents and couples.
+Vendor-scoped and consistent: a vendor's conversations are always about a
+booking, and one thread per vendor gets confusing the moment the same vendor has
+three jobs for three families. It does **not** conflict with the Chat work
+delivered last round, which was about agents and couples.
 
-It does add rules that do not exist today: chat unlocks only once the advance is
+It adds two rules that do not exist today: chat unlocks only once the advance is
 paid, and locks to read-only once the booking completes.
+
+### P8 — Surname and Last Name — **collapse to one**
+
+The previous specification asked for the two to be distinguished, and that is
+what was built. This one asks for a single field.
+
+**Decision: collapse.** `surname` is dropped from the form; `lastName` is the
+one name field. Existing surname values migrate into `lastName` where it is
+empty, so nobody loses a name they had entered — and where both were filled in,
+the last name is kept because that is the one on the documents.
+
+---
+
+## How the rest was decided
+
+- **Sequencing:** straight through, in the document's own order, committed in
+  phases.
+- **Third-party integrations** (AI-image detection, push, WhatsApp): built the
+  way Aadhaar and payments were — a real provider behind an interface, a mock
+  that mirrors the real rule as the default, activating on configuration.
 
 ---
 
@@ -118,7 +139,7 @@ genuinely new is separated out.
 | P5 | Native Place moves from Personal Details to **Family Details** | new | Place of Birth removed from Personal Details entirely |
 | P6 | **Mobile Number** on every relevant biodata section, not just the alternate | partly done | The contact block returns both; the sections do not all show it |
 | P7 | Section-by-section navigation with Next/Continue, redirecting rather than scrolling | new | The accordion is one long page today |
-| P8 | Surname **or** Last Name — only one should exist | decision | The previous specification said distinguish them, and that is what was built. This says remove one. Reversal of an item delivered last round |
+| P8 | Surname **or** Last Name — only one should exist | decided | Collapse to `lastName`, migrating existing surnames where the last name is empty. See above |
 | P9 | Family assets: estimated value of the property | done | `estimatedValue` already exists and is shown |
 | P10 | Planner must reject past wedding dates | new | It accepts `05-11-2025` today |
 | P11 | Planner tasks must not fall due before the wedding date | new | |
@@ -251,5 +272,5 @@ Three items need a third party the platform does not have: AI-image detection,
 push notifications, and WhatsApp. Each can be built the way Aadhaar and payments
 were — a real provider behind an interface, activating on configuration.
 
-Two need a decision before they are built: V1 (services before a match is fixed)
-and P8 (surname *or* last name, reversing what was delivered last round).
+Both decisions are taken: V1 is deliberately **not** applied — the match gate
+stays on by default — and P8 collapses the two name fields into one.

@@ -108,10 +108,16 @@ export default function Planner() {
           <label className="label" htmlFor="wedding-date">
             Wedding date
           </label>
+          {/*
+            The picker refuses a past date rather than accepting one and
+            generating a timeline that was entirely overdue on the day it was
+            made. The server refuses it too — this only saves the round trip.
+          */}
           <input
             id="wedding-date"
             className="input"
             type="date"
+            min={new Date().toISOString().slice(0, 10)}
             value={weddingDate}
             onChange={(e) => setWeddingDate(e.target.value)}
             required

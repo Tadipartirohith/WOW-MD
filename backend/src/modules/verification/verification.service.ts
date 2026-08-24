@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { OfficerServiceArea } from './entities/officer-service-area.entity';
 import { canonicalCity, normalisePlace, stateOf } from './service-area';
@@ -73,22 +73,36 @@ export class VerificationService {
     applicantUserId: string,
     subjectId: string | null,
   ): Promise<VerificationRequest> {
+    // Idempotent per *business*, not per applicant.
+    //
+    // It used to be per applicant, and re-pointed the open request at whatever
+    // subject came in last. One vendor account with two businesses therefore
+    // ended up with a single request pointing at the second — the first could
+    // not be verified, was in nobody's queue, and nothing said so. If it had
+    // already been allocated, that officer's visit silently became a visit to a
+    // different business.
+    //
+    // That was defensible while one account meant one business. It is not now.
+    const openStatuses = [
+      VerificationStatus.NEW,
+      VerificationStatus.ASSIGNED,
+      VerificationStatus.IN_PROGRESS,
+      VerificationStatus.SUBMITTED,
+      VerificationStatus.ADMIN_REVIEW,
+      VerificationStatus.ADDITIONAL_REVIEW,
+      VerificationStatus.ISSUE,
+    ];
+
     const open = await this.requests.findOne({
-      where: [
-        { applicantUserId, status: VerificationStatus.NEW },
-        { applicantUserId, status: VerificationStatus.ASSIGNED },
-        { applicantUserId, status: VerificationStatus.IN_PROGRESS },
-        { applicantUserId, status: VerificationStatus.ADDITIONAL_REVIEW },
-        { applicantUserId, status: VerificationStatus.ISSUE },
-      ],
+      where: openStatuses.map((status) =>
+        // A null subject is the applicant themselves — an agency, which has
+        // exactly one. Matching on null there keeps that path idempotent.
+        subjectId
+          ? { applicantUserId, subjectId, status }
+          : { applicantUserId, subjectId: IsNull(), status },
+      ),
     });
-    if (open) {
-      if (subjectId && open.subjectId !== subjectId) {
-        open.subjectId = subjectId;
-        await this.requests.save(open);
-      }
-      return open;
-    }
+    if (open) return open;
 
     const request = await this.requests.save(
       this.requests.create({

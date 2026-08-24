@@ -6,6 +6,7 @@ import { ProfileSibling } from './entities/profile-sibling.entity';
 import { ProfileAsset } from './entities/profile-asset.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
+import { RedisService } from '../../platform/redis/redis.service';
 import {
   AssetDto,
   EducationDetailsDto,
@@ -71,16 +72,28 @@ export class ProfileDetailsService {
     @InjectRepository(ProfileAsset) private readonly assets: Repository<ProfileAsset>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly redis: RedisService,
   ) {}
 
   // ------------------------------------------------------------- sections
 
   async savePersonal(actor: AuthUser, profileId: string, dto: PersonalDetailsDto) {
     const row = await this.editable(actor, profileId);
+
+    // Surname and last name were two fields and are now one. A client that has
+    // not been updated still sends a surname, and dropping it would lose a name
+    // somebody typed; refusing the request outright would break them mid-deploy.
+    const lastName = (dto.lastName || dto.surname || '').trim();
+    if (!lastName) {
+      throw new BadRequestException('A last name is required');
+    }
+
     Object.assign(row, {
       firstName: dto.firstName,
-      surname: dto.surname ?? null,
-      lastName: dto.lastName,
+      // One name field now. A client still sending a surname has it folded in
+      // where there is no last name, rather than silently dropped.
+      surname: null,
+      lastName: lastName,
       heightCm: dto.heightCm,
       complexion: dto.complexion,
       nativePlace: dto.nativePlace,
@@ -174,7 +187,71 @@ export class ProfileDetailsService {
       preferredHeightMaxCm: dto.preferredHeightMaxCm,
       partnerPreferences: dto.preferences ?? {},
     });
-    return this.persist(profileId, row);
+    const saved = await this.persist(profileId, row);
+
+    // The biodata is where preferences are *entered*; the compatibility engine
+    // reads them from `profiles.preferences`. Those were two unconnected
+    // stores, so somebody could fill in their partner preferences in full and
+    // the engine would still score them against `{}` — which is exactly the
+    // reported symptom: matchmaking "not working" while the data was plainly
+    // there.
+    await this.projectPreferences(profileId, row);
+    return saved;
+  }
+
+  /**
+   * Copies the answers the engine needs onto the profile itself.
+   *
+   * A projection, not a second source of truth: `profile_details` stays
+   * authoritative and this is derived from it on every save. The alternative —
+   * having the engine join across to the biodata — would put a second table in
+   * the hot path of every suggestion query, on a rule that changes rarely.
+   *
+   * Only the fields the engine actually scores are copied. Copying everything
+   * would quietly widen what a suggestion query can see into a record that has
+   * its own visibility rules.
+   */
+  private async projectPreferences(profileId: string, row: ProfileDetails): Promise<void> {
+    const profile = await this.profiles.findOne({ where: { id: profileId } });
+    if (!profile) return;
+
+    const bag = (row.partnerPreferences ?? {}) as Record<string, unknown>;
+    const text = (key: string): string | undefined => {
+      const v = bag[key];
+      return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+    };
+    const list = (key: string): string[] | undefined => {
+      const v = bag[key];
+      if (Array.isArray(v)) {
+        const items = v.filter((x): x is string => typeof x === 'string' && Boolean(x.trim()));
+        return items.length > 0 ? items : undefined;
+      }
+      // Somebody typing "Hyderabad, Bengaluru" into a free-text box is the
+      // common case, and dropping it because it is not an array would be the
+      // same failure in a smaller way.
+      const single = text(key);
+      return single ? single.split(',').map((x) => x.trim()).filter(Boolean) : undefined;
+    };
+
+    profile.preferences = {
+      ...profile.preferences,
+      religion: text('religion') ?? profile.preferences?.religion,
+      community: text('caste') ?? text('community') ?? profile.preferences?.community,
+      education: text('education') ?? profile.preferences?.education,
+      lifestyle: list('lifestyle') ?? profile.preferences?.lifestyle,
+      preferredLocations:
+        list('locations') ?? list('preferredLocations') ?? profile.preferences?.preferredLocations,
+      preferredAgeMin: row.preferredAgeMin ?? profile.preferences?.preferredAgeMin,
+      preferredAgeMax: row.preferredAgeMax ?? profile.preferences?.preferredAgeMax,
+    };
+    await this.profiles.save(profile);
+
+    // The profile is cached per account, so writing it here and stopping would
+    // leave every reader — including the matchmaking suggestion query — looking
+    // at the copy from before the preferences were entered. Saving and not
+    // invalidating is the exact shape of the vendor-profile bug fixed earlier:
+    // the write lands, and nothing that reads it can tell.
+    if (profile.userId) await this.redis.del(`profile:${profile.userId}`);
   }
 
   // ------------------------------------------------------------- photographs

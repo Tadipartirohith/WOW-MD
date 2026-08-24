@@ -761,6 +761,98 @@ c=$(req POST /admin/payouts/retry "" "$VENDOR")
 check "a vendor cannot run it" "$c" 403
 
 echo
+echo "== 25. One vendor account, two businesses, two verifications =="
+# raise() used to be idempotent per applicant rather than per business, and
+# re-pointed the open request at whatever subject came in last. The first
+# business ended up with no request at all: unverifiable, in nobody's queue,
+# and nothing said so.
+reg multibiz vendor ""
+MB=$(field /tmp/multibiz.json accessToken)
+GA=$(printf '36MULTI%04dA1Z5' "$(( (RANDOM + 41) % 10000 ))")
+GB=$(printf '36MULTJ%04dB1Z5' "$(( (RANDOM + 907) % 10000 ))")
+
+c=$(req POST /vendors "{\"name\":\"MB Catering $STAMP\",\"category\":\"catering\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GA\",\"panNumber\":\"MULTI1111A\",\"registeredAddress\":\"1 First Road, Hyderabad\",\"contactPhone\":\"9876540001\"}" "$MB")
+check "one account creates its first business" "$c" 201
+MB_A=$(field /tmp/body id)
+c=$(req POST /vendors "{\"name\":\"MB Photos $STAMP\",\"category\":\"photography\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GB\",\"panNumber\":\"MULTJ2222B\",\"registeredAddress\":\"2 Second Road, Hyderabad\",\"contactPhone\":\"9876540002\"}" "$MB")
+check "and a second under the same login" "$c" 201
+MB_B=$(field /tmp/body id)
+
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+check "the verification queue is readable" "$c" 200
+assert "the first business has its own request" "$(jq -e --arg id "$MB_A" 'any((.data // .)[]; .subjectId == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and so does the second" "$(jq -e --arg id "$MB_B" 'any((.data // .)[]; .subjectId == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "two requests, not one repointed" "$(jq -e --arg a "$MB_A" --arg b "$MB_B" '[(.data // .)[] | select(.subjectId == $a or .subjectId == $b)] | length == 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Still idempotent where it should be: re-saving one business must not raise a
+# second request against it.
+c=$(req PUT "/vendors/$MB_A" '{"description":"Edited, same business."}' "$MB")
+check "editing the first business is accepted" "$c" 200
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+assert "and did not raise a duplicate for it" "$(jq -e --arg a "$MB_A" '[(.data // .)[] | select(.subjectId == $a)] | length == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 26. Partner preferences reach the matchmaking engine =="
+# The biodata wrote them to profile_details; the compatibility engine read
+# profiles.preferences. Two stores, never synchronised — so somebody could fill
+# the section in completely and still be scored against nothing.
+c=$(req GET /users/me "" "$BRIDE")
+PREF_PROFILE=$(field /tmp/body id)
+
+c=$(req PUT "/profiles/$PREF_PROFILE/details/preferences" '{"preferredAgeMin":27,"preferredAgeMax":34,"preferredHeightMinCm":165,"preferredHeightMaxCm":185,"preferences":{"religion":"Hindu","caste":"Reddy","education":"Masters","lifestyle":["vegetarian","non-smoker"],"locations":"Hyderabad, Bengaluru"}}' "$BRIDE")
+check "partner preferences are saved on the biodata" "$c" 200
+
+c=$(req GET /users/me "" "$BRIDE")
+check "the profile is readable" "$c" 200
+assert "and the engine's own copy now carries the religion" "$(jq -e '.preferences.religion == "Hindu"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "the education" "$(jq -e '.preferences.education == "Masters"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "the lifestyle answers" "$(jq -e '.preferences.lifestyle | index("vegetarian")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "the age range" "$(jq -e '.preferences.preferredAgeMin == 27 and .preferences.preferredAgeMax == 34' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+# "Hyderabad, Bengaluru" typed into one box is the common case, and dropping it
+# for not being an array would be the same failure in a smaller way.
+assert "and a comma-separated location list, split" "$(jq -e '.preferences.preferredLocations | length == 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 27. One name field, and a plan that cannot run backwards =="
+c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","lastName":"Reddy","heightCm":163,"complexion":"Fair","nativePlace":"Warangal","placeOfBirth":"Hyderabad","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
+check "personal details save with a single name field" "$c" 200
+c=$(req GET "/profiles/$PREF_PROFILE/details" "" "$BRIDE")
+assert "the surname column is no longer written" "$(jq -e '.details.surname == null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# A client still sending a surname must not lose the name it carries.
+c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","surname":"Kondapur","lastName":"","heightCm":163,"complexion":"Fair","nativePlace":"Warangal","placeOfBirth":"Hyderabad","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
+check "an older client sending only a surname is still accepted" "$c" 200
+c=$(req GET "/profiles/$PREF_PROFILE/details" "" "$BRIDE")
+assert "and its value became the last name rather than being dropped" "$(jq -e '.details.lastName == "Kondapur"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+PAST=$(days_from_now -30)
+c=$(req POST /planner/plan "{\"weddingDate\":\"$PAST\"}" "$BRIDE")
+check "a wedding date in the past is refused" "$c" 400
+body_has 'already passed' "and says why"
+
+SOON=$(days_from_now 20)
+c=$(req POST /planner/plan "{\"weddingDate\":\"$SOON\"}" "$BRIDE")
+check "a wedding three weeks away is accepted" "$c" 201
+PLAN=$(field /tmp/body id)
+c=$(req GET "/planner/plan/$PLAN/timeline" "" "$BRIDE")
+check "its timeline is generated" "$c" 200
+TODAY=$(date +%Y-%m-%d)
+# "Book the venue 180 days before" would otherwise be dated to last year.
+assert "no task is due before today" "$(jq -e --arg t "$TODAY" 'all(.tasks[]; .dueDate >= $t)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and none after the wedding" "$(jq -e --arg w "$SOON" 'all(.tasks[]; .dueDate <= $w)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 28. A match notification says who =="
+c=$(req GET /notifications "" "$GROOM")
+check "the groom's notifications are readable" "$c" 200
+grep -q '"counterpartName"' /tmp/body \
+  && assert "a match notification names the other side" 1 \
+  || assert "match notifications still say only \"someone\"" 0
+grep -q '"counterpartProfileId"' /tmp/body \
+  && assert "and carries the profile to open from it" 1 \
+  || assert "there is nothing to open from the notification" 0
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

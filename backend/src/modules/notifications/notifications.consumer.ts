@@ -188,14 +188,30 @@ export class NotificationsConsumer implements OnModuleInit {
     payload: Record<string, unknown>,
   ): Promise<void> {
     const profiles = await this.profiles.find({ where: { id: In(profileIds) } });
-    const recipients = new Set(
-      profiles
-        .map((p) => p.userId ?? p.managedByUserId)
-        .filter((id): id is string => Boolean(id)),
-    );
 
-    for (const userId of recipients) {
-      await this.notifications.create(userId, type, payload);
+    // Each recipient is told about the *other* profile, not their own.
+    //
+    // "Your interest was accepted" with nobody's name on it was the reported
+    // defect: the reader had sent several and could not tell which one this
+    // was. The counterpart is worked out per recipient rather than once,
+    // because an agency running both sides of a pairing is a real case and
+    // would otherwise be told about their own client.
+    const byUser = new Map<string, string>();
+    for (const profile of profiles) {
+      const recipient = profile.userId ?? profile.managedByUserId;
+      if (recipient) byUser.set(recipient, profile.id);
+    }
+
+    for (const [userId, ownProfileId] of byUser) {
+      const other = profiles.find((p) => p.id !== ownProfileId) ?? null;
+      await this.notifications.create(userId, type, {
+        ...payload,
+        // Enough to render the line and open the profile from it.
+        counterpartProfileId: other?.id ?? null,
+        counterpartName: other?.displayName ?? null,
+        counterpartCity: other?.city ?? null,
+        counterpartPhotoUrl: other?.photos?.[0] ?? null,
+      });
     }
   }
 }
