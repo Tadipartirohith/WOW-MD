@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import ProfilePreview from '../components/ProfilePreview';
 import { useAuth } from '../store/auth';
 import {
   MatchFixedState,
@@ -102,6 +103,9 @@ export default function Matches() {
   const [error, setError] = useState('');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  // Which profile is open, if any. A name that is not clickable is the
+  // reported defect; this is what it opens.
+  const [previewId, setPreviewId] = useState('');
 
   const params = profileId ? { profileId } : {};
   const ready = !isAgent || Boolean(profileId);
@@ -116,6 +120,23 @@ export default function Matches() {
   const { data, isLoading } = useQuery({
     queryKey: ['suggestions', profileId, JSON.stringify(filters)],
     queryFn: async () => (await api.get('/matches/suggestions', { params: searchParams })).data,
+    retry: false,
+    enabled: ready,
+  });
+
+  /**
+   * The newest profiles, in the order they arrived.
+   *
+   * Browsing rather than recommending, so the compatibility floor does not
+   * apply: somebody who joined this morning and happens not to match your
+   * preferences still belongs on a list called "recently added". Applying the
+   * floor here is what made it look empty.
+   */
+  const { data: recent } = useQuery({
+    queryKey: ['recent-profiles', profileId],
+    queryFn: async () =>
+      (await api.get('/matches/suggestions', { params: { ...params, sort: 'recent', limit: 12 } }))
+        .data,
     retry: false,
     enabled: ready,
   });
@@ -208,34 +229,70 @@ export default function Matches() {
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-      {ready && (recommended?.data?.length ?? 0) > 0 && (
-        <div className="card space-y-2">
-          <div>
-            <h2 className="font-semibold text-gray-900">Recommended for you</h2>
-            <p className="text-sm text-gray-600">
-              Profiles the matching engine rates at 50% or better. A short list on purpose — it is
-              padded with nothing.
-            </p>
+      {previewId && (
+        <ProfilePreview
+          profileId={previewId}
+          onClose={() => setPreviewId('')}
+          onSendInterest={fixed ? undefined : () => sendInterest(previewId)}
+        />
+      )}
+
+      {/*
+        Two lists side by side, because they answer different questions. The
+        newest is a browse: everybody, in the order they arrived. The
+        recommendations are a shortlist: only what the engine rates at 50% or
+        better, best first, padded with nothing.
+      */}
+      {ready && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="card space-y-2">
+            <div>
+              <h2 className="font-semibold text-gray-900">Recently added</h2>
+              <p className="text-sm text-gray-600">
+                The newest profiles first, whatever the match score. This is browsing, not
+                recommending.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {(recent?.data as Suggestion[] | undefined)?.slice(0, 8).map((s) => (
+                <PersonRow
+                  key={s.profile.id}
+                  suggestion={s}
+                  showScore={false}
+                  onOpen={() => setPreviewId(s.profile.id)}
+                  onSendInterest={fixed ? undefined : () => sendInterest(s.profile.id)}
+                />
+              ))}
+              {(recent?.data?.length ?? 0) === 0 && (
+                <p className="text-sm text-gray-400">Nothing new since you last looked.</p>
+              )}
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {(recommended.data as Suggestion[]).map((s) => (
-              <div key={s.profile.id} className="rounded border border-gray-200 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-medium text-gray-900">{s.profile.displayName}</p>
-                  <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs font-semibold text-brand-dark">
-                    {s.score}%
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500">
-                  {[s.profile.city, s.profile.ageRange].filter(Boolean).join(' \u00b7 ')}
+
+          <div className="card space-y-2">
+            <div>
+              <h2 className="font-semibold text-gray-900">Recommended for you</h2>
+              <p className="text-sm text-gray-600">
+                Rated 50% or better by the matching engine, best first.
+              </p>
+            </div>
+            <div className="space-y-2">
+              {(recommended?.data as Suggestion[] | undefined)?.map((s) => (
+                <PersonRow
+                  key={s.profile.id}
+                  suggestion={s}
+                  showScore
+                  onOpen={() => setPreviewId(s.profile.id)}
+                  onSendInterest={fixed ? undefined : () => sendInterest(s.profile.id)}
+                />
+              ))}
+              {(recommended?.data?.length ?? 0) === 0 && (
+                <p className="text-sm text-gray-400">
+                  Nothing over 50% yet. Filling in more of your preferences gives the engine more
+                  to go on.
                 </p>
-                {!fixed && (
-                  <button className="btn mt-2 w-full" onClick={() => sendInterest(s.profile.id)}>
-                    Send interest
-                  </button>
-                )}
-              </div>
-            ))}
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -541,5 +598,55 @@ function Filter({
         onChange={(e) => onChange(e.target.value)}
       />
     </label>
+  );
+}
+
+/**
+ * One person in a list.
+ *
+ * The name is a button. It used to be text, with nothing behind it — which is
+ * the reported defect, and the reason a match could be listed but never
+ * looked at.
+ */
+function PersonRow({
+  suggestion,
+  showScore,
+  onOpen,
+  onSendInterest,
+}: {
+  suggestion: Suggestion;
+  showScore: boolean;
+  onOpen: () => void;
+  onSendInterest?: () => void;
+}) {
+  const p = suggestion.profile;
+  return (
+    <div className="flex items-center gap-3 rounded border border-gray-200 p-2">
+      {p.photos?.[0] ? (
+        <img src={p.photos[0]} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+      ) : (
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-sm text-gray-500">
+          {(p.displayName ?? '?').slice(0, 1).toUpperCase()}
+        </span>
+      )}
+      <button className="min-w-0 flex-1 text-left" onClick={onOpen}>
+        <span className="block truncate font-medium text-gray-900 hover:underline">
+          {p.displayName}
+        </span>
+        <span className="block truncate text-xs text-gray-500">
+          {[p.city, p.ageRange].filter(Boolean).join(' \u00b7 ')}
+        </span>
+      </button>
+      {showScore && (
+        <span className="shrink-0 rounded-full bg-brand-light px-2 py-0.5 text-xs font-semibold text-brand-dark">
+          {suggestion.score}%
+        </span>
+      )}
+      {onSendInterest && (
+        <button className="btn-outline shrink-0 text-xs" onClick={onSendInterest}>
+          Interest
+        </button>
+      )}
+    </div>
   );
 }

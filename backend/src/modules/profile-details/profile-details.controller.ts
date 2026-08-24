@@ -39,6 +39,18 @@ export class ProfileDetailsController {
   }
 
   @ApiOperation({
+    summary: 'One profile, as somebody browsing may see it',
+    description:
+      'The subtractive view: no income unless the profile publishes it, no communication ' +
+      'address, no second phone number. Who may open it is the same rule that decides whether ' +
+      'they could have been shown it — looser would make a profile id guessable into a biodata.',
+  })
+  @Get('view')
+  view(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.details.findViewable(actor, id);
+  }
+
+  @ApiOperation({
     summary: 'Which sections are done and which are not',
     description: 'Computed from what is stored, so it cannot drift from the truth.',
   })

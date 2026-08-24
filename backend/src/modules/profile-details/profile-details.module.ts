@@ -6,6 +6,7 @@ import { ProfileAsset } from './entities/profile-asset.entity';
 import { IdentityOtpSession } from './entities/identity-otp-session.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
+import { Interest } from '../matchmaking/entities/interest.entity';
 import { ProfileDetailsService } from './profile-details.service';
 import { ProfileDetailsController } from './profile-details.controller';
 import { AadhaarService } from './aadhaar.service';
@@ -25,6 +26,7 @@ import {
       IdentityOtpSession,
       Profile,
       User,
+      Interest,
     ]),
   ],
   providers: [

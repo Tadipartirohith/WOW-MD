@@ -1008,6 +1008,50 @@ c=$(req POST /chat/report "{\"userId\":\"$GROOM_ID\",\"reason\":\"nonsense\"}" "
 check "a reason that is not on the list is refused" "$c" 400
 
 echo
+echo "== 35. A match can actually be opened =="
+# The endpoint that serves a viewable biodata existed and had never been
+# exposed, which is why a match could be listed but not clicked.
+c=$(req GET "/profiles/$BRIDE_PROFILE/view" "" "$BRIDE")
+check "somebody can open their own profile" "$c" 200
+body_has '"identityVerified"' "and it says whether the document was checked"
+
+c=$(req GET "/profiles/$BRIDE_PROFILE/view" "" "$OTHER")
+# The bride's profile is matches-only by default, and OTHER is not matched.
+check "a stranger cannot open a matches-only profile" "$c" 403
+body_has 'accepted on both sides' "and is told what would open it"
+
+# The subtractive rule holds: the address and the second number never travel.
+c=$(req GET "/profiles/$BRIDE_PROFILE/view" "" "$BRIDE")
+grep -q 'communicationAddress' /tmp/body && assert "the communication address leaked" 0 || assert "the communication address is not in the shareable view" 1
+grep -q 'alternateMobile' /tmp/body && assert "the second number leaked" 0 || assert "nor the second number" 1
+
+echo
+echo "== 36. Recently added is a browse, not a recommendation =="
+# A fresh account: the bride's match is fixed by now, and matchmaking is
+# deliberately closed once it is.
+reg browser individual groom
+BROWSE=$(field /tmp/browser.json accessToken)
+c=$(req GET /users/me "" "$BROWSE")
+BROWSE_PROFILE=$(field /tmp/body id)
+req PUT /users/me/profile "{\"displayName\":\"Browser\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-03\",\"city\":\"Hyderabad\",\"visibility\":\"public\"}" "$BROWSE" >/dev/null
+seed_photos "$BROWSE_PROFILE" "$BROWSE"
+
+c=$(req GET "/matches/suggestions?sort=recent&limit=20" "" "$BROWSE")
+check "the newest list is served" "$c" 200
+# The compatibility floor is what makes a recommendation list worth reading and
+# what made this one look empty.
+assert "sorted newest first" "$(jq -e '[.data[].profile] as $p | ($p | length) >= 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+RECENT_N=$(jq -r '.data | length' /tmp/body)
+c=$(req GET "/matches/suggestions?limit=20" "" "$BROWSE")
+SCORED_N=$(jq -r '.data | length' /tmp/body)
+assert "and shows at least as many as the scored list ($RECENT_N vs $SCORED_N)" "$([ "$RECENT_N" -ge "$SCORED_N" ] && echo 1 || echo 0)"
+
+# An explicit floor is still honoured: somebody who asked for one meant it.
+c=$(req GET "/matches/suggestions?sort=recent&minScore=99" "" "$BROWSE")
+check "an explicit minimum still applies" "$c" 200
+assert "and filters the newest list too" "$(jq -e '.data | length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

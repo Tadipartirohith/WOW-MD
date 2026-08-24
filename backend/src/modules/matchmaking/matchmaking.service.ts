@@ -240,7 +240,22 @@ export class MatchmakingService {
 
       candidates = await this.applyFilters(candidates, q);
 
-      const floor = Math.max(this.cfg.matchmaking.minScore, q.minScore ?? 0);
+      // Sorting by recency is browsing, not recommending.
+      //
+      // The compatibility floor is what makes a *recommendation* list worth
+      // reading — nobody wants a 12% match presented as a suggestion. Applied
+      // to "recently added" it does something else entirely: a profile that
+      // joined this morning and happens not to match your preferences never
+      // appears at all, so the newest list looks empty or stale and reads as
+      // broken. That was the reported defect.
+      //
+      // An explicit `minScore` is still honoured either way: somebody who asked
+      // for a floor meant it.
+      const browsing = q.sort === 'recent';
+      const floor = browsing
+        ? (q.minScore ?? 0)
+        : Math.max(this.cfg.matchmaking.minScore, q.minScore ?? 0);
+
       const scored = candidates
         .map((profile) => {
           const { score, breakdown } = this.engine.score(me, profile);
@@ -248,7 +263,7 @@ export class MatchmakingService {
         })
         .filter((s) => s.score >= floor)
         .sort((a, b) =>
-          q.sort === 'recent'
+          browsing
             ? b.profile.createdAt.getTime() - a.profile.createdAt.getTime()
             : b.score - a.score,
         );

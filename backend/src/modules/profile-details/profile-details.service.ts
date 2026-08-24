@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ProfileDetails } from './entities/profile-details.entity';
 import { ProfileSibling } from './entities/profile-sibling.entity';
 import { ProfileAsset } from './entities/profile-asset.entity';
@@ -21,7 +21,14 @@ import {
   SiblingDto,
 } from './dto/profile-details.dto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
-import { MaritalStatus, UserRole } from '../../common/enums';
+import {
+  InterestStatus,
+  MaritalStatus,
+  ProfileLifecycle,
+  ProfileVisibility,
+  UserRole,
+} from '../../common/enums';
+import { Interest } from '../matchmaking/entities/interest.entity';
 
 /** The sections a profile has to complete before it is considered ready. */
 export const REQUIRED_SECTIONS = [
@@ -75,6 +82,7 @@ export class ProfileDetailsService {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly redis: RedisService,
     private readonly moderation: ModerationService,
+    @InjectRepository(Interest) private readonly interests: Repository<Interest>,
   ) {}
 
   // ------------------------------------------------------------- sections
@@ -510,6 +518,76 @@ export class ProfileDetailsService {
    * shared — income, invisible assets, the communication address, the second
    * phone number.
    */
+  /**
+   * One profile, as somebody browsing is allowed to see it.
+   *
+   * `findShareable` has existed since the biodata was built and was never
+   * reachable, which is why a match could be listed but not opened: there was
+   * nothing to open. The reported symptom — "the profile is not clickable" —
+   * was a missing route rather than a missing link.
+   *
+   * Who may see it is deliberately the same rule that decides whether they
+   * could have been *shown* it in the first place. Anything looser would make
+   * a profile id guessable into a biodata; anything tighter would list people
+   * you are not allowed to look at.
+   */
+  async findViewable(actor: AuthUser, profileId: string) {
+    const profile = await this.load(profileId);
+
+    const controlsIt =
+      profile.userId === actor.userId ||
+      profile.managedByUserId === actor.userId ||
+      actor.role === UserRole.ADMIN;
+
+    if (!controlsIt) {
+      if (profile.lifecycle !== ProfileLifecycle.ACTIVE) {
+        throw new NotFoundException('That profile is not available');
+      }
+      if (profile.visibility === ProfileVisibility.PRIVATE) {
+        throw new ForbiddenException('That profile is private');
+      }
+
+      // MATCHES_ONLY means exactly that: an accepted interest between the two
+      // sides, in either direction.
+      if (profile.visibility === ProfileVisibility.MATCHES_ONLY) {
+        const mine = await this.profiles.find({
+          where: [{ userId: actor.userId }, { managedByUserId: actor.userId }],
+        });
+        const ids = mine.map((p) => p.id);
+        const matched = ids.length
+          ? await this.interests.findOne({
+              where: [
+                { fromProfileId: In(ids), toProfileId: profileId, status: InterestStatus.ACCEPTED },
+                { fromProfileId: profileId, toProfileId: In(ids), status: InterestStatus.ACCEPTED },
+              ],
+            })
+          : null;
+        if (!matched) {
+          throw new ForbiddenException(
+            'This profile opens once the interest has been accepted on both sides.',
+          );
+        }
+      }
+    }
+
+    const shareable = await this.findShareable(profileId);
+    return {
+      ...shareable,
+      profile: {
+        id: profile.id,
+        displayName: profile.displayName,
+        city: profile.city,
+        gender: profile.gender,
+        dateOfBirth: profile.dateOfBirth,
+        photos: profile.photos ?? [],
+        bio: profile.bio,
+        // Whether a verification officer has seen the document, which is the
+        // thing families ask about before anything else.
+        identityVerified: Boolean(profile.idVerifiedAt),
+      },
+    };
+  }
+
   async findShareable(profileId: string) {
     const [details, siblings, assets] = await Promise.all([
       this.details.findOne({ where: { profileId } }),
