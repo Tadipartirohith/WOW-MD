@@ -1,7 +1,23 @@
-import { Body, Controller, Get, HttpCode, Post, Put, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
-import { MessageHistoryQueryDto, SendMessageDto } from './dto/chat.dto';
+import {
+  BlockUserDto,
+  MessageHistoryQueryDto,
+  ReportUserDto,
+  SendMessageDto,
+} from './dto/chat.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
@@ -42,5 +58,48 @@ export class ChatController {
   @Get('presence')
   presence(@Query() q: MessageHistoryQueryDto) {
     return this.chat.presenceOf(q.withUserId);
+  }
+
+  // ------------------------------------------------------------- blocking
+
+  @ApiOperation({
+    summary: 'Whether you have blocked this person',
+    description:
+      'Reports only your own block, never theirs. Knowing you have been blocked is the thing ' +
+      'this is designed not to tell you.',
+  })
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @Get('block')
+  blockState(@CurrentUser('userId') userId: string, @Query('withUserId', ParseUUIDPipe) other: string) {
+    return this.chat.blockState(userId, other);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @HttpCode(200)
+  @Post('block')
+  block(@CurrentUser('userId') userId: string, @Body() dto: BlockUserDto) {
+    return this.chat.block(userId, dto.userId, dto.note);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @Delete('block/:userId')
+  unblock(
+    @CurrentUser('userId') userId: string,
+    @Param('userId', ParseUUIDPipe) other: string,
+  ) {
+    return this.chat.unblock(userId, other);
+  }
+
+  @ApiOperation({
+    summary: 'Report somebody, and stop hearing from them',
+    description:
+      'The last twenty messages are copied in as evidence rather than referenced, because ' +
+      'evidence that changes afterwards is not evidence. Reporting also blocks: somebody who ' +
+      'reports almost always wants it to stop as well.',
+  })
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @Post('report')
+  report(@CurrentUser('userId') userId: string, @Body() dto: ReportUserDto) {
+    return this.chat.report(userId, dto.userId, dto.reason, dto.detail);
   }
 }

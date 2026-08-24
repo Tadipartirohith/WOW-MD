@@ -4,8 +4,10 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsNumberString,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   Matches,
   Max,
@@ -14,7 +16,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { RsvpStatus } from '../../../common/enums';
+import { EventCategory, EventStatus, RsvpStatus } from '../../../common/enums';
 import { MOBILE_MESSAGE, MOBILE_PATTERN, normaliseMobile } from '../../../common/util/identity-fields';
 
 export class CreateEventDto {
@@ -29,6 +31,50 @@ export class CreateEventDto {
   @ApiPropertyOptional({ maxLength: 240 })
   @IsOptional() @IsString() @MaxLength(240)
   venue?: string;
+
+  @ApiPropertyOptional({ example: 'Sangeet', maxLength: 60 })
+  @IsOptional() @IsString() @MaxLength(60)
+  eventType?: string;
+
+  @ApiPropertyOptional({ enum: EventCategory })
+  @IsOptional() @IsEnum(EventCategory)
+  category?: EventCategory;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional() @IsString() @MaxLength(500)
+  venueAddress?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional() @IsString() @MaxLength(120)
+  city?: string;
+
+  @ApiPropertyOptional({ example: '19:00', description: '24-hour HH:MM.' })
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Use a 24-hour time like 19:00' })
+  startTime?: string;
+
+  @ApiPropertyOptional({ example: '23:00' })
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Use a 24-hour time like 23:00' })
+  endTime?: string;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 100000 })
+  @IsOptional() @IsInt() @Min(0) @Max(100_000)
+  expectedGuests?: number;
+
+  @ApiPropertyOptional({ example: '250000.00' })
+  @IsOptional() @IsNumberString()
+  budget?: string;
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional() @IsString() @MaxLength(4000)
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsUrl({ require_protocol: true })
+  imageUrl?: string;
+
+  @ApiPropertyOptional({ enum: EventStatus })
+  @IsOptional() @IsEnum(EventStatus)
+  status?: EventStatus;
 }
 
 /** Everything on an event is amendable — dates move, venues fall through. */
@@ -44,6 +90,50 @@ export class UpdateEventDto {
   @ApiPropertyOptional({ maxLength: 240 })
   @IsOptional() @IsString() @MaxLength(240)
   venue?: string;
+
+  @ApiPropertyOptional({ example: 'Sangeet', maxLength: 60 })
+  @IsOptional() @IsString() @MaxLength(60)
+  eventType?: string;
+
+  @ApiPropertyOptional({ enum: EventCategory })
+  @IsOptional() @IsEnum(EventCategory)
+  category?: EventCategory;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional() @IsString() @MaxLength(500)
+  venueAddress?: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional() @IsString() @MaxLength(120)
+  city?: string;
+
+  @ApiPropertyOptional({ example: '19:00', description: '24-hour HH:MM.' })
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Use a 24-hour time like 19:00' })
+  startTime?: string;
+
+  @ApiPropertyOptional({ example: '23:00' })
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Use a 24-hour time like 23:00' })
+  endTime?: string;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 100000 })
+  @IsOptional() @IsInt() @Min(0) @Max(100_000)
+  expectedGuests?: number;
+
+  @ApiPropertyOptional({ example: '250000.00' })
+  @IsOptional() @IsNumberString()
+  budget?: string;
+
+  @ApiPropertyOptional({ maxLength: 4000 })
+  @IsOptional() @IsString() @MaxLength(4000)
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsUrl({ require_protocol: true })
+  imageUrl?: string;
+
+  @ApiPropertyOptional({ enum: EventStatus })
+  @IsOptional() @IsEnum(EventStatus)
+  status?: EventStatus;
 }
 
 export class CreateGuestDto {
@@ -144,4 +234,19 @@ export class UpdateRsvpDto {
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional() @IsString() @MaxLength(500)
   declineReason?: string;
+}
+
+/** Filters over the wedding's own days. */
+export class EventQueryDto {
+  @ApiPropertyOptional({ enum: EventStatus })
+  @IsOptional() @IsEnum(EventStatus)
+  status?: EventStatus;
+
+  @ApiPropertyOptional({ enum: EventCategory })
+  @IsOptional() @IsEnum(EventCategory)
+  category?: EventCategory;
+
+  @ApiPropertyOptional({ description: 'Matches the name, venue or city.' })
+  @IsOptional() @IsString() @MaxLength(120)
+  q?: string;
 }

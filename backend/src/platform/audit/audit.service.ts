@@ -66,6 +66,15 @@ export const AuditAction = {
    */
   PROFILE_PHOTO_REJECTED: 'profile.photo_rejected',
 
+  /**
+   * Somebody reported somebody else's conduct in chat.
+   *
+   * Worth an audit entry as well as its own row: a pattern across several
+   * reporters is the thing that matters, and the audit trail is where anybody
+   * looking at one account's history will look first.
+   */
+  CHAT_USER_REPORTED: 'chat.user_reported',
+
   AGENT_APPROVED: 'agent.approved',
   AGENT_REJECTED: 'agent.rejected',
 

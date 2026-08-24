@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { EventsService } from './events.service';
@@ -15,6 +16,7 @@ import {
   CreateEventDto,
   CreateGuestDto,
   GuestRsvpDto,
+  EventQueryDto,
   InviteDto,
   UpdateEventDto,
   UpdateGuestDto,
@@ -38,8 +40,19 @@ export class EventsController {
   }
 
   @Get()
-  list(@CurrentUser('userId') userId: string) {
-    return this.events.listEvents(userId);
+  list(@CurrentUser('userId') userId: string, @Query() q: EventQueryDto) {
+    return this.events.listEvents(userId, q);
+  }
+
+  @ApiOperation({
+    summary: 'The counters above the list',
+    description:
+      'Computed from the rows rather than maintained, so they cannot drift from what the list ' +
+      'below them shows.',
+  })
+  @Get('summary')
+  summary(@CurrentUser('userId') userId: string) {
+    return this.events.eventSummary(userId);
   }
 
   @Put(':id')

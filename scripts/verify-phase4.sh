@@ -946,6 +946,68 @@ check "the account is still signed in and intact" "$c" 200
 assert "and no longer counts as complete" "$(jq -e '.profileCompleted == false' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 echo
+echo "== 33. Events carry what a day actually needs =="
+c=$(req POST /events "{\"name\":\"Sangeet $STAMP\",\"eventDate\":\"$(days_from_now 40)\",\"venue\":\"Taj Krishna\",\"eventType\":\"Sangeet\",\"category\":\"pre_wedding\",\"city\":\"Hyderabad\",\"startTime\":\"19:00\",\"endTime\":\"23:00\",\"expectedGuests\":250,\"budget\":\"180000.00\",\"description\":\"Open-air, dinner from 8.\"}" "$BRIDE")
+check "a day is created with its times, guests and budget" "$c" 201
+EV=$(field /tmp/body id)
+
+c=$(req POST /events "{\"name\":\"Backwards $STAMP\",\"startTime\":\"22:00\",\"endTime\":\"19:00\"}" "$BRIDE")
+check "a day that ends before it starts is refused" "$c" 400
+body_has 'after the start time' "with a message rather than an internal error"
+
+c=$(req POST /events "{\"name\":\"Bad time $STAMP\",\"startTime\":\"25:00\"}" "$BRIDE")
+check "so is a time that is not a time" "$c" 400
+
+c=$(req GET /events/summary "" "$BRIDE")
+check "the summary is served" "$c" 200
+assert "counting the days" "$(jq -e '.total >= 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and what the couple expect, as distinct from what the RSVPs say" "$(jq -e '.expectedGuests >= 250' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req GET "/events?status=upcoming" "" "$BRIDE")
+check "the list filters by status" "$c" 200
+c=$(req GET "/events?q=sangeet" "" "$BRIDE")
+check "and searches by name" "$c" 200
+assert "finding it" "$(jq -e --arg id "$EV" 'any(.[]; .id == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET "/events?q=nothingmatchesthis" "" "$BRIDE")
+assert "and returns nothing when nothing matches" "$(jq -e 'length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 34. Blocking, and reporting =="
+c=$(req GET "/chat/block?withUserId=$(field /tmp/groom.json user.id)" "" "$BRIDE")
+check "the block state is readable" "$c" 200
+body_has '"blocked":false' "and starts unblocked"
+
+GROOM_ID=$(field /tmp/groom.json user.id)
+BRIDE_ID=$(field /tmp/bride.json user.id)
+
+c=$(req POST /chat/block "{\"userId\":\"$BRIDE_ID\"}" "$BRIDE")
+check "blocking yourself is refused" "$c" 400
+
+c=$(req POST /chat/block "{\"userId\":\"$GROOM_ID\"}" "$BRIDE")
+check "blocking somebody else works" "$c" 200
+c=$(req POST /chat/block "{\"userId\":\"$GROOM_ID\"}" "$BRIDE")
+check "and doing it twice is one block, not two" "$c" 200
+
+# The refusal must not say "you have been blocked": that turns a quiet exit
+# into an argument.
+c=$(req POST /chat/messages "{\"toUserId\":\"$BRIDE_ID\",\"body\":\"Hello again\"}" "$GROOM")
+check "the blocked person cannot get through" "$c" 403
+grep -qi 'block' /tmp/body && assert "the refusal tells them they were blocked" 0 || assert "and is not told why" 1
+
+c=$(req DELETE "/chat/block/$GROOM_ID" "" "$BRIDE")
+check "the block can be lifted" "$c" 200
+
+c=$(req POST /chat/report "{\"userId\":\"$GROOM_ID\",\"reason\":\"harassment\",\"detail\":\"Kept messaging after I asked them to stop.\"}" "$BRIDE")
+check "a report goes in" "$c" 201
+body_has '"blocked":true' "and blocks them with it, since nobody wants to do that twice"
+
+c=$(req GET "/chat/block?withUserId=$GROOM_ID" "" "$BRIDE")
+body_has '"blocked":true' "which the block state confirms"
+
+c=$(req POST /chat/report "{\"userId\":\"$GROOM_ID\",\"reason\":\"nonsense\"}" "$BRIDE")
+check "a reason that is not on the list is refused" "$c" 400
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

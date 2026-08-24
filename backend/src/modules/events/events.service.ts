@@ -13,6 +13,7 @@ import { Profile } from '../users/entities/profile.entity';
 import {
   CreateEventDto,
   CreateGuestDto,
+  EventQueryDto,
   GuestRsvpDto,
   UpdateGuestDto,
   UpdateEventDto,
@@ -20,9 +21,10 @@ import {
 } from './dto/event.dto';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
-import { BookingStatus, RsvpStatus } from '../../common/enums';
+import { BookingStatus, EventStatus, RsvpStatus } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { ModerationService } from '../../platform/moderation/moderation.service';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
 
 /** What a guest sees on the public RSVP page. */
@@ -52,18 +54,98 @@ export class EventsService {
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     private readonly cfg: AppConfigService,
     private readonly mail: MailService,
+    private readonly moderation: ModerationService,
   ) {}
 
-  createEvent(userId: string, dto: CreateEventDto) {
+  async createEvent(userId: string, dto: CreateEventDto) {
+    this.assertTimeOrder(dto.startTime, dto.endTime);
+
+    // An event picture is shown to every guest who opens the invitation, so it
+    // goes through the same check as a profile photograph.
+    if (dto.imageUrl) {
+      await this.moderation.assertGenuinePhoto(dto.imageUrl, { userId, kind: 'event' });
+    }
     return this.events.save(this.events.create({ userId, ...dto }));
   }
 
-  listEvents(userId: string) {
-    return this.events.find({ where: { userId }, order: { eventDate: 'ASC' } });
+  /**
+   * An evening that ends before it starts.
+   *
+   * The database refuses this too, and that check stays as the backstop — but
+   * a constraint violation reaches the caller as a 500, which tells somebody
+   * mistyping a time that the platform is broken. The rule belongs where it can
+   * be explained.
+   */
+  private assertTimeOrder(start?: string | null, end?: string | null): void {
+    if (!start || !end) return;
+    if (end <= start) {
+      throw new BadRequestException('The end time has to be after the start time');
+    }
+  }
+
+  /**
+   * The wedding, day by day.
+   *
+   * Filtering and searching happen here rather than in the client because the
+   * list is the thing people scan, and a filter that only hides rows the
+   * browser already has stops working the moment there are more days than one
+   * page holds.
+   */
+  async listEvents(userId: string, q?: EventQueryDto) {
+    const qb = this.events.createQueryBuilder('e').where('e."userId" = :userId', { userId });
+
+    if (q?.status) qb.andWhere('e.status = :status', { status: q.status });
+    if (q?.category) qb.andWhere('e.category = :category', { category: q.category });
+    if (q?.q) {
+      // Name, venue or city — the three things somebody remembers about a day
+      // they are trying to find.
+      qb.andWhere(
+        '(LOWER(e.name) LIKE :term OR LOWER(COALESCE(e.venue, \'\')) LIKE :term OR LOWER(COALESCE(e.city, \'\')) LIKE :term)',
+        { term: `%${q.q.toLowerCase()}%` },
+      );
+    }
+
+    // Undated functions sort last rather than first: a day with no date yet is
+    // the least urgent thing on the list, and NULLS FIRST puts it at the top.
+    qb.orderBy('e."eventDate"', 'ASC', 'NULLS LAST').addOrderBy('e."startTime"', 'ASC', 'NULLS LAST');
+    return qb.getMany();
+  }
+
+  /**
+   * The counters above the list.
+   *
+   * Computed from the rows rather than maintained, so they cannot drift from
+   * what the list below them shows — which is the failure that makes somebody
+   * stop believing a summary.
+   */
+  async eventSummary(userId: string) {
+    const rows = await this.events.find({ where: { userId } });
+    const invites = rows.length
+      ? await this.invites.find({ where: { eventId: In(rows.map((e) => e.id)) } })
+      : [];
+
+    const count = (status: EventStatus) => rows.filter((e) => e.status === status).length;
+    return {
+      total: rows.length,
+      upcoming: count(EventStatus.UPCOMING),
+      ongoing: count(EventStatus.ONGOING),
+      completed: count(EventStatus.COMPLETED),
+      cancelled: count(EventStatus.CANCELLED),
+      /** Across every day — the number the caterer for the whole wedding asks for. */
+      confirmedGuests: invites.filter((i) => i.status === RsvpStatus.ATTENDING).length,
+      expectedGuests: rows.reduce((n, e) => n + (e.expectedGuests ?? 0), 0),
+      budget: rows
+        .reduce((n, e) => n + Number(e.budget ?? 0), 0)
+        .toFixed(2),
+    };
   }
 
   async updateEvent(userId: string, eventId: string, dto: UpdateEventDto) {
     const event = await this.ownedEvent(userId, eventId);
+    this.assertTimeOrder(
+      dto.startTime ?? event.startTime,
+      dto.endTime ?? event.endTime,
+    );
     Object.assign(event, dto);
     return this.events.save(event);
   }

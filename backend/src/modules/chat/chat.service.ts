@@ -1,9 +1,16 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
+import { ChatBlock, ChatReport } from './entities/chat-block.entity';
+import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import {
@@ -39,6 +46,9 @@ export class ChatService {
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(ChatBlock) private readonly blocks: Repository<ChatBlock>,
+    @InjectRepository(ChatReport) private readonly reports: Repository<ChatReport>,
+    private readonly audit: AuditService,
     private readonly cfg: AppConfigService,
     private readonly presence: PresenceService,
   ) {}
@@ -163,6 +173,7 @@ export class ChatService {
     mediaUrl?: string,
   ): Promise<Message> {
     await this.assertCanChat(senderId, toUserId);
+    await this.assertNotBlocked(senderId, toUserId);
     const convo = await this.getOrCreateConversation(senderId, toUserId);
 
     const { text, redactions } = this.cfg.features.chatRedactContacts
@@ -304,6 +315,120 @@ export class ChatService {
     return others
       .map((p) => p.userId)
       .filter((id): id is string => Boolean(id) && !seen.has(id as string));
+  }
+
+  // ------------------------------------------------------- blocking
+
+  /**
+   * Refuses a message either side has blocked.
+   *
+   * The wording is the same in both directions and says nothing about a block.
+   * Telling a sender they have been blocked turns a quiet exit into an
+   * argument, and telling them nothing at all leaves them typing into a void —
+   * so it reads as the conversation being closed, which is true.
+   */
+  private async assertNotBlocked(senderId: string, recipientId: string): Promise<void> {
+    const block = await this.blocks.findOne({
+      where: [
+        { blockerUserId: recipientId, blockedUserId: senderId },
+        { blockerUserId: senderId, blockedUserId: recipientId },
+      ],
+    });
+    if (block) {
+      throw new ForbiddenException('This conversation is closed.');
+    }
+  }
+
+  /** Idempotent: tapping block twice is one block, not two. */
+  async block(userId: string, otherUserId: string, note?: string) {
+    if (userId === otherUserId) {
+      throw new BadRequestException('You cannot block yourself');
+    }
+    const existing = await this.blocks.findOne({
+      where: { blockerUserId: userId, blockedUserId: otherUserId },
+    });
+    if (existing) return { blocked: true, since: existing.createdAt };
+
+    const saved = await this.blocks.save(
+      this.blocks.create({
+        blockerUserId: userId,
+        blockedUserId: otherUserId,
+        note: note ?? null,
+      }),
+    );
+    return { blocked: true, since: saved.createdAt };
+  }
+
+  async unblock(userId: string, otherUserId: string) {
+    await this.blocks.delete({ blockerUserId: userId, blockedUserId: otherUserId });
+    return { blocked: false };
+  }
+
+  /** Who this account has blocked, and whether one particular person is on it. */
+  async blockState(userId: string, otherUserId: string) {
+    const mine = await this.blocks.findOne({
+      where: { blockerUserId: userId, blockedUserId: otherUserId },
+    });
+    // Deliberately does not report a block in the other direction: knowing you
+    // have been blocked is the thing this is designed not to tell you.
+    return { blocked: Boolean(mine), since: mine?.createdAt ?? null };
+  }
+
+  /**
+   * Reports somebody, with the last few messages copied in as they stand.
+   *
+   * Copied rather than referenced: evidence that changes afterwards is not
+   * evidence, and a reported message the platform later redacts would leave an
+   * investigator with nothing to look at.
+   */
+  async report(userId: string, otherUserId: string, reason: string, detail?: string) {
+    if (userId === otherUserId) {
+      throw new BadRequestException('You cannot report yourself');
+    }
+
+    const convo = await this.conversations.findOne({
+      where: [
+        { participantA: userId, participantB: otherUserId },
+        { participantA: otherUserId, participantB: userId },
+      ],
+    });
+
+    let evidence: { at: string; fromMe: boolean; body: string }[] = [];
+    if (convo) {
+      const recent = await this.messages.find({
+        where: { conversationId: convo.id },
+        order: { createdAt: 'DESC' },
+        take: 20,
+      });
+      evidence = recent.reverse().map((m) => ({
+        at: m.createdAt.toISOString(),
+        fromMe: m.senderId === userId,
+        body: m.body,
+      }));
+    }
+
+    const saved = await this.reports.save(
+      this.reports.create({
+        reporterUserId: userId,
+        reportedUserId: otherUserId,
+        reason,
+        detail: detail ?? null,
+        evidence,
+      }),
+    );
+
+    await this.audit.record({
+      action: AuditAction.CHAT_USER_REPORTED,
+      actor: { userId, role: UserRole.BRIDE },
+      resourceType: 'user',
+      resourceId: otherUserId,
+      metadata: { reportId: saved.id, reason, messages: evidence.length },
+    });
+
+    // Reporting somebody almost always means you also want them to stop, so
+    // the block comes with it rather than being a second thing to find.
+    await this.block(userId, otherUserId, `Reported: ${reason}`);
+    return { reportId: saved.id, blocked: true };
   }
 
   /**

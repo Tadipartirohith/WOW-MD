@@ -338,6 +338,27 @@ export enum PaymentMilestone {
   FINAL = 'final',
 }
 
+/**
+ * Where an event stands.
+ *
+ * Stored rather than derived from the date: "cancelled" and "completed" are
+ * decisions somebody made, and a function called off three weeks ago is not
+ * "upcoming" merely because its date has not arrived yet.
+ */
+export enum EventStatus {
+  UPCOMING = 'upcoming',
+  ONGOING = 'ongoing',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+}
+
+/** Whether a function is the wedding itself or one of the days around it. */
+export enum EventCategory {
+  MAIN = 'main',
+  PRE_WEDDING = 'pre_wedding',
+  POST_WEDDING = 'post_wedding',
+}
+
 export enum RsvpStatus {
   INVITED = 'invited',
   ATTENDING = 'attending',

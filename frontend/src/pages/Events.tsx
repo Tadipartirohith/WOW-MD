@@ -4,12 +4,57 @@ import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import RsvpDashboard from '../components/RsvpDashboard';
+import { formatDate } from '../lib/dates';
 
 interface WEvent {
   id: string;
   name: string;
   venue?: string;
   eventDate?: string | null;
+  eventType?: string | null;
+  category?: string | null;
+  venueAddress?: string | null;
+  city?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  expectedGuests?: number | null;
+  budget?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  status?: EventStatus;
+}
+
+type EventStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
+
+const STATUS_LABEL: Record<EventStatus, string> = {
+  upcoming: 'Upcoming',
+  ongoing: 'Today',
+  completed: 'Done',
+  cancelled: 'Cancelled',
+};
+
+const STATUS_TONE: Record<EventStatus, string> = {
+  upcoming: 'bg-sky-50 text-sky-800',
+  ongoing: 'bg-emerald-50 text-emerald-800',
+  completed: 'bg-gray-100 text-gray-600',
+  cancelled: 'bg-red-50 text-red-700',
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  main: 'Main event',
+  pre_wedding: 'Pre-wedding',
+  post_wedding: 'Post-wedding',
+};
+
+interface EventSummary {
+  total: number;
+  upcoming: number;
+  ongoing: number;
+  completed: number;
+  cancelled: number;
+  confirmedGuests: number;
+  expectedGuests: number;
+  budget: string;
 }
 
 interface Guest {
@@ -45,6 +90,13 @@ export default function Events() {
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState<EventStatus | ''>('');
+  const [search, setSearch] = useState('');
+  // The three fields everybody fills in stay visible; the rest are behind a
+  // disclosure, because a fourteen-field form for "add the mehendi" is a form
+  // people abandon.
+  const [more, setMore] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
 
   const [name, setName] = useState('');
   const [venue, setVenue] = useState('');
@@ -55,8 +107,25 @@ export default function Events() {
   const [guestParty, setGuestParty] = useState('');
 
   const { data: events = [] } = useQuery({
-    queryKey: ['events'],
-    queryFn: async () => (await api.get('/events')).data as WEvent[],
+    queryKey: ['events', statusFilter, search],
+    queryFn: async () =>
+      (
+        await api.get('/events', {
+          params: {
+            ...(statusFilter ? { status: statusFilter } : {}),
+            ...(search ? { q: search } : {}),
+          },
+        })
+      ).data as WEvent[],
+  });
+
+  // Counted on the server from the same rows the list below shows, so the two
+  // cannot disagree — which is the failure that stops somebody believing a
+  // summary at all.
+  const { data: summary } = useQuery({
+    queryKey: ['event-summary'],
+    queryFn: async () => (await api.get('/events/summary')).data as EventSummary,
+    retry: false,
   });
   const { data: guests = [] } = useQuery({
     queryKey: ['guests'],
@@ -91,12 +160,23 @@ export default function Events() {
           name,
           venue: venue || undefined,
           eventDate: date || undefined,
+          eventType: draft.eventType || undefined,
+          category: draft.category || undefined,
+          venueAddress: draft.venueAddress || undefined,
+          city: draft.city || undefined,
+          startTime: draft.startTime || undefined,
+          endTime: draft.endTime || undefined,
+          expectedGuests: draft.expectedGuests ? Number(draft.expectedGuests) : undefined,
+          budget: draft.budget || undefined,
+          description: draft.description || undefined,
         }),
-      ['events'],
+      ['events', 'event-summary'],
     );
     setName('');
     setVenue('');
     setDate('');
+    setDraft({});
+    setMore(false);
   }
 
   async function addGuest(e: FormEvent) {
@@ -132,6 +212,55 @@ export default function Events() {
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
+      {summary && summary.total > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Stat label="Days" value={summary.total} onClick={() => setStatusFilter('')} />
+          <Stat
+            label="Upcoming"
+            value={summary.upcoming}
+            tone="text-sky-700"
+            onClick={() => setStatusFilter('upcoming')}
+          />
+          <Stat
+            label="Done"
+            value={summary.completed}
+            onClick={() => setStatusFilter('completed')}
+          />
+          <Stat
+            label="Cancelled"
+            value={summary.cancelled}
+            tone={summary.cancelled > 0 ? 'text-red-700' : undefined}
+            onClick={() => setStatusFilter('cancelled')}
+          />
+          {/* Expected is what the caterer was booked against; confirmed is what
+              the RSVPs actually say. Both matter and they are not the same. */}
+          <Stat label="Expected" value={summary.expectedGuests} />
+          <Stat label="Confirmed" value={summary.confirmedGuests} tone="text-emerald-700" />
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          className="input max-w-xs"
+          placeholder="Search by name, venue or city"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {(['', 'upcoming', 'ongoing', 'completed', 'cancelled'] as const).map((value) => (
+          <button
+            key={value || 'all'}
+            className={`rounded-full border px-3 py-1 text-xs ${
+              statusFilter === value
+                ? 'border-brand bg-brand text-white'
+                : 'border-gray-300 text-gray-700 hover:border-brand'
+            }`}
+            onClick={() => setStatusFilter(value)}
+          >
+            {value ? STATUS_LABEL[value] : 'All'}
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4">
           <div className="card">
@@ -157,14 +286,28 @@ export default function Events() {
                       <button className="flex-1 text-left" onClick={() => setSelected(ev.id)}>
                         <span className="block text-sm font-medium text-gray-900">{ev.name}</span>
                         <span className="block text-xs text-gray-500">
-                          {ev.eventDate
-                            ? new Date(`${ev.eventDate}T00:00:00`).toLocaleDateString(undefined, {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                              })
-                            : 'Date not set'}
+                          {formatDate(ev.eventDate)}
+                          {ev.startTime ? ` · ${ev.startTime.slice(0, 5)}` : ''}
+                          {ev.endTime ? `–${ev.endTime.slice(0, 5)}` : ''}
                           {ev.venue ? ` · ${ev.venue}` : ''}
+                          {ev.expectedGuests ? ` · ${ev.expectedGuests} expected` : ''}
+                        </span>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                          {ev.status && (
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${STATUS_TONE[ev.status]}`}
+                            >
+                              {STATUS_LABEL[ev.status]}
+                            </span>
+                          )}
+                          {ev.category && (
+                            <span className="text-[10px] text-gray-400">
+                              {CATEGORY_LABEL[ev.category] ?? ev.category}
+                            </span>
+                          )}
+                          {ev.eventType && (
+                            <span className="text-[10px] text-gray-400">· {ev.eventType}</span>
+                          )}
                         </span>
                       </button>
                       <div className="flex gap-1">
@@ -214,6 +357,87 @@ export default function Events() {
               value={venue}
               onChange={(e) => setVenue(e.target.value)}
             />
+
+            <button
+              type="button"
+              className="text-left text-xs text-brand underline"
+              onClick={() => setMore(!more)}
+            >
+              {more ? 'Fewer details' : 'More details — times, guests, budget'}
+            </button>
+
+            {more && (
+              <div className="space-y-2 border-t pt-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className="input"
+                    placeholder="Type, e.g. Sangeet"
+                    value={draft.eventType ?? ''}
+                    onChange={(e) => setDraft({ ...draft, eventType: e.target.value })}
+                  />
+                  <select
+                    className="input"
+                    value={draft.category ?? ''}
+                    onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+                  >
+                    <option value="">Category</option>
+                    <option value="pre_wedding">Pre-wedding</option>
+                    <option value="main">Main event</option>
+                    <option value="post_wedding">Post-wedding</option>
+                  </select>
+                  <input
+                    className="input"
+                    type="time"
+                    title="Start time"
+                    value={draft.startTime ?? ''}
+                    onChange={(e) => setDraft({ ...draft, startTime: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    type="time"
+                    title="End time"
+                    value={draft.endTime ?? ''}
+                    onChange={(e) => setDraft({ ...draft, endTime: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    placeholder="Guests expected"
+                    value={draft.expectedGuests ?? ''}
+                    onChange={(e) => setDraft({ ...draft, expectedGuests: e.target.value })}
+                  />
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    placeholder="Budget"
+                    value={draft.budget ?? ''}
+                    onChange={(e) => setDraft({ ...draft, budget: e.target.value })}
+                  />
+                </div>
+                <input
+                  className="input"
+                  placeholder="City"
+                  value={draft.city ?? ''}
+                  onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+                />
+                <textarea
+                  className="input"
+                  rows={2}
+                  placeholder="Venue address"
+                  value={draft.venueAddress ?? ''}
+                  onChange={(e) => setDraft({ ...draft, venueAddress: e.target.value })}
+                />
+                <textarea
+                  className="input"
+                  rows={2}
+                  placeholder="Notes — decoration, food, anything the vendors need"
+                  value={draft.description ?? ''}
+                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                />
+              </div>
+            )}
             <button className="btn">Add</button>
           </form>
         </div>
@@ -388,5 +612,39 @@ function EditEvent({
         </button>
       </div>
     </form>
+  );
+}
+
+/** One number above the list, and the filter it applies. */
+function Stat({
+  label,
+  value,
+  tone,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p
+        className={`mt-1 text-2xl font-semibold ${tone ?? 'text-gray-900'}`}
+        style={{ fontVariantNumeric: 'tabular-nums' }}
+      >
+        {value}
+      </p>
+    </>
+  );
+  // Only the ones that filter are clickable. A card that looks pressable and
+  // does nothing is worse than one that plainly does not.
+  return onClick ? (
+    <button className="card text-left transition hover:shadow-md" onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className="card">{body}</div>
   );
 }

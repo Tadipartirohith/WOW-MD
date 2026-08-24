@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useCall } from '../lib/useCall';
 import CallPanel from '../components/CallPanel';
+import ChatMenu from '../components/ChatMenu';
 
 interface Conversation {
   conversationId: string;
@@ -68,6 +69,7 @@ export default function Chat() {
   const [withUserId, setWithUserId] = useState(params.get('with') ?? '');
   // Exactly one thread is open at a time, of either kind.
   const [interestId, setInterestId] = useState(params.get('proposal') ?? '');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [body, setBody] = useState('');
   const [error, setError] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
@@ -175,6 +177,7 @@ export default function Chat() {
               onClick={() => {
                 setWithUserId(c.withUserId);
                 setInterestId('');
+                setMenuOpen(false);
               }}
               className={`flex w-full items-start gap-3 border-b border-gray-100 p-3 text-left ${
                 withUserId === c.withUserId ? 'bg-brand-light' : 'hover:bg-gray-50'
@@ -302,16 +305,40 @@ export default function Chat() {
                 {/* Only when they are actually there: a call to somebody
                     offline can only ring out, which teaches people the button
                     does not work. */}
-                {presence?.online && call.state === 'idle' && (
-                  <div className="flex gap-2">
-                    <button className="btn-outline" onClick={() => call.call(withUserId, 'audio')}>
-                      Call
+                <div className="flex items-center gap-2">
+                  {presence?.online && call.state === 'idle' && (
+                    <>
+                      <button className="btn-outline" onClick={() => call.call(withUserId, 'audio')}>
+                        Call
+                      </button>
+                      <button className="btn-outline" onClick={() => call.call(withUserId, 'video')}>
+                        Video
+                      </button>
+                    </>
+                  )}
+                  {/*
+                    Blocking and reporting live here. Not buried: they are what
+                    somebody looks for when something has gone wrong, and a
+                    control you have to hunt for at that moment is one you do
+                    not find.
+                  */}
+                  <div className="relative">
+                    <button
+                      className="rounded px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-100"
+                      aria-label="More options"
+                      onClick={() => setMenuOpen(!menuOpen)}
+                    >
+                      ⋮
                     </button>
-                    <button className="btn-outline" onClick={() => call.call(withUserId, 'video')}>
-                      Video
-                    </button>
+                    {menuOpen && (
+                      <ChatMenu
+                        withUserId={withUserId}
+                        displayName={active?.displayName ?? 'this person'}
+                        onClose={() => setMenuOpen(false)}
+                      />
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
               <div className="my-3 flex-1 space-y-2 overflow-y-auto">
