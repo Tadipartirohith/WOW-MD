@@ -74,6 +74,8 @@ export const configValidationSchema = Joi.object({
 
   // Identity verification. 'mock' returns the OTP on the response for local
   // use; anything else needs a licensed AUA/KUA integration.
+  VERIFICATION_SLA_HOURS: Joi.number().min(1).max(720).optional(),
+
   IMAGE_MODERATION_PROVIDER: Joi.string().valid('heuristic', 'hosted').default('heuristic'),
   IMAGE_MODERATION_URL: Joi.string()
     .uri()

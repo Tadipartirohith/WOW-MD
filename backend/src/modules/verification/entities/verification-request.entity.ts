@@ -134,6 +134,23 @@ export class VerificationRequest {
   @Column({ type: 'int', default: 0 })
   revisitCount: number;
 
+  /**
+   * When the platform has to be done by.
+   *
+   * The clock is about how long *we* take once we have been asked. A vendor
+   * sitting on a draft for a month is not a breach; an unallocated request
+   * sitting in a queue for four days is.
+   */
+  @Index()
+  @Column({ type: 'timestamptz', nullable: true })
+  slaDeadline: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  slaBreachedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  verificationStartedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

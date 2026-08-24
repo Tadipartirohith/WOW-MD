@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, LessThan, Repository } from 'typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { OfficerServiceArea } from './entities/officer-service-area.entity';
 import { canonicalCity, normalisePlace, stateOf } from './service-area';
@@ -21,6 +23,8 @@ import {
 } from './dto/verification.dto';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { AppConfigService } from '../../config/app-config.service';
+import { BusinessLifecycleService } from '../vendors/business-lifecycle.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
@@ -61,6 +65,9 @@ export class VerificationService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
+    private readonly cfg: AppConfigService,
+    @Inject(forwardRef(() => BusinessLifecycleService))
+    private readonly lifecycle: BusinessLifecycleService,
   ) {}
 
   /**
@@ -239,6 +246,21 @@ export class VerificationService {
       throw new BadRequestException('Allocate this request before sending it back for a revisit');
     }
 
+    // Asked before anything is written. This used to save the decision and then
+    // try to move the business; when the move was refused the request was
+    // already marked decided and the business was not — the queue saying done
+    // while the vendor is still waiting.
+    if (request.applicantType === ApplicantType.VENDOR && request.subjectId) {
+      const outcome =
+        dto.status === VerificationStatus.APPROVED
+          ? 'approve'
+          : dto.status === VerificationStatus.ADDITIONAL_REVIEW
+            ? 'revisit'
+            : 'reject';
+      const check = await this.lifecycle.canDecide(request.subjectId, outcome);
+      if (!check.ok) throw new BadRequestException(check.reason ?? 'That decision cannot be made yet');
+    }
+
     request.status = dto.status;
     request.remarks = dto.remarks ?? null;
     request.decidedAt = new Date();
@@ -394,6 +416,12 @@ export class VerificationService {
     }
 
     request.status = VerificationStatus.IN_PROGRESS;
+    request.verificationStartedAt = request.verificationStartedAt ?? new Date();
+    // The business follows the request, so the vendor sees the same thing the
+    // officer does rather than a status that stopped at "submitted".
+    if (request.subjectId && request.applicantType === ApplicantType.VENDOR) {
+      await this.lifecycle.markInProgress(request.subjectId);
+    }
     request.history = [
       ...request.history,
       {
@@ -417,17 +445,18 @@ export class VerificationService {
         agency.rejectionReason = null;
         await this.agencies.save(agency);
       }
-    } else {
-      // Every listing the vendor owns becomes publishable at once: the
-      // verification is of the business, not of an individual listing.
-      const listings = await this.vendors.find({
-        where: { ownerUserId: request.applicantUserId },
-      });
-      for (const listing of listings) {
-        listing.isApproved = true;
-        await this.vendors.save(listing);
-      }
+    } else if (request.subjectId) {
+      // Exactly the business that was verified, and no other.
+      //
+      // This used to approve every listing the vendor owned, on the reasoning
+      // that "the verification is of the business, not of an individual
+      // listing". That was true while one account meant one business. It is now
+      // the same bug as the one in `raise()` wearing different clothes:
+      // verifying a caterer would quietly put their photography listing live,
+      // which nobody has been to see.
+      await this.lifecycle.approve(request.subjectId, undefined);
     }
+    // The *account* is verified either way: the person has been met.
     await this.users.update(request.applicantUserId, { isVerified: true });
   }
 
@@ -438,19 +467,26 @@ export class VerificationService {
       });
       if (agency) {
         agency.isApproved = false;
-        agency.rejectionReason = request.remarks;
+        agency.rejectionReason = request.remarks ?? null;
         await this.agencies.save(agency);
       }
+      return;
+    }
+
+    if (!request.subjectId) return;
+
+    // Which of the two outcomes this is matters more than it looks. Sending a
+    // listing back says "fix this and come back" and returns edit access;
+    // rejecting says "no" and is terminal. Collapsing them leaves a vendor
+    // either stuck with no route forward or able to edit around a refusal.
+    const reason = request.remarks ?? 'Verification could not be completed.';
+    if (request.status === VerificationStatus.REJECTED) {
+      await this.lifecycle.reject(request.subjectId, reason, undefined);
     } else {
-      const listings = await this.vendors.find({
-        where: { ownerUserId: request.applicantUserId },
-      });
-      for (const listing of listings) {
-        listing.isApproved = false;
-        await this.vendors.save(listing);
-      }
+      await this.lifecycle.requireReverification(request.subjectId, reason, undefined);
     }
   }
+
 
   private async notifyApplicant(request: VerificationRequest): Promise<void> {
     const applicant = await this.users.findOne({ where: { id: request.applicantUserId } });
@@ -793,6 +829,108 @@ export class VerificationService {
       return agency?.city ?? null;
     }
     return null;
+  }
+
+  // ------------------------------------------------------------------ SLA
+
+  /**
+   * Starts the 72-hour clock.
+   *
+   * Called when a business is submitted, not when it is created. The clock is
+   * about how long the *platform* takes once it has been asked — a vendor
+   * sitting on a draft for a month is not a breach, and starting it any earlier
+   * would make every slow vendor look like a slow platform.
+   */
+  async startSla(requestId: string): Promise<VerificationRequest | null> {
+    const request = await this.requests.findOne({ where: { id: requestId } });
+    if (!request) return null;
+    if (request.slaDeadline) return request;
+
+    const hours = this.cfg.verification.slaHours;
+    request.slaDeadline = new Date(Date.now() + hours * 60 * 60 * 1000);
+    return this.requests.save(request);
+  }
+
+  /**
+   * Finds requests the platform has run out of time on.
+   *
+   * The agreed rule is that a breach expires the verification and the vendor
+   * may create a new listing. That is a real decision with a real consequence,
+   * so it is recorded as one: the request is closed with a stated reason, the
+   * business is told, and the breach timestamp is kept so the same request is
+   * never swept twice.
+   *
+   * Deliberately does *not* touch a request an officer has already submitted
+   * findings for. The work was done in time; an administrator being slow to
+   * read it is not the vendor's fault to carry.
+   */
+  async sweepSlaBreaches(): Promise<{ checked: number; breached: number }> {
+    const now = new Date();
+    const candidates = await this.requests.find({
+      where: {
+        slaBreachedAt: IsNull(),
+        slaDeadline: LessThan(now),
+      },
+    });
+
+    const OPEN_AND_UNWORKED = [
+      VerificationStatus.NEW,
+      VerificationStatus.ASSIGNED,
+      VerificationStatus.IN_PROGRESS,
+      VerificationStatus.ADDITIONAL_REVIEW,
+    ];
+
+    let breached = 0;
+    for (const request of candidates) {
+      if (!OPEN_AND_UNWORKED.includes(request.status)) continue;
+
+      request.slaBreachedAt = now;
+      request.status = VerificationStatus.REJECTED;
+      request.remarks =
+        `Verification was not completed within ${this.cfg.verification.slaHours} hours. ` +
+        'The listing has been closed; a new one can be created.';
+      request.decidedAt = now;
+      request.history = [
+        ...request.history,
+        {
+          at: now.toISOString(),
+          byUserId: 'system',
+          status: VerificationStatus.REJECTED,
+          remarks: 'SLA breach',
+        },
+      ];
+      await this.requests.save(request);
+      breached += 1;
+
+      await this.notifications.create(
+        request.applicantUserId,
+        NotificationType.VERIFICATION_DECIDED,
+        {
+          requestId: request.id,
+          subjectId: request.subjectId,
+          status: VerificationStatus.REJECTED,
+          reason: 'sla_breach',
+          slaHours: this.cfg.verification.slaHours,
+        },
+      );
+    }
+
+    return { checked: candidates.length, breached };
+  }
+
+  /** How long is left, for anything that wants to show a clock. */
+  slaState(request: VerificationRequest): {
+    deadline: Date | null;
+    hoursLeft: number | null;
+    breached: boolean;
+  } {
+    if (!request.slaDeadline) return { deadline: null, hoursLeft: null, breached: false };
+    const ms = request.slaDeadline.getTime() - Date.now();
+    return {
+      deadline: request.slaDeadline,
+      hoursLeft: Math.round((ms / 3_600_000) * 10) / 10,
+      breached: Boolean(request.slaBreachedAt) || ms <= 0,
+    };
   }
 
   private async loadOrFail(id: string): Promise<VerificationRequest> {

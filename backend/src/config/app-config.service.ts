@@ -60,6 +60,9 @@ export class AppConfigService {
   get identity() {
     return this.section('identity');
   }
+  get verification() {
+    return this.section('verification');
+  }
   get moderation() {
     return this.section('moderation');
   }

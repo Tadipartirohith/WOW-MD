@@ -60,6 +60,102 @@ body_has() {
 
 field() { jq -r ".$2 // empty" "$1"; }
 
+# A GST number is unique platform-wide, so a random four digits collides once a
+# suite has been run a few hundred times — and it fails as "already registered",
+# which reads like a real defect rather than a repeated run. Derived from the
+# run's own stamp instead, with a counter for the several listings one run makes.
+# A GST number is unique platform-wide, so four random digits collide once a
+# suite has run a few hundred times — and it fails as "already registered",
+# which reads like a real defect rather than a repeated run. Derived from the
+# run's own stamp instead, with the caller supplying an index because a counter
+# incremented inside $(...) increments in a subshell and never comes back.
+#
+#   gst <n>   ->  a valid, run-unique GSTIN
+gst() {
+  letters=$(printf '%s' "$STAMP" | tr -dc 'A-Za-z' | tr 'a-z' 'A-Z')
+  letters=$(printf '%.5s' "${letters}ABCDE")
+  digits=$(printf '%s' "$STAMP" | tr -dc '0-9')
+  digits=$(printf '%.4s' "${digits}0000")
+  # Fifteen characters: two state digits, five letters, four digits, a letter,
+  # a digit, Z, and a checksum position. The letter at position 11 is the easy
+  # one to get wrong.
+  printf '36%s%sF%dZ5' "$letters" "$digits" "$(( ${1:-1} % 10 ))"
+}
+
+# A business now has a life rather than a boolean, so getting one live means
+# walking the path a vendor actually walks: fill in the catalog, look it over,
+# submit, then allocate, visit and decide. Skipping to "approved" is refused,
+# which is the point of the state machine.
+#
+#   go_live <businessToken> <businessId> <adminToken> <officerId> <officerToken>
+FINDINGS_JSON='{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}'
+
+# The catalog is configuration, so a service asks whatever an administrator
+# decided it should ask. The helper therefore reads the form and answers it,
+# rather than assuming a shape — which is the same reason the form exists.
+answers_for() { # answers_for <serviceForm json on stdin>
+  jq -c '[.[] | select(.required)] | map({(.key): (
+      if   .type == "boolean"       then true
+      elif .type == "single_select" then (.constraints.options[0].value // "other")
+      elif .type == "multi_select"  then [(.constraints.options[0].value // "other")]
+      elif .type == "date"          then "2027-01-01"
+      elif .type == "time"          then "10:00"
+      elif .type == "date_time"     then "2027-01-01T10:00:00.000Z"
+      elif .type == "url"           then "https://example.com/portfolio"
+      elif (.type == "number" or .type == "decimal" or .type == "currency"
+            or .type == "duration" or .type == "range")
+                                    then (.constraints.min // 1)
+      else "Not specified" end)}) | add // {}'
+}
+
+seed_catalog() { # seed_catalog <token> <businessId>
+  req GET /catalog/categories "" "$1" >/dev/null
+  cat_ids=$(jq -r '.[].id' /tmp/body)
+  [ -z "$cat_ids" ] && return 1
+
+  for cat_id in $cat_ids; do
+    req GET "/catalog/categories/$cat_id/services" "" "$1" >/dev/null
+    def_ids=$(jq -r '.[].id' /tmp/body)
+    for def_id in $def_ids; do
+      req GET "/catalog/services/$def_id" "" "$1" >/dev/null
+      def_json=$(cat /tmp/body)
+      attrs=$(echo "$def_json" | jq -c '.serviceForm' | answers_for)
+      req POST "/vendors/$2/services" "{\"definitionId\":\"$def_id\",\"attributes\":$attrs}" "$1" >/dev/null
+      svc_id=$(jq -r '.id // empty' /tmp/body)
+      [ -z "$svc_id" ] && continue
+
+      # The definition decides which pricing models a service may use, so the
+      # price is built from that rather than assumed. Quote-only models carry
+      # no amount; everything else does.
+      model=$(echo "$def_json" | jq -r '.definition.allowedPricingModels[0] // "fixed"')
+      case "$model" in
+        custom_quote|no_public_price) price_json="" ;;
+        *) price_json=',"price":"25000"' ;;
+      esac
+      req POST "/vendors/$2/services/$svc_id/offerings" \
+        "{\"name\":\"Standard\",\"pricingModel\":\"$model\"$price_json,\"active\":true}" "$1" >/dev/null
+      [ "$(jq -r '.id // empty' /tmp/body)" != "" ] && return 0
+    done
+  done
+  return 1
+}
+
+go_live() { # go_live <vendorToken> <businessId> <adminToken> <officerId> <officerToken>
+  seed_catalog "$1" "$2" || return 1
+  req POST "/vendors/$2/first-review" "" "$1" >/dev/null
+  req POST "/vendors/$2/submit-verification" "" "$1" >/dev/null
+
+  req GET "/verification/requests?applicantType=vendor&limit=100" "" "$3" >/dev/null
+  vreq=$(jq -r --arg id "$2" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
+  [ -z "$vreq" ] && return 1
+
+  req PUT "/verification/requests/$vreq/allocate" "{\"officerUserId\":\"$4\"}" "$3" >/dev/null
+  req PUT "/verification/requests/$vreq/start" "" "$5" >/dev/null
+  req PUT "/verification/requests/$vreq/findings" "$FINDINGS_JSON" "$5" >/dev/null
+  req PUT "/verification/requests/$vreq/decide" '{"status":"approved"}' "$5" >/dev/null
+  return 0
+}
+
 # Three photographs before the details. A biodata with no picture is one
 # nobody looks at, so the section that starts the form now requires them.
 seed_photos() { # seed_photos <profileId> <token>
@@ -171,7 +267,7 @@ check "nor can a buyer add a question" "$c" 403
 
 echo
 echo "== 4. A vendor lists against the catalog =="
-GST=$(printf '29ABCDE%04dF1Z5' "$((RANDOM % 10000))")
+GST=$(gst 1)
 c=$(req POST /vendors "{\"name\":\"Sky $STAMP\",\"category\":\"other\",\"otherCategory\":\"Drone crew\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GST\",\"panNumber\":\"ABCDE1234F\",\"registeredAddress\":\"12 Banjara Hills, Hyderabad\",\"contactPhone\":\"9876543210\"}" "$VENDOR")
 check "vendor creates the business" "$c" 201
 LISTING=$(field /tmp/body id)
@@ -188,15 +284,6 @@ req POST /auth/password/change "{\"currentPassword\":\"$OFFICER_TEMP\",\"newPass
 req POST /auth/login "{\"email\":\"officer-$STAMP@wow.local\",\"password\":\"OfficerPass1\"}" >/dev/null
 OFFICER=$(field /tmp/body accessToken)
 
-c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
-REQ=$(jq -r --arg id "$LISTING" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
-assert "the application raised a verification request of its own" "$([ -n "$REQ" ] && echo 1 || echo 0)"
-c=$(req PUT "/verification/requests/$REQ/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN")
-check "admin allocates the visit to the officer" "$c" 200
-req PUT "/verification/requests/$REQ/start" "" "$OFFICER" >/dev/null
-req PUT "/verification/requests/$REQ/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER" >/dev/null
-c=$(req PUT "/verification/requests/$REQ/decide" '{"status":"approved"}' "$OFFICER")
-check "officer approves the business after the visit" "$c" 200
 
 c=$(req POST "/vendors/$LISTING/services" "{\"definitionId\":\"$DEF\",\"attributes\":{\"max_altitude\":120}}" "$VENDOR")
 check "vendor offers the service" "$c" 201
@@ -246,6 +333,30 @@ check "the buyer is served the form for this service" "$c" 200
 body_has '"key":"shoot_time"' "carrying the question the administrator configured"
 body_has '"key":"permission"' "and the select, with its options"
 body_has '"offerings"' "alongside the prices they can choose from"
+
+# ---------------------------------------------------------------------------
+# The listing is complete now, so it can be walked to live: look it over,
+# submit, visit, decide. Placed here rather than earlier because the completion
+# check requires a priced service, and that is what sections 4 to 6 just built.
+req POST "/vendors/$LISTING/first-review" "" "$VENDOR" >/dev/null
+c=$(req POST "/vendors/$LISTING/submit-verification" "" "$VENDOR")
+check "the vendor submits the completed business for verification" "$c" 200
+body_has '"status":"pending_verification"' "which locks it"
+
+c=$(req PUT "/vendors/$LISTING" '{"description":"Editing during verification."}' "$VENDOR")
+check "and the details cannot be edited while an officer is on the way" "$c" 403
+
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+REQ=$(jq -r --arg id "$LISTING" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
+assert "the submission raised a verification request of its own" "$([ -n "$REQ" ] && echo 1 || echo 0)"
+c=$(req PUT "/verification/requests/$REQ/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN")
+check "admin allocates the visit to the officer" "$c" 200
+req PUT "/verification/requests/$REQ/start" "" "$OFFICER" >/dev/null
+req PUT "/verification/requests/$REQ/findings" '{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}' "$OFFICER" >/dev/null
+c=$(req PUT "/verification/requests/$REQ/decide" '{"status":"approved"}' "$OFFICER")
+check "officer approves the business after the visit" "$c" 200
+c=$(req GET "/vendors/$LISTING" "")
+body_has '"status":"live"' "and it goes live"
 
 echo
 echo "== 8. Capacity, and what a request is worth =="
@@ -541,10 +652,16 @@ echo "== 20. The officer reports; an administrator decides =="
 # disturbing the one section 4 already approved.
 reg vendor2 vendor ""
 VENDOR2=$(field /tmp/vendor2.json accessToken)
-GST2=$(printf '29ZYXWV%04dF1Z5' "$(( (RANDOM + 137) % 10000 ))")
+GST2=$(gst 2)
 c=$(req POST /vendors "{\"name\":\"Second $STAMP\",\"category\":\"catering\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GST2\",\"panNumber\":\"ZYXWV9876E\",\"registeredAddress\":\"9 Jubilee Hills, Hyderabad\",\"contactPhone\":\"9876543299\"}" "$VENDOR2")
 check "a second business applies" "$c" 201
 LISTING2=$(field /tmp/body id)
+
+# Walked to live like any other: nothing is verified until the vendor asks.
+seed_catalog "$VENDOR2" "$LISTING2"
+req POST "/vendors/$LISTING2/first-review" "" "$VENDOR2" >/dev/null
+c=$(req POST "/vendors/$LISTING2/submit-verification" "" "$VENDOR2")
+check "the second business is submitted for verification" "$c" 200
 
 c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
 REQ2=$(jq -r --arg id "$LISTING2" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
@@ -599,13 +716,31 @@ body_has '"revisitCount":1' "and the platform counts how many times that has hap
 c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
 check "with the findings cleared, it cannot be approved on the old ones" "$c" 400
 
+# Being sent back returns edit access — that is the whole difference between
+# this and a rejection — and the listing has to be fixed and resubmitted before
+# anybody decides again. Approving it where it stands would let the vendor skip
+# the correction that was asked for.
+c=$(req GET "/vendors/$LISTING2" "" "$VENDOR2")
+body_has '"status":"reverification_required"' "the listing is back with the vendor"
+body_has 'photograph the second kitchen' "carrying the exact reason, verbatim"
+
+c=$(req PUT "/vendors/$LISTING2" '{"description":"Second kitchen documented."}' "$VENDOR2")
+check "and is editable again, which a rejection never is" "$c" 200
+
 c=$(req PUT "/verification/requests/$REQ2/findings" '{"visited":true,"observations":"Went back. Second kitchen photographed, everything in order.","issues":[],"evidence":["https://cdn.example.com/kitchen2.jpg"],"recommendation":"approve"}' "$OFFICER")
 check "the officer goes back and writes it up again" "$c" 200
+
+c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
+check "but the listing has to be resubmitted first" "$c" 400
+
+req POST "/vendors/$LISTING2/first-review" "" "$VENDOR2" >/dev/null
+c=$(req POST "/vendors/$LISTING2/submit-verification" "" "$VENDOR2")
+check "the vendor resubmits it" "$c" 200
 c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
 check "and now it can be approved" "$c" 200
 
-c=$(req GET /vendors/me "" "$VENDOR2")
-body_has '"isApproved":true' "which is what puts the business in front of buyers"
+c=$(req GET "/vendors/$LISTING2" "" "$VENDOR2")
+body_has '"status":"live"' "which is what puts the business in front of buyers"
 
 echo
 echo "== 22. A vendor hears about the work coming in =="
@@ -684,7 +819,7 @@ assert "two areas, not three" "$(jq -e 'length == 2' /tmp/body >/dev/null 2>&1 &
 # A third business, in Hyderabad, allocated automatically.
 reg vendor3 vendor ""
 VENDOR3=$(field /tmp/vendor3.json accessToken)
-GST3=$(printf '36QWERT%04dG1Z5' "$(( (RANDOM + 311) % 10000 ))")
+GST3=$(gst 3)
 c=$(req POST /vendors "{\"name\":\"Geo $STAMP\",\"category\":\"decor\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GST3\",\"panNumber\":\"QWERT4321H\",\"registeredAddress\":\"4 Kondapur, Hyderabad\",\"contactPhone\":\"9876543288\"}" "$VENDOR3")
 check "a Hyderabad business applies" "$c" 201
 LISTING3=$(field /tmp/body id)
@@ -699,7 +834,13 @@ body_has '"allocationBasis":"primary_area"' "on coverage rather than workload al
 # Stored as the applicant wrote it, not normalised: the normalised form is for
 # matching, and an administrator reading the record wants the real spelling.
 body_has '"applicantCity":"Hyderabad"' "recording where the applicant actually is"
-assert "and it went to the officer who covers Hyderabad" "$(jq -e --arg o "$GEO_A" '.assignedToUserId == $o' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+# Asserting it went to *this run's* officer would be wrong: service areas
+# persist, so a previous run's officer covers Hyderabad too and may well be
+# carrying less. What matters is that whoever got it covers the place.
+ASSIGNED=$(field /tmp/body assignedToUserId)
+c=$(req GET "/verification/officers/$ASSIGNED/areas" "" "$ADMIN")
+check "the assigned officer's coverage is readable" "$c" 200
+assert "and it went to somebody who covers Hyderabad" "$(jq -e 'any(.[]; .city == "hyderabad")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # An officer covering a whole state, for a city nobody lists individually.
 c=$(req POST "/verification/officers/$GEO_B/areas" '{"state":"Telangana"}' "$ADMIN")
@@ -707,7 +848,7 @@ check "another officer covers a whole state" "$c" 201
 
 reg vendor4 vendor ""
 VENDOR4=$(field /tmp/vendor4.json accessToken)
-GST4=$(printf '36ASDFG%04dJ1Z5' "$(( (RANDOM + 577) % 10000 ))")
+GST4=$(gst 4)
 c=$(req POST /vendors "{\"name\":\"Warangal $STAMP\",\"category\":\"decor\",\"city\":\"Warangal, Telangana\",\"gstNumber\":\"$GST4\",\"panNumber\":\"ASDFG8765K\",\"registeredAddress\":\"2 Hanamkonda, Warangal\",\"contactPhone\":\"9876543277\"}" "$VENDOR4")
 check "a business applies from a city nobody lists" "$c" 201
 LISTING4=$(field /tmp/body id)
@@ -777,8 +918,8 @@ echo "== 25. One vendor account, two businesses, two verifications =="
 # and nothing said so.
 reg multibiz vendor ""
 MB=$(field /tmp/multibiz.json accessToken)
-GA=$(printf '36MULTI%04dA1Z5' "$(( (RANDOM + 41) % 10000 ))")
-GB=$(printf '36MULTJ%04dB1Z5' "$(( (RANDOM + 907) % 10000 ))")
+GA=$(gst 5)
+GB=$(gst 6)
 
 c=$(req POST /vendors "{\"name\":\"MB Catering $STAMP\",\"category\":\"catering\",\"city\":\"Hyderabad\",\"gstNumber\":\"$GA\",\"panNumber\":\"MULTI1111A\",\"registeredAddress\":\"1 First Road, Hyderabad\",\"contactPhone\":\"9876540001\"}" "$MB")
 check "one account creates its first business" "$c" 201

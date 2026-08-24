@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
+import { BusinessLifecycleService } from './business-lifecycle.service';
 import { VendorReview } from './entities/vendor-review.entity';
 import {
   CreateReviewDto,
@@ -27,6 +28,7 @@ export class VendorsService {
     private readonly redis: RedisService,
     private readonly dataSource: DataSource,
     private readonly verification: VerificationService,
+    private readonly lifecycle: BusinessLifecycleService,
   ) {}
 
   async create(ownerUserId: string, dto: CreateVendorDto): Promise<Vendor> {
@@ -68,6 +70,12 @@ export class VendorsService {
     if (vendor.ownerUserId !== ownerUserId) {
       throw new ForbiddenException('This listing does not belong to you');
     }
+
+    // Enforced here, not by hiding a button. A vendor who edits their GST
+    // number after an officer has been sent to check it has verified nothing,
+    // and a listing that changes after approval is a listing nobody checked.
+    this.lifecycle.assertEditable(vendor, 'identity');
+
     Object.assign(vendor, dto);
     const saved = await this.saveListing(vendor);
     await this.invalidateSearchCache();

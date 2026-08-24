@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { OfficerServiceArea } from './entities/officer-service-area.entity';
@@ -16,6 +16,7 @@ import { OfficersService } from './officers.service';
 import { VerificationController } from './verification.controller';
 import { UsersModule } from '../users/users.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { VendorsModule } from '../vendors/vendors.module';
 
 @Module({
   imports: [
@@ -33,6 +34,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     UsersModule,
     NotificationsModule,
+    // The lifecycle lives with the vendors module; the two reference each other
+    // because a verification decision is what moves a business.
+    forwardRef(() => VendorsModule),
   ],
   providers: [VerificationService, SupportCasesService, OfficersService],
   controllers: [VerificationController],

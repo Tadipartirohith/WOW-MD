@@ -345,6 +345,31 @@ export enum PaymentMilestone {
  * decisions somebody made, and a function called off three weeks ago is not
  * "upcoming" merely because its date has not arrived yet.
  */
+/**
+ * Where a business is in its own life.
+ *
+ * `isApproved` answered one question — may this appear in search — and the
+ * platform needed several others. Is it still being written? Is it locked
+ * because verification is under way, because it was approved, or because it was
+ * refused? Those have different rules, and a boolean collapses them.
+ *
+ * REVERIFICATION_REQUIRED and REJECTED are deliberately different branches. One
+ * says "fix this and come back"; the other says "no". Treating them the same
+ * leaves a vendor either stuck with no route forward, or able to edit their way
+ * around a refusal.
+ */
+export enum BusinessStatus {
+  DRAFT = 'draft',
+  READY_FOR_REVIEW = 'ready_for_review',
+  FIRST_REVIEW = 'first_review',
+  PENDING_VERIFICATION = 'pending_verification',
+  VERIFICATION_IN_PROGRESS = 'verification_in_progress',
+  VERIFIED = 'verified',
+  LIVE = 'live',
+  REVERIFICATION_REQUIRED = 'reverification_required',
+  REJECTED = 'rejected',
+}
+
 export enum EventStatus {
   UPCOMING = 'upcoming',
   ONGOING = 'ongoing',

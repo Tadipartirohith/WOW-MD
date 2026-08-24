@@ -15,6 +15,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { VendorsService } from './vendors.service';
 import { AvailabilityService } from './availability.service';
 import { BookingsService } from '../bookings/bookings.service';
+import { BusinessLifecycleService } from './business-lifecycle.service';
 import {
   CreateReviewDto,
   CreateVendorDto,
@@ -41,6 +42,7 @@ export class VendorsController {
     private readonly vendors: VendorsService,
     private readonly availability: AvailabilityService,
     private readonly bookings: BookingsService,
+    private readonly lifecycle: BusinessLifecycleService,
   ) {}
 
   // ------------------------------------------------------------- calendar
@@ -191,6 +193,61 @@ export class VendorsController {
   @Get('me')
   listOwn(@CurrentUser('userId') userId: string) {
     return this.vendors.listOwn(userId);
+  }
+
+  // ---------------------------------------------------- business lifecycle
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'What is filled in, and what still blocks submission',
+    description:
+      'Computed rather than tracked. A "documents complete" flag somebody forgot to clear when ' +
+      'a document was removed is worse than no flag: it lets an incomplete listing through.',
+  })
+  @Get(':id/completion')
+  completion(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.lifecycle.completion(actor, id);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'What this business may do right now',
+    description: 'Rendered by the client as-is, so the buttons and the rules cannot drift.',
+  })
+  @Get(':id/rules')
+  rules(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.lifecycle.rulesFor(actor, id);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'Look the whole listing over before anybody else does',
+    description:
+      'Still editable at this point: the purpose of a review step is to find things to change, ' +
+      'and a review you cannot act on is a confirmation dialog with extra steps.',
+  })
+  @HttpCode(200)
+  @Post(':id/first-review')
+  firstReview(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.lifecycle.beginFirstReview(actor, id);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'Submit for verification',
+    description:
+      'The listing locks here, and the 72-hour clock starts. The lock is enforced by the update ' +
+      'APIs rather than by hiding a button: a vendor who edits their GST number after an officer ' +
+      'has been sent to check it has verified nothing.',
+  })
+  @HttpCode(200)
+  @Post(':id/submit-verification')
+  submitVerification(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.lifecycle.submitForVerification(actor, id);
   }
 
   @ApiBearerAuth()

@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { VendorCategory } from '../../../common/enums';
+import { BusinessStatus, VendorCategory } from '../../../common/enums';
 
 export interface VendorPricing {
   currency?: string;
@@ -84,6 +84,40 @@ export class Vendor {
   @Index()
   @Column({ default: false })
   isApproved: boolean;
+
+  /**
+   * Where this business is in its own life.
+   *
+   * `isApproved` is kept alongside and maintained from this: search reads it,
+   * and renaming a column in the same change as a behaviour change is how you
+   * lose track of which one broke something.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: BusinessStatus, default: BusinessStatus.DRAFT })
+  status: BusinessStatus;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  submittedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  verifiedAt: Date | null;
+
+  /** Why it was refused or sent back. The vendor sees this verbatim. */
+  @Column({ type: 'text', nullable: true })
+  decisionReason: string | null;
+
+  /**
+   * How many times this has been sent back and resubmitted.
+   *
+   * Worth counting: a third round usually means the listing is wrong in a way
+   * neither side has managed to say, and somebody should ring them.
+   */
+  @Column({ type: 'int', default: 0 })
+  revisionCount: number;
+
+  /** A refused listing is archived rather than deleted, so history survives. */
+  @Column({ type: 'timestamptz', nullable: true })
+  archivedAt: Date | null;
 
   /**
    * The gateway's linked account for this business, once payout onboarding is done.

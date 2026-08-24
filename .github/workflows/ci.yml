@@ -78,6 +78,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      # The frontend suite was never run here, so the check that the client's
+      # permission mirror still matches the backend enum only ever ran on a
+      # developer's machine — which is the one place it does not need to.
+      - run: npm test
       - run: npm run build
 
   docker-build:

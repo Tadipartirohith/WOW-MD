@@ -49,6 +49,80 @@ assert() {
 jqok() { jq -e "$1" /tmp/body >/dev/null 2>&1 && echo 1 || echo 0; }
 field() { jq -r ".$2 // empty" "$1"; }
 
+# A business now has a life rather than a boolean, so getting one live means
+# walking the path a vendor actually walks: fill in the catalog, look it over,
+# submit, then allocate, visit and decide. Skipping to "approved" is refused,
+# which is the point of the state machine.
+#
+#   go_live <businessToken> <businessId> <adminToken> <officerId> <officerToken>
+FINDINGS_JSON='{"visited":true,"observations":"Attended the address; the business is as described.","issues":[],"recommendation":"approve"}'
+
+# The catalog is configuration, so a service asks whatever an administrator
+# decided it should ask. The helper therefore reads the form and answers it,
+# rather than assuming a shape — which is the same reason the form exists.
+answers_for() { # answers_for <serviceForm json on stdin>
+  jq -c '[.[] | select(.required)] | map({(.key): (
+      if   .type == "boolean"       then true
+      elif .type == "single_select" then (.constraints.options[0].value // "other")
+      elif .type == "multi_select"  then [(.constraints.options[0].value // "other")]
+      elif .type == "date"          then "2027-01-01"
+      elif .type == "time"          then "10:00"
+      elif .type == "date_time"     then "2027-01-01T10:00:00.000Z"
+      elif .type == "url"           then "https://example.com/portfolio"
+      elif (.type == "number" or .type == "decimal" or .type == "currency"
+            or .type == "duration" or .type == "range")
+                                    then (.constraints.min // 1)
+      else "Not specified" end)}) | add // {}'
+}
+
+seed_catalog() { # seed_catalog <token> <businessId>
+  req GET /catalog/categories "" "$1" >/dev/null
+  cat_ids=$(jq -r '.[].id' /tmp/body)
+  [ -z "$cat_ids" ] && return 1
+
+  for cat_id in $cat_ids; do
+    req GET "/catalog/categories/$cat_id/services" "" "$1" >/dev/null
+    def_ids=$(jq -r '.[].id' /tmp/body)
+    for def_id in $def_ids; do
+      req GET "/catalog/services/$def_id" "" "$1" >/dev/null
+      def_json=$(cat /tmp/body)
+      attrs=$(echo "$def_json" | jq -c '.serviceForm' | answers_for)
+      req POST "/vendors/$2/services" "{\"definitionId\":\"$def_id\",\"attributes\":$attrs}" "$1" >/dev/null
+      svc_id=$(jq -r '.id // empty' /tmp/body)
+      [ -z "$svc_id" ] && continue
+
+      # The definition decides which pricing models a service may use, so the
+      # price is built from that rather than assumed. Quote-only models carry
+      # no amount; everything else does.
+      model=$(echo "$def_json" | jq -r '.definition.allowedPricingModels[0] // "fixed"')
+      case "$model" in
+        custom_quote|no_public_price) price_json="" ;;
+        *) price_json=',"price":"25000"' ;;
+      esac
+      req POST "/vendors/$2/services/$svc_id/offerings" \
+        "{\"name\":\"Standard\",\"pricingModel\":\"$model\"$price_json,\"active\":true}" "$1" >/dev/null
+      [ "$(jq -r '.id // empty' /tmp/body)" != "" ] && return 0
+    done
+  done
+  return 1
+}
+
+go_live() { # go_live <vendorToken> <businessId> <adminToken> <officerId> <officerToken>
+  seed_catalog "$1" "$2" || return 1
+  req POST "/vendors/$2/first-review" "" "$1" >/dev/null
+  req POST "/vendors/$2/submit-verification" "" "$1" >/dev/null
+
+  req GET "/verification/requests?applicantType=vendor&limit=100" "" "$3" >/dev/null
+  vreq=$(jq -r --arg id "$2" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
+  [ -z "$vreq" ] && return 1
+
+  req PUT "/verification/requests/$vreq/allocate" "{\"officerUserId\":\"$4\"}" "$3" >/dev/null
+  req PUT "/verification/requests/$vreq/start" "" "$5" >/dev/null
+  req PUT "/verification/requests/$vreq/findings" "$FINDINGS_JSON" "$5" >/dev/null
+  req PUT "/verification/requests/$vreq/decide" '{"status":"approved"}' "$5" >/dev/null
+  return 0
+}
+
 # Three photographs before the details. A biodata with no picture is one
 # nobody looks at, so the section that starts the form now requires them.
 seed_photos() { # seed_photos <profileId> <token>

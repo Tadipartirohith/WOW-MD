@@ -285,6 +285,17 @@ export default () => ({
    * plainly labelled and allows the rest, which keeps the rejection path
    * exercised without needing a contract to run the application.
    */
+  /**
+   * How long the platform has to verify a business once it has been asked.
+   *
+   * The clock starts at submission, not at creation: a vendor sitting on a
+   * draft for a month is not a breach, and starting it earlier would make every
+   * slow vendor look like a slow platform.
+   */
+  verification: {
+    slaHours: toNumber(process.env.VERIFICATION_SLA_HOURS, 72),
+  },
+
   moderation: {
     imageProvider: process.env.IMAGE_MODERATION_PROVIDER || 'heuristic',
     imageModerationUrl: process.env.IMAGE_MODERATION_URL || '',
