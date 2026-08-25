@@ -23,8 +23,11 @@ export class MediaStorageProvider {
     if (this.cfg.media.storageProvider === 's3' && this.cfg.media.s3Bucket) {
       return this.presignS3(key);
     }
-    const base = this.cfg.media.cdnBaseUrl || 'http://localhost:3000/mock-storage';
-    return { uploadUrl: `${base}/${key}?mock=put`, publicUrl: `${base}/${key}`, key };
+    // `?mock=put` is dropped: it distinguished nothing, and a client that has
+    // to strip a query parameter before displaying the file is a client with a
+    // rule the real provider does not have.
+    const base = this.cfg.media.cdnBaseUrl || this.cfg.media.mockBaseUrl;
+    return { uploadUrl: `${base}/${key}`, publicUrl: `${base}/${key}`, key };
   }
 
   /** AWS SigV4 presigned PUT URL (query-string auth, UNSIGNED-PAYLOAD). */

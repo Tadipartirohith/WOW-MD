@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import express from 'express';
 import { AppModule } from './app.module';
 import { AppConfigService } from './config/app-config.service';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -26,6 +27,14 @@ async function bootstrap() {
   // client address rather than the proxy's.
   app.set('trust proxy', 1);
   app.enableCors({ origin: cfg.runtime.corsOrigins, credentials: true });
+
+  // Uploaded bytes, for the mock storage. The JSON parser ignores an
+  // image/jpeg body, so without this the PUT arrives with nothing in it — and
+  // the raw-body option only captures what a parser has already handled.
+  app.use(
+    `/${cfg.runtime.apiPrefix}/mock-storage`,
+    express.raw({ type: () => true, limit: cfg.media.maxFileSizeBytes }),
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({

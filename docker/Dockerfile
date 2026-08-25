@@ -22,6 +22,13 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy compiled output.
 COPY --from=build /app/dist ./dist
 
+# Where the mock storage writes uploads. Created here, with the right owner,
+# because a named volume mounted over an empty path is created root-owned — and
+# the process runs as `node`, so the first upload fails with EACCES. Docker
+# seeds a fresh volume from what the image has at that path, ownership
+# included, so making the directory here is what makes the volume writable.
+RUN mkdir -p /app/media-store && chown -R node:node /app/media-store
+
 # Run as an unprivileged user (the node:alpine image ships a `node` user).
 USER node
 

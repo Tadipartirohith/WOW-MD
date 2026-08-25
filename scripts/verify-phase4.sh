@@ -1498,6 +1498,58 @@ assert "and the event appears in what is next" "$(jq -e --arg n "Sangeet $STAMP"
 assert "the countdown has a date to work from" "$(jq -e '.countdown.weddingDate != null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 echo
+echo "== 43. A photograph that actually goes somewhere =="
+
+# The one step nothing had ever exercised. `presign` returned a URL and the
+# comment beside it said uploads worked end-to-end without AWS — but nothing
+# served that URL, so the browser's PUT got a 404 from the router and the
+# uploader reported "That photo could not be uploaded". Every upload on every
+# deployment not configured for S3 failed there: the agent's mandatory biodata
+# photograph, the support attachment, the album, the vendor's portfolio.
+#
+# The suites never caught it because they post a literal cdn.example.com string
+# and never PUT anything anywhere.
+
+c=$(req POST /media/profile-photo/presign '{"filename":"portrait.jpg"}' "$BRIDE")
+check "an upload slot is issued" "$c" 201
+UP=$(field /tmp/body uploadUrl)
+PUB=$(field /tmp/body publicUrl)
+
+# The URL is on the app's own origin, which from inside the compose network is
+# the nginx service rather than the host name a browser would use.
+UP_IN=$(echo "$UP" | sed -E 's#https?://[^/]+#http://frontend#')
+PUB_IN=$(echo "$PUB" | sed -E 's#https?://[^/]+#http://frontend#')
+
+head -c 40000 /dev/urandom > /tmp/photo.jpg
+PUT_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary @/tmp/photo.jpg \
+  -H 'Content-Type: image/jpeg' "$UP_IN")
+check "the bytes are accepted where the platform said to put them" "$PUT_CODE" 200
+
+GET_CODE=$(curl -s -o /tmp/got.jpg -w '%{http_code}' "$PUB_IN")
+check "and come back from the public URL" "$GET_CODE" 200
+assert "byte for byte" "$([ "$(wc -c < /tmp/photo.jpg)" = "$(wc -c < /tmp/got.jpg)" ] && echo 1 || echo 0)"
+
+# 12MB through nginx: the proxy defaulted to refusing anything over 1MB, which
+# is smaller than a photograph from any phone made this decade.
+head -c 3000000 /dev/urandom > /tmp/big.jpg
+c=$(req POST /media/profile-photo/presign '{"filename":"big.jpg"}' "$BRIDE")
+BIG=$(field /tmp/body uploadUrl | sed -E 's#https?://[^/]+#http://frontend#')
+BIG_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary @/tmp/big.jpg \
+  -H 'Content-Type: image/jpeg' "$BIG")
+check "a three-megabyte photograph gets through the proxy" "$BIG_CODE" 200
+
+# The key comes back from the client, so it is re-checked rather than trusted.
+TRAV=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' -X PUT --data-binary @/tmp/photo.jpg \
+  -H 'Content-Type: image/jpeg' "$API/mock-storage/uploads/..%2f..%2f..%2fevil.jpg")
+check "a key that climbs out of the store is refused" "$TRAV" 400
+
+# And the platform accepts its own URL, which it did not before: @IsUrl also
+# demanded a top-level domain, and the storage host has none.
+c=$(req PUT /users/me/profile "{\"displayName\":\"Bride\",\"photos\":[\"$PUB\"]}" "$BRIDE")
+check "and the profile accepts the URL the platform issued" "$c" 200
+body_has 'mock-storage' "storing it against the profile"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

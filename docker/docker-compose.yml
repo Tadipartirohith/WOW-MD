@@ -45,6 +45,8 @@ services:
     ports:
       # Host port is configurable so the stack can coexist with other projects.
       - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - media_store:/app/media-store
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -88,6 +90,12 @@ services:
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
       WHATSAPP_LANGUAGE: ${WHATSAPP_LANGUAGE:-en}
+      # Where the mock storage keeps uploaded files, and the origin a browser
+      # reaches them on. The app's own origin, so the upload is same-origin and
+      # the URL works from a phone on the network rather than only from the
+      # machine the stack runs on.
+      MEDIA_MOCK_DIR: ${MEDIA_MOCK_DIR:-/app/media-store}
+      MEDIA_MOCK_BASE_URL: ${MEDIA_MOCK_BASE_URL:-}
       MATCH_MIN_SCORE: ${MATCH_MIN_SCORE:-50}
       # The three escrow instalments. They must total 100 or the API refuses to
       # boot, because a set summing to 90 would under-charge every booking.
@@ -188,5 +196,9 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  # Uploaded photographs. A named volume rather than the container filesystem,
+  # because "does the photograph survive a refresh" is the question people
+  # actually ask, and a rebuild is a very thorough refresh.
+  media_store:
   neo4j_data:
   kafka_data:

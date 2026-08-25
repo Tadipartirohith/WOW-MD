@@ -258,6 +258,29 @@ export default () => ({
     s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
     s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
     presignExpirySeconds: toNumber(process.env.S3_PRESIGN_EXPIRY, 900),
+    /**
+     * Where the mock provider actually puts the bytes.
+     *
+     * It always claimed uploads worked end-to-end without AWS, and returned a
+     * URL to prove it — but nothing served that URL, so every upload on every
+     * non-S3 deployment failed at the PUT. A directory rather than memory,
+     * because "does the photograph survive a refresh" is the question people
+     * actually ask, and a restart is a refresh.
+     */
+    mockStorageDir: process.env.MEDIA_MOCK_DIR || '/app/media-store',
+    /**
+     * The origin the browser reaches that storage on.
+     *
+     * The app's own, so the PUT is same-origin and needs no CORS grant, and so
+     * the URL works from a phone on the same network rather than only from the
+     * machine the stack is running on. `localhost` in a stored URL is a
+     * photograph that only its uploader can see.
+     */
+    mockBaseUrl:
+      process.env.MEDIA_MOCK_BASE_URL ||
+      `${process.env.APP_BASE_URL || 'http://localhost:8080'}/${
+        process.env.API_PREFIX || 'api'
+      }/mock-storage`,
   },
 
   payments: {
