@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { AdminConsoleService } from './admin-console.service';
 import { AgencyService } from '../agents/agency.service';
 import { AuditService } from '../../platform/audit/audit.service';
 import { RejectAgencyDto } from '../agents/dto/agency.dto';
@@ -26,6 +27,12 @@ import { AuthUser, CurrentUser } from '../../common/decorators/current-user.deco
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
 import { BookingsService } from '../bookings/bookings.service';
+import {
+  ActivityQueryDto,
+  AdminBookingQueryDto,
+  DirectoryQueryDto,
+  ReportQueryDto,
+} from './dto/console.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -36,7 +43,101 @@ export class AdminController {
     private readonly agency: AgencyService,
     private readonly audit: AuditService,
     private readonly bookings: BookingsService,
+    private readonly console: AdminConsoleService,
   ) {}
+
+  // ---------------------------------------------------------- the console
+  //
+  // One admin page could show approvals, analytics and disputes. What it could
+  // not do was answer a question about a particular account, a particular
+  // business or a particular booking — which is how every real admin session
+  // starts, because somebody has complained about something specific.
+
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({
+    summary: 'What has been happening, across the platform',
+    description:
+      'Not the audit trail. That records privileged actions — who approved what, who moved ' +
+      'money. This is the ordinary life of the platform: sign-ups, listings, bookings, ' +
+      'complaints. Assembled from the newest rows of each source rather than by a union.',
+  })
+  @Get('activity')
+  activity(@Query() q: ActivityQueryDto) {
+    return this.console.activity(q);
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
+    summary: 'The accounts directory, searchable and filterable by state',
+    description: 'Suspended accounts are the ones people arrive looking for.',
+  })
+  @Get('directory')
+  directory(@Query() q: DirectoryQueryDto) {
+    return this.console.directory(q);
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
+    summary: 'One account, and everything hanging off it',
+    description:
+      'Profiles, businesses, bookings, cases raised and cases assigned, in one read. The ' +
+      'alternative is filtering six lists by a uuid, which is how the wrong account gets ' +
+      'suspended. Password and MFA columns are never selected.',
+  })
+  @Get('accounts/:id')
+  accountDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.console.accountDetail(id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
+    summary: 'Administrators and field officers, listed apart',
+    description:
+      'They are not variants of one thing. One decides who gets access; the other goes to an ' +
+      'address and writes down what they saw — and only the second has a workload.',
+  })
+  @Get('staff/:kind')
+  staff(@Param('kind') kind: 'admin' | 'in_person') {
+    return this.console.staff(kind === 'admin' ? 'admin' : 'in_person');
+  }
+
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
+  @ApiOperation({
+    summary: 'Every business on the platform, by lifecycle state',
+    description:
+      'Businesses, not vendor accounts — one account can hold several, and "how many listings ' +
+      'are stuck in first review" is a question about the listings.',
+  })
+  @Get('businesses')
+  businesses(@Query() q: DirectoryQueryDto) {
+    return this.console.businesses(q);
+  }
+
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({
+    summary: 'Every booking, across all stages',
+    description:
+      'A vendor sees their incoming work and a buyer their own; nobody could see the whole ' +
+      'book. That is where a dispute starts, and it is the only way to notice forty bookings ' +
+      'sitting unpaid for a fortnight.',
+  })
+  @Get('bookings')
+  allBookings(@Query() q: AdminBookingQueryDto) {
+    return this.console.allBookings(q);
+  }
+
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({
+    summary: 'Reports over a window: users, agents, vendors, bookings, financial, verification',
+    description:
+      'One route rather than six, because they differ only in which counts they ask for and ' +
+      'all six want the same window handled the same way. Defaults to the last thirty days — ' +
+      'a report with no window means "everything ever", which reads as a catastrophic month.',
+  })
+  @Get('reports')
+  report(@Query() q: ReportQueryDto) {
+    return this.console.report(q);
+  }
 
   // -------------------------------------------------------- agency vetting
 

@@ -228,21 +228,21 @@ missing.
 
 | # | Item | Status |
 | --- | --- | --- |
-| B33 | Admin navbar: Dashboard, Users, Agents, Vendors, Bookings, Honeymoon, Verification, In-Person Accounts, Accounts, Notifications, Support, Reports | partly done — one Admin page today |
-| B34 | Admin dashboard: 15 counters plus a recent-activity feed | partly done — analytics exist, the feed does not |
-| B35 | Admin Users, Agents, Vendors sections with the listed detail views | new |
-| B36 | Admin Bookings: global view across 13 stages | new |
+| B33 | Admin navbar: Dashboard, Users, Agents, Vendors, Bookings, Honeymoon, Verification, In-Person Accounts, Accounts, Notifications, Support, Reports | **done** — sections, split by the question being asked rather than by the table the answer comes from |
+| B34 | Admin dashboard: 15 counters plus a recent-activity feed | **done** — the feed is the ordinary life of the platform, distinct from the audit trail |
+| B35 | Admin Users, Agents, Vendors sections with the listed detail views | **done** — searchable directory, and one account opening with everything hanging off it |
+| B36 | Admin Bookings: global view across 13 stages | **done** |
 | B37 | Admin Verification across 8 states, both applicant types | done |
 | B38 | In-person officer accounts with assigned area | done — service areas landed last round |
-| B39 | Separate in-person portal, with what an officer cannot do | partly done — the permissions are right; the portal is a section of one page |
-| B40 | Workload allocation table, inactive officers excluded | partly done — inactive exclusion needs checking |
+| B39 | Separate in-person portal, with what an officer cannot do | **done** — officers work from Verification; their accounts are listed apart from administrators, and only theirs carry a workload |
+| B40 | Workload allocation table, inactive officers excluded | **done** — checked: both the case and the verification allocator filter on `isActive`. The staff list reports visits and cases as two numbers, because six of each is not the same amount of work |
 | B41 | Allocation as a real transaction: validate, save, update workload, notify, commit | done |
 | B42 | Officer submits a result; admin decides | done |
-| B43 | Support statuses: OPEN → TRIAGED → ASSIGNED → IN_PROGRESS → WAITING_FOR_INFORMATION → RESOLUTION_SUBMITTED → ADMIN_REVIEW → RESOLVED → CLOSED | partly done — several exist; TRIAGED, RESOLUTION_SUBMITTED, ADMIN_REVIEW, REASSIGNED do not |
-| B44 | **Resolved ≠ Closed** | new |
+| B43 | Support statuses: OPEN → TRIAGED → ASSIGNED → IN_PROGRESS → WAITING_FOR_INFORMATION → RESOLUTION_SUBMITTED → ADMIN_REVIEW → RESOLVED → CLOSED | **done** — and the officer now *proposes* a settlement rather than making it. An officer who both finds the facts and releases the escrow is one person deciding a payment dispute alone |
+| B44 | **Resolved ≠ Closed** | **done** — resolved is the platform's decision, closed is the complainant accepting it, and they have separate timestamps |
 | B45 | Support audit trail | done |
-| B46 | Admin Accounts kept separate from In-Person Accounts | new |
-| B47 | Reports across users, agents, vendors, bookings, financial, verification | new |
+| B46 | Admin Accounts kept separate from In-Person Accounts | **done** |
+| B47 | Reports across users, agents, vendors, bookings, financial, verification | **done** — one route, six kinds, one window handled once |
 | B48 | `vendor_id` for the account, `business_id` for everything business-specific | done |
 | B49 | Backend verifies the authenticated vendor owns the `business_id` | done |
 
@@ -307,3 +307,5 @@ matters.
 | `PENDING_PAYOUT` | Money in that state was in no earnings bucket, so it vanished from every total |
 | Silent assertions | `verify-rbac.sh` had its own idiom; an assertion copied in from another suite called an undefined helper, and the run still reported green |
 | Frontend tests in CI | The `frontend` job ran typecheck and build and never the tests — including the one that fails when the client's permission mirror drifts from the server enum |
+| A case parked on a complainant did not read as open | `hasOpenCaseFor` listed the states that counted and WAITING_FOR_INFORMATION was not among them, so a booking frozen by a case awaiting a receipt could be completed or cancelled out from under it — unfreezing money an officer was still deciding about. The list is now derived as the complement of "finished" |
+| Findings could mark a case decided | `RecordFindingsDto.status` accepted any `CaseStatus`, so an officer writing up their visit could set RESOLVED on the way past and skip the administrator entirely |

@@ -168,13 +168,13 @@ the guard chain in [§4](#4-request-lifecycle).
 | --- | --: | --: | --- |
 | `/agents` | 25 | 0 | Agency record and status, managed profiles, photos, invitations, claim requests, client book, billing |
 | `/auth` | 24 | 10 | Register, login, refresh, logout, sessions, MFA and recovery codes, phone verification, email verification, password recovery, invitation preview and accept |
-| `/verification` | 22 | 0 | Officers, verification requests, workload, allocation, decisions; support cases, evidence, escalation, settlement |
+| `/verification` | 24 | 0 | Officers, verification requests, workload, allocation, decisions; support cases, triage, evidence, escalation, an officer's proposed settlement and the administrator's review of it |
 | `/circulation` | 20 | 1 | Consent record/state/history/revoke, five share paths, pool search, agent directory, proposal threads, reach, public biodata |
 | `/vendors` | 16 | 4 | Listings, availability slots and calendar, public search and detail, gated review |
 | `/bookings` | 15 | 0 | Create, list, incoming, quotations, milestones, pay, confirm, start, complete, settle, cancel, earnings |
 | `/profiles/:id` | 14 | 0 | The biodata, section by section; siblings, assets, primary photo, completion |
 | `/matches` | 13 | 0 | Suggestions with filters, interest send/accept/reject, incoming, outgoing, accepted, block, report, Match Fixed, status |
-| `/admin` | 13 | 0 | Agency/planner approvals, user suspension, analytics, disputes, audit trail |
+| `/admin` | 20 | 0 | Agency/planner approvals, user suspension, analytics, disputes, audit trail; the activity feed, the accounts directory and one account in full, businesses by lifecycle state, every booking, the two staff directories, and the six reports |
 | `/events` | 12 | 2 | Ceremonies, per-event vendors, guests, invitations, host RSVP override, public guest RSVP |
 | `/planner` | 7 | 0 | Plan, auto timeline, tasks, planner engagement |
 | `/media` | 7 | 1 | Albums, items, presigned upload, profile-photo presign, public shared album |

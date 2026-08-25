@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, apiMessage } from '../lib/api';
 import { MILESTONE_LABEL } from '../lib/permissions';
 
 interface LedgerRow {
@@ -152,6 +153,15 @@ export default function Accounts() {
                       >
                         {STATUS_LABEL[row.status] ?? row.status}
                       </span>
+                      {/*
+                        Only where the money is stuck. A "settle my payment"
+                        button beside every row would be a button people press
+                        on payments that are working, and the desk would fill
+                        with requests that have no answer.
+                      */}
+                      {row.status === 'pending_payout' && (
+                        <SettleMyPayment bookingId={row.bookingId} />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -167,6 +177,56 @@ export default function Accounts() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * "Settle my payment", on a payment that has not landed.
+ *
+ * It answers before it routes. The commonest reason a payout is stuck is a
+ * provider who has not finished their own onboarding, and saying so is a better
+ * outcome than putting a request on somebody's desk and making them wait for
+ * the same sentence. Only if they still want a person does a case exist — and
+ * the second press returns the one already open rather than raising another.
+ */
+function SettleMyPayment({ bookingId }: { bookingId: string }) {
+  const [state, setState] = useState<{ reason: string; owed: string; open: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function ask() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data } = await api.post(`/verification/cases/settlement/${bookingId}`, {});
+      setState({ reason: data.reason, owed: data.owed, open: data.alreadyOpen });
+    } catch (err) {
+      setError(apiMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (state) {
+    return (
+      <div className="mt-1 max-w-xs rounded bg-amber-50 p-2 text-xs text-amber-900">
+        <p>{state.reason}</p>
+        <p className="mt-1 text-amber-700">
+          {state.open
+            ? 'A request on this is already with the support desk.'
+            : 'Raised with the support desk.'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1">
+      <button className="text-xs text-brand underline" disabled={busy} onClick={() => void ask()}>
+        {busy ? 'Checking…' : 'Settle my payment'}
+      </button>
+      {error && <p className="mt-1 max-w-xs text-xs text-red-600">{error}</p>}
     </div>
   );
 }

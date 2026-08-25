@@ -79,9 +79,46 @@ Money and booking state move together, so the two can never disagree about
 what is happening.
 
 **Only a recorded settlement unfreezes it** — release, refund, partial, or no
-action — and only from the allocated officer or an admin. That is what makes
-escrow a control rather than a label: a provider cannot release funds a buyer is
-disputing, and a buyer cannot refund funds out from under an investigation.
+action. That is what makes escrow a control rather than a label: a provider
+cannot release funds a buyer is disputing, and a buyer cannot refund funds out
+from under an investigation.
+
+### Who proposes, and who decides
+
+An officer calling `settle` submits a **proposal**: the case moves to
+`resolution_submitted` and nothing has moved. An administrator calling it, or
+approving the proposal at `/cases/:id/review`, is the decision, and the escrow
+follows.
+
+That separation is the reason there are two roles. An officer who both finds
+the facts and releases the money is one person deciding a payment dispute
+alone, with nobody to catch it when they get it wrong — and the party it went
+against has no recourse but to raise another case with the same person.
+Sending a proposal back goes to a *different* officer by default: refusing a
+recommendation is not refusing the complaint, and handing it to the same person
+to try again is not a review.
+
+An administrator has nobody above them, so they decide in one step. Requiring
+them to approve their own proposal would be ceremony.
+
+### Resolved is not closed
+
+| State | Means | Set by |
+| --- | --- | --- |
+| `resolution_submitted` | An officer has recommended an outcome | The officer |
+| `admin_review` | It is on an administrator's desk | The administrator, on sending it back |
+| `resolved` | Decided, and the money has moved | An administrator |
+| `closed` | The person who raised it accepts that | Them, or an administrator |
+
+`resolvedAt` and `closedAt` are separate columns because they answer different
+questions: how fast the desk works, and whether the answer was accepted. One
+state for both let support mark its own homework — everything looked finished
+the moment staff stopped working on it, and the metric reporting how well the
+desk was doing was computed from that.
+
+Evidence can still be added to a resolved case. Reading the outcome is exactly
+when a complainant finds the receipt they should have sent in the first place,
+and refusing it then is how the same complaint gets raised a second time.
 
 ## 3. Match Fixed and customer provisioning
 

@@ -28,7 +28,10 @@ import {
   EscalateCaseDto,
   RaiseCaseDto,
   RecordFindingsDto,
+  ReviewCaseDto,
   SettleCaseDto,
+  SettlementRequestDto,
+  TriageCaseDto,
 } from './dto/case.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -268,6 +271,24 @@ export class VerificationController {
   }
 
   @RequirePermissions(Permission.CASE_ALLOCATE)
+  @ApiOperation({
+    summary: 'Read a new case and decide what kind of thing it is',
+    description:
+      'Sets priority and category. Priority is decided here rather than taken from the ' +
+      'complainant: everybody\'s own problem is urgent, so a queue sorted by self-assessment ' +
+      'is sorted by nothing. Re-triaging a case already in progress changes its priority ' +
+      'without putting it back in the queue.',
+  })
+  @Put('cases/:id/triage')
+  triageCase(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TriageCaseDto,
+  ) {
+    return this.cases.triage(actor, id, dto);
+  }
+
+  @RequirePermissions(Permission.CASE_ALLOCATE)
   @Put('cases/:id/allocate')
   allocateCase(
     @CurrentUser() actor: AuthUser,
@@ -332,7 +353,11 @@ export class VerificationController {
   @RequirePermissions(Permission.CASE_SETTLE)
   @ApiOperation({
     summary: 'Record the settlement decision',
-    description: 'Release, refund, partial or no action. This is what unfreezes disputed escrow.',
+    description:
+      'An officer calling this submits a proposal and nothing moves. An administrator calling ' +
+      'it makes the decision, and the escrow follows. That separation is why there are two ' +
+      'roles: an officer who both finds the facts and releases the money is one person ' +
+      'deciding a payment dispute alone.',
   })
   @Put('cases/:id/settle')
   settle(
@@ -343,7 +368,50 @@ export class VerificationController {
     return this.cases.settle(actor, id, dto);
   }
 
-  @RequirePermissions(Permission.CASE_INVESTIGATE)
+  @RequirePermissions(Permission.CASE_SETTLE, Permission.CASE_ALLOCATE)
+  @ApiOperation({
+    summary: 'Answer an officer\'s proposal',
+    description:
+      'Approve it, and the money moves. Send it back, and it goes to a different officer by ' +
+      'default — refusing a recommendation is not refusing the complaint, and handing it back ' +
+      'to the same person to try again is not a review.',
+  })
+  @Put('cases/:id/review')
+  reviewCase(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewCaseDto,
+  ) {
+    return this.cases.review(actor, id, dto);
+  }
+
+  @RequirePermissions(Permission.CASE_RAISE)
+  @ApiOperation({
+    summary: 'Settle my payment',
+    description:
+      'A provider asking about money they are owed on a booking. Routed through the case desk ' +
+      'rather than through a pipeline of its own — it needs exactly the routing that already ' +
+      'exists. Nothing is frozen: this is not a dispute about the job, and freezing escrow ' +
+      'would punish the provider for asking. Answers before it routes, because the commonest ' +
+      'reason a payout has not landed is onboarding the provider has not finished.',
+  })
+  @Post('cases/settlement/:bookingId')
+  requestSettlement(
+    @CurrentUser() actor: AuthUser,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @Body() dto: SettlementRequestDto,
+  ) {
+    return this.cases.requestSettlement(actor, bookingId, dto.note);
+  }
+
+  @RequirePermissions(Permission.CASE_RAISE)
+  @ApiOperation({
+    summary: 'Close a case you raised',
+    description:
+      'Resolved is not closed. The platform finishes a case when it decides; the person who ' +
+      'raised it finishes it when they accept the answer. Collapsing the two lets support ' +
+      'mark its own homework.',
+  })
   @Put('cases/:id/close')
   close(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.cases.close(actor, id);

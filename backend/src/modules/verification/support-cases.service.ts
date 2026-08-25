@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { SupportCase } from './entities/support-case.entity';
 import { User } from '../auth/entities/user.entity';
 import { Payment } from '../bookings/entities/payment.entity';
@@ -17,16 +17,20 @@ import {
   CaseQueryDto,
   RaiseCaseDto,
   RecordFindingsDto,
+  ReviewCaseDto,
   SettleCaseDto,
+  TriageCaseDto,
 } from './dto/case.dto';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
   BookingStatus,
+  CasePriority,
   CaseStatus,
   CaseSubject,
   PaymentStatus,
+  ProviderType,
   SettlementOutcome,
   UserRole,
 } from '../../common/enums';
@@ -39,6 +43,31 @@ import {
  * move it, until a settlement decision is recorded. That is what makes escrow
  * meaningful rather than decorative.
  */
+/**
+ * States where there is nothing left to do to a case.
+ *
+ * RESOLVED is *not* one of them. The platform has finished with a resolved
+ * case, but the complainant has not necessarily agreed, and there is still one
+ * thing left to happen to it — them closing it, or the acknowledgement window
+ * running out.
+ */
+const TERMINAL: CaseStatus[] = [CaseStatus.CLOSED, CaseStatus.REJECTED];
+
+/**
+ * Every state in which a case is still holding something up.
+ *
+ * Written as the complement of "finished" rather than as a list of the states
+ * that count, because the list-of-states version was already wrong:
+ * WAITING_FOR_INFORMATION was missing from it, so a case parked on a
+ * complainant who owed a receipt did not read as open — and the booking it had
+ * frozen could be completed or cancelled out from under it, unfreezing money
+ * an officer was still deciding about. Derived this way, a state added later
+ * counts as open until somebody deliberately says otherwise.
+ */
+const IN_FLIGHT: CaseStatus[] = Object.values(CaseStatus).filter(
+  (status) => !TERMINAL.includes(status) && status !== CaseStatus.RESOLVED,
+);
+
 @Injectable()
 export class SupportCasesService {
   constructor(
@@ -98,6 +127,115 @@ export class SupportCasesService {
   }
 
   /**
+   * "Settle my payment" — a provider asking about money they are owed.
+   *
+   * Deliberately a support case rather than a workflow of its own. It needs
+   * exactly the routing the case desk already has: an administrator looks, and
+   * an officer investigates if somebody has to. Building a second pipeline
+   * beside that one would be two queues, two sets of states and two places for
+   * a request to be forgotten.
+   *
+   * What it is *not* is a dispute. Nothing is frozen and the booking does not
+   * move: the provider is not complaining about the job, they are asking where
+   * their money is. Freezing escrow on this would punish them for asking.
+   *
+   * It answers before it routes. The commonest reason a payout has not landed
+   * is a provider who has not finished their own onboarding, and telling them
+   * that immediately resolves most of these without anybody being allocated
+   * anything.
+   */
+  async requestSettlement(
+    actor: AuthUser,
+    bookingId: string,
+    note?: string,
+  ): Promise<{ case: SupportCase | null; owed: string; reason: string; alreadyOpen: boolean }> {
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const ownerUserId = await this.providerOwnerOf(booking);
+    if (ownerUserId !== actor.userId && actor.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('That booking was not made against your listing');
+    }
+
+    const payments = await this.payments.find({ where: { bookingId } });
+    const waiting = payments.filter((p) => p.status === PaymentStatus.PENDING_PAYOUT);
+    const held = payments.filter((p) => p.status === PaymentStatus.HELD_IN_ESCROW);
+    const owed = waiting
+      .reduce((total, p) => total + Number(p.payoutAmount ?? 0), 0)
+      .toFixed(2);
+
+    // The specific reason, where there is one. `payoutNote` is what the
+    // gateway said when the transfer was refused, and it is the answer the
+    // provider is actually looking for.
+    const reason = waiting.length
+      ? (waiting.find((p) => p.payoutNote)?.payoutNote ??
+        'The transfer has not gone through yet. Check the payout account on your business.')
+      : held.length
+        ? 'The money is still in escrow. It is released when the job is delivered and the balance is paid.'
+        : 'There is nothing outstanding on this booking.';
+
+    if (!waiting.length && !held.length) {
+      // Nothing owed and nothing held. Raising a case here would put a request
+      // on the desk that has no answer except the one just given.
+      throw new BadRequestException(reason);
+    }
+
+    const existing = await this.cases.findOne({
+      where: {
+        subjectId: bookingId,
+        subjectType: CaseSubject.PAYMENT,
+        status: In(IN_FLIGHT),
+      },
+    });
+    if (existing) return { case: existing, owed, reason, alreadyOpen: true };
+
+    const created = await this.cases.save(
+      this.cases.create({
+        subjectType: CaseSubject.PAYMENT,
+        subjectId: bookingId,
+        raisedByUserId: actor.userId,
+        title: `Settlement requested on booking ${bookingId.slice(0, 8)}`,
+        description: note?.trim()
+          ? note.trim()
+          : `The provider is asking about ${owed} they are owed. ${reason}`,
+        evidence: [],
+        // Money a provider is waiting on is high priority and does not need a
+        // human to decide that, so it arrives triaged.
+        status: CaseStatus.TRIAGED,
+        priority: CasePriority.HIGH,
+        category: 'settlement',
+        history: [
+          {
+            at: new Date().toISOString(),
+            byUserId: actor.userId,
+            status: CaseStatus.TRIAGED,
+            note: `Settlement requested · ${owed} outstanding`,
+          },
+        ],
+      }),
+    );
+
+    await this.audit.record({
+      action: AuditAction.CASE_RAISED,
+      actor,
+      resourceType: 'support_case',
+      resourceId: created.id,
+      metadata: { settlementRequest: true, bookingId, owed },
+    });
+    return { case: created, owed, reason, alreadyOpen: false };
+  }
+
+  /** Which account owns the listing a booking was made against. */
+  private async providerOwnerOf(booking: Booking): Promise<string | null> {
+    if (booking.providerType === ProviderType.VENDOR) {
+      const vendor = await this.vendors.findOne({ where: { id: booking.providerId } });
+      return vendor?.ownerUserId ?? null;
+    }
+    const planner = await this.planners.findOne({ where: { id: booking.providerId } });
+    return planner?.ownerUserId ?? null;
+  }
+
+  /**
    * Held escrow on the disputed booking is marked disputed, which the booking
    * service treats as un-releasable until a settlement lands.
    */
@@ -133,6 +271,39 @@ export class SupportCasesService {
     }
   }
 
+  /**
+   * Somebody has read it and decided what it is.
+   *
+   * Priority is set here rather than taken from the complainant, because
+   * everybody's own problem is urgent and a queue sorted by self-assessment is
+   * sorted by nothing. Category is free text on purpose: the useful buckets are
+   * the ones that emerge from real cases, not the ones guessed in advance.
+   */
+  async triage(actor: AuthUser, caseId: string, dto: TriageCaseDto): Promise<SupportCase> {
+    const item = await this.loadOrFail(caseId);
+    if (TERMINAL.includes(item.status)) {
+      throw new BadRequestException('That case is finished');
+    }
+
+    if (dto.priority) item.priority = dto.priority;
+    if (dto.category !== undefined) item.category = dto.category ?? null;
+    // Only moves the state when nothing has been done yet. Re-triaging a case
+    // an officer is already working on should change its priority, not put it
+    // back in the queue.
+    if (item.status === CaseStatus.OPEN) item.status = CaseStatus.TRIAGED;
+
+    item.history = [
+      ...item.history,
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: item.status,
+        note: dto.note ?? `${item.priority}${item.category ? ` · ${item.category}` : ''}`,
+      },
+    ];
+    return this.cases.save(item);
+  }
+
   async allocate(actor: AuthUser, caseId: string, dto: AllocateCaseDto): Promise<SupportCase> {
     const item = await this.loadOrFail(caseId);
     const officerUserId = dto.officerUserId ?? (await this.lightestOfficer());
@@ -146,15 +317,41 @@ export class SupportCasesService {
       throw new BadRequestException('Cases can only be allocated to a verification officer');
     }
 
+    // A case allocated straight from OPEN was read by whoever allocated it, so
+    // it has been triaged whether or not anybody pressed the button. Recording
+    // that is better than either refusing the allocation or leaving a gap in
+    // the history — a required ceremony on an obvious case gets clicked
+    // through without being done.
+    const wasUntriaged = item.status === CaseStatus.OPEN;
+    if (wasUntriaged) {
+      item.history = [
+        ...item.history,
+        {
+          at: new Date().toISOString(),
+          byUserId: actor.userId,
+          status: CaseStatus.TRIAGED,
+          note: 'Triaged on allocation',
+        },
+      ];
+    }
+
+    // Round two or later. The second officer needs to know the case has been
+    // here before, and an allocation that silently overwrites the first hides
+    // that a proposal was refused.
+    const returning =
+      item.status === CaseStatus.REASSIGNED ||
+      item.status === CaseStatus.RESOLUTION_SUBMITTED ||
+      item.status === CaseStatus.ADMIN_REVIEW;
+
     item.assignedToUserId = officer.id;
     item.allocatedAt = new Date();
-    item.status = CaseStatus.ALLOCATED;
+    item.status = returning ? CaseStatus.REASSIGNED : CaseStatus.ALLOCATED;
     item.history = [
       ...item.history,
       {
         at: new Date().toISOString(),
         byUserId: actor.userId,
-        status: CaseStatus.ALLOCATED,
+        status: item.status,
         note: dto.note,
       },
     ];
@@ -182,13 +379,9 @@ export class SupportCasesService {
     });
     if (officers.length === 0) return null;
 
-    const open = await this.cases.find({
-      where: [
-        { status: CaseStatus.ALLOCATED },
-        { status: CaseStatus.IN_PROGRESS },
-        { status: CaseStatus.ESCALATED },
-      ],
-    });
+    // An officer's load is everything still on them, which includes the case
+    // they are waiting on a complainant for: it is going to come back.
+    const open = await this.cases.find({ where: { status: In(IN_FLIGHT) } });
 
     return officers
       .map((officer) => ({
@@ -229,7 +422,7 @@ export class SupportCasesService {
    */
   async escalate(actor: AuthUser, id: string, reason: string): Promise<SupportCase> {
     const supportCase = await this.loadOrFail(id);
-    if (supportCase.status === CaseStatus.RESOLVED || supportCase.status === CaseStatus.CLOSED) {
+    if (TERMINAL.includes(supportCase.status) || supportCase.status === CaseStatus.RESOLVED) {
       throw new BadRequestException('That case is already settled');
     }
 
@@ -265,7 +458,7 @@ export class SupportCasesService {
    */
   async awaitInformation(actor: AuthUser, id: string, note: string): Promise<SupportCase> {
     const supportCase = await this.loadOrFail(id);
-    if (supportCase.status === CaseStatus.RESOLVED || supportCase.status === CaseStatus.CLOSED) {
+    if (TERMINAL.includes(supportCase.status) || supportCase.status === CaseStatus.RESOLVED) {
       throw new BadRequestException('That case is already settled');
     }
 
@@ -285,8 +478,12 @@ export class SupportCasesService {
   /** Adds evidence to an open case — proof rarely all arrives at once. */
   async addEvidence(actor: AuthUser, id: string, urls: string[]): Promise<SupportCase> {
     const supportCase = await this.loadOrFail(id);
-    if (supportCase.status === CaseStatus.RESOLVED || supportCase.status === CaseStatus.CLOSED) {
-      throw new BadRequestException('That case is already settled');
+    // Closed is the bar here rather than resolved, and deliberately: reading
+    // the outcome is exactly when a complainant finds the receipt they should
+    // have sent in the first place, and refusing it then is how a case gets
+    // raised a second time instead.
+    if (TERMINAL.includes(supportCase.status)) {
+      throw new BadRequestException('That case is closed');
     }
     // Only the person who raised it, or staff, may add to it.
     if (
@@ -301,10 +498,23 @@ export class SupportCasesService {
     return this.cases.save(supportCase);
   }
 
+  /**
+   * Records a settlement decision.
+   *
+   * Who is calling decides what this *is*. An officer submits a proposal and
+   * nothing moves; an administrator makes the decision and the money follows.
+   *
+   * The separation is the reason there are two roles. An officer who both
+   * finds the facts and releases the escrow is one person deciding a payment
+   * dispute alone, with nobody to catch it when they get it wrong — and the
+   * party it went against has no recourse but to raise another case with the
+   * same person. An administrator has nobody above them, so requiring them to
+   * approve their own proposal would be ceremony, and they decide in one step.
+   */
   async settle(actor: AuthUser, caseId: string, dto: SettleCaseDto): Promise<SupportCase> {
     const item = await this.assignedOrAdmin(actor, caseId);
-    if (item.status === CaseStatus.CLOSED) {
-      throw new BadRequestException('That case is already closed');
+    if (TERMINAL.includes(item.status)) {
+      throw new BadRequestException('That case is already settled');
     }
     if (dto.outcome === SettlementOutcome.PARTIAL && !dto.amount) {
       throw new BadRequestException('A partial settlement needs the amount that was settled');
@@ -313,28 +523,119 @@ export class SupportCasesService {
     item.settlementOutcome = dto.outcome;
     item.settlementAmount = dto.amount ? dto.amount.toFixed(2) : null;
     item.settlementNotes = dto.notes ?? null;
+
+    if (actor.role !== UserRole.ADMIN) {
+      // A proposal. On somebody's desk, and the money has not moved.
+      item.status = CaseStatus.RESOLUTION_SUBMITTED;
+      item.history = [
+        ...item.history,
+        {
+          at: new Date().toISOString(),
+          byUserId: actor.userId,
+          status: CaseStatus.RESOLUTION_SUBMITTED,
+          note: `Proposes ${dto.outcome}${dto.amount ? ` ${dto.amount}` : ''}`,
+        },
+      ];
+      const proposed = await this.cases.save(item);
+      await this.audit.record({
+        action: AuditAction.CASE_SETTLED,
+        actor,
+        resourceType: 'support_case',
+        resourceId: caseId,
+        metadata: { proposed: true, outcome: dto.outcome, amount: dto.amount ?? null },
+      });
+      return proposed;
+    }
+
+    return this.applyDecision(actor, item, dto.outcome, dto.amount ?? null);
+  }
+
+  /**
+   * An administrator answers a proposal: take it, or send it back.
+   *
+   * Sending it back is not a rejection of the complaint — it is a rejection of
+   * the recommendation, which is why it goes to a *different* officer by
+   * default rather than to the same one to try again.
+   */
+  async review(actor: AuthUser, caseId: string, dto: ReviewCaseDto): Promise<SupportCase> {
+    const item = await this.loadOrFail(caseId);
+    if (
+      item.status !== CaseStatus.RESOLUTION_SUBMITTED &&
+      item.status !== CaseStatus.ADMIN_REVIEW
+    ) {
+      throw new BadRequestException('There is no proposal on that case to review');
+    }
+
+    if (dto.decision === 'reassign') {
+      if (!dto.note) {
+        throw new BadRequestException(
+          'Say why it is going back — the next officer has to know what was wrong with it',
+        );
+      }
+      // The proposal is cleared rather than kept alongside a new one, so
+      // "what does this case recommend" always has exactly one answer.
+      item.settlementOutcome = null;
+      item.settlementAmount = null;
+      item.settlementNotes = null;
+      item.status = CaseStatus.ADMIN_REVIEW;
+      await this.cases.save(item);
+
+      return this.allocate(actor, item.id, {
+        officerUserId: dto.officerUserId,
+        note: dto.note,
+      } as AllocateCaseDto);
+    }
+
+    if (!item.settlementOutcome) {
+      throw new BadRequestException('That proposal has no outcome on it to approve');
+    }
+    return this.applyDecision(
+      actor,
+      item,
+      item.settlementOutcome,
+      item.settlementAmount ? Number(item.settlementAmount) : null,
+    );
+  }
+
+  /**
+   * The one place money moves on a case, whoever authorised it.
+   *
+   * Shared by an administrator settling directly and one approving an officer's
+   * proposal, because the two must do exactly the same thing — two code paths
+   * that both release escrow is two places for them to drift.
+   */
+  private async applyDecision(
+    actor: AuthUser,
+    item: SupportCase,
+    outcome: SettlementOutcome,
+    amount: number | null,
+  ): Promise<SupportCase> {
+    item.settlementOutcome = outcome;
+    item.settlementAmount = amount !== null ? amount.toFixed(2) : null;
     item.status = CaseStatus.RESOLVED;
-    item.closedAt = new Date();
-    item.closedByUserId = actor.userId;
+    // Resolved, not closed. The platform has finished; the complainant has not
+    // necessarily agreed, and that is a separate fact with its own timestamp.
+    item.resolvedAt = new Date();
+    item.resolvedByUserId = actor.userId;
     item.history = [
       ...item.history,
       {
         at: new Date().toISOString(),
         byUserId: actor.userId,
         status: CaseStatus.RESOLVED,
-        note: `${dto.outcome}${dto.amount ? ` ${dto.amount}` : ''}`,
+        note: `${outcome}${amount !== null ? ` ${amount}` : ''}`,
       },
     ];
     const saved = await this.cases.save(item);
 
     if (item.subjectId && item.subjectType === CaseSubject.BOOKING) {
-      await this.applySettlement(item.subjectId, dto.outcome);
+      await this.applySettlement(item.subjectId, outcome);
 
       // Where the booking lands follows the money. A refund means the job did
       // not happen; anything else means it carries on from wherever the dispute
       // interrupted it — a case raised mid-job ends with the job still mid-job.
       const restored =
-        dto.outcome === SettlementOutcome.REFUND
+        outcome === SettlementOutcome.REFUND
           ? BookingStatus.CANCELLED
           : ((item.bookingPreviousStatus as BookingStatus | null) ?? BookingStatus.COMPLETED);
       await this.markBooking(item.subjectId, restored);
@@ -344,12 +645,8 @@ export class SupportCasesService {
       action: AuditAction.CASE_SETTLED,
       actor,
       resourceType: 'support_case',
-      resourceId: caseId,
-      metadata: {
-        outcome: dto.outcome,
-        amount: dto.amount ?? null,
-        subjectId: item.subjectId,
-      },
+      resourceId: item.id,
+      metadata: { outcome, amount, subjectId: item.subjectId },
     });
     return saved;
   }
@@ -387,14 +684,47 @@ export class SupportCasesService {
     await this.bookings.save(booking);
   }
 
+  /**
+   * The complainant is done with it.
+   *
+   * Closing is theirs, not the desk's, and that is the whole distinction
+   * between RESOLVED and CLOSED. When the two were one state, support marked
+   * its own homework: everything looked finished the moment staff stopped
+   * working on it, whether or not the person who raised it agreed — and the
+   * metric that says how well the desk is doing was computed from that.
+   *
+   * An administrator can still close one, because somebody has to be able to
+   * shut a case whose complainant has stopped answering. It is recorded as
+   * their action, and `resolvedAt` stays as it was, so the two facts remain
+   * separable afterwards.
+   */
   async close(actor: AuthUser, caseId: string): Promise<SupportCase> {
-    const item = await this.assignedOrAdmin(actor, caseId);
+    const item = await this.loadOrFail(caseId);
+
+    const mine = item.raisedByUserId === actor.userId;
+    if (!mine && actor.role !== UserRole.ADMIN) {
+      throw new ForbiddenException(
+        'A case is closed by the person who raised it, or by an administrator',
+      );
+    }
+    if (item.status === CaseStatus.CLOSED) return item;
+    if (item.status !== CaseStatus.RESOLVED && item.status !== CaseStatus.REJECTED && !mine) {
+      throw new BadRequestException(
+        'That case has not been decided yet. Resolve it before closing it.',
+      );
+    }
+
     item.status = CaseStatus.CLOSED;
-    item.closedAt = item.closedAt ?? new Date();
+    item.closedAt = new Date();
     item.closedByUserId = actor.userId;
     item.history = [
       ...item.history,
-      { at: new Date().toISOString(), byUserId: actor.userId, status: CaseStatus.CLOSED },
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: CaseStatus.CLOSED,
+        note: mine ? 'Closed by the person who raised it' : 'Closed by an administrator',
+      },
     ];
     return this.cases.save(item);
   }
@@ -457,12 +787,7 @@ export class SupportCasesService {
   /** Does an open case block this booking's money from moving? */
   async hasOpenCaseFor(bookingId: string): Promise<boolean> {
     const count = await this.cases.count({
-      where: [
-        { subjectId: bookingId, status: CaseStatus.OPEN },
-        { subjectId: bookingId, status: CaseStatus.ALLOCATED },
-        { subjectId: bookingId, status: CaseStatus.IN_PROGRESS },
-        { subjectId: bookingId, status: CaseStatus.ESCALATED },
-      ],
+      where: { subjectId: bookingId, status: In(IN_FLIGHT) },
     });
     return count > 0;
   }

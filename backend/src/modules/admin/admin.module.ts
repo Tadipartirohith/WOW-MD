@@ -14,6 +14,7 @@ import { SupportCase } from '../verification/entities/support-case.entity';
 import { AgentsModule } from '../agents/agents.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { AdminService } from './admin.service';
+import { AdminConsoleService } from './admin-console.service';
 import { AdminController } from './admin.controller';
 
 @Module({
@@ -36,8 +37,8 @@ import { AdminController } from './admin.controller';
     // so the split and the gateway call stay in one place.
     forwardRef(() => BookingsModule),
   ],
-  providers: [AdminService],
+  providers: [AdminService, AdminConsoleService],
   controllers: [AdminController],
-  exports: [AdminService],
+  exports: [AdminService, AdminConsoleService],
 })
 export class AdminModule {}

@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -15,6 +16,7 @@ import {
   MinLength,
 } from 'class-validator';
 import {
+  CasePriority,
   CaseStatus,
   CaseSubject,
   PaymentMilestone,
@@ -107,6 +109,13 @@ export class AllocateCaseDto {
   note?: string;
 }
 
+/** The states an officer can put a case into by writing it up. */
+const WORKING_STATES = [
+  CaseStatus.IN_PROGRESS,
+  CaseStatus.WAITING_FOR_INFORMATION,
+  CaseStatus.ESCALATED,
+] as const;
+
 export class RecordFindingsDto {
   @ApiProperty({ minLength: 10, maxLength: 4000 })
   @IsString()
@@ -114,10 +123,18 @@ export class RecordFindingsDto {
   @MaxLength(4000)
   findings: string;
 
-  @ApiPropertyOptional({ enum: CaseStatus })
+  /**
+   * Where the case is after writing this up.
+   *
+   * Deliberately not the whole enum. It used to accept any `CaseStatus`, which
+   * let an officer set RESOLVED on the way past and skip the administrator's
+   * decision entirely — the money would not have moved, but the case would
+   * have read as decided, which is worse than either.
+   */
+  @ApiPropertyOptional({ enum: WORKING_STATES })
   @IsOptional()
-  @IsEnum(CaseStatus)
-  status?: CaseStatus;
+  @IsIn(WORKING_STATES)
+  status?: (typeof WORKING_STATES)[number];
 }
 
 export class SettleCaseDto {
@@ -142,6 +159,56 @@ export class SettleCaseDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+}
+
+/** Reading a case and deciding what kind of thing it is. */
+export class TriageCaseDto {
+  @ApiPropertyOptional({ enum: CasePriority, default: CasePriority.NORMAL })
+  @IsOptional()
+  @IsEnum(CasePriority)
+  priority?: CasePriority;
+
+  @ApiPropertyOptional({ maxLength: 64, example: 'payment' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  category?: string;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+/** An administrator's decision on a proposal an officer submitted. */
+export class ReviewCaseDto {
+  @ApiProperty({ enum: ['approve', 'reassign'] })
+  @IsIn(['approve', 'reassign'])
+  decision: 'approve' | 'reassign';
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'On reassign: who it goes to. Left out, the lightest-loaded officer is chosen.',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  officerUserId?: string;
+
+  @ApiPropertyOptional({ maxLength: 1000, description: 'Required when reassigning.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+/** A provider asking where the money they are owed has got to. */
+export class SettlementRequestDto {
+  @ApiPropertyOptional({ maxLength: 1000, description: 'Anything they want to add.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 }
 
 export class CaseQueryDto extends PaginationDto {

@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {
+  CasePriority,
   CaseStatus,
   CaseSubject,
   PaymentMilestone,
@@ -99,6 +100,25 @@ export class SupportCase {
 
   @Column({ type: 'text', nullable: true })
   settlementNotes: string | null;
+
+  /** Set at triage. Drives the queue order, not the complainant's adjectives. */
+  @Column({ type: 'enum', enum: CasePriority, default: CasePriority.NORMAL })
+  priority: CasePriority;
+
+  /** A free label from triage — "payment", "listing", "conduct". */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  category: string | null;
+
+  /**
+   * When the platform finished with it, as distinct from when the complainant
+   * did. Two timestamps because they answer two different questions: how fast
+   * the desk works, and whether the answer was accepted.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  resolvedAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  resolvedByUserId: string | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   closedAt: Date | null;

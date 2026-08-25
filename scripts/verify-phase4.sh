@@ -807,6 +807,7 @@ grep -q '"type":"booking_request"' /tmp/body && assert "the buyer was told about
 
 c=$(req POST "/bookings/$BOOKING3/quotations" '{"amount":26000}' "$VENDOR")
 check "the vendor quotes" "$c" 201
+QUOTE3=$(field /tmp/body id)
 await_notification "$GROOM" '"type":"booking_quotation"'
 c=$(req GET /notifications "" "$GROOM")
 body_has '"type":"booking_quotation"' "and the buyer hears about the quotation"
@@ -1213,6 +1214,104 @@ assert "and shows at least as many as the scored list ($RECENT_N vs $SCORED_N)" 
 c=$(req GET "/matches/suggestions?sort=recent&minScore=99" "" "$BROWSE")
 check "an explicit minimum still applies" "$c" 200
 assert "and filters the newest list too" "$(jq -e '.data | length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 37. The admin console answers questions about particular things =="
+
+# The console existed as one page of approvals and totals. What it could not do
+# was answer a question about a named account, a named business or a named
+# booking — which is how every real admin session starts, because somebody has
+# complained about something specific.
+
+c=$(req GET "/admin/activity?limit=20" "" "$ADMIN")
+check "the activity feed is served" "$c" 200
+assert "and has something in it" "$(jq -e 'length > 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "newest first" "$(jq -e '[.[].at] | . == (. | sort | reverse)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "drawn from more than one kind of thing" "$(jq -e '[.[].kind] | unique | length > 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req GET "/admin/activity" "" "$VENDOR")
+check "a vendor cannot read the platform's activity" "$c" 403
+
+# The directory: how somebody arrives from a complaint naming a person.
+c=$(req GET "/admin/directory?role=vendor&limit=5" "" "$ADMIN")
+check "the accounts directory filters by role" "$c" 200
+assert "returning only vendors" "$(jq -e '[.data[].role] | all(. == "vendor")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+grep -q 'passwordHash' /tmp/body && assert "the directory leaks password hashes" 0 || assert "and never a password hash" 1
+
+VENDOR_UID=$(jq -r '.user.id // empty' /tmp/vendor.json)
+c=$(req GET "/admin/accounts/$VENDOR_UID" "" "$ADMIN")
+check "one account opens with everything hanging off it" "$c" 200
+body_has '"businesses"' "the businesses they own"
+body_has '"bookings"' "the bookings they placed"
+body_has '"casesRaised"' "and the complaints they made"
+grep -q 'passwordHash' /tmp/body && assert "the detail view leaks the hash" 0 || assert "with no hash anywhere in it" 1
+
+c=$(req GET "/admin/businesses?status=live&limit=5" "" "$ADMIN")
+check "businesses list by lifecycle state" "$c" 200
+assert "and only the live ones come back" "$(jq -e '[.data[].status] | all(. == "live")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req GET "/admin/bookings?limit=5" "" "$ADMIN")
+check "the whole booking book is readable" "$c" 200
+assert "which nobody else could see" "$(jq -e '.meta.total >= 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Administrators and officers are not variants of one thing, and only one of
+# them has a workload.
+c=$(req GET /admin/staff/in_person "" "$ADMIN")
+check "the field officers list" "$c" 200
+assert "carrying what each is actually carrying" "$(jq -e 'all(has("openCases") and has("openVisits"))' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET /admin/staff/admin "" "$ADMIN")
+check "and the administrators, separately" "$c" 200
+assert "with no officers among them" "$(jq -e 'all(.role == "admin")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Reports. One route, six kinds, one window.
+for KIND in users agents vendors bookings financial verification; do
+  c=$(req GET "/admin/reports?kind=$KIND" "" "$ADMIN")
+  check "the $KIND report is served" "$c" 200
+  assert "over a window it states" "$(jq -e 'has("from") and has("to")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+done
+
+c=$(req GET "/admin/reports?kind=nonsense" "" "$ADMIN")
+check "an invented report kind is refused" "$c" 400
+c=$(req GET "/admin/reports?kind=financial&from=2020-01-01&to=2020-01-31" "" "$ADMIN")
+check "a window with nothing in it still answers" "$c" 200
+body_has '"collected":"0.00"' "with zeros rather than an error"
+
+echo
+echo "== 38. Settle my payment =="
+
+# A provider asking where their money is. Not a dispute: nothing freezes, and
+# the booking does not move — they are not complaining about the job.
+
+c=$(req POST "/verification/cases/settlement/$BOOKING" '{}' "$BRIDE")
+check "the buyer cannot ask for the provider's settlement" "$c" 403
+
+# Nothing owed and nothing held is refused with the reason rather than filed:
+# a request the desk cannot answer is worse than no request.
+c=$(req POST "/verification/cases/settlement/$BOOKING" '{}' "$VENDOR")
+check "a request with nothing behind it is refused" "$c" 400
+body_has 'nothing outstanding' "and says so, rather than filing it"
+
+# One with money actually held. BOOKING3 is walked to the advance so there is
+# something real to ask about.
+req PUT "/bookings/quotations/$QUOTE3/accept" '{}' "$GROOM" >/dev/null
+req PUT "/bookings/$BOOKING3/confirm" "" "$VENDOR" >/dev/null
+c=$(req PUT "/bookings/$BOOKING3/pay" '{"milestone":"advance"}' "$GROOM")
+check "the advance on the third booking is held" "$c" 200
+
+c=$(req POST "/verification/cases/settlement/$BOOKING3" '{"note":"Where is the advance?"}' "$VENDOR")
+check "the provider asks where their money is" "$c" 201
+body_has 'still in escrow' "and is told why before anybody is allocated anything"
+body_has '"priority":"high"' "money somebody is waiting on arrives high priority"
+body_has '"status":"triaged"' "and already triaged — nobody needs to decide that"
+body_has '"category":"settlement"' "filed as what it is"
+
+# Not a dispute. Freezing the escrow here would punish them for asking.
+c=$(req GET "/bookings/$BOOKING3" "" "$VENDOR")
+grep -q '"status":"disputed"' /tmp/body && assert "asking froze the booking" 0 || assert "and asking did not freeze the booking" 1
+
+c=$(req POST "/verification/cases/settlement/$BOOKING3" '{}' "$VENDOR")
+check "asking twice does not raise a second request" "$c" 201
+body_has '"alreadyOpen":true' "it hands back the one already on the desk"
 
 echo
 echo "============================="

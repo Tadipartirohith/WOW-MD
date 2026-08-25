@@ -621,17 +621,55 @@ check "nor can the buyer refund it out from under the case" "$c" 400
 
 c=$(req PUT "/verification/cases/$CASE/settle" '{"outcome":"release"}' "$BRIDE")
 check "the person who raised it cannot settle it" "$c" 403
+
+# Triage: somebody reads it and decides what kind of thing it is. Priority is
+# set here rather than taken from the complainant, because everybody's own
+# problem is urgent.
+c=$(req PUT "/verification/cases/$CASE/triage" '{"priority":"high","category":"venue"}' "$ADMIN")
+check "an administrator triages it" "$c" 200
+body_has '"status":"triaged"' "which is a state of its own, not still 'open'"
+body_has '"priority":"high"' "carrying the priority the desk decided"
+
 c=$(req PUT "/verification/cases/$CASE/allocate" "{\"officerUserId\":\"$OFFICER_ID\"}" "$ADMIN")
 check "admin allocates the case" "$c" 200
 c=$(req PUT "/verification/cases/$CASE/findings" '{"findings":"Visited the venue. The hall matches the listing photographs."}' "$OFFICER")
 check "officer records what they found" "$c" 200
+c=$(req PUT "/verification/cases/$CASE/findings" '{"findings":"Trying to mark it decided on the way past.","status":"resolved"}' "$OFFICER")
+check "and cannot mark it decided while writing them up" "$c" 400
+
 c=$(req PUT "/verification/cases/$CASE/settle" '{"outcome":"partial"}' "$OFFICER")
 check "a partial settlement needs the amount" "$c" 400
+
+# The officer recommends; the administrator decides. An officer who both finds
+# the facts and releases the escrow is one person deciding a payment dispute
+# alone, with nobody to catch it when they get it wrong.
 c=$(req PUT "/verification/cases/$CASE/settle" '{"outcome":"release","notes":"Provider delivered as described."}' "$OFFICER")
-check "officer settles in the provider's favour" "$c" 200
+check "the officer proposes releasing the money" "$c" 200
+body_has '"status":"resolution_submitted"' "which is a proposal, not a decision"
+c=$(req GET "/bookings/$BOOKING/milestones" "" "$BRIDE")
+grep -q '"status":"released"' /tmp/body && assert "the proposal moved the money on its own" 0 || assert "and nothing has moved yet" 1
+
+c=$(req PUT "/verification/cases/$CASE/review" '{"decision":"reassign"}' "$ADMIN")
+check "sending it back without saying why is refused" "$c" 400
+
+c=$(req PUT "/verification/cases/$CASE/review" '{"decision":"approve"}' "$ADMIN")
+check "the administrator approves it" "$c" 200
+body_has '"status":"resolved"' "and that is what resolves the case"
 
 c=$(req GET "/bookings/$BOOKING/milestones" "" "$BRIDE")
 body_has '"status":"released"' "the settlement is what moved the money"
+
+# Resolved is not closed. The platform has finished; the complainant has not
+# necessarily agreed, and support marking its own homework is what one state
+# for both allowed.
+c=$(req GET "/verification/cases/$CASE" "" "$BRIDE")
+body_has '"status":"resolved"' "the case reads as resolved"
+grep -q '"closedAt":null' /tmp/body && assert "and is not closed yet" 1 || assert "resolving it closed it too" 0
+c=$(req PUT "/verification/cases/$CASE/close" "" "$GROOM")
+check "somebody uninvolved cannot close it" "$c" 403
+c=$(req PUT "/verification/cases/$CASE/close" "" "$BRIDE")
+check "the person who raised it closes it" "$c" 200
+body_has '"status":"closed"' "which is the second fact, with its own date"
 
 # With the case settled the job can finish, and the balance closes it.
 c=$(req PUT "/bookings/$BOOKING/complete" "" "$VENDOR")

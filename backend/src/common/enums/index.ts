@@ -533,6 +533,15 @@ export enum CaseSubject {
 
 export enum CaseStatus {
   OPEN = 'open',
+  /**
+   * Read and categorised, but not yet anybody's.
+   *
+   * Separate from OPEN because "nobody has looked at this" and "somebody has
+   * read it and decided it is a payment dispute of normal priority" are
+   * different things to a queue, and a support desk that cannot tell them
+   * apart re-reads its whole backlog every morning.
+   */
+  TRIAGED = 'triaged',
   ALLOCATED = 'allocated',
   IN_PROGRESS = 'in_progress',
   /**
@@ -542,10 +551,47 @@ export enum CaseStatus {
    * everything up.
    */
   WAITING_FOR_INFORMATION = 'waiting_for_information',
+  /**
+   * The officer has proposed an outcome. Nothing has moved yet.
+   *
+   * The officer investigates and recommends; the administrator decides. That
+   * separation is the whole reason there are two roles — an officer who both
+   * finds the facts and releases the money is one person deciding a payment
+   * dispute alone, and there is nobody to catch it when they get it wrong.
+   */
+  RESOLUTION_SUBMITTED = 'resolution_submitted',
+  /** On an administrator's desk, waiting for that decision. */
+  ADMIN_REVIEW = 'admin_review',
+  /**
+   * Sent back for somebody else to look at.
+   *
+   * Distinct from ALLOCATED so the second officer can see the case has been
+   * round once, and why. An allocation that silently overwrites the first
+   * hides the fact that a proposal was refused.
+   */
+  REASSIGNED = 'reassigned',
+  /**
+   * Decided, and the money has moved. Not the same as closed.
+   *
+   * A case is resolved when the platform has done what it is going to do, and
+   * closed when the person who raised it has no more to say. Collapsing the
+   * two lets the desk mark its own homework: everything looks finished the
+   * moment staff stop working on it, whether or not the complainant agrees.
+   */
   RESOLVED = 'resolved',
   REJECTED = 'rejected',
   ESCALATED = 'escalated',
+  /** The complainant is done, or the acknowledgement window lapsed. */
   CLOSED = 'closed',
+}
+
+/** How urgent a case is, decided at triage rather than by the complainant. */
+export enum CasePriority {
+  LOW = 'low',
+  NORMAL = 'normal',
+  HIGH = 'high',
+  /** Money is frozen, or somebody's listing is down. */
+  URGENT = 'urgent',
 }
 
 /**

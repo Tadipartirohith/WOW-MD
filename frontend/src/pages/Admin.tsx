@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import {
+  ActivityFeed,
+  AllBookings,
+  Businesses,
+  Directory,
+  Reports,
+  Staff,
+} from '../components/AdminConsole';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import CatalogAdmin from '../components/CatalogAdmin';
 
@@ -67,8 +75,20 @@ interface Analytics {
   };
 }
 
+type Section = 'overview' | 'accounts' | 'businesses' | 'bookings' | 'staff' | 'reports';
+
+const SECTIONS: { key: Section; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'accounts', label: 'Accounts' },
+  { key: 'businesses', label: 'Businesses' },
+  { key: 'bookings', label: 'Bookings' },
+  { key: 'staff', label: 'Staff' },
+  { key: 'reports', label: 'Reports' },
+];
+
 export default function Admin() {
   const qc = useQueryClient();
+  const [section, setSection] = useState<Section>('overview');
   const [error, setError] = useState('');
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [reason, setReason] = useState('');
@@ -119,6 +139,39 @@ export default function Admin() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-brand-dark">Admin</h1>
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+      {/*
+        Sections rather than one long page. The console had grown to approvals,
+        analytics, disputes and an audit trail stacked vertically, and the
+        answer to "where do I look at this vendor" was nowhere on it — so the
+        page is now split by the question being asked rather than by the table
+        the answer comes from.
+      */}
+      <nav className="flex flex-wrap gap-1 border-b border-gray-200">
+        {SECTIONS.map((sct) => (
+          <button
+            key={sct.key}
+            onClick={() => setSection(sct.key)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+              section === sct.key
+                ? 'border-brand font-medium text-brand-dark'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {sct.label}
+          </button>
+        ))}
+      </nav>
+
+      {section === 'accounts' && <Directory />}
+      {section === 'businesses' && <Businesses />}
+      {section === 'bookings' && <AllBookings />}
+      {section === 'staff' && <Staff />}
+      {section === 'reports' && <Reports />}
+
+      {section === 'overview' && (
+      <div className="space-y-6">
+      <ActivityFeed />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
         {cards.map((c) => (
@@ -337,6 +390,8 @@ export default function Admin() {
         </div>
         {events.length === 0 && <p className="text-sm text-gray-400">No events recorded yet.</p>}
       </div>
+      </div>
+      )}
     </div>
   );
 }
