@@ -1172,6 +1172,31 @@ export class BookingsService {
     return this.assertParticipant(actor, booking);
   }
 
+  /** Whether the advance is in escrow. What opens the booking's chat thread. */
+  advanceHeld(bookingId: string): Promise<boolean> {
+    return this.hasHeld(bookingId, PaymentMilestone.ADVANCE);
+  }
+
+  /**
+   * The two accounts a booking is between.
+   *
+   * The seller is the owner of the listing rather than the listing itself,
+   * because a thread is between people. The buyer is the client the booking is
+   * *for*, not whoever placed it: an agent who booked on a family's behalf is
+   * not the one the vendor needs to reach about their wedding.
+   */
+  async counterparties(booking: Booking): Promise<{ buyerUserId: string; sellerUserId: string }> {
+    const provider = await this.providerOwner(booking.providerType, booking.providerId);
+    return { buyerUserId: booking.userId, sellerUserId: provider.ownerUserId };
+  }
+
+  /** One booking, loaded and ownership-checked in a single step. */
+  async forParticipant(actor: AuthUser, bookingId: string): Promise<Booking> {
+    const booking = await this.loadOrFail(bookingId);
+    await this.assertParticipant(actor, booking);
+    return booking;
+  }
+
   /** True when this user completed a booking with the provider (review gate). */
   async hasCompletedBookingWith(
     userId: string,

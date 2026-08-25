@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { useBusinesses } from '../store/business';
 import { DAY_STATE_LABEL, SLOT_STATE_LABEL, SlotState } from '../lib/permissions';
 
 /**
@@ -98,16 +99,11 @@ export default function Availability() {
   const [editing, setEditing] = useState<string | null>(null);
 
   // A vendor may hold more than one listing, and each keeps its own calendar —
-  // a caterer's Saturday has nothing to do with their photography arm's.
-  const { data: listings = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['vendor-me'],
-    queryFn: async () => (await api.get('/vendors/me')).data,
-    retry: false,
-  });
-
-  const [listingId, setListingId] = useState('');
-  const vendorId = listingId || listings[0]?.id;
-  const listing = listings.find((l) => l.id === vendorId);
+  // a caterer's Saturday has nothing to do with their photography arm's. Which
+  // one this page is about is the header's switcher, not a second dropdown
+  // here: the two used to disagree, so switching business on this page left
+  // Bookings and the money showing the other one.
+  const { businesses: listings, activeId: vendorId, active: listing } = useBusinesses();
 
   const { data: window } = useQuery({
     queryKey: ['availability-window'],
@@ -207,25 +203,11 @@ export default function Availability() {
             a job — a request on its own takes nothing.
           </p>
         </div>
-        {listings.length > 1 && (
-          <label className="text-sm">
-            <span className="text-gray-700">Listing</span>
-            <select
-              className="input mt-1"
-              value={vendorId}
-              onChange={(e) => {
-                setListingId(e.target.value);
-                setSelected('');
-                setBucket(null);
-              }}
-            >
-              {listings.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        {listings.length > 1 && listing && (
+          <p className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700">
+            {listing.name}
+            <span className="ml-2 text-xs text-gray-500">switch in the header</span>
+          </p>
         )}
       </div>
 

@@ -12,7 +12,15 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
 import { QuotationsService } from './quotations.service';
-import { BookingSearchDto, CancelBookingDto, CreateBookingDto, PayDto } from './dto/booking.dto';
+import {
+  BookingMessageDto,
+  BookingSearchDto,
+  CancelBookingDto,
+  CreateBookingDto,
+  PayDto,
+} from './dto/booking.dto';
+import { BookingChatService } from './booking-chat.service';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { RespondQuotationDto, SendQuotationDto } from './dto/quotation.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -25,7 +33,56 @@ export class BookingsController {
   constructor(
     private readonly bookings: BookingsService,
     private readonly quotations: QuotationsService,
+    private readonly bookingChat: BookingChatService,
   ) {}
+
+  // ------------------------------------------------------------ booking chat
+  //
+  // The vendor's conversations are always about a job, so they live on the job.
+  // One thread per vendor stops making sense the moment the same vendor has
+  // three bookings for the same family.
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @ApiOperation({
+    summary: 'Whether this booking can be talked about, and why not',
+    description:
+      'Chat opens when the advance is held and stops accepting messages when the job is ' +
+      'finished or cancelled — readable for good, because what was agreed in it is what a ' +
+      'dispute turns on. The note is the same sentence the server would refuse with.',
+  })
+  @Get(':id/chat')
+  chatState(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookingChat.state(actor, id);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @ApiOperation({ summary: 'The thread on one booking' })
+  @Get(':id/messages')
+  chatHistory(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: PaginationDto,
+  ) {
+    return this.bookingChat.history(actor, id, q.page, q.limit);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @ApiOperation({ summary: 'Say something about this booking' })
+  @Post(':id/messages')
+  chatSend(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BookingMessageDto,
+  ) {
+    return this.bookingChat.send(actor, id, dto.body, dto.mediaUrl);
+  }
+
+  @RequirePermissions(Permission.CHAT_INQUIRE)
+  @ApiOperation({ summary: 'Mark the incoming messages on this booking as read' })
+  @Put(':id/messages/read')
+  chatRead(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookingChat.markRead(actor, id);
+  }
 
   @RequirePermissions(Permission.BOOKING_CREATE)
   @ApiOperation({

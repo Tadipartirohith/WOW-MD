@@ -182,8 +182,8 @@ missing.
 | # | Item | Status | Note |
 | --- | --- | --- | --- |
 | B1 | One login, several businesses, each with its own `business_id` | **done** | A `vendors` row already *is* a business. Catalog, availability, bookings and verification all key on it |
-| B2 | Independent verification per business | partly done | The model supports it; `raise()` does not — see the confirmed bug above |
-| B3 | Business switcher changing the context of My Business, Catalog, Availability, Bookings, Transactions | new | |
+| B2 | Independent verification per business | **done** | `raise()` now keys on the business. Fixed with the confirmed bug above |
+| B3 | Business switcher changing the context of My Business, Catalog, Availability, Bookings, Transactions | **done** | In the header, not per page — the per-page selector on Availability disagreed with everything else |
 | B4 | Every business-specific API validates `business_id` ownership | done | `assertOwner` / `ownedService` / `ownedProviderIds` throughout |
 | B5 | Vendor profile ≠ business listing; saved data displays after save | done | Delivered last round |
 
@@ -198,7 +198,7 @@ missing.
 | B10 | First Review screen, with Go Back & Edit / Submit Verification | new |
 | B11 | Business + catalog **locked** on submission, enforced by the update API | new |
 | B12 | Locked again after approval; legal changes go through re-verification | new |
-| B13 | Vendor sees the exact reason for re-verification or rejection | partly done — findings and remarks are stored; the vendor cannot see them |
+| B13 | Vendor sees the exact reason for re-verification or rejection | **done** — shown on My Business, read from the owner-only route |
 | B14 | Catalog stays manageable after the business is verified | done |
 | B15 | Major catalog changes optionally go through admin review | new |
 
@@ -210,19 +210,19 @@ missing.
 | B17 | Multiple slots per day, capacity, overlapping bookings within capacity | done |
 | B18 | A request or quotation must not consume the slot | done |
 | B19 | Slot spent on **vendor confirms** | done |
-| B20 | Availability window 3 months → **6 months**, backend included | new — one constant, plus its assertions |
+| B20 | Availability window 3 months → **6 months**, backend included | **done** |
 | B21 | Duplicate booking-request prevention per user + vendor | done |
 | B22 | Booking request carries service, package, event, date, slot, requirements, guest count, budget | done |
-| B23 | Quotation validity date and terms | new — amount, notes and line items exist |
+| B23 | Quotation validity date and terms | **done** — and the booking records which quotation it was struck on |
 | B24 | Accepted / Rejected quotation sections | partly done |
 | B25 | Bookings module sections: New Requests, Quotations, Accepted, Active, Completed, Cancelled, Disputes | done |
 | B26 | Payment ladder enforced backend-side | done |
-| B27 | Booking chat, unlocked at advance, read-only after completion | new |
+| B27 | Booking chat, unlocked at advance, read-only after completion | **done** |
 | B28 | Disputes raisable by both sides with evidence | done |
 | B29 | Accounts: payment details, escrow, earnings, payouts, settlements, transaction history | partly done — payouts and settlements arrived last round |
-| B30 | Notifications with deep links carrying `booking_id`, `business_id`, `quotation_id`, … | partly done — the payload carries ids; `target_module` / `target_action` are new |
-| B31 | Vendor dashboard as a summary, every card linking onward | partly done |
-| B32 | Final vendor navbar; remove Chat, Media, WOW Genie | partly done — Media and Genie are already gone for vendors; Chat is not |
+| B30 | Notifications with deep links carrying `booking_id`, `business_id`, `quotation_id`, … | **done** — `targetModule`/`targetAction`/`targetId`, from a total map keyed on the type |
+| B31 | Vendor dashboard as a summary, every card linking onward | **done** — a per-business row following the header switcher |
+| B32 | Final vendor navbar; remove Chat, Media, WOW Genie | **done** — Chat is now inside the booking |
 
 ### Admin portal
 
@@ -254,7 +254,7 @@ Nine of these are new, and three restate Part 2.
 
 | # | Decision | Status | Note |
 | --- | --- | --- | --- |
-| M1 | Availability 3 → 6 months | new | Small |
+| M1 | Availability 3 → 6 months | **done** | Same item as B20 |
 | M2 | Agent profile-sharing limit reviewed so users get enough relevant profiles | decision | There is a network-pool quota today. Changing it is a product call, and the document says "review", not a number |
 | M3 | **Settle My Payment** — a settlement request routed through admin, then an officer | new | Distinct from the settlement that already resolves a dispute |
 | M4 | Admin allocates a verification officer to an issue | done | |
@@ -285,5 +285,25 @@ Three items need a third party the platform does not have: AI-image detection,
 push notifications, and WhatsApp. Each can be built the way Aadhaar and payments
 were — a real provider behind an interface, activating on configuration.
 
-Both decisions are taken: V1 is deliberately **not** applied — the match gate
-stays on by default — and P8 collapses the two name fields into one.
+Both decisions are taken: V1 **is** applied — the marketplace no longer waits
+for a fixed match, because the bookings are the revenue and most matches are
+fixed elsewhere — and P8 collapses the two name fields into one.
+
+---
+
+## Found while building
+
+Things the document did not report, surfaced by working through it. Each is
+recorded because "we were told about it" is not the only reason a defect
+matters.
+
+| Found | What it was |
+| --- | --- |
+| Multi-business verification | `raise()` repointed one request at whichever business was newest, so a vendor's first listing could never be verified. Two more instances of the same mistake turned up in `activateApplicant` and `decide` |
+| Partner preferences | Written to `profile_details`, read from `profiles`. The document diagnosed this one correctly; fixing it introduced a stale-cache bug that the suite caught |
+| Public vendor rows | `GET /vendors/:id` and `/vendors/search` are unauthenticated and returned the whole row: PAN, GST, registered address, compliance document links, payout account — and, after the lifecycle work, the officer's refusal reasoning |
+| Quotation supersede order | A re-quote refused for a past validity date had already superseded the live offer, leaving the buyer nothing to accept |
+| Event times | An end before a start surfaced a database constraint as a 500 |
+| `PENDING_PAYOUT` | Money in that state was in no earnings bucket, so it vanished from every total |
+| Silent assertions | `verify-rbac.sh` had its own idiom; an assertion copied in from another suite called an undefined helper, and the run still reported green |
+| Frontend tests in CI | The `frontend` job ran typecheck and build and never the tests — including the one that fails when the client's permission mirror drifts from the server enum |

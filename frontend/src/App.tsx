@@ -42,6 +42,7 @@ import Availability from './pages/Availability';
 import Accounts from './pages/Accounts';
 import Notifications from './pages/Notifications';
 import Biodata from './pages/Biodata';
+import BusinessSwitcher from './components/BusinessSwitcher';
 
 /**
  * Every nav entry declares the capabilities it needs. A user sees an entry only
@@ -52,6 +53,15 @@ interface NavEntry {
   to: string;
   label: string;
   requires: PermissionValue[];
+  /**
+   * Roles that hold the permission but should not see the entry.
+   *
+   * Used sparingly, and only where the capability is real but the *entry* is
+   * redundant for that role — a vendor can chat, and does, but every one of
+   * their conversations is about a job, so the conversation lives on the job.
+   * A top-level Chat menu offers them a thread the booking rules cannot reach.
+   */
+  hideFor?: UserRole[];
 }
 
 const NAV: NavEntry[] = [
@@ -62,7 +72,14 @@ const NAV: NavEntry[] = [
     label: 'Biodata',
     requires: [Permission.MATCH_BROWSE, Permission.MANAGED_PROFILE_MANAGE],
   },
-  { to: '/chat', label: 'Chat', requires: [Permission.CHAT_INQUIRE, Permission.CHAT_MATCH] },
+  {
+    to: '/chat',
+    label: 'Chat',
+    requires: [Permission.CHAT_INQUIRE, Permission.CHAT_MATCH],
+    // Not for vendors: theirs is inside the booking, where it opens on the
+    // advance and locks when the job is done.
+    hideFor: ['vendor'],
+  },
   {
     to: '/client-profiles',
     label: 'Client Profiles',
@@ -238,7 +255,11 @@ function Layout({ children }: { children: ReactNode }) {
   }
 
   const permissions = user?.permissions ?? [];
-  const visible = NAV.filter((n) => n.requires.length === 0 || canAny(permissions, n.requires));
+  const visible = NAV.filter(
+    (n) =>
+      !(user && n.hideFor?.includes(user.role)) &&
+      (n.requires.length === 0 || canAny(permissions, n.requires)),
+  );
   const unread = useUnreadCount();
 
   return (
@@ -272,6 +293,8 @@ function Layout({ children }: { children: ReactNode }) {
             ))}
           </nav>
           <div className="flex items-center gap-3">
+            {/* Only rendered for an account that holds more than one business. */}
+            {canAny(permissions, [Permission.VENDOR_LISTING_MANAGE]) && <BusinessSwitcher />}
             <AccountMenu email={user?.email} role={user?.role} onSignOut={signOut} />
           </div>
         </div>

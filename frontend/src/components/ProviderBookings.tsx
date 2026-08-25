@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { api, apiMessage } from '../lib/api';
+import BookingChat from './BookingChat';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import { FieldSpec, formatAnswer } from './DynamicForm';
 
@@ -192,6 +193,11 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
                       }}
                     />
                   )}
+                  {/* The vendor's conversations live here rather than in a Chat
+                      menu, because every one of them is about a job. */}
+                  <div className="w-full">
+                    <BookingChat bookingId={b.id} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -240,6 +246,8 @@ function ServiceAnswers({ booking }: { booking: IncomingBooking }) {
 function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () => void }) {
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [terms, setTerms] = useState('');
+  const [validUntil, setValidUntil] = useState('');
   const [lines, setLines] = useState<{ description: string; amount: string }[]>([
     { description: '', amount: '' },
   ]);
@@ -256,6 +264,8 @@ function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () =>
       await api.post(`/bookings/${bookingId}/quotations`, {
         amount: Number(amount),
         notes: notes || undefined,
+        terms: terms || undefined,
+        validUntil: validUntil || undefined,
         lines: filled.length
           ? filled.map((l) => ({ description: l.description.trim(), amount: Number(l.amount) }))
           : undefined,
@@ -285,7 +295,32 @@ function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () =>
           <span className="text-gray-700">Notes for the client</span>
           <input className="input mt-1" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        <label className="text-sm">
+          <span className="text-gray-700">Valid until</span>
+          <input
+            className="input mt-1"
+            type="date"
+            value={validUntil}
+            onChange={(e) => setValidUntil(e.target.value)}
+          />
+          <span className="mt-1 block text-xs text-gray-500">
+            Left blank, the offer stands for 14 days.
+          </span>
+        </label>
       </div>
+
+      {/* Kept apart from the notes on purpose. A note is a covering message;
+          these are what the job is priced on, and what a dispute argues from. */}
+      <label className="block text-sm">
+        <span className="text-gray-700">Terms</span>
+        <textarea
+          className="input mt-1"
+          rows={3}
+          placeholder="Cancellation, overtime, travel, what happens if the guest count changes"
+          value={terms}
+          onChange={(e) => setTerms(e.target.value)}
+        />
+      </label>
 
       <div className="space-y-2">
         <p className="text-sm font-medium text-gray-800">Breakdown (optional)</p>

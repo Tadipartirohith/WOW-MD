@@ -12,8 +12,10 @@ import { VerificationModule } from '../verification/verification.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { VendorsModule } from '../vendors/vendors.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { ChatModule } from '../chat/chat.module';
 import { BookingsService } from './bookings.service';
 import { QuotationsService } from './quotations.service';
+import { BookingChatService } from './booking-chat.service';
 import { BookingsController } from './bookings.controller';
 import { PaymentsController } from './payments.controller';
 import {
@@ -30,15 +32,20 @@ import {
     MatchmakingModule,
     forwardRef(() => VendorsModule),
     forwardRef(() => CatalogModule),
+    // One-way: a booking knows about chat, chat knows nothing about bookings.
+    // The rules for a booking's thread are made of payment state and job state,
+    // which belong here.
+    ChatModule,
   ],
   providers: [
     BookingsService,
     QuotationsService,
+    BookingChatService,
     MockPaymentProvider,
     RazorpayPaymentProvider,
     paymentProviderFactory,
   ],
   controllers: [BookingsController, PaymentsController],
-  exports: [BookingsService, QuotationsService],
+  exports: [BookingsService, QuotationsService, BookingChatService],
 })
 export class BookingsModule {}

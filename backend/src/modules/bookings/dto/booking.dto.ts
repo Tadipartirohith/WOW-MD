@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   Max,
   MaxLength,
@@ -140,6 +141,21 @@ export class CancelBookingDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/** A message inside a booking. No recipient: a booking has exactly two sides. */
+export class BookingMessageDto {
+  @ApiProperty({ minLength: 1, maxLength: 4000 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
+  body: string;
+
+  @ApiPropertyOptional({ maxLength: 2048 })
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(2048)
+  mediaUrl?: string;
 }
 
 export class BookingSearchDto extends PaginationDto {

@@ -473,6 +473,7 @@ preference.
 | **SMS** | Invitations, phone verification, provisioned credentials, milestone reminders | Intake is phone-first. A walk-in family often has no email at all, and until SMS existed they were unreachable through a platform they had just been added to. |
 | **In-app notifications** | Booking updates, interests, reminders, claim requests | Everything that only makes sense inside the product |
 | **Chat and calling** | Person to person | Contact details are redacted before storage, so the conversation stays on the platform until both sides choose otherwise |
+| **Booking chat** | Buyer and provider, about one job | Opens when the advance is held; read-only once the job ends, because what was agreed in it is what a dispute turns on. Same redaction and the same message store as above — what differs is who may open one and when |
 
 ### 8.1 Chat, presence and calling
 

@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
-import { Permission, PermissionValue, ROLE_LABEL, canAny } from '../lib/permissions';
+import { useBusinesses } from '../store/business';
+import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from '../lib/permissions';
 import { ReactNode } from 'react';
 import ClaimRequests from '../components/ClaimRequests';
 
@@ -11,6 +12,8 @@ interface Tile {
   title: string;
   desc: string;
   requires: PermissionValue[];
+  /** Mirrors the navbar: a role that holds the capability but not the entry. */
+  hideFor?: UserRole[];
 }
 
 /**
@@ -77,6 +80,7 @@ const TILES: Tile[] = [
     title: 'Messages',
     desc: 'Talk to matches, providers and agents',
     requires: [Permission.CHAT_INQUIRE, Permission.CHAT_MATCH],
+    hideFor: ['vendor'],
   },
   {
     to: '/vendors',
@@ -213,7 +217,32 @@ export default function Dashboard() {
     enabled: isBuyer,
   });
 
-  const tiles = TILES.filter((t) => t.requires.length === 0 || canAny(permissions, t.requires));
+  // A vendor's own summary, for the business the header switcher has selected.
+  // Everything here is a number they would otherwise open three pages to find.
+  const isVendor = canAny(permissions, [Permission.VENDOR_LISTING_MANAGE]);
+  const { active, businesses } = useBusinesses();
+
+  const { data: quoted } = useQuery({
+    queryKey: ['awaiting-answer-count'],
+    queryFn: async () =>
+      (await api.get('/bookings/incoming', { params: { limit: 1, status: 'quotation_sent' } }))
+        .data,
+    retry: false,
+    enabled: isVendor,
+  });
+
+  const { data: slots } = useQuery({
+    queryKey: ['availability-summary', active?.id],
+    queryFn: async () => (await api.get(`/vendors/${active?.id}/availability/summary`)).data,
+    retry: false,
+    enabled: isVendor && Boolean(active?.id),
+  });
+
+  const tiles = TILES.filter(
+    (t) =>
+      !(user && t.hideFor?.includes(user.role)) &&
+      (t.requires.length === 0 || canAny(permissions, t.requires)),
+  );
 
   return (
     <div className="space-y-6">
@@ -250,7 +279,7 @@ export default function Dashboard() {
             />
             <Counter
               label="Held in escrow"
-              value={`\u20b9${Number(earnings?.heldInEscrow ?? 0).toLocaleString('en-IN')}`}
+              value={`₹${Number(earnings?.heldInEscrow ?? 0).toLocaleString('en-IN')}`}
               to="/accounts"
             />
           </>
@@ -259,6 +288,38 @@ export default function Dashboard() {
           <Counter label="Your bookings" value={myBookings?.total ?? 0} to="/bookings" />
         )}
       </div>
+
+      {/*
+        The vendor's own row. Separate from the counters above because these are
+        about one business rather than the account — with two businesses the
+        header switcher decides which, and these follow it.
+      */}
+      {isVendor && active && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Counter
+            label={businesses.length > 1 ? active.name : 'Your business'}
+            value={active.status.replace(/_/g, ' ')}
+            to="/console"
+            tone={active.isApproved ? 'text-emerald-700' : 'text-amber-700'}
+          />
+          <Counter
+            label="Waiting on the client"
+            value={quoted?.total ?? 0}
+            to="/bookings"
+          />
+          <Counter
+            label="Open windows"
+            value={slots?.openSlots ?? 0}
+            to="/availability"
+            tone={(slots?.openSlots ?? 0) === 0 ? 'text-amber-700' : undefined}
+          />
+          <Counter
+            label="Paid out"
+            value={`₹${Number(earnings?.paidOut ?? 0).toLocaleString('en-IN')}`}
+            to="/accounts"
+          />
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tiles.map((t) => (

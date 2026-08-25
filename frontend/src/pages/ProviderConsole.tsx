@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
+import { useBusinesses } from '../store/business';
 import VendorServices from '../components/VendorServices';
 import {
   GSTIN_PATTERN,
@@ -40,8 +41,15 @@ export default function ProviderConsole() {
     retry: false,
   });
 
-  const vendorId: string | undefined = isVendor ? listing?.[0]?.id : undefined;
-  const approved: boolean | undefined = listing?.[0]?.isApproved;
+  // Which business this page is about comes from the header's switcher, not
+  // from `listings[0]`. An account with two businesses could previously only
+  // ever edit the first one from here.
+  const { activeId, active } = useBusinesses();
+  const vendorId: string | undefined = isVendor ? (activeId ?? undefined) : undefined;
+  const current = isVendor
+    ? ((listing as VendorListing[] | undefined) ?? []).find((l) => l.id === vendorId)
+    : undefined;
+  const approved: boolean | undefined = isVendor ? active?.isApproved : listing?.[0]?.isApproved;
 
   return (
     <div className="space-y-6">
@@ -53,7 +61,11 @@ export default function ProviderConsole() {
         </p>
       </div>
 
-      {isVendor ? <VendorListingForm existing={listing} /> : <PlannerListingForm existing={listing} />}
+      {isVendor ? (
+        <VendorListingForm existing={current ? [current] : []} />
+      ) : (
+        <PlannerListingForm existing={listing} />
+      )}
 
       {vendorId && (
         <div className="card">
@@ -70,13 +82,37 @@ export default function ProviderConsole() {
                 approved ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
               }`}
             >
-              {approved ? 'Approved' : 'Awaiting verification'}
+              {current?.status
+                ? current.status.replace(/_/g, ' ')
+                : approved
+                  ? 'Approved'
+                  : 'Awaiting verification'}
             </span>
           </p>
+
+          {/*
+            The exact words the officer wrote. A listing sent back with "there
+            was a problem" is a refusal with no instruction in it — the vendor
+            cannot fix what nobody has named, and the next visit finds the same
+            thing. It is read from the owner-only route, so it is not something
+            a competitor can look up.
+          */}
+          {current?.decisionReason && (
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                What needs fixing
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">
+                {current.decisionReason}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      {vendorId && <PayoutAccount vendorId={vendorId} current={listing?.[0]?.payoutAccountId ?? null} />}
+      {vendorId && (
+        <PayoutAccount vendorId={vendorId} current={current?.payoutAccountId ?? null} />
+      )}
 
       {vendorId && <VendorServices vendorId={vendorId} />}
 
@@ -120,6 +156,10 @@ interface VendorListing {
   pricing: { startingAt?: number; unit?: string; notes?: string };
   portfolio: string[];
   isApproved: boolean;
+  payoutAccountId: string | null;
+  /** Where this business is in its life, from draft to live. */
+  status: string;
+  decisionReason: string | null;
 }
 
 const emptyListing = {

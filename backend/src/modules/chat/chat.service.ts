@@ -146,15 +146,93 @@ export class ChatService {
     return a < b ? [a, b] : [b, a];
   }
 
-  async getOrCreateConversation(userA: string, userB: string): Promise<Conversation> {
+  async getOrCreateConversation(
+    userA: string,
+    userB: string,
+    bookingId: string | null = null,
+  ): Promise<Conversation> {
     const [participantA, participantB] = this.key(userA, userB);
-    let convo = await this.conversations.findOne({ where: { participantA, participantB } });
+    let convo = await this.conversations.findOne({
+      where: { participantA, participantB, bookingId: bookingId ?? IsNull() },
+    });
     if (!convo) {
       convo = await this.conversations.save(
-        this.conversations.create({ participantA, participantB }),
+        this.conversations.create({ participantA, participantB, bookingId }),
       );
     }
     return convo;
+  }
+
+  /**
+   * Writes into a thread whose authorization somebody else has already done.
+   *
+   * The booking module owns the question of who may talk about a booking and
+   * when, because that answer is made of payment state and job state, which are
+   * its own. What is shared is everything below that: redaction before the
+   * write, the block, the message store, read receipts.
+   *
+   * Blocks still apply. A buyer who blocked a vendor is told the conversation
+   * is closed rather than having the message quietly swallowed, and a booking
+   * that has gone that wrong has the dispute channel, which is a better place
+   * for it than a chat thread.
+   */
+  async postToBookingThread(
+    bookingId: string,
+    senderId: string,
+    recipientId: string,
+    body: string,
+    mediaUrl?: string,
+  ): Promise<Message> {
+    await this.assertNotBlocked(senderId, recipientId);
+    const convo = await this.getOrCreateConversation(senderId, recipientId, bookingId);
+
+    const { text, redactions } = this.cfg.features.chatRedactContacts
+      ? redactContacts(body)
+      : { text: body, redactions: 0 };
+
+    return this.messages.save(
+      this.messages.create({
+        conversationId: convo.id,
+        senderId,
+        body: text,
+        redactedCount: redactions,
+        mediaUrl: mediaUrl ?? null,
+      }),
+    );
+  }
+
+  /**
+   * One booking's thread, oldest last like every other history here.
+   *
+   * Readable after the job is finished even though it can no longer be written
+   * to: what was agreed in chat is exactly what somebody needs six weeks later
+   * when they are arguing about it.
+   */
+  async bookingHistory(
+    bookingId: string,
+    userA: string,
+    userB: string,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedResult<Message>> {
+    const convo = await this.getOrCreateConversation(userA, userB, bookingId);
+    const [data, total] = await this.messages.findAndCount({
+      where: { conversationId: convo.id },
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    return paginate(data, total, page, limit);
+  }
+
+  /** Marks the other side's messages in one booking thread as read. */
+  async markBookingRead(bookingId: string, userId: string, otherUserId: string) {
+    const convo = await this.getOrCreateConversation(userId, otherUserId, bookingId);
+    const result = await this.messages.update(
+      { conversationId: convo.id, senderId: otherUserId, readAt: IsNull() },
+      { readAt: new Date() },
+    );
+    return { marked: result.affected ?? 0 };
   }
 
   /**
@@ -218,8 +296,14 @@ export class ChatService {
    * is there right now.
    */
   async listConversations(userId: string): Promise<ConversationSummary[]> {
+    // Direct threads only. A booking's thread lives on the booking, where its
+    // rules are — surfacing it here would offer a vendor a conversation the
+    // Chat screen has no way to lock when the job finishes.
     const rows = await this.conversations.find({
-      where: [{ participantA: userId }, { participantB: userId }],
+      where: [
+        { participantA: userId, bookingId: IsNull() },
+        { participantB: userId, bookingId: IsNull() },
+      ],
     });
 
     const otherIds = rows.map((c) => (c.participantA === userId ? c.participantB : c.participantA));
@@ -388,8 +472,8 @@ export class ChatService {
 
     const convo = await this.conversations.findOne({
       where: [
-        { participantA: userId, participantB: otherUserId },
-        { participantA: otherUserId, participantB: userId },
+        { participantA: userId, participantB: otherUserId, bookingId: IsNull() },
+        { participantA: otherUserId, participantB: userId, bookingId: IsNull() },
       ],
     });
 
@@ -440,8 +524,8 @@ export class ChatService {
   async markRead(userId: string, withUserId: string): Promise<{ marked: number }> {
     const convo = await this.conversations.findOne({
       where: [
-        { participantA: userId, participantB: withUserId },
-        { participantA: withUserId, participantB: userId },
+        { participantA: userId, participantB: withUserId, bookingId: IsNull() },
+        { participantA: withUserId, participantB: userId, bookingId: IsNull() },
       ],
     });
     if (!convo) return { marked: 0 };

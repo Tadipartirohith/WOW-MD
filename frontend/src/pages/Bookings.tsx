@@ -5,6 +5,7 @@ import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/permissions';
 import ProviderBookings from '../components/ProviderBookings';
+import BookingChat from '../components/BookingChat';
 
 interface Booking {
   id: string;
@@ -28,6 +29,7 @@ interface Quotation {
   lines: { description: string; amount: number }[];
   notes: string | null;
   validUntil: string | null;
+  terms: string | null;
   status: string;
 }
 
@@ -311,6 +313,14 @@ function BookingDetail({
               </ul>
             )}
             {q.notes && <p className="mt-1 text-sm text-gray-600">{q.notes}</p>}
+            {q.terms && (
+              <div className="mt-2 rounded border border-gray-200 bg-white p-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Terms
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-gray-700">{q.terms}</p>
+              </div>
+            )}
             {q.validUntil && (
               <p className="mt-1 text-xs text-gray-500">
                 Valid until {new Date(q.validUntil).toLocaleDateString()}
@@ -378,6 +388,8 @@ function BookingDetail({
           </div>
         </div>
       )}
+
+      <BookingChat bookingId={booking.id} />
     </div>
   );
 }

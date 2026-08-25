@@ -559,9 +559,41 @@ c=$(req PUT "/bookings/$BOOKING/start" "" "$VENDOR")
 check "vendor cannot start before the advance is held" "$c" 400
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
 check "the balance cannot jump the queue" "$c" 400
+
+# The booking's own thread. Shut until the advance is held, because before that
+# there is a quotation to argue about and screens that keep a record of it.
+c=$(req GET "/bookings/$BOOKING/chat" "" "$BRIDE")
+check "the booking reports where its conversation stands" "$c" 200
+body_has '"canSend":false' "and it is shut before the advance is paid"
+body_has 'Chat opens once the advance is paid' "saying exactly why"
+c=$(req POST "/bookings/$BOOKING/messages" '{"body":"Can we talk before I pay?"}' "$BRIDE")
+check "and posting into it is refused, not merely hidden" "$c" 400
+
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
 check "bride pays the advance" "$c" 200
 body_has '"status":"confirmed"' "the advance is what confirms the booking"
+
+c=$(req GET "/bookings/$BOOKING/chat" "" "$VENDOR")
+body_has '"canSend":true' "paying the advance is what opens the thread"
+c=$(req POST "/bookings/$BOOKING/messages" '{"body":"Advance received. Reach me on 9876543210 to confirm the setup time."}' "$VENDOR")
+check "the vendor writes in it" "$c" 201
+body_has '"redactedCount":1' "and a phone number in it is stripped like anywhere else"
+c=$(req POST "/bookings/$BOOKING/messages" '{"body":"Noted, thank you."}' "$BRIDE")
+check "the buyer replies" "$c" 201
+c=$(req GET "/bookings/$BOOKING/messages" "" "$BRIDE")
+check "the thread reads back" "$c" 200
+body_has 'Advance received' "carrying both sides"
+
+# A booking is between two people. Nobody else is in the room.
+c=$(req POST "/bookings/$BOOKING/messages" '{"body":"Let me in."}' "$GROOM")
+check "a third account cannot post into somebody else's booking" "$c" 403
+c=$(req GET "/bookings/$BOOKING/messages" "" "$GROOM")
+check "nor read it" "$c" 403
+
+# And it stays out of the Chat screen, which has no way to lock it.
+c=$(req GET /chat/conversations "" "$VENDOR")
+check "the vendor's conversation list is served" "$c" 200
+grep -q 'Advance received' /tmp/body && assert "the booking thread leaked into the Chat list" 0 || assert "the booking thread stays on the booking" 1
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"advance"}' "$BRIDE")
 check "the same instalment cannot be paid twice" "$c" 400
 
@@ -608,6 +640,18 @@ body_has 'completed_pending_final_payment' "delivery makes the balance payable, 
 c=$(req PUT "/bookings/$BOOKING/pay" '{"milestone":"final"}' "$BRIDE")
 check "bride pays the balance" "$c" 200
 body_has '"status":"completed"' "paying the balance is what completes the booking"
+
+# Finished, so the thread stops taking messages — and stays readable, because
+# what was agreed in it is exactly what a later argument turns on.
+c=$(req GET "/bookings/$BOOKING/chat" "" "$VENDOR")
+body_has '"canSend":false' "a finished job stops taking messages"
+body_has '"open":true' "but the thread is still there"
+body_has 'raise a dispute' "and points at where a complaint belongs instead"
+c=$(req POST "/bookings/$BOOKING/messages" '{"body":"One more thing."}' "$VENDOR")
+check "posting into a finished job is refused" "$c" 403
+c=$(req GET "/bookings/$BOOKING/messages" "" "$BRIDE")
+check "and the record is still readable" "$c" 200
+body_has 'Advance received' "with everything that was said in it"
 
 echo
 echo "== 11. Chat keeps the conversation on the platform =="
