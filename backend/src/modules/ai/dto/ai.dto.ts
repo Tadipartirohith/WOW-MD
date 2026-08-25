@@ -1,6 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { VendorCategory } from '../../../common/enums';
 
 export class BudgetInsightDto {
@@ -29,4 +39,12 @@ export class VendorRecoQueryDto {
   @IsOptional()
   @IsEnum(VendorCategory)
   category?: VendorCategory;
+}
+
+/** Which profile the recommendations are for, when a steward is browsing. */
+export class MatchRecoQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  profileId?: string;
 }

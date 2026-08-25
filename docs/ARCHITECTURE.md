@@ -41,6 +41,7 @@ demands, and the phone number rather than the email address is the identity.
 | [ISSUE-REGISTER.md](ISSUE-REGISTER.md) | The 115-page specification, item by item, with what is deferred and why |
 | [NEW-ISSUE-REGISTER.md](NEW-ISSUE-REGISTER.md) | The 74-page follow-up, item by item — including the two places it reverses the first, and the one place the implementation diverges from it |
 | [ENHANCEMENTS-REGISTER.md](ENHANCEMENTS-REGISTER.md) | The 91-page enhancements document surveyed against the code: what is already built, what the vendor and admin portals still need, and a confirmed bug the multi-business model exposes |
+| [IP-REGISTER.md](IP-REGISTER.md) | The 37-page individual-user and agent-portal document, item by item — including the one cause that turned out to be behind five separate reports |
 | [SELF-REVIEW.md](SELF-REVIEW.md) | Six rounds of work, every defect found, and what is deliberately still open |
 | [SETUP-GUIDE.md](SETUP-GUIDE.md) | Getting it running, with and without Docker |
 | [DOCKER-AND-TESTING.md](DOCKER-AND-TESTING.md) | Container and test-stack detail, and how to run all six verification suites |

@@ -1,7 +1,12 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AiService } from './ai.service';
-import { AssistantDto, BudgetInsightDto, VendorRecoQueryDto } from './dto/ai.dto';
+import {
+  AssistantDto,
+  BudgetInsightDto,
+  MatchRecoQueryDto,
+  VendorRecoQueryDto,
+} from './dto/ai.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
@@ -13,9 +18,15 @@ import { Permission } from '../../common/authz/permissions';
 export class AiController {
   constructor(private readonly ai: AiService) {}
 
+  @ApiOperation({
+    summary: 'The shortlist for a profile',
+    description:
+      'A steward passes the client they are browsing as. Without it this answered for the ' +
+      'steward\'s own account, which for an agency means recommending marriages to the agency.',
+  })
   @Get('recommendations/matches')
-  matches(@CurrentUser() actor: AuthUser) {
-    return this.ai.matchRecommendations(actor);
+  matches(@CurrentUser() actor: AuthUser, @Query() q: MatchRecoQueryDto) {
+    return this.ai.matchRecommendations(actor, q.profileId);
   }
 
   @Get('recommendations/vendors')

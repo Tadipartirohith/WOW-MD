@@ -1550,6 +1550,48 @@ check "and the profile accepts the URL the platform issued" "$c" 200
 body_has 'mock-storage' "storing it against the profile"
 
 echo
+echo "== 44. An agency is not one of its own clients =="
+
+# Registration is rate-limited per IP and this suite has made a good many by
+# now, so the counters are cleared again here. The throttle has its own
+# assertions in verify-rbac; this section is about who counts as a client.
+if command -v redis-cli >/dev/null 2>&1; then
+  KEYS=$(redis-cli -h "${REDIS_HOST:-redis}" --scan --pattern 'throttle:*' 2>/dev/null)
+  [ -n "$KEYS" ] && echo "$KEYS" | xargs -r redis-cli -h "${REDIS_HOST:-redis}" DEL >/dev/null 2>&1
+fi
+
+reg agentx agent ""
+AGENTX=$(field /tmp/agentx.json accessToken)
+c=$(req PUT /agents/agency "{\"agencyName\":\"Agency $STAMP\",\"city\":\"Hyderabad\",\"contactPhone\":\"9876500011\"}" "$AGENTX")
+check "the agency registers its details" "$c" 200
+AGENCY_X=$(field /tmp/body id)
+c=$(req PUT "/admin/agents/$AGENCY_X/approve" "" "$ADMIN")
+check "the agency is approved" "$c" 200
+
+AGENT_CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh","givenAt":"2026-08-01"}'
+c=$(req POST /agents/profiles "{\"displayName\":\"Client One\",\"gender\":\"female\",\"dateOfBirth\":\"1998-04-04\",\"city\":\"Hyderabad\",\"contactPhone\":\"98765$(date +%s | tail -c 6)\",$AGENT_CONSENT}" "$AGENTX")
+check "the agency takes on a client" "$c" 201
+CLIENT_ONE=$(field /tmp/body id)
+
+c=$(req GET /agents/profiles/actable "" "$AGENTX")
+check "the client picker is served" "$c" 200
+assert "and lists the client" "$(jq -e --arg id "$CLIENT_ONE" 'any(.[]; .id == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+# The agency's own account appeared here as "(me)" — an agency being offered
+# the chance to browse marriage proposals for itself.
+assert "but not the agency's own account" "$(jq -e 'all(.[]; .claimStatus != "self")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# The recommendations column dropped the selected client and answered for the
+# agency instead, which is what "matches are not filtered by gender" was: not a
+# missing filter, but the wrong subject.
+c=$(req GET "/ai/recommendations/matches?profileId=$CLIENT_ONE" "" "$AGENTX")
+check "the shortlist is served for the selected client" "$c" 200
+assert "and every profile on it is the opposite gender to her" "$(jq -e '[.data[].profile.gender] | all(. != "female")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req GET "/matches/suggestions?profileId=$CLIENT_ONE&sort=recent&limit=20" "" "$AGENTX")
+check "so is the recently-added list" "$c" 200
+assert "and that is gender-filtered too" "$(jq -e '[.data[].profile.gender] | all(. != "female")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

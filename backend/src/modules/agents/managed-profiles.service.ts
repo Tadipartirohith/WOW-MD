@@ -555,12 +555,27 @@ export class ManagedProfilesService {
    * Every profile the caller may act under: their own, plus any they steward.
    * This is the list the "acting as" selector is built from.
    */
+  /**
+   * The profiles this account may act as.
+   *
+   * An agency's own account is not one of them. It appeared in the client
+   * picker on Matches, Biodata and the Network Pool as "(me)", which is an
+   * agency being offered the chance to browse marriage proposals for itself —
+   * and every screen that read the list had to know to skip it.
+   *
+   * Decided on the role rather than by hiding a name, which is the difference
+   * between a fix and a patch. A family member stewarding a relative's profile
+   * *is* a client as well as a steward — they have their own profile and it
+   * belongs in the list — so the exclusion is for agencies specifically.
+   */
   async actableProfiles(actor: AuthUser): Promise<Profile[]> {
-    const own = await this.profiles.find({ where: { userId: actor.userId } });
     const managed = await this.profiles.find({
       where: { managedByUserId: actor.userId },
       order: { createdAt: 'DESC' },
     });
+    if (actor.role === UserRole.AGENT) return managed;
+
+    const own = await this.profiles.find({ where: { userId: actor.userId } });
     const seen = new Set(own.map((p) => p.id));
     return [...own, ...managed.filter((p) => !seen.has(p.id))];
   }

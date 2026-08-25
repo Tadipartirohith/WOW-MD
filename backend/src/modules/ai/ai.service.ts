@@ -37,8 +37,25 @@ export class AiService {
    * twelve-percent matches to reach five rows teaches people to ignore it.
    * Fewer rows is the correct answer when there are fewer good matches.
    */
-  matchRecommendations(actor: AuthUser) {
-    return this.matchmaking.suggestions(actor, { page: 1, limit: 5, minScore: 50 } as never);
+  /**
+   * The shortlist, for whoever is being browsed as.
+   *
+   * `profileId` used to be dropped on the floor here, so an agent looking at a
+   * client's Matches page got the *agency account's* recommendations in the
+   * right-hand column — profiles of every gender, unrelated to the client
+   * whose name was in the selector. That is what "matches are not filtered by
+   * gender" turned out to be: not a missing filter, but the wrong subject.
+   *
+   * The gender rule itself lives in the matchmaking query, where it belongs,
+   * and applies as soon as the right profile is asked about.
+   */
+  matchRecommendations(actor: AuthUser, profileId?: string) {
+    return this.matchmaking.suggestions(actor, {
+      page: 1,
+      limit: 5,
+      minScore: 50,
+      ...(profileId ? { profileId } : {}),
+    } as never);
   }
 
   vendorRecommendations(category?: VendorCategory) {
