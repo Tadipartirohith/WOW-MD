@@ -256,14 +256,14 @@ Nine of these are new, and three restate Part 2.
 | --- | --- | --- | --- |
 | M1 | Availability 3 → 6 months | **done** | Same item as B20 |
 | M2 | Agent profile-sharing limit reviewed so users get enough relevant profiles | decision | There is a network-pool quota today. Changing it is a product call, and the document says "review", not a number |
-| M3 | **Settle My Payment** — a settlement request routed through admin, then an officer | new | Distinct from the settlement that already resolves a dispute |
+| M3 | **Settle My Payment** — a settlement request routed through admin, then an officer | **done** | Raised as a support case rather than as a pipeline of its own — it needs exactly the routing the desk already has. Not a dispute: nothing freezes, because freezing a provider's escrow would punish them for asking |
 | M4 | Admin allocates a verification officer to an issue | done | |
 | M5 | Officer investigates, records findings, closes | done | |
 | M6 | **72-hour verification SLA**, backend-controlled | new | Needs `verification_submitted_at`, `officer_allocated_at`, `verification_started_at`, `verification_completed_at`, `sla_deadline` |
 | M7 | SLA breach → rejected/expired, vendor notified, may create a new listing | new | The document asks explicitly that the final status name be standardised |
 | M8 | New business listing under the same account after rejection | partly done | See B1 and the confirmed bug |
-| M9 | **Push notifications** for all four personas | new | Needs a push provider |
-| M10 | **WhatsApp notifications**, opt-in only | new | Needs a WhatsApp Business provider and DLT-registered templates |
+| M9 | **Push notifications** for all four personas | **done** | Provider behind an interface, `log` by default, FCM on configuration. Registering a device is the consent; a token claimed by another account moves, because it belongs to an installation rather than to a person |
+| M10 | **WhatsApp notifications**, opt-in only | **done** | Opt-in never inferred from having a phone number, and template-only: five approved templates covering money and jobs. A type with no template does not go out that way rather than being sent as free text the API would refuse |
 | M11 | AI-generated images restricted platform-wide | new | Same item as P1 |
 | M12 | All critical rules enforced backend-side | done | This has been the standing rule throughout |
 
@@ -309,3 +309,5 @@ matters.
 | Frontend tests in CI | The `frontend` job ran typecheck and build and never the tests — including the one that fails when the client's permission mirror drifts from the server enum |
 | A case parked on a complainant did not read as open | `hasOpenCaseFor` listed the states that counted and WAITING_FOR_INFORMATION was not among them, so a booking frozen by a case awaiting a receipt could be completed or cancelled out from under it — unfreezing money an officer was still deciding about. The list is now derived as the complement of "finished" |
 | Findings could mark a case decided | `RecordFindingsDto.status` accepted any `CaseStatus`, so an officer writing up their visit could set RESOLVED on the way past and skip the administrator entirely |
+| `"false"` meant yes | The application validates with implicit conversion, which turns any non-empty string into `true` for a boolean field. Harmless on a page filter; on `isActive` it meant an administrator posting `"false"` reinstated the account they meant to suspend, and on `allowsCirculation` it meant consent to circulate somebody's biodata could be manufactured from the word "no". The three fields where a person is on the other end now use `StrictBoolean` |
+| Suites could not run back to back | The throttle-clearing preamble was guarded on `redis-cli` being present, and the runner image never installed it — so the guard silently did nothing and a second run in the same minute failed with 429s that read like real defects. The runner now installs it |

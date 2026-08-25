@@ -7,7 +7,7 @@
 #
 #   docker compose -f docker/docker-compose.yml up -d --build
 #   docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
-#   docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 #     sh -c "apk add --no-cache curl jq >/dev/null && sh /scripts/verify-rbac.sh"
+#   docker run --rm --network docker_default -v "$PWD/scripts:/scripts" alpine:3.20 #     sh -c "apk add --no-cache curl jq redis >/dev/null && sh /scripts/verify-rbac.sh"
 #
 # Exits non-zero if any check fails, so it can gate a deploy.
 API=${API:-http://backend:3000/api}
@@ -627,6 +627,31 @@ c=$(req PUT "/admin/users/$BRIDE_ID/status" '{"isActive":true}' "$ADMIN")
 check "admin reinstates the account" "$c" 200
 c=$(req GET /auth/me/permissions "" "$BRIDE")
 check "reinstated user works again" "$c" 200
+
+echo
+echo "== 14. A boolean that cannot be talked into a yes =="
+
+# The application converts body values to the declared type before validating
+# them, and that conversion reads any non-empty string as true — so "false"
+# means yes. Fine for a page filter. Not fine for suspending an account, or for
+# consent to circulate somebody's biodata.
+
+c=$(req GET "/admin/users?limit=1" "" "$ADMIN")
+check "the admin user list is served" "$c" 200
+TARGET=$(jq -r '.data[0].id // empty' /tmp/body)
+
+# "false" is honoured as false. It used to be read as true, so an administrator
+# posting it from a form reinstated the account they meant to suspend.
+c=$(req PUT "/admin/users/$TARGET/status" '{"isActive":"false"}' "$ADMIN")
+check "the string false is accepted" "$c" 200
+body_has '"isActive":false' "and means false, which it did not used to"
+
+# Anything that is not unambiguously a boolean is refused rather than guessed.
+c=$(req PUT "/admin/users/$TARGET/status" '{"isActive":"nonsense"}' "$ADMIN")
+check "and anything else is refused rather than read as yes" "$c" 400
+c=$(req PUT "/admin/users/$TARGET/status" '{"isActive":true}' "$ADMIN")
+check "a real boolean still works" "$c" 200
+body_has '"isActive":true' "reinstating the account"
 
 echo
 echo "============================="

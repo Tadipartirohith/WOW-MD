@@ -131,7 +131,9 @@ export class ManagedProfilesService {
       givenAt: consent.givenAt,
       notes: consent.notes,
     });
-    if (consent.allowsCirculation) {
+    // Compared rather than truthy-tested: agreeing to circulation is consent,
+    // and the string "false" must not become one. See `StrictBoolean`.
+    if (consent.allowsCirculation === true) {
       await this.consent.record(actor, profile.id, {
         scope: ConsentScope.CIRCULATION,
         method: consent.method,

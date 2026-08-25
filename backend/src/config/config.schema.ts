@@ -104,6 +104,19 @@ export const configValidationSchema = Joi.object({
   INDIVIDUAL_USER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
   CHAT_REDACT_CONTACTS: Joi.boolean().truthy('true').falsy('false').default(true),
   SERVICES_REQUIRE_MATCH_FIXED: Joi.boolean().truthy('true').falsy('false').default(false),
+
+  PUSH_PROVIDER: Joi.string().valid('log', 'fcm').default('log'),
+  PUSH_URL: Joi.string().uri().optional(),
+  PUSH_SERVER_KEY: Joi.string().allow('').optional(),
+  PUSH_TIMEOUT_MS: Joi.number().optional(),
+
+  WHATSAPP_PROVIDER: Joi.string().valid('log', 'cloud').default('log'),
+  WHATSAPP_BASE_URL: Joi.string().uri().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: Joi.string().allow('').optional(),
+  WHATSAPP_TOKEN: Joi.string().allow('').optional(),
+  WHATSAPP_LANGUAGE: Joi.string().optional(),
+  WHATSAPP_COUNTRY_CODE: Joi.string().optional(),
+  WHATSAPP_TIMEOUT_MS: Joi.number().optional(),
   MATCH_SUGGESTIONS_CACHE_TTL: Joi.number().default(120),
   MATCH_MAX_SUGGESTIONS: Joi.number().default(50),
 

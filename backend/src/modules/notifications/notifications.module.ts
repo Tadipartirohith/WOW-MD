@@ -7,6 +7,7 @@ import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { ServiceDefinition } from '../catalog/entities/service-definition.entity';
+import { User } from '../auth/entities/user.entity';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsConsumer } from './notifications.consumer';
@@ -24,6 +25,8 @@ import { NotificationsConsumer } from './notifications.consumer';
       PlannerProfile,
       VendorService,
       ServiceDefinition,
+      // For the WhatsApp opt-in and the number to send to. Read-only.
+      User,
     ]),
   ],
   providers: [NotificationsService, NotificationsConsumer],

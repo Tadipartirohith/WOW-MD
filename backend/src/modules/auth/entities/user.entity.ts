@@ -47,6 +47,21 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   phoneVerifiedAt: Date | null;
 
+  /**
+   * Whether this account has asked to be reached on WhatsApp.
+   *
+   * Off by default and never inferred. A phone number given so the platform can
+   * verify it is not consent to be messaged on WhatsApp, and treating it as
+   * consent is both the thing users hate and the thing that gets a business
+   * number blocked by Meta. The date is kept alongside because "did they agree,
+   * and when" is the question asked afterwards, and a boolean cannot answer it.
+   */
+  @Column({ default: false })
+  whatsappOptIn: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  whatsappOptInAt: Date | null;
+
   /** Soft disable: a steward can deactivate a client, admin can suspend anyone. */
   @Column({ default: true })
   isActive: boolean;

@@ -80,6 +80,14 @@ services:
       INDIVIDUAL_USER_ENABLED: ${INDIVIDUAL_USER_ENABLED:-true}
       SERVICES_REQUIRE_MATCH_FIXED: ${SERVICES_REQUIRE_MATCH_FIXED:-false}
       CHAT_REDACT_CONTACTS: ${CHAT_REDACT_CONTACTS:-true}
+      # Push and WhatsApp both default to `log`, which writes what would have
+      # gone out rather than pretending it did.
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-log}
+      PUSH_SERVER_KEY: ${PUSH_SERVER_KEY:-}
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-log}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_LANGUAGE: ${WHATSAPP_LANGUAGE:-en}
       MATCH_MIN_SCORE: ${MATCH_MIN_SCORE:-50}
       # The three escrow instalments. They must total 100 or the API refuses to
       # boot, because a set summing to 90 would under-charge every booking.

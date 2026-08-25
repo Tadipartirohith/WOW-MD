@@ -1314,6 +1314,61 @@ check "asking twice does not raise a second request" "$c" 201
 body_has '"alreadyOpen":true' "it hands back the one already on the desk"
 
 echo
+echo "== 39. Devices, and consent to be messaged =="
+
+c=$(req GET /notifications/channels "" "$VENDOR")
+check "the channels an account is reachable on are readable" "$c" 200
+body_has '"devices":0' "with no devices registered to begin with"
+body_has '"whatsappOptIn":false' "and WhatsApp off"
+
+# The opt-in is never inferred. The vendor registered with a phone number and
+# is still not opted in above, which is the whole rule.
+c=$(req PUT /notifications/channels/whatsapp '{"optIn":true}' "$VENDOR")
+check "the account opts in" "$c" 200
+c=$(req GET /notifications/channels "" "$VENDOR")
+body_has '"whatsappOptIn":true' "which is recorded"
+body_has '"whatsappReachable":true' "and there is a number to send to"
+
+c=$(req PUT /notifications/channels/whatsapp '{"optIn":false}' "$VENDOR")
+check "and can opt out again" "$c" 200
+c=$(req GET /notifications/channels "" "$VENDOR")
+body_has '"whatsappOptIn":false' "which stops it"
+# The date consent was given survives withdrawal: "did they agree, and when"
+# is the question asked afterwards, and it still has an answer.
+grep -q '"whatsappOptInAt":null' /tmp/body && assert "opting out erased that consent was ever given" 0 || assert "but when they agreed is still on the record" 1
+
+c=$(req PUT /notifications/channels/whatsapp '{"optIn":"yes please"}' "$VENDOR")
+check "a non-boolean opt-in is refused" "$c" 400
+
+# A device is claimed rather than shared. A token belongs to an app
+# installation, so a handed-over phone must not keep ringing for its last owner.
+DEVICE="tok-$STAMP-device"
+c=$(req POST /notifications/devices "{\"token\":\"$DEVICE\",\"platform\":\"android\"}" "$VENDOR")
+check "a device registers" "$c" 201
+c=$(req GET /notifications/channels "" "$VENDOR")
+body_has '"devices":1' "and is counted"
+
+c=$(req POST /notifications/devices "{\"token\":\"$DEVICE\",\"platform\":\"android\"}" "$VENDOR")
+check "registering the same device twice is one device" "$c" 201
+c=$(req GET /notifications/channels "" "$VENDOR")
+body_has '"devices":1' "not two"
+
+c=$(req POST /notifications/devices "{\"token\":\"$DEVICE\",\"platform\":\"android\"}" "$BRIDE")
+check "another account claims the same handset" "$c" 201
+c=$(req GET /notifications/channels "" "$VENDOR")
+body_has '"devices":0' "and the previous owner stops receiving on it"
+c=$(req GET /notifications/channels "" "$BRIDE")
+body_has '"devices":1' "while the new one starts"
+
+c=$(req DELETE "/notifications/devices/$DEVICE" "" "$BRIDE")
+check "signing out on a device unregisters it" "$c" 200
+c=$(req GET /notifications/channels "" "$BRIDE")
+body_has '"devices":0' "and it stops ringing"
+
+c=$(req POST /notifications/devices '{"token":"x"}' "$VENDOR")
+check "a token too short to be real is refused" "$c" 400
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

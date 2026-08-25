@@ -71,7 +71,9 @@ export class AdminService {
   async setUserStatus(id: string, dto: UpdateUserStatusDto): Promise<AdminUserView> {
     const user = await this.users.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
-    user.isActive = dto.isActive;
+    // Compared rather than assigned: the DTO takes the raw value so a string
+    // cannot be coerced into a yes. See `StrictBoolean`.
+    user.isActive = dto.isActive === true;
     await this.users.save(user);
     const { passwordHash, refreshTokenHash, ...safe } = user as User & Record<string, unknown>;
     void passwordHash;

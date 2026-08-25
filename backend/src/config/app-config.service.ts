@@ -48,6 +48,12 @@ export class AppConfigService {
   get sms() {
     return this.section('sms');
   }
+  get push() {
+    return this.section('push');
+  }
+  get whatsapp() {
+    return this.section('whatsapp');
+  }
   get matchmaking() {
     return this.section('matchmaking');
   }

@@ -147,6 +147,8 @@ export default function Notifications() {
         </div>
       </div>
 
+      <Channels />
+
       {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
 
       {groups.map((group) => {
@@ -209,6 +211,90 @@ export default function Notifications() {
           {filter === 'unread' ? 'Nothing unread.' : 'Nothing here yet.'}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where else the platform may reach you.
+ *
+ * Both switches are off until somebody turns them on, and the copy says what
+ * each one actually does rather than "enable notifications". A phone number
+ * given so the platform could verify it is not consent to be messaged on
+ * WhatsApp, and a toggle that pretends otherwise is the reason people stop
+ * trusting the settings screen.
+ */
+function Channels() {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const { data } = useQuery<{
+    devices: number;
+    whatsappOptIn: boolean;
+    whatsappReachable: boolean;
+  }>({
+    queryKey: ['notification-channels'],
+    queryFn: async () => (await api.get('/notifications/channels')).data,
+    retry: false,
+  });
+
+  async function setWhatsApp(optIn: boolean) {
+    setBusy(true);
+    setNotice(null);
+    try {
+      await api.put('/notifications/channels/whatsapp', { optIn });
+      qc.invalidateQueries({ queryKey: ['notification-channels'] });
+      setNotice(
+        optIn
+          ? 'You will get a WhatsApp about bookings and payments. Nothing else.'
+          : 'No more WhatsApp messages.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!data) return null;
+
+  return (
+    <div className="card space-y-2">
+      <h2 className="font-semibold text-gray-900">How we reach you</h2>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-gray-800">On this device</p>
+          <p className="text-xs text-gray-500">
+            {data.devices > 0
+              ? `${data.devices} device(s) registered. Signing out on one stops it.`
+              : 'No devices registered. Allow notifications when your browser asks.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+        <div>
+          <p className="text-sm font-medium text-gray-800">WhatsApp</p>
+          <p className="text-xs text-gray-500">
+            Bookings and payments only — a new request, a quotation, money held, a balance due,
+            and a verification decision. Never matches or messages.
+          </p>
+          {data.whatsappOptIn && !data.whatsappReachable && (
+            <p className="text-xs text-amber-700">
+              Add a phone number to your profile — there is nowhere to send these yet.
+            </p>
+          )}
+        </div>
+        <button
+          className={data.whatsappOptIn ? 'btn-outline' : 'btn'}
+          disabled={busy}
+          onClick={() => void setWhatsApp(!data.whatsappOptIn)}
+        >
+          {data.whatsappOptIn ? 'Turn off' : 'Turn on'}
+        </button>
+      </div>
+
+      {notice && <p className="text-xs text-emerald-700">{notice}</p>}
     </div>
   );
 }

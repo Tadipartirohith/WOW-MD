@@ -24,7 +24,8 @@ delivered, and stops moving the moment someone disputes it.
 - [9. Chat redaction](#9-chat-redaction)
 - [10. The profile lifecycle](#10-the-profile-lifecycle)
 - [11. Configuration](#11-configuration)
-- [12. What this round deliberately did not do](#12-what-this-round-deliberately-did-not-do)
+- [12. Reaching people off the platform](#12-reaching-people-off-the-platform)
+- [13. What this round deliberately did not do](#13-what-this-round-deliberately-did-not-do)
 
 ---
 
@@ -318,6 +319,10 @@ private and has its held fees refunded.
 | `INDIVIDUAL_USER_ENABLED` | `true` | Whether individuals may self-register |
 | `SERVICES_REQUIRE_MATCH_FIXED` | `false` | Whether the marketplace waits for a fixed match |
 | `CHAT_REDACT_CONTACTS` | `true` | Contact stripping in chat |
+| `PUSH_PROVIDER` | `log` | `fcm` sends through Firebase Cloud Messaging |
+| `PUSH_SERVER_KEY` | — | Required when `PUSH_PROVIDER=fcm` |
+| `WHATSAPP_PROVIDER` | `log` | `cloud` sends through the Meta Cloud API |
+| `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TOKEN` | — | Required when `WHATSAPP_PROVIDER=cloud` |
 | `MATCH_MIN_SCORE` | `50` | Recommendation threshold |
 | `ESCROW_ADVANCE_PERCENT` | `30` | First instalment |
 | `ESCROW_SECOND_PERCENT` | `30` | Second instalment |
@@ -325,7 +330,42 @@ private and has its held fees refunded.
 | `AGENT_PROFILE_FEE` | `2000` | Agency onboarding fee, in rupees |
 | `AGENT_SETTLEMENT_FEE` | `25000` | Agency success fee |
 
-## 12. What this round deliberately did not do
+## 12. Reaching people off the platform
+
+Three channels, and they are not equivalent.
+
+**The feed** is the record. Every notification is written there first, and the
+write is what the caller waits for. Push and WhatsApp happen afterwards and are
+deliberately not awaited: a vendor's booking must not fail because Firebase is
+down, and the notification exists either way.
+
+**Push** goes to anyone with a registered device. Registering *is* the consent,
+and signing out withdraws it. A registration token belongs to an app
+installation rather than to a person, so a token already claimed by another
+account moves — a handed-over phone must not keep ringing with the last
+owner's notifications. Tokens the service reports as dead are deleted rather
+than retried: one from an uninstalled app fails on every send forever.
+
+**WhatsApp** goes only to an account that explicitly asked, and only for the
+notification types with an approved template. A business-initiated message has
+to be one of the templates the number has had approved by Meta and, in India,
+registered under DLT — free text is refused by the API, so the platform cannot
+send one by accident. The registered set is deliberately small: `booking_request`,
+`booking_quotation`, `booking_payment`, `booking_completed`,
+`verification_decided`. Money and jobs are worth interrupting somebody's
+WhatsApp for; a matrimony message is not, and belongs in the app.
+
+The opt-in is never inferred from having a phone number. A number given so the
+platform could verify it is not consent to be messaged, and `whatsappOptInAt`
+is kept when consent is withdrawn so "did they agree, and when" still has an
+answer.
+
+Both providers default to `log`, which writes what *would* have been sent —
+the template name and its parameters, not an assembled sentence, because that
+is what actually goes to Meta and a rendered default would hide a template
+mismatch until the real provider was switched on.
+
+## 13. What this round deliberately did not do
 
 - **SMS.** Still the largest gap. Intake is phone-first and provisioning is
   email-only, so a walk-in client with no email address cannot be handed an

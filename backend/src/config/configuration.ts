@@ -137,6 +137,34 @@ export default () => ({
   },
 
   /**
+   * Push notifications. `log` by default, so nothing needs a Firebase project
+   * to run — and the default still reports what it would have sent to how many
+   * devices, rather than pretending everything worked.
+   */
+  push: {
+    provider: process.env.PUSH_PROVIDER || 'log', // log | fcm
+    url: process.env.PUSH_URL || 'https://fcm.googleapis.com/fcm/send',
+    serverKey: process.env.PUSH_SERVER_KEY || '',
+    timeoutMs: toNumber(process.env.PUSH_TIMEOUT_MS, 8000),
+  },
+
+  /**
+   * WhatsApp. Opt-in only, and template-only: a business-initiated message has
+   * to be one of the templates the number has had approved by Meta and, in
+   * India, registered under DLT. Free text is refused by the API, so it is not
+   * something the platform can send by accident.
+   */
+  whatsapp: {
+    provider: process.env.WHATSAPP_PROVIDER || 'log', // log | cloud
+    baseUrl: process.env.WHATSAPP_BASE_URL || 'https://graph.facebook.com/v19.0',
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    token: process.env.WHATSAPP_TOKEN || '',
+    language: process.env.WHATSAPP_LANGUAGE || 'en',
+    defaultCountryCode: process.env.WHATSAPP_COUNTRY_CODE || '91',
+    timeoutMs: toNumber(process.env.WHATSAPP_TIMEOUT_MS, 8000),
+  },
+
+  /**
    * WebRTC. Only the signalling runs here — the media goes browser to browser,
    * which is what makes calling affordable at all.
    *

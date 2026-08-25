@@ -73,6 +73,7 @@ They run from inside the compose network, against a stack that is already up.
 | `verify-phase1.sh` | Field verification, support cases, frozen escrow, milestones and quotations |
 | `verify-phase2.sh` | The sectioned biodata and Aadhaar, notifications, the accounts ledger, chat presence, events, honeymoon packages, match filters and disputes |
 | `verify-phase3.sh` | SMS delivery, phone verification, phone-only invitations, profile claim requests, recovery codes, data export and erasure, the pool quota, circulation reach and photo uploads |
+| `verify-phase4.sh` | The catalog, availability and capacity, the business lifecycle, geography-aware allocation, events, blocking and reporting, the admin console, settlement requests, and the notification channels |
 
 Run one like this, replacing the name at the end:
 
@@ -87,6 +88,14 @@ and OTP codes come back on the response, because nothing is actually delivered.
 `SMS_PROVIDER=log` behaves the same way for text messages.
 They are safe to re-run — every run generates its own emails, phone numbers and
 Aadhaar number, so a second run does not collide with the first.
+
+**Install `redis` in the runner, not just `curl` and `jq`.** Registration is
+rate-limited per IP and Docker hands out recently-freed addresses, so a suite
+run straight after another one collects 429s that read exactly like real
+failures. Each suite clears the throttle counters on the way in — but the block
+is guarded on `redis-cli` being present, and without it the guard silently does
+nothing. That guard is why two of these scripts documented a runner command
+that could not actually run them twice in a row.
 
 ## Load test
 

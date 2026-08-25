@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { DisputeStatus, UserRole } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 
 export class RaiseDisputeDto {
   @ApiProperty({ format: 'uuid' })
@@ -62,7 +63,14 @@ export class AuditQueryDto extends PaginationDto {
 }
 
 export class UpdateUserStatusDto {
-  @ApiProperty()
-  @IsBoolean()
-  isActive: boolean;
+  /**
+   * Suspending or reinstating somebody's account.
+   *
+   * Strict, because the ordinary boolean conversion reads `"false"` as true —
+   * and an administrator who meant to suspend an account and reinstated it
+   * instead would have no way of telling from the response.
+   */
+  @ApiProperty({ type: Boolean })
+  @StrictBoolean()
+  isActive: boolean | string;
 }

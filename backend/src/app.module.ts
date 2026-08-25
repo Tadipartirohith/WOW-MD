@@ -12,6 +12,8 @@ import { EventsModule } from './platform/events/events.module';
 import { HealthModule } from './platform/health/health.module';
 import { MailModule } from './platform/mail/mail.module';
 import { SmsModule } from './platform/sms/sms.module';
+import { PushModule } from './platform/push/push.module';
+import { WhatsAppModule } from './platform/whatsapp/whatsapp.module';
 import { JobsModule } from './platform/jobs/jobs.module';
 import { AuditModule } from './platform/audit/audit.module';
 import { ModerationModule } from './platform/moderation/moderation.module';
@@ -80,6 +82,8 @@ import { AiModule } from './modules/ai/ai.module';
     HealthModule,
     MailModule,
     SmsModule,
+    PushModule,
+    WhatsAppModule,
     JobsModule,
     AuditModule,
     ModerationModule,

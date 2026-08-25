@@ -23,6 +23,7 @@ import {
   ProfileVisibility,
 } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 import { PreferencesDto } from '../../users/dto/profile.dto';
 import { normaliseEmail } from '../../auth/dto/auth.dto';
 import {
@@ -77,10 +78,10 @@ export class IntakeConsentDto {
    * Separate on purpose: agreeing to the agency holding your details is not
    * agreeing to them circulating them.
    */
-  @ApiPropertyOptional({ default: false })
+  @ApiPropertyOptional({ type: Boolean, default: false })
   @IsOptional()
-  @IsBoolean()
-  allowsCirculation?: boolean;
+  @StrictBoolean()
+  allowsCirculation?: boolean | string;
 }
 
 /**

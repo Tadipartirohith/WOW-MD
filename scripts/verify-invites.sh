@@ -5,7 +5,7 @@
 #
 #   docker run --rm --network docker_default \
 #     -v "$PWD/scripts:/scripts" -v "$PWD/docker:/docker" alpine:3.20 \
-#     sh -c "apk add --no-cache curl jq >/dev/null && sh /scripts/verify-invites.sh"
+#     sh -c "apk add --no-cache curl jq redis >/dev/null && sh /scripts/verify-invites.sh"
 #
 # Needs MAIL_PROVIDER=log on the backend: in that mode the invite response
 # carries the link, since nothing is actually delivered.
