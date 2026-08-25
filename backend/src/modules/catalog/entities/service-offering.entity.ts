@@ -44,6 +44,22 @@ export class ServiceOffering {
   @Column({ default: 'INR' })
   currency: string;
 
+  /**
+   * A price change waiting on an administrator, when review is switched on.
+   *
+   * Held beside the live price rather than replacing it, and that is the whole
+   * design. A vendor who doubles their rate on a live listing should not take
+   * their shop off sale while somebody looks at it — the old price keeps
+   * selling, and the new one applies the moment it is approved. Storing the
+   * proposal in `price` and a flag beside it would mean either serving an
+   * unreviewed price or serving none.
+   */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  pendingPrice: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  pendingSince: Date | null;
+
   /** "per plate", "per hour", "per day" — what the price is *of*. */
   @Column({ type: 'varchar', length: 40, nullable: true })
   unitLabel: string | null;

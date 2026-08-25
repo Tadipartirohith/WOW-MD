@@ -104,6 +104,7 @@ export const configValidationSchema = Joi.object({
   INDIVIDUAL_USER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
   CHAT_REDACT_CONTACTS: Joi.boolean().truthy('true').falsy('false').default(true),
   SERVICES_REQUIRE_MATCH_FIXED: Joi.boolean().truthy('true').falsy('false').default(false),
+  CATALOG_REVIEW_THRESHOLD_PERCENT: Joi.number().min(0).max(1000).default(0),
 
   PUSH_PROVIDER: Joi.string().valid('log', 'fcm').default('log'),
   PUSH_URL: Joi.string().uri().optional(),

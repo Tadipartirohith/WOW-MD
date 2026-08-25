@@ -27,6 +27,8 @@ import { AuthUser, CurrentUser } from '../../common/decorators/current-user.deco
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
 import { BookingsService } from '../bookings/bookings.service';
+import { VendorServicesService } from '../catalog/vendor-services.service';
+import { DecidePriceChangeDto } from './dto/console.dto';
 import {
   ActivityQueryDto,
   AdminBookingQueryDto,
@@ -44,6 +46,7 @@ export class AdminController {
     private readonly audit: AuditService,
     private readonly bookings: BookingsService,
     private readonly console: AdminConsoleService,
+    private readonly vendorServices: VendorServicesService,
   ) {}
 
   // ---------------------------------------------------------- the console
@@ -124,6 +127,34 @@ export class AdminController {
   @Get('bookings')
   allBookings(@Query() q: AdminBookingQueryDto) {
     return this.console.allBookings(q);
+  }
+
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
+  @ApiOperation({
+    summary: 'Price changes on live listings waiting for a look',
+    description:
+      'Empty unless CATALOG_REVIEW_THRESHOLD_PERCENT is set. The listing keeps selling at the ' +
+      'old price while one of these is outstanding — taking a shop off sale while somebody ' +
+      'reviews it punishes the vendor for the platform\'s caution.',
+  })
+  @Get('catalog/price-changes')
+  pendingPriceChanges() {
+    return this.vendorServices.pendingPriceChanges();
+  }
+
+  @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
+  @ApiOperation({
+    summary: 'Approve or refuse a held price change',
+    description:
+      'Approving applies it; refusing leaves the price where it was. Either way the hold is ' +
+      'cleared, so a vendor is never left with a proposal nobody will answer.',
+  })
+  @Put('catalog/price-changes/:offeringId')
+  decidePriceChange(
+    @Param('offeringId', ParseUUIDPipe) offeringId: string,
+    @Body() dto: DecidePriceChangeDto,
+  ) {
+    return this.vendorServices.decidePriceChange(offeringId, dto.approve === true);
   }
 
   @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)

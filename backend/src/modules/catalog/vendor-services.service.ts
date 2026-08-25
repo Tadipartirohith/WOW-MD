@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { VendorService } from './entities/vendor-service.entity';
 import { ServiceOffering } from './entities/service-offering.entity';
 import { ServiceDefinition } from './entities/service-definition.entity';
@@ -9,8 +9,9 @@ import { Vendor } from '../vendors/entities/vendor.entity';
 import { CatalogService } from './catalog.service';
 import { UpsertOfferingDto, UpsertVendorServiceDto } from './dto/catalog.dto';
 import { describeForm, validateAttributes } from './attribute-validation';
-import { AttributeScope, PricingModel, UserRole } from '../../common/enums';
+import { AttributeScope, BusinessStatus, PricingModel, UserRole } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { AppConfigService } from '../../config/app-config.service';
 
 /** The two models that carry no published amount — the vendor quotes instead. */
 const QUOTE_ONLY: PricingModel[] = [PricingModel.CUSTOM_QUOTE, PricingModel.NO_PUBLIC_PRICE];
@@ -48,6 +49,7 @@ export class VendorServicesService {
     @InjectRepository(Vendor)
     private readonly vendors: Repository<Vendor>,
     private readonly catalog: CatalogService,
+    private readonly cfg: AppConfigService,
   ) {}
 
   // ------------------------------------------------------------- ownership
@@ -278,11 +280,20 @@ export class VendorServicesService {
     const definition = await this.catalog.getDefinition(service.definitionId);
     this.assertPricingAllowed(definition, dto);
 
+    const proposed = QUOTE_ONLY.includes(dto.pricingModel) ? null : (dto.price ?? null);
+    const held = await this.needsReview(vendorId, offering.price, proposed);
+
     Object.assign(offering, {
       name: dto.name,
       description: dto.description ?? null,
       pricingModel: dto.pricingModel,
-      price: QUOTE_ONLY.includes(dto.pricingModel) ? null : (dto.price ?? null),
+      // A change big enough to need a look is parked rather than applied. The
+      // old price keeps selling in the meantime: taking the shop off sale
+      // while somebody reviews it punishes the vendor for the platform's
+      // caution.
+      price: held ? offering.price : proposed,
+      pendingPrice: held ? proposed : null,
+      pendingSince: held ? new Date() : null,
       currency: dto.currency ?? offering.currency,
       unitLabel: dto.unitLabel ?? null,
       minQuantity: dto.minQuantity ?? null,
@@ -292,6 +303,82 @@ export class VendorServicesService {
       active: dto.active ?? offering.active,
       sortOrder: dto.sortOrder ?? offering.sortOrder,
     });
+    return this.offerings.save(offering);
+  }
+
+  /**
+   * Whether a price change is big enough that somebody should look at it.
+   *
+   * Off unless configured, and only ever on a business that is actually
+   * trading: a listing still being set up has no customers to protect, and
+   * holding its first prices for review would put a queue in front of a vendor
+   * filling in a form.
+   *
+   * A price appearing where there was none, or disappearing, is not a change
+   * of degree and is left alone — those are the vendor deciding what kind of
+   * thing they sell, which is theirs to decide.
+   */
+  private async needsReview(
+    vendorId: string,
+    current: string | null,
+    proposed: string | null,
+  ): Promise<boolean> {
+    const threshold = this.cfg.features.catalogReviewThresholdPercent;
+    if (!threshold || current === null || proposed === null) return false;
+
+    const was = Number(current);
+    const now = Number(proposed);
+    if (!was || was === now) return false;
+
+    const movement = (Math.abs(now - was) / was) * 100;
+    if (movement < threshold) return false;
+
+    const business = await this.vendors.findOne({ where: { id: vendorId } });
+    return business?.status === BusinessStatus.LIVE;
+  }
+
+  /** Price changes waiting on somebody, across the platform. */
+  async pendingPriceChanges(): Promise<
+    { offeringId: string; vendorId: string; name: string; from: string | null; to: string | null; since: Date | null }[]
+  > {
+    const offerings = await this.offerings.find({
+      where: { pendingPrice: Not(IsNull()) },
+      order: { pendingSince: 'ASC' },
+    });
+    if (offerings.length === 0) return [];
+
+    const services = await this.services.find({
+      where: { id: In(offerings.map((o) => o.vendorServiceId)) },
+    });
+    const vendorOf = new Map(services.map((s) => [s.id, s.vendorId]));
+
+    return offerings.map((o) => ({
+      offeringId: o.id,
+      vendorId: vendorOf.get(o.vendorServiceId) ?? '',
+      name: o.name,
+      from: o.price,
+      to: o.pendingPrice,
+      since: o.pendingSince,
+    }));
+  }
+
+  /**
+   * An administrator answers a held price change.
+   *
+   * Approving applies it; refusing discards it and leaves the price where it
+   * was. Either way the hold is cleared, so a vendor is never left with a
+   * proposal nobody will ever answer sitting invisibly on their catalogue.
+   */
+  async decidePriceChange(offeringId: string, approve: boolean): Promise<ServiceOffering> {
+    const offering = await this.offerings.findOne({ where: { id: offeringId } });
+    if (!offering) throw new NotFoundException('That price does not exist');
+    if (offering.pendingPrice === null) {
+      throw new BadRequestException('There is no price change waiting on that offering');
+    }
+
+    if (approve) offering.price = offering.pendingPrice;
+    offering.pendingPrice = null;
+    offering.pendingSince = null;
     return this.offerings.save(offering);
   }
 

@@ -75,6 +75,16 @@ export default () => ({
     // wedding to buy. An operator who wants matchmaking to be the front door
     // to the marketplace turns it back on.
     servicesRequireMatchFixed: toBool(process.env.SERVICES_REQUIRE_MATCH_FIXED, false),
+    /**
+     * How much a live listing's price may move before an administrator looks.
+     *
+     * Zero is off, which is the default: most price changes are a vendor
+     * keeping up with their own costs, and holding those for review would put
+     * a queue between a business and its own shop floor. A number is the
+     * percentage change that trips it — 50 catches a doubling and ignores a
+     * seasonal ten per cent.
+     */
+    catalogReviewThresholdPercent: toNumber(process.env.CATALOG_REVIEW_THRESHOLD_PERCENT, 0),
   },
 
   auth: {

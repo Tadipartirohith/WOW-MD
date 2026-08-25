@@ -200,7 +200,7 @@ missing.
 | B12 | Locked again after approval; legal changes go through re-verification | new |
 | B13 | Vendor sees the exact reason for re-verification or rejection | **done** — shown on My Business, read from the owner-only route |
 | B14 | Catalog stays manageable after the business is verified | done |
-| B15 | Major catalog changes optionally go through admin review | new |
+| B15 | Major catalog changes optionally go through admin review | **done** — off unless `CATALOG_REVIEW_THRESHOLD_PERCENT` is set. A held change is parked beside the live price rather than replacing it, so the shop keeps selling at the old one while somebody looks |
 
 ### Availability, bookings, payments
 

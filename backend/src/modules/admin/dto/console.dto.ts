@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { BookingStatus, BusinessStatus, UserRole } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 
 export class ActivityQueryDto {
   @ApiPropertyOptional({ default: 40, minimum: 1, maximum: 200 })
@@ -107,4 +108,11 @@ export class ReportQueryDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+}
+
+/** An administrator's answer on a held price change. */
+export class DecidePriceChangeDto {
+  @ApiProperty({ type: Boolean, description: 'True to apply the new price, false to discard it.' })
+  @StrictBoolean()
+  approve: boolean | string;
 }
