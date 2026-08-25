@@ -720,9 +720,25 @@ check "with the findings cleared, it cannot be approved on the old ones" "$c" 40
 # this and a rejection — and the listing has to be fixed and resubmitted before
 # anybody decides again. Approving it where it stands would let the vendor skip
 # the correction that was asked for.
-c=$(req GET "/vendors/$LISTING2" "" "$VENDOR2")
+c=$(req GET "/vendors/$LISTING2/manage" "" "$VENDOR2")
 body_has '"status":"reverification_required"' "the listing is back with the vendor"
 body_has 'photograph the second kitchen' "carrying the exact reason, verbatim"
+
+# The reason is written for the vendor and is nobody else's business. It used to
+# ride out on the public listing, where a competitor could read what an officer
+# thought of the premises.
+c=$(req GET "/vendors/$LISTING2" "")
+check "the public listing is served to anybody" "$c" 200
+grep -q 'photograph the second kitchen' /tmp/body && assert "the refusal reason is public" 0 || assert "but the refusal reason is not in it" 1
+grep -q '"panNumber"' /tmp/body && assert "the PAN number is public" 0 || assert "nor is the PAN number" 1
+grep -q '"gstNumber"' /tmp/body && assert "the GST number is public" 0 || assert "nor the GST number" 1
+grep -q '"registeredAddress"' /tmp/body && assert "the registered address is public" 0 || assert "nor the registered address" 1
+grep -q '"complianceDocuments"' /tmp/body && assert "the compliance documents are public" 0 || assert "nor the links to the compliance documents" 1
+grep -q '"payoutAccountId"' /tmp/body && assert "the payout account is public" 0 || assert "nor the payout account" 1
+body_has '"ratingAvg"' "what a buyer needs to choose is all still there"
+
+c=$(req GET "/vendors/$LISTING2/manage" "" "$BRIDE")
+check "and another account cannot read the full row either" "$c" 403
 
 c=$(req PUT "/vendors/$LISTING2" '{"description":"Second kitchen documented."}' "$VENDOR2")
 check "and is editable again, which a rejection never is" "$c" 200
@@ -739,7 +755,7 @@ check "the vendor resubmits it" "$c" 200
 c=$(req PUT "/verification/requests/$REQ2/decide" '{"status":"approved"}' "$ADMIN")
 check "and now it can be approved" "$c" 200
 
-c=$(req GET "/vendors/$LISTING2" "" "$VENDOR2")
+c=$(req GET "/vendors/$LISTING2/manage" "" "$VENDOR2")
 body_has '"status":"live"' "which is what puts the business in front of buyers"
 
 echo
@@ -774,6 +790,12 @@ body_has '"type":"booking_request"' "including one for the new request"
 body_has '"reference"' "carrying a reference short enough to read out"
 grep -q "$SLOT_DATE2" /tmp/body && assert "and the date it is for" 1 || assert "the notification does not say when" 0
 grep -q "$BOOKING3" /tmp/body && assert "and the request it points at" 1 || assert "the notification does not say which request" 0
+
+# Where it goes is the server's answer, not each client's. A phone showing this
+# notification has no application to ask, so the destination travels with it.
+body_has '"targetModule":"bookings"' "the notification says which module it opens"
+body_has '"targetAction":"respond"' "and that the vendor is being asked to do something, not just look"
+body_has "\"targetId\":\"$BOOKING3\"" "and names the record, lifted out of the payload"
 
 c=$(req GET /notifications/unread-count "" "$VENDOR")
 check "the unread count is served" "$c" 200

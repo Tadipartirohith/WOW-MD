@@ -47,7 +47,7 @@ export class VendorsController {
 
   // ------------------------------------------------------------- calendar
   //
-  // Availability runs on a rolling three-month window computed from today, so
+  // Availability runs on a rolling six-month window computed from today, so
   // a vendor never has to open a new quarter by hand.
 
   @ApiBearerAuth()
@@ -284,7 +284,28 @@ export class VendorsController {
     return this.vendors.search(q);
   }
 
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'One of your own businesses, in full',
+    description:
+      'What the public view withholds: GST, PAN, registered address, compliance documents, ' +
+      'and the exact reason a verification was refused or sent back. Owner or administrator ' +
+      'only — a refusal written for the vendor is not for their competitors to read.',
+  })
+  @Get(':id/manage')
+  findForOwner(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vendors.findForOwner(actor, id);
+  }
+
   @Public()
+  @ApiOperation({
+    summary: 'One listing, as a buyer sees it',
+    description:
+      'The subtractive view. This route and /search are unauthenticated, so what they return ' +
+      'is the definition of public: no tax numbers, no registered address, no compliance ' +
+      'documents, no payout account, no decision reasoning.',
+  })
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.vendors.findOne(id);

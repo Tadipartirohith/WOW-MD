@@ -421,17 +421,28 @@ check "bride confirms" "$c" 200
 c=$(req PUT "/matches/$BG/match-fixed" "" "$GROOM")
 check "groom confirms and their match is fixed" "$c" 200
 
-# Availability runs on a rolling three-month window, so the dates the suite
+# Availability runs on a rolling six-month window, so the dates the suite
 # uses are computed from today rather than written down.
 # Epoch arithmetic rather than `date -d '+30 days'`, which busybox does not
 # understand — the suite runs inside an Alpine container.
 days_from_now() { date -d "@$(( $(date +%s) + $1 * 86400 ))" +%Y-%m-%d; }
 SLOT_DATE=$(days_from_now 30)
-FAR_DATE=$(days_from_now 200)
+# Comfortably inside six months and comfortably outside three, so this asserts
+# the widening rather than merely surviving it.
+FIFTH_MONTH=$(days_from_now 150)
+FAR_DATE=$(days_from_now 260)
 PAST_DATE=$(days_from_now -1)
 
+c=$(req GET /vendors/availability/window "")
+check "the rolling window is published" "$c" 200
+
+c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$FIFTH_MONTH\",\"startTime\":\"12:00\",\"endTime\":\"16:00\"}" "$VENDOR")
+check "a date in the fifth month is publishable, which three months refused" "$c" 201
+FIFTH_SLOT=$(field /tmp/body id)
+req DELETE "/vendors/$LISTING/availability/slots/$FIFTH_SLOT" "" "$VENDOR" >/dev/null
+
 c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$FAR_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\"}" "$VENDOR")
-check "a slot beyond the three-month window is refused" "$c" 400
+check "a slot beyond the six-month window is still refused" "$c" 400
 c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$PAST_DATE\",\"startTime\":\"12:00\",\"endTime\":\"16:00\"}" "$VENDOR")
 check "a slot in the past is refused" "$c" 400
 c=$(req POST "/vendors/$LISTING/availability/slots" "{\"date\":\"$SLOT_DATE\",\"startTime\":\"16:00\",\"endTime\":\"12:00\"}" "$VENDOR")
@@ -496,9 +507,18 @@ c=$(req POST "/bookings/$BOOKING/quotations" '{"amount":90000,"lines":[{"descrip
 check "vendor quotes for the job" "$c" 201
 QUOTE=$(field /tmp/body id)
 
-c=$(req POST "/bookings/$BOOKING/quotations" '{"amount":85000}' "$VENDOR")
-check "vendor re-quotes" "$c" 201
+c=$(req POST "/bookings/$BOOKING/quotations" '{"amount":85000,"terms":"Cancellation inside 30 days forfeits the advance. Overtime billed hourly.","validUntil":"2099-01-01"}' "$VENDOR")
+check "vendor re-quotes, on stated terms" "$c" 201
 QUOTE2=$(field /tmp/body id)
+body_has 'Cancellation inside 30 days' "the conditions travel with the price"
+c=$(req POST "/bookings/$BOOKING/quotations" '{"amount":85000,"validUntil":"2020-01-01"}' "$VENDOR")
+check "a validity date already past is refused" "$c" 400
+# And refusing it must not have taken the live offer down. The supersede used to
+# run before this check, so a mistyped year left the buyer with nothing to
+# accept and no new offer in its place.
+c=$(req GET "/bookings/$BOOKING/quotations" "" "$BRIDE")
+assert "and the refusal left the live offer standing" "$(jq -e --arg q "$QUOTE2" 'map(select(.id == $q and .status == "sent")) | length > 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
 c=$(req PUT "/bookings/quotations/$QUOTE/accept" '{}' "$BRIDE")
 check "the superseded quotation can no longer be accepted" "$c" 400
 c=$(req PUT "/bookings/quotations/$QUOTE2/accept" '{}' "$VENDOR")
@@ -507,6 +527,9 @@ c=$(req PUT "/bookings/quotations/$QUOTE2/accept" '{}' "$BRIDE")
 check "bride accepts the live quotation" "$c" 200
 body_has '"status":"quotation_accepted"' "acceptance settles the price"
 body_has '"amount":"85000.00"' "and the accepted price is what the booking now carries"
+# Which offer this booking is, so a later re-quote cannot rewrite the deal that
+# was struck — the quotation it points at is never edited in place.
+body_has "\"acceptedQuotationId\":\"$QUOTE2\"" "the booking records which offer it was struck on"
 
 echo
 echo "== 9. Money and work alternate =="

@@ -47,6 +47,18 @@ export class Quotation {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /**
+   * The conditions the price is offered under: cancellation, overtime, travel,
+   * what happens if the guest count moves.
+   *
+   * Separate from `notes` because they are not the same kind of thing. Notes
+   * are a covering message; terms are what a dispute is argued from, and the
+   * accepted quotation is what the booking then points at, so the terms that
+   * were agreed can never be confused with the terms of a later re-quote.
+   */
+  @Column({ type: 'text', nullable: true })
+  terms: string | null;
+
   /** After this date the offer lapses and has to be re-issued. */
   @Column({ type: 'timestamptz', nullable: true })
   validUntil: Date | null;

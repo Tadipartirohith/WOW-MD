@@ -122,6 +122,16 @@ export class Booking {
   @Column({ type: 'text', nullable: true })
   cancellationReason: string | null;
 
+  /**
+   * The quotation this booking was struck on, if it came through one.
+   *
+   * Points at a row that is never edited in place, which is what makes the
+   * agreed price and terms reconstructable months later when somebody argues
+   * about them.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  acceptedQuotationId: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

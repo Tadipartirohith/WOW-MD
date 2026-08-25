@@ -430,6 +430,14 @@ check "cannot book an unapproved listing" "$c" 400
 verify_business "$VENDOR" "$LISTING"
 c=$(req GET "/vendors/$LISTING" "")
 grep -q '"isApproved":true' /tmp/body && { echo "  PASS  the officer's approval activated the listing"; PASS=$((PASS+1)); } || { echo "  FAIL  listing still unapproved after verification: $(head -c 200 /tmp/body)"; FAIL=$((FAIL+1)); }
+
+# Search is unauthenticated and returns many listings at once, so anything it
+# carries is public in bulk. It used to carry the tax numbers.
+c=$(req GET "/vendors/search?limit=20" "")
+check "the public search is served to anybody" "$c" 200
+grep -q '"panNumber"' /tmp/body && assert "search leaks PAN numbers" 0 || assert "search carries no PAN numbers" 1
+grep -q '"gstNumber"' /tmp/body && assert "search leaks GST numbers" 0 || assert "nor GST numbers" 1
+grep -q '"complianceDocuments"' /tmp/body && assert "search leaks compliance documents" 0 || assert "nor links to compliance documents" 1
 c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":5000}" "$BRIDE")
 check "bride books the approved vendor" "$c" 201
 BOOKING=$(field /tmp/body id)

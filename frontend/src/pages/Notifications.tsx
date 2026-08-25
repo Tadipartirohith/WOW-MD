@@ -8,9 +8,21 @@ interface Notification {
   id: string;
   type: string;
   payload: Record<string, unknown>;
+  /** Where the server says this goes. Null on rows written before it said. */
+  targetModule: string | null;
+  targetAction: string | null;
+  targetId: string | null;
   isRead: boolean;
   createdAt: string;
 }
+
+/** What the reader is being asked to do, when it is more than "look". */
+const ACTION_LABEL: Record<string, string> = {
+  respond: 'Respond',
+  pay: 'Pay',
+  review: 'Review',
+  reply: 'Reply',
+};
 
 const TYPE_LABEL: Record<string, string> = {
   match_interest: 'Interest shown',
@@ -169,8 +181,14 @@ export default function Notifications() {
                   </div>
                   <div className="flex items-center gap-2">
                     {linkFor(n) && (
-                      <Link className="btn-outline" to={linkFor(n)!} onClick={() => markRead(n.id)}>
-                        Open
+                      <Link
+                        className={
+                          n.targetAction && n.targetAction !== 'view' ? 'btn' : 'btn-outline'
+                        }
+                        to={linkFor(n)!}
+                        onClick={() => markRead(n.id)}
+                      >
+                        {(n.targetAction && ACTION_LABEL[n.targetAction]) ?? 'Open'}
                       </Link>
                     )}
                     {!n.isRead && (
@@ -203,6 +221,29 @@ export default function Notifications() {
  * it to them.
  */
 function linkFor(n: Notification): string | null {
+  // The server now says where each notification goes, so this maps a module to
+  // a route rather than re-deciding from the type. The two used to disagree
+  // silently — the rule lived here, in a chain of prefix tests, and a phone
+  // showing the same notification would have needed its own copy of it.
+  if (n.targetModule) {
+    switch (n.targetModule) {
+      case 'bookings':
+      case 'quotations':
+      case 'disputes':
+        return n.targetId ? `/bookings?highlight=${n.targetId}` : '/bookings';
+      case 'verification':
+        return '/verification';
+      case 'chat':
+        return '/chat';
+      case 'planner':
+        return '/planner';
+      case 'matches':
+        return n.targetId ? `/matches?profile=${n.targetId}` : '/matches';
+    }
+  }
+
+  // Rows written before the columns existed. Kept rather than migrated to a
+  // guess: the old derivation is what those rows were displayed with.
   const p = n.payload ?? {};
   const bookingId = typeof p.bookingId === 'string' ? p.bookingId : null;
 
@@ -213,8 +254,6 @@ function linkFor(n: Notification): string | null {
   if (n.type === 'dispute_update') return '/bookings';
   if (n.type === 'new_message') return '/chat';
   if (n.type === 'task_reminder') return '/planner';
-  // Straight to the profile it is about, rather than to a list the reader
-  // then has to search.
   if (n.type.startsWith('match_')) {
     const profileId = typeof p.counterpartProfileId === 'string' ? p.counterpartProfileId : null;
     return profileId ? `/matches?profile=${profileId}` : '/matches';

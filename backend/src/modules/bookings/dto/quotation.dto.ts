@@ -47,6 +47,18 @@ export class SendQuotationDto {
   @MaxLength(2000)
   notes?: string;
 
+  @ApiPropertyOptional({
+    maxLength: 4000,
+    description:
+      'What the price is conditional on: cancellation, overtime, travel, guest-count changes. ' +
+      'Carried onto the booking when it is accepted, so a dispute argues from the terms that ' +
+      'were actually agreed rather than from whatever the latest quotation says.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  terms?: string;
+
   @ApiPropertyOptional({ description: 'When the offer lapses. Defaults to 14 days out.' })
   @IsOptional()
   @IsDateString()

@@ -82,7 +82,7 @@ const SLOT_STATE_STYLE: Record<SlotState, string> = {
  *
  * Availability is time slots on dates, not whole days — a photographer sells a
  * morning and an evening on the same Saturday, and a caterer sells the same
- * afternoon to five families at once. The window rolls three months from today
+ * afternoon to five families at once. The window rolls six months from today
  * and is computed, never stored, so there is no quarter to open by hand.
  *
  * Two things the vendor sees here that they could not before: every window
@@ -202,7 +202,7 @@ export default function Availability() {
         <div>
           <h1 className="text-xl font-bold text-brand-dark">Availability</h1>
           <p className="text-sm text-gray-600">
-            {window ? `Bookable from ${window.from} to ${window.to}.` : 'Rolling three-month window.'}{' '}
+            {window ? `Bookable from ${window.from} to ${window.to}.` : 'Rolling six-month window.'}{' '}
             Publish the windows you can actually take work in. A window stays open until you accept
             a job — a request on its own takes nothing.
           </p>

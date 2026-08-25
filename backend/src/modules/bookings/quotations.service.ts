@@ -58,17 +58,22 @@ export class QuotationsService {
       }
     }
 
-    await this.quotations.update(
-      { bookingId, status: QuotationStatus.SENT },
-      { status: QuotationStatus.SUPERSEDED },
-    );
-
+    // Everything the request can be refused for is checked before anything is
+    // written. The supersede used to come first, so a re-quote refused for a
+    // validity date in the past took the *live* offer down with it: the vendor
+    // mistyped a year, and the buyer's quotation quietly ceased to exist with
+    // nothing to accept and no new offer to replace it.
     const validUntil = dto.validUntil
       ? new Date(dto.validUntil)
       : new Date(Date.now() + DEFAULT_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
     if (validUntil.getTime() <= Date.now()) {
       throw new BadRequestException('The validity date must be in the future');
     }
+
+    await this.quotations.update(
+      { bookingId, status: QuotationStatus.SENT },
+      { status: QuotationStatus.SUPERSEDED },
+    );
 
     const quotation = await this.quotations.save(
       this.quotations.create({
@@ -78,6 +83,7 @@ export class QuotationsService {
         currency: booking.currency || this.cfg.payments.currency,
         lines: dto.lines ?? [],
         notes: dto.notes ?? null,
+        terms: dto.terms ?? null,
         validUntil,
         status: QuotationStatus.SENT,
       }),
@@ -119,6 +125,10 @@ export class QuotationsService {
 
     booking.amount = quotation.amount;
     booking.currency = quotation.currency;
+    // Which offer this booking is. Every quotation on a booking is kept, so
+    // without this the agreed terms are "the newest one", which is exactly
+    // wrong: a vendor who re-quotes after acceptance would rewrite the deal.
+    booking.acceptedQuotationId = quotation.id;
     // Acceptance settles the price and nothing else. The provider still has to
     // accept the job before any money moves — they may have taken another
     // booking in the days the quotation sat unanswered.

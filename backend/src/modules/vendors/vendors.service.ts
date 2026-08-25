@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Vendor } from './entities/vendor.entity';
+import { Vendor, VendorPricing } from './entities/vendor.entity';
 import { BusinessLifecycleService } from './business-lifecycle.service';
 import { VendorReview } from './entities/vendor-review.entity';
 import {
@@ -17,8 +17,66 @@ import {
 } from './dto/vendor.dto';
 import { RedisService } from '../../platform/redis/redis.service';
 import { VerificationService } from '../verification/verification.service';
-import { ApplicantType } from '../../common/enums';
+import { ApplicantType, BusinessStatus, UserRole, VendorCategory } from '../../common/enums';
+import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+
+/**
+ * One listing, as somebody who is not the vendor may see it.
+ *
+ * Subtractive rather than additive, and deliberately so: `GET /vendors/:id` and
+ * `/vendors/search` are both unauthenticated, and both returned the whole row.
+ * That put a vendor's PAN number, GST number, registered address, compliance
+ * document links and payout account id in front of anybody who could reach the
+ * listing — and the ids come straight out of the public search, so reaching it
+ * needed nothing but the URL. The rejection reason went out with them, so a
+ * refusal written for the vendor ("the proprietor's licence does not match the
+ * premises") was readable by their competitors.
+ *
+ * Adding fields to a list of what to *hide* is how that happens: the next
+ * column somebody adds is public until they remember. This names what a buyer
+ * needs to choose a vendor, and nothing reaches the outside world unless it is
+ * written here.
+ */
+export interface PublicVendor {
+  id: string;
+  name: string;
+  category: VendorCategory;
+  otherCategory: string | null;
+  description: string;
+  city: string;
+  pricing: VendorPricing;
+  portfolio: string[];
+  ratingAvg: number;
+  ratingCount: number;
+  /** How a buyer reaches them. Published by the vendor for exactly that. */
+  contactPhone: string | null;
+  /** Whether the platform has stood behind them, not how it decided to. */
+  status: BusinessStatus;
+  isApproved: boolean;
+  verifiedAt: Date | null;
+  createdAt: Date;
+}
+
+export function publicVendor(v: Vendor): PublicVendor {
+  return {
+    id: v.id,
+    name: v.name,
+    category: v.category,
+    otherCategory: v.otherCategory,
+    description: v.description,
+    city: v.city,
+    pricing: v.pricing,
+    portfolio: v.portfolio,
+    ratingAvg: v.ratingAvg,
+    ratingCount: v.ratingCount,
+    contactPhone: v.contactPhone,
+    status: v.status,
+    isApproved: v.isApproved,
+    verifiedAt: v.verifiedAt,
+    createdAt: v.createdAt,
+  };
+}
 
 @Injectable()
 export class VendorsService {
@@ -111,7 +169,7 @@ export class VendorsService {
     return this.vendors.find({ where: { ownerUserId }, order: { createdAt: 'DESC' } });
   }
 
-  async search(q: VendorSearchDto): Promise<PaginatedResult<Vendor>> {
+  async search(q: VendorSearchDto): Promise<PaginatedResult<PublicVendor>> {
     const cacheKey = `vendors:search:${q.category ?? 'all'}:${q.city ?? 'all'}:${q.minRating ?? 0}:${q.page}:${q.limit}`;
     return this.redis.wrap(cacheKey, 60, async () => {
       const qb = this.vendors
@@ -126,11 +184,32 @@ export class VendorsService {
         .skip((q.page - 1) * q.limit)
         .take(q.limit);
       const [data, total] = await qb.getManyAndCount();
-      return paginate(data, total, q.page, q.limit);
+      return paginate(data.map(publicVendor), total, q.page, q.limit);
     });
   }
 
-  async findOne(id: string): Promise<Vendor> {
+  /** The listing as the public sees it. Never the whole row — see PublicVendor. */
+  async findOne(id: string): Promise<PublicVendor> {
+    return publicVendor(await this.loadOrFail(id));
+  }
+
+  /**
+   * The whole row, for the one account entitled to it.
+   *
+   * The vendor's own portal needs what the public view withholds: the
+   * compliance details they entered, and — the point of it — the exact reason
+   * an officer sent the listing back. A reason the vendor cannot read is a
+   * refusal with no instruction in it.
+   */
+  async findForOwner(actor: AuthUser, id: string): Promise<Vendor> {
+    const vendor = await this.loadOrFail(id);
+    if (actor.role !== UserRole.ADMIN && vendor.ownerUserId !== actor.userId) {
+      throw new ForbiddenException('That business is not yours');
+    }
+    return vendor;
+  }
+
+  private async loadOrFail(id: string): Promise<Vendor> {
     const vendor = await this.vendors.findOne({ where: { id } });
     if (!vendor) throw new NotFoundException('Vendor not found');
     return vendor;

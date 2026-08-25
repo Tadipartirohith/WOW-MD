@@ -311,7 +311,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
 
         {!isLoading && slots.length === 0 && (
           <p className="rounded bg-gray-50 p-4 text-sm text-gray-600">
-            They have nothing free in the next three months. Message them from Chat if your date is
+            They have nothing free in the next six months. Message them from Chat if your date is
             further out.
           </p>
         )}

@@ -63,8 +63,14 @@ export interface SlotView {
   actions: { canEdit: boolean; canRetime: boolean; canBlock: boolean; canDelete: boolean };
 }
 
-/** How far ahead a vendor may publish. Three months, rolling. */
-const WINDOW_MONTHS = 3;
+/**
+ * How far ahead a vendor may publish. Six months, rolling.
+ *
+ * Three was too short for the market this serves. Indian weddings are booked
+ * around auspicious dates that families know a year out, and a venue that
+ * cannot show next April loses the enquiry to one that can.
+ */
+const WINDOW_MONTHS = 6;
 
 /**
  * A vendor's calendar, and the rules that stop the same window being sold
@@ -74,7 +80,7 @@ const WINDOW_MONTHS = 3;
  * Three things here are load-bearing.
  *
  * The window is **rolling** — computed from today on every request rather than
- * stored — so a vendor never has to open a new quarter by hand.
+ * stored — so a vendor never has to open a new season by hand.
  *
  * A slot is never deleted once anyone has asked for it: the row is what the
  * booking, the payments and any later dispute all point at, so it changes
@@ -96,7 +102,7 @@ export class AvailabilityService {
     private readonly services: VendorServicesService,
   ) {}
 
-  /** Today, and today plus three months, as ISO dates. */
+  /** Today, and today plus the window, as ISO dates. */
   window(): { from: string; to: string } {
     const today = new Date();
     const from = today.toISOString().slice(0, 10);

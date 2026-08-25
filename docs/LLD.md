@@ -389,7 +389,7 @@ the data but how the viewer got there.
 
 ### 6.6 Availability, and why the window is computed
 
-A vendor's calendar is a rolling three months from today, worked out per
+A vendor's calendar is a rolling six months from today, worked out per
 request and never stored. The alternative — rows for a fixed window — needs
 somebody or something to open the next quarter, and the failure mode is a vendor
 who silently cannot be booked from the first of the month. Computing it means
