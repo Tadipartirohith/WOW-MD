@@ -58,22 +58,35 @@ data-integrity bug. It needs fixing regardless of how much else gets built.
 
 ## Reversals — decided
 
-### V1 — Services before a match is fixed — **not applied**
+### V1 — Services before a match is fixed — **applied**
 
 > ">> INDIVIDUAL USER SHOULD ABLE TO BOOK THE SERVICES EVEN MATCH IS NOT FIXED <<"
 > — page 2
 
-The platform locks the wedding marketplace until a match is fixed, and
-`verify-rbac.sh` asserts a booking attempt returns 403 before then.
+The platform locked the wedding marketplace until a match was fixed, and
+`verify-rbac.sh` asserted a booking attempt returned 403 before then.
 
-**Decision: keep it locked.** This document's line is treated as aspirational
-rather than a change to the product. The behaviour is already behind
-`SERVICES_REQUIRE_MATCH_FIXED`, so an operator running the services side as a
-standalone marketplace still turns it off with one environment variable — but
-the default stays on, because services being what a couple graduates into is
-what the platform is for.
+**Decision: open it.** The reasoning is commercial and it is decisive: the
+platform's revenue is vendor bookings, not matchmaking. A match fixed at home —
+which is how most of them are fixed — is still a couple with a wedding to buy,
+and holding the shop closed against them protects a funnel they were never in
+while turning away the customer who pays.
 
-This is a deliberate divergence from the document, taken knowingly.
+`SERVICES_REQUIRE_MATCH_FIXED` now defaults to `false`. The gate itself is kept,
+not deleted, so an operator who does want matchmaking to be the front door still
+has it — and when it is on it behaves exactly as before, checked against the
+client the booking is for rather than the person clicking.
+
+Two things had to move with the default, and one of them was a bug waiting to
+happen: `/matches/status` reported `servicesUnlocked` from the fixed match alone,
+so with the gate off the dashboard would have told a buyer they were locked out
+of a marketplace that would have taken their booking. It now reports what the
+marketplace will actually accept. The onboarding copy follows the same value
+rather than asserting the old rule.
+
+*(This entry previously recorded the opposite decision. It was reversed on the
+business reasoning above, which is the correct call — a divergence taken to
+protect a funnel is not worth the bookings it costs.)*
 
 ### V2 — Vendors lose the Chat module — **applied**
 

@@ -74,10 +74,11 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
       # Business switches. With INDIVIDUAL_USER_ENABLED=false the platform runs
-      # as an agent-only brokerage; SERVICES_REQUIRE_MATCH_FIXED=false runs the
-      # wedding marketplace as a standalone directory.
+      # as an agent-only brokerage; SERVICES_REQUIRE_MATCH_FIXED=true makes
+      # matchmaking the front door to the marketplace instead of a shop anyone
+      # may walk into.
       INDIVIDUAL_USER_ENABLED: ${INDIVIDUAL_USER_ENABLED:-true}
-      SERVICES_REQUIRE_MATCH_FIXED: ${SERVICES_REQUIRE_MATCH_FIXED:-true}
+      SERVICES_REQUIRE_MATCH_FIXED: ${SERVICES_REQUIRE_MATCH_FIXED:-false}
       CHAT_REDACT_CONTACTS: ${CHAT_REDACT_CONTACTS:-true}
       MATCH_MIN_SCORE: ${MATCH_MIN_SCORE:-50}
       # The three escrow instalments. They must total 100 or the API refuses to

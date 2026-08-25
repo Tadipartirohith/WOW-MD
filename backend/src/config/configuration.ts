@@ -70,7 +70,11 @@ export default () => ({
      * operator running the services side as a standalone marketplace turns it
      * off.
      */
-    servicesRequireMatchFixed: toBool(process.env.SERVICES_REQUIRE_MATCH_FIXED, true),
+    // Off by default: the revenue is in vendor bookings, and a couple whose
+    // match was fixed at home rather than here is still a couple with a
+    // wedding to buy. An operator who wants matchmaking to be the front door
+    // to the marketplace turns it back on.
+    servicesRequireMatchFixed: toBool(process.env.SERVICES_REQUIRE_MATCH_FIXED, false),
   },
 
   auth: {

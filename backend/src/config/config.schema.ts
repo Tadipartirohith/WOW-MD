@@ -103,7 +103,7 @@ export const configValidationSchema = Joi.object({
   // Feature switches.
   INDIVIDUAL_USER_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
   CHAT_REDACT_CONTACTS: Joi.boolean().truthy('true').falsy('false').default(true),
-  SERVICES_REQUIRE_MATCH_FIXED: Joi.boolean().truthy('true').falsy('false').default(true),
+  SERVICES_REQUIRE_MATCH_FIXED: Joi.boolean().truthy('true').falsy('false').default(false),
   MATCH_SUGGESTIONS_CACHE_TTL: Joi.number().default(120),
   MATCH_MAX_SUGGESTIONS: Joi.number().default(50),
 

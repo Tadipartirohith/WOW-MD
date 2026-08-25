@@ -500,7 +500,10 @@ export class MatchLifecycleService {
           ? current.toProfileId
           : current.fromProfileId
         : null,
-      servicesUnlocked: Boolean(fixed),
+      // What the marketplace will actually accept, not what a fixed match
+      // would imply. With the gate off everybody is unlocked, and a screen
+      // that says otherwise sends people to look for a lock that is not there.
+      servicesUnlocked: !this.cfg.features.servicesRequireMatchFixed || Boolean(fixed),
     };
   }
 

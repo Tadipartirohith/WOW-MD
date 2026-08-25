@@ -450,7 +450,9 @@ export default function Matches() {
                 {status.stage === 'profile_incomplete' &&
                   'Fill in the basics — name, gender, date of birth and city — before browsing.'}
                 {status.stage === 'matchmaking_active' &&
-                  'Browsing and sending interests. Wedding services open once a match is fixed.'}
+                  (status.servicesUnlocked
+                    ? 'Browsing and sending interests. The wedding marketplace is open to you now — you do not have to wait for a match.'
+                    : 'Browsing and sending interests. Wedding services open once a match is fixed.')}
                 {status.stage === 'match_fixed' &&
                   'The match is fixed. Matchmaking is closed and the wedding marketplace is open.'}
               </p>

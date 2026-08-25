@@ -132,16 +132,23 @@ Three gates, all from the spec:
 | --- | --- | --- |
 | Sign-up | Individuals may self-register | `INDIVIDUAL_USER_ENABLED` |
 | Matchmaking | Complete profile, and not already in a fixed match | — |
-| Services | Vendor and planner bookings open once the match is fixed | `SERVICES_REQUIRE_MATCH_FIXED` |
+| Services | Vendor and planner bookings are open to any signed-in buyer | `SERVICES_REQUIRE_MATCH_FIXED` |
 
 With `INDIVIDUAL_USER_ENABLED=false` the platform runs as an agent-only
 brokerage: the option is not offered on the sign-up screen, and the server
 refuses it. Accounts created while it was on keep working — the flag gates the
 front door, not the people already inside.
 
-The services gate is checked against the **client** a booking is for, not the
-person clicking, so an agent booking a venue for a client is held to the
-client's status rather than their own.
+The services gate is **off by default**: any signed-in buyer may book a vendor
+without a fixed match. Most matches are fixed at home rather than here, and one
+of those is still a wedding that needs a caterer — the bookings are where the
+platform earns, so the shop does not check whether you came through
+matchmaking to reach it.
+
+With `SERVICES_REQUIRE_MATCH_FIXED=true` the gate returns, for an operator who
+wants matchmaking to be the front door. It is then checked against the
+**client** a booking is for, not the person clicking, so an agent booking a
+venue for a client is held to the client's status rather than their own.
 
 Recommendations now need `> MATCH_MIN_SCORE`, defaulted to **50** per the spec.
 
@@ -272,7 +279,7 @@ private and has its held fees refunded.
 | Variable | Default | Controls |
 | --- | --- | --- |
 | `INDIVIDUAL_USER_ENABLED` | `true` | Whether individuals may self-register |
-| `SERVICES_REQUIRE_MATCH_FIXED` | `true` | Whether the marketplace waits for a fixed match |
+| `SERVICES_REQUIRE_MATCH_FIXED` | `false` | Whether the marketplace waits for a fixed match |
 | `CHAT_REDACT_CONTACTS` | `true` | Contact stripping in chat |
 | `MATCH_MIN_SCORE` | `50` | Recommendation threshold |
 | `ESCROW_ADVANCE_PERCENT` | `30` | First instalment |

@@ -400,8 +400,16 @@ req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"date
 c=$(req GET /users/me "" "$GROOM")
 GROOM_PROFILE=$(field /tmp/body id)
 
+# The marketplace is open before any match is fixed, and that is deliberate.
+# The platform earns on this booking whether or not the couple met here, and a
+# match fixed at home is still a wedding that needs a caterer.
+c=$(req GET /matches/status "" "$BRIDE")
+body_has '"servicesUnlocked":true' "services report as open with no match fixed"
 c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":100000,\"eventDate\":\"2027-02-14\"}" "$BRIDE")
-check "services are locked before the bride's match is fixed" "$c" 403
+check "and the bride books a vendor with no match fixed at all" "$c" 201
+EARLY_BOOKING=$(field /tmp/body id)
+c=$(req PUT "/bookings/$EARLY_BOOKING/cancel" '{"reason":"Only here to prove the door is open."}' "$BRIDE")
+check "she withdraws it again, leaving the rest of the suite as it was" "$c" 200
 
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\"}" "$BRIDE")
 check "bride sends the groom an interest" "$c" 201

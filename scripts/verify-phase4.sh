@@ -244,9 +244,9 @@ VENDOR=$(field /tmp/vendor.json accessToken)
 BRIDE=$(field /tmp/bride.json accessToken)
 GROOM=$(field /tmp/groom.json accessToken)
 
-# Wedding services stay locked until a match is fixed, so the buyer in this
-# suite has to get married first. That rule is exercised properly in
-# verify-phase1; here it is setup, done in as few steps as possible.
+# The buyer gets married here not because bookings require it — they no longer
+# do — but because later sections need a fixed match of their own: the agency
+# success fee, and matchmaking closing. Done in as few steps as possible.
 PREFS='{"religion":"hindu","education":"masters","lifestyle":["vegetarian"]}'
 req PUT /users/me/profile "{\"displayName\":\"Bride\",\"gender\":\"female\",\"dateOfBirth\":\"1997-07-11\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$BRIDE" >/dev/null
 req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$GROOM" >/dev/null

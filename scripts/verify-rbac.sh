@@ -41,6 +41,25 @@ check() {
   fi
 }
 
+# The same vocabulary the other suites use. This one grew its own idiom —
+# `grep -q ... && PASS=... || FAIL=...` written out longhand at each site — and
+# the cost showed up the first time an assertion was copied in from elsewhere:
+# `body_has` was not defined here, sh printed "not found" to stderr, and the
+# suite carried on reporting green. An assertion that silently does not run is
+# worse than one that fails.
+assert() {
+  if [ "$2" = "1" ]; then
+    printf '  PASS  %s
+' "$1"
+    PASS=$((PASS + 1))
+  else
+    printf '  FAIL  %s: %s
+' "$1" "$(head -c 300 /tmp/body)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+body_has() { grep -q "$1" /tmp/body && assert "$2" 1 || assert "$2" 0; }
+
 # Precise extraction; jq is present in the runner image.
 field() { jq -r ".$2 // empty" "$1"; }
 
@@ -368,10 +387,13 @@ FIXED_INTEREST=$(field /tmp/body id)
 c=$(req PUT "/matches/$FIXED_INTEREST/accept" "" "$GROOM")
 check "groom accepts" "$c" 200
 
-# Services are locked until the match is fixed. This is the gate, checked
-# before it opens rather than only after.
+# The marketplace does not wait for a match. What refuses this attempt is the
+# provider id — which is a profile, not a listing — and proving that is the
+# assertion: the refusal is about the shop, not about who is allowed in it.
+c=$(req GET /matches/status "" "$BRIDE")
+body_has '"servicesUnlocked":true' "services are open before any match is fixed"
 c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$BRIDE_PROFILE\",\"amount\":5000}" "$BRIDE")
-check "services are locked before the match is fixed" "$c" 403
+check "and a booking is refused for the listing, not for the match" "$c" 404
 
 c=$(req PUT "/matches/$FIXED_INTEREST/match-fixed" "" "$BRIDE")
 check "bride confirms her side" "$c" 200

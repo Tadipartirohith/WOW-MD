@@ -62,10 +62,15 @@ describe('BookingsService', () => {
   };
 
   // The buyer on these bookings is a matched individual with a completed
-  // profile, so the services gate is satisfied and the tests stay about the
-  // state machine and the ownership rules.
+  // profile, so these tests stay about the state machine and the ownership
+  // rules whichever way the services gate is set.
+  // Nullable on purpose: one test hands back no profile at all, which is what a
+  // buyer who never touched matchmaking looks like.
+  type StubProfile = { id: string; userId: string; profileCompleted: boolean };
   const profilesRepo = {
-    findOne: jest.fn(async () => ({ id: 'p1', userId: 'u1', profileCompleted: true })),
+    findOne: jest.fn(
+      async (): Promise<StubProfile | null> => ({ id: 'p1', userId: 'u1', profileCompleted: true }),
+    ),
   };
   const usersRepo = { findOne: jest.fn(async () => ({ id: 'u1', role: UserRole.BRIDE })) };
   const cases = { hasOpenCaseFor: jest.fn(async () => false) } as unknown as SupportCasesService;
@@ -92,8 +97,14 @@ describe('BookingsService', () => {
       commissionPercent: 10,
       milestonePercents: { advance: 30, second: 30, final: 40 },
     },
-    features: { servicesRequireMatchFixed: true },
+    // Mutable on purpose: the gate is a switch, and both of its positions are
+    // worth a test.
+    features: { servicesRequireMatchFixed: false },
   } as unknown as AppConfigService;
+  const gate = (on: boolean) => {
+    (cfg as unknown as { features: { servicesRequireMatchFixed: boolean } }).features
+      .servicesRequireMatchFixed = on;
+  };
   const outbox = { record: jest.fn() } as unknown as OutboxService;
   // confirm() takes the vendor's date inside a transaction, so the stub has to
   // hand back a manager that behaves like the booking repository.
@@ -295,6 +306,57 @@ describe('BookingsService', () => {
           amount: 1000,
         }),
       ).rejects.toBeInstanceOf(Error);
+    });
+  });
+
+  // The marketplace is open by default. Most matches are fixed at home, and one
+  // of those is still a wedding that needs a caterer — the booking is where the
+  // platform earns, so it is not held behind a funnel the buyer was never in.
+  describe('the services gate', () => {
+    afterEach(() => gate(false));
+
+    it('takes a booking from a buyer whose match nobody has asked about', async () => {
+      const booking = await service.create(asUser('u1', UserRole.BRIDE), {
+        providerType: ProviderType.VENDOR,
+        providerId: 'v1',
+        amount: 1000,
+      });
+
+      expect(booking.status).toBe(BookingStatus.REQUESTED);
+      // Asserted rather than stubbed: with the gate off nothing should go
+      // looking for a profile or a match at all, so a buyer who has neither is
+      // served for the same reason a buyer who has both is.
+      expect(profilesRepo.findOne).not.toHaveBeenCalled();
+      expect(matchmaking.isMatchFixed).not.toHaveBeenCalled();
+    });
+
+    it('still holds the door when an operator switches the gate back on', async () => {
+      gate(true);
+      (matchmaking.isMatchFixed as jest.Mock).mockResolvedValueOnce(false);
+
+      await expect(
+        service.create(asUser('u1', UserRole.BRIDE), {
+          providerType: ProviderType.VENDOR,
+          providerId: 'v1',
+          amount: 1000,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('never applies to an account with no matchmaking profile, gate or no gate', async () => {
+      gate(true);
+      usersRepo.findOne.mockResolvedValueOnce({ id: 'u1', role: UserRole.VENDOR });
+
+      // A vendor account is refused for being a vendor, not for being unmatched:
+      // the gate has nothing to say about accounts that never had a profile.
+      await expect(
+        service.create(asUser('u1', UserRole.VENDOR), {
+          providerType: ProviderType.VENDOR,
+          providerId: 'v1',
+          amount: 1000,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(matchmaking.isMatchFixed).not.toHaveBeenCalled();
     });
   });
 });

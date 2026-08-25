@@ -403,13 +403,20 @@ export class BookingsService {
   }
 
   /**
-   * The wedding marketplace opens once a match is fixed.
+   * The wedding marketplace, and who may buy from it.
    *
-   * The check runs against the *client* the booking is for, not the person
-   * clicking, so an agent booking a venue for a client is held to the client's
-   * status rather than their own. Accounts with no matchmaking profile at all —
-   * an agency booking for its own office, say — are not part of this and pass
-   * straight through.
+   * Open to everybody by default. The platform earns on vendor bookings, and a
+   * match fixed at home — which is how most of them are fixed — is still a
+   * wedding that needs a caterer. Making matchmaking a toll gate in front of
+   * the shop turns paying customers away at the door to protect a funnel they
+   * were never in.
+   *
+   * The gate survives behind `SERVICES_REQUIRE_MATCH_FIXED` for an operator
+   * running matchmaking as the front door, and when it is on the check runs
+   * against the *client* the booking is for, not the person clicking, so an
+   * agent booking a venue for a client is held to the client's status rather
+   * than their own. Accounts with no matchmaking profile at all — an agency
+   * booking for its own office, say — are never part of it either way.
    */
   private async assertServicesUnlocked(clientUserId: string): Promise<void> {
     if (!this.cfg.features.servicesRequireMatchFixed) return;
