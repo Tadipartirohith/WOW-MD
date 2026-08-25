@@ -52,6 +52,23 @@ done
 
 echo
 if [ "$ok" = "1" ]; then
+  # Both seeders, every time. They are idempotent and non-destructive — they
+  # fill in what is missing and change nothing anybody has since edited — so
+  # running them on every deploy costs a few seconds and removes a whole class
+  # of "it started fine but nothing works" report.
+  #
+  # Neither can be done through the API. An administrator is deliberately not
+  # self-registerable, and the service catalog is configuration rather than
+  # user data. Without the catalog a vendor cannot put a priced service on a
+  # listing, so no listing can be submitted for verification and nothing in the
+  # marketplace can be sold — on a stack whose health check is perfectly green.
+  echo "Seeding the administrator and the service catalog."
+  $COMPOSE -f docker/docker-compose.yml --profile seed run --rm seed-admin || \
+    echo "  (the administrator seed did not run — see the logs)"
+  $COMPOSE -f docker/docker-compose.yml --profile seed run --rm seed-catalog || \
+    echo "  (the catalog seed did not run — vendors will not be able to list services)"
+
+  echo
   echo "WOW is live."
   echo "Frontend is at http://localhost:8080"
   echo "API is at http://localhost:3000/api"

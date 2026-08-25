@@ -149,6 +149,37 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # The starting service catalog: categories, services and the questions each
+  # one asks. A deployment without it has an empty catalog, which means no
+  # vendor can put a priced service on a listing and therefore no listing can
+  # ever be submitted for verification — the whole marketplace is inert. The
+  # admin seeder was wired up here and this one was not, so a fresh install
+  # looked fine until the first vendor tried to sell something.
+  #
+  #   docker compose -f docker/docker-compose.yml --profile seed run --rm seed-catalog
+  #
+  # Idempotent and non-destructive: it fills in what is missing and changes
+  # nothing an administrator has since edited.
+  seed-catalog:
+    image: wow-backend:local
+    container_name: wow-seed-catalog
+    profiles: ["seed"]
+    command: ["node", "dist/database/seed-catalog.js"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-wow_user}
+      DB_PASSWORD: ${DB_PASSWORD:-wow_password}
+      DB_NAME: ${DB_NAME:-wow_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-min-32-characters-long}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-in-production-min-32-chars}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   frontend:
     build:
       context: ../frontend

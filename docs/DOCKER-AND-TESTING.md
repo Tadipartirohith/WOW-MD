@@ -12,6 +12,25 @@ docker compose -f docker/docker-compose.yml up --build
 
 When it finishes you can open the frontend at http://localhost:8080, read the API documentation at http://localhost:3000/api/docs, check readiness at http://localhost:3000/api/health, and check liveness at http://localhost:3000/api/health/live. To stop everything, run the same command with down in place of up. Adding the volumes flag on the down command also erases the stored data.
 
+### Seed it, both times
+
+A fresh database has no administrator and no service catalog, and neither can
+be created through the API — an administrator is not self-registerable by
+design, and the catalog is configuration rather than user data. Two one-shot
+commands, both idempotent, both safe to re-run:
+
+```
+docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
+docker compose -f docker/docker-compose.yml --profile seed run --rm seed-catalog
+```
+
+**The catalog one is not optional.** Without it a vendor cannot put a priced
+service on a listing, so no listing can be submitted for verification and
+nothing in the marketplace can ever be sold. A deployment missing it looks
+perfectly healthy — the API answers, the pages load — right up until the first
+vendor tries to sell something. It was missing from this document and from the
+compose file until a from-scratch run went looking for it.
+
 To run the optional Neo4j and Kafka services as well, start with the full profile and turn on their flags in the same command.
 
 ```

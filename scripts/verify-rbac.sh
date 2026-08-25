@@ -92,7 +92,16 @@ answers_for() { # answers_for <serviceForm json on stdin>
 seed_catalog() { # seed_catalog <token> <businessId>
   req GET /catalog/categories "" "$1" >/dev/null
   cat_ids=$(jq -r '.[].id' /tmp/body)
-  [ -z "$cat_ids" ] && return 1
+  # An empty catalog is a setup problem, not a test failure, and it used to
+  # look like one six assertions later: this returned quietly, the business got
+  # no priced service, and the suite reported "Finish these first: Catalog
+  # services" from somewhere else entirely. Say it here, where it is true.
+  if [ -z "$cat_ids" ]; then
+    echo "  FAIL  the service catalog is empty — run the catalog seed first:" >&2
+    echo "        docker compose -f docker/docker-compose.yml --profile seed run --rm seed-catalog" >&2
+    FAIL=$((FAIL + 1))
+    return 1
+  fi
 
   for cat_id in $cat_ids; do
     req GET "/catalog/categories/$cat_id/services" "" "$1" >/dev/null

@@ -19,11 +19,15 @@ bash deploy-local.sh
 
 The script checks that Docker is up and tries to start it for you if it is not. It then builds the images, starts all four services, waits until the API reports that it is healthy, and prints the addresses. When it finishes you can open the frontend at http://localhost:8080, read the API documentation at http://localhost:3000/api/docs, and check health at http://localhost:3000/api/health.
 
-If you prefer to run the underlying command yourself instead of the script, the equivalent is to bring the stack up with compose.
+If you prefer to run the underlying command yourself instead of the script, the equivalent is to bring the stack up with compose and then seed it. The script does the seeding for you; doing it by hand means remembering both steps.
 
 ```
-docker compose -f docker/docker-compose.yml up --build
+docker compose -f docker/docker-compose.yml up --build -d
+docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
+docker compose -f docker/docker-compose.yml --profile seed run --rm seed-catalog
 ```
+
+The first seed creates the administrator, which cannot be registered through the sign-up page on purpose. The second fills in the service catalog. Skip the second and everything will appear to work until a vendor tries to add a service to their listing and finds there are none to choose from, which then stops them submitting the listing for verification at all. Both are safe to run again at any time.
 
 To stop everything, run compose down. Adding the volumes flag also erases the stored data so you get a clean slate next time.
 
