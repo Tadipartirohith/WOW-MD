@@ -156,7 +156,7 @@ genuinely new is separated out.
 | P9 | Family assets: estimated value of the property | done | `estimatedValue` already exists and is shown |
 | P10 | Planner must reject past wedding dates | new | It accepts `05-11-2025` today |
 | P11 | Planner tasks must not fall due before the wedding date | new | |
-| P12 | Wedding dashboard: countdown, budget tracker by category, guest management, journey timeline, upcoming events | new | Large. The plan and tasks exist; none of this presentation does |
+| P12 | Wedding dashboard: countdown, budget tracker by category, guest management, journey timeline, upcoming events | **done** | One read model rather than four fetches joined in the client. Budgeted comes from the events, committed from the bookings grouped by what the vendor does, and the gap between them is the only figure anybody wants |
 | P13 | Events: type, category, start/end time, expected guests, status, budget, description, image | partly done | An event has name, date and venue. The rest is new |
 | P14 | Event cards with filters, search, grid/list, and **Select Vendors** per event | partly done | Per-event vendors exist; the presentation does not |
 | P15 | Chat three-dot menu: view profile, search, mute, clear, **block**, **report**, delete conversation | new | Block and report are the substantial ones |
@@ -165,9 +165,9 @@ genuinely new is separated out.
 | P18 | Interest Accepted notification does not say **who** accepted | new | |
 | P19 | Match card shows only name/city/age; profile is not clickable | new | |
 | P20 | Matches page: filters left, recently uploaded centre, AI recommendations right with match % | partly done | Eleven filters and a ≥50% floor exist; the three-column layout does not |
-| P21 | Honeymoon: "Create Plan" does not create a plan | new | Needs reproducing |
-| P22 | Media: album cards, direct upload rather than URL, gallery, counts, progress, empty states | partly done | Presigned upload exists; the album UI is URL-driven |
-| P23 | Support: photo attachment not working | partly done | The Support page built last round attaches through the same presigned upload; worth verifying against the reported case |
+| P21 | Honeymoon: "Create Plan" does not create a plan | **done** | Reproduced. The itinerary DTO required at least one day, so the button — which posts a title and an empty list, because the point is to start a plan and fill it in — was refused every single time |
+| P22 | Media: album cards, direct upload rather than URL, gallery, counts, progress, empty states | **done** | Albums are cards with a cover and a count, photographs are chosen from the device, and what you see is the picture. Deleting a photograph or an album is new — a gallery you cannot remove anything from is not one |
+| P23 | Support: photo attachment not working | **done** | Reproduced, and it was worse than reported — see below. Also gains a document route, because a support attachment is as often an invoice as a photograph |
 
 ---
 
@@ -311,3 +311,5 @@ matters.
 | Findings could mark a case decided | `RecordFindingsDto.status` accepted any `CaseStatus`, so an officer writing up their visit could set RESOLVED on the way past and skip the administrator entirely |
 | `"false"` meant yes | The application validates with implicit conversion, which turns any non-empty string into `true` for a boolean field. Harmless on a page filter; on `isActive` it meant an administrator posting `"false"` reinstated the account they meant to suspend, and on `allowsCirculation` it meant consent to circulate somebody's biodata could be manufactured from the word "no". The three fields where a person is on the other end now use `StrictBoolean` |
 | Suites could not run back to back | The throttle-clearing preamble was guarded on `redis-cli` being present, and the runner image never installed it — so the guard silently did nothing and a second run in the same minute failed with 429s that read like real defects. The runner now installs it |
+| **Every URL field refused the platform's own uploads** | `@IsUrl({ require_protocol: true })` also requires a top-level domain. The presign hands back `http://localhost:3000/…` in development and `http://minio:9000/…` self-hosted, so every field that stored an uploaded file — photographs, portfolios, event images, chat media, dispute and case evidence — refused the URL the platform had just issued for it. It survived because the suites post literal `https://cdn.example.com/…` strings, which do have a TLD: nothing ever fed a real presigned URL back in the way a browser does. This is what "attaching a photo to a support case does not work" actually was |
+| Disputes asked for invoices and offered a URL box | The evidence field said "photographs, invoices, message screenshots" and then gave a box for a link, so proof had to be uploaded somewhere else first. Almost nobody does that, and disputes arrived as prose that an officer then decided on |

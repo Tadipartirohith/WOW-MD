@@ -1369,6 +1369,135 @@ c=$(req POST /notifications/devices '{"token":"x"}' "$VENDOR")
 check "a token too short to be real is refused" "$c" 400
 
 echo
+echo "== 40. Attaching the thing you are complaining about =="
+
+# The whole upload path passed its tests and failed for every user. The suites
+# posted literal https://cdn.example.com/... strings, which have a top-level
+# domain; the platform's own presign hands back http://localhost:3000/... in
+# development and http://minio:9000/... self-hosted, and neither does. Every
+# field that stored an uploaded file refused the URL the platform had just
+# issued for it. This posts the *real* presigned URL, which is what the browser
+# does and what nothing here ever did.
+
+c=$(req POST /media/profile-photo/presign '{"filename":"receipt.jpg"}' "$BRIDE")
+check "an upload slot is issued" "$c" 201
+REAL_URL=$(field /tmp/body publicUrl)
+
+c=$(req POST /verification/cases "{\"subjectType\":\"other\",\"title\":\"Attachment\",\"description\":\"Attaching the receipt the platform just gave me a slot for.\",\"evidence\":[\"$REAL_URL\"]}" "$BRIDE")
+check "and a case accepts the URL the platform itself issued" "$c" 201
+ATTACH_CASE=$(field /tmp/body id)
+body_has 'mock-storage' "with the attachment on it"
+
+c=$(req PUT "/verification/cases/$ATTACH_CASE/evidence" "{\"evidence\":[\"$REAL_URL\"]}" "$BRIDE")
+check "more evidence can be added to it afterwards" "$c" 200
+
+# A support attachment is as often an invoice as a photograph. The profile
+# photograph route still refuses one, because a PDF on a biodata renders as a
+# broken box.
+c=$(req POST /media/attachment/presign '{"filename":"invoice.pdf"}' "$BRIDE")
+check "a PDF can be attached as evidence" "$c" 201
+c=$(req POST /media/profile-photo/presign '{"filename":"invoice.pdf"}' "$BRIDE")
+check "but not used as a profile photograph" "$c" 400
+c=$(req POST /media/attachment/presign '{"filename":"../../etc/passwd"}' "$BRIDE")
+check "and a path is still refused, wherever it is going" "$c" 400
+
+# A honeymoon plan starts before it has any days in it. This used to be refused
+# every time, which is what "Create Plan does not create a plan" was.
+c=$(req POST /travel/itineraries '{"title":"Kerala, December","items":[]}' "$BRIDE")
+check "a plan can be started empty" "$c" 201
+ITIN=$(field /tmp/body id)
+assert "and it exists afterwards" "$([ -n "$ITIN" ] && echo 1 || echo 0)"
+c=$(req GET /travel/itineraries "" "$BRIDE")
+body_has 'Kerala, December' "listed under the account that made it"
+
+echo
+echo "== 41. An album that is a gallery, not a list of links =="
+
+c=$(req GET /media/albums "" "$BRIDE")
+check "the albums are listed" "$c" 200
+assert "empty to begin with" "$(jq -e 'length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req POST /media/albums '{"title":"Mehendi","isPublic":true}' "$BRIDE")
+check "an album is created" "$c" 201
+ALBUM=$(field /tmp/body id)
+
+c=$(req GET /media/albums "" "$BRIDE")
+body_has '"itemCount":0' "and reads as a card with nothing in it"
+body_has '"coverUrl":null' "and no cover yet"
+body_has 'shareUrl' "carrying the share link, since it is public"
+
+# Straight from the device: presign, then hand the album the URL the platform
+# itself issued. This is the path the browser takes.
+c=$(req POST "/media/albums/$ALBUM/presign" '{"filename":"mehendi.jpg"}' "$BRIDE")
+check "an upload slot for the album is issued" "$c" 201
+PHOTO=$(field /tmp/body publicUrl)
+c=$(req POST "/media/albums/$ALBUM/items" "{\"url\":\"$PHOTO\",\"type\":\"image\"}" "$BRIDE")
+check "and the photograph goes into the album" "$c" 201
+ITEM=$(field /tmp/body id)
+
+c=$(req GET /media/albums "" "$BRIDE")
+body_has '"itemCount":1' "the card counts it"
+grep -q '"coverUrl":null' /tmp/body && assert "and still has no cover" 0 || assert "and takes it as the cover" 1
+
+# Somebody else's album is not theirs to read, add to, or empty.
+c=$(req GET "/media/albums/$ALBUM/items" "" "$GROOM")
+check "another account cannot open the album" "$c" 403
+c=$(req DELETE "/media/albums/$ALBUM/items/$ITEM" "" "$GROOM")
+check "nor remove a photograph from it" "$c" 403
+c=$(req DELETE "/media/albums/$ALBUM" "" "$GROOM")
+check "nor delete it" "$c" 403
+
+c=$(req DELETE "/media/albums/$ALBUM/items/$ITEM" "" "$BRIDE")
+check "the owner removes a photograph" "$c" 200
+c=$(req GET /media/albums "" "$BRIDE")
+body_has '"itemCount":0' "and the count follows"
+
+c=$(req DELETE "/media/albums/$ALBUM" "" "$BRIDE")
+check "and deletes the album" "$c" 200
+c=$(req GET "/media/albums/$ALBUM/items" "" "$BRIDE")
+check "which then no longer exists" "$c" 404
+
+echo
+echo "== 42. The whole wedding on one screen =="
+
+# Everything on this dashboard existed already, on four different pages. What
+# did not exist was anywhere that answered "how is it going".
+
+c=$(req GET /planner/dashboard "" "$BRIDE")
+check "the dashboard is served" "$c" 200
+body_has '"countdown"' "with a countdown"
+body_has '"budget"' "a budget"
+body_has '"guests"' "the guest list"
+body_has '"journey"' "the journey through the plan"
+body_has '"upcoming"' "and what is happening next"
+
+c=$(req GET /planner/dashboard "" "$VENDOR")
+check "a vendor has no wedding to see" "$c" 403
+
+# With nothing set up, it answers with zeros rather than failing. A couple who
+# has just signed up is the commonest reader of this screen.
+c=$(req GET /planner/dashboard "" "$GROOM")
+check "and it answers for an account with nothing on it yet" "$c" 200
+assert "with no date rather than an error" "$(jq -e '.countdown.weddingDate == null or (.countdown.weddingDate | type) == "string"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# A budget on an event, and a booking against a vendor, land in the same table
+# from different directions — which is the only thing on this screen that
+# could not be read off one page already.
+DASH_DATE=$(days_from_now 45)
+c=$(req POST /events "{\"name\":\"Sangeet $STAMP\",\"eventDate\":\"$DASH_DATE\",\"category\":\"pre_wedding\",\"budget\":150000,\"expectedGuests\":200}" "$BRIDE")
+check "an event carries a budget" "$c" 201
+
+c=$(req GET /planner/dashboard "" "$BRIDE")
+assert "which the dashboard adds to the total" "$(jq -e '.budget.budgeted | tonumber >= 150000' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and breaks down by category" "$(jq -e '.budget.categories | any(.category == "pre_wedding" and (.budgeted | tonumber) >= 150000)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "counting what has been committed against it" "$(jq -e '.budget.committed | tonumber >= 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and the event appears in what is next" "$(jq -e --arg n "Sangeet $STAMP" 'any(.upcoming[]; .name == $n)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# The countdown falls back to the first event when there is no plan, rather
+# than reporting no date while the couple's own calendar has one in it.
+assert "the countdown has a date to work from" "$(jq -e '.countdown.weddingDate != null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

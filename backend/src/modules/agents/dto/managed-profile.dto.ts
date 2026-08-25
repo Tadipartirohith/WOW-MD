@@ -10,12 +10,12 @@ import {
   IsEnum,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import {
   ConsentMethod,
   ConsentRelation,
@@ -155,7 +155,7 @@ export class CreateManagedProfileDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   @MaxLength(2048, { each: true })
   photos?: string[];
 
@@ -204,7 +204,7 @@ export class ManagedProfileSearchDto extends PaginationDto {
 
 export class AddProfilePhotoDto {
   @ApiProperty({ maxLength: 2048 })
-  @IsUrl({ require_protocol: true })
+  @IsUploadedUrl()
   @MaxLength(2048)
   url: string;
 }

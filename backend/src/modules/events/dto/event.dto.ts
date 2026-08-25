@@ -7,7 +7,6 @@ import {
   IsNumberString,
   IsOptional,
   IsString,
-  IsUrl,
   IsUUID,
   Matches,
   Max,
@@ -15,6 +14,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { Transform } from 'class-transformer';
 import { EventCategory, EventStatus, RsvpStatus } from '../../../common/enums';
 import { MOBILE_MESSAGE, MOBILE_PATTERN, normaliseMobile } from '../../../common/util/identity-fields';
@@ -69,7 +69,7 @@ export class CreateEventDto {
   description?: string;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsUrl({ require_protocol: true })
+  @IsOptional() @IsUploadedUrl()
   imageUrl?: string;
 
   @ApiPropertyOptional({ enum: EventStatus })
@@ -128,7 +128,7 @@ export class UpdateEventDto {
   description?: string;
 
   @ApiPropertyOptional()
-  @IsOptional() @IsUrl({ require_protocol: true })
+  @IsOptional() @IsUploadedUrl()
   imageUrl?: string;
 
   @ApiPropertyOptional({ enum: EventStatus })

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { MediaType } from '../../../common/enums';
 
 export class CreateAlbumDto {
@@ -28,9 +29,28 @@ export class PresignDto {
   filename: string;
 }
 
+/**
+ * An upload slot for evidence: a receipt, an invoice, a screenshot.
+ *
+ * A separate class from `PresignDto` rather than a widened one, because the two
+ * are answering different questions. A profile photograph must be an image —
+ * accepting a PDF there produces a biodata that renders as a broken box. A
+ * support attachment is whatever proves the point, and in practice that is as
+ * often an invoice as a photograph. The album route stays image-and-video only.
+ */
+export class PresignAttachmentDto {
+  @ApiProperty({ example: 'invoice.pdf', maxLength: 200 })
+  @IsString()
+  @MaxLength(200)
+  @Matches(/^[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp|heic|pdf)$/i, {
+    message: 'filename must be a simple name ending in an image extension or .pdf',
+  })
+  filename: string;
+}
+
 export class AddMediaItemDto {
   @ApiProperty({ maxLength: 2048 })
-  @IsUrl({ require_protocol: true })
+  @IsUploadedUrl()
   @MaxLength(2048)
   url: string;
 

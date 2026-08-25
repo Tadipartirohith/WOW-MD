@@ -8,13 +8,13 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUrl,
   IsUUID,
   Max,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import {
   CasePriority,
   CaseStatus,
@@ -55,7 +55,7 @@ export class RaiseCaseDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   evidence?: string[];
 
   @ApiProperty({ minLength: 5, maxLength: 200 })
@@ -91,7 +91,7 @@ export class AddEvidenceDto {
   @ApiProperty({ type: [String], maxItems: 10 })
   @IsArray()
   @ArrayMaxSize(10)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   evidence: string[];
 }
 

@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsInt,
   IsNumber,
@@ -40,13 +39,23 @@ export class CreateItineraryDto {
   @IsUUID('4')
   packageId?: string;
 
-  @ApiProperty({ type: [ItineraryItemDto], minItems: 1, maxItems: 100 })
+  /**
+   * The days, if there are any yet.
+   *
+   * Optional, and that is the fix rather than a relaxation. It used to require
+   * at least one item, so the "Create plan" button — which posts a title and an
+   * empty list, because the whole idea is to start a plan and fill it in — was
+   * refused every single time. A honeymoon is planned by writing the name of
+   * the trip down first; insisting on day one before the plan can exist is
+   * asking somebody to have finished before they may start.
+   */
+  @ApiPropertyOptional({ type: [ItineraryItemDto], maxItems: 100 })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => ItineraryItemDto)
-  items: ItineraryItemDto[];
+  items?: ItineraryItemDto[];
 }
 
 /**

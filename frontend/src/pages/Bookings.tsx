@@ -6,6 +6,7 @@ import { useAuth } from '../store/auth';
 import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/permissions';
 import ProviderBookings from '../components/ProviderBookings';
 import BookingChat from '../components/BookingChat';
+import PhotoUploader from '../components/PhotoUploader';
 
 interface Booking {
   id: string;
@@ -514,6 +515,17 @@ function DisputeForm({
           >
             Add
           </button>
+          {/*
+            The copy asked for invoices and screenshots and then offered a box
+            for a URL, which meant uploading the thing somewhere else first.
+            Almost nobody does that, so disputes arrived with prose and no
+            proof — and an officer decided them on the prose.
+          */}
+          <PhotoUploader
+            kind="attachment"
+            label="Upload a file"
+            onUploaded={(u) => setEvidence((list) => [...list, u])}
+          />
         </div>
       </div>
 

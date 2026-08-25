@@ -8,7 +8,6 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   Max,
   MaxLength,
@@ -16,6 +15,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { FamilyAssetType, FamilyType, MaritalStatus, OccupationStatus } from '../../../common/enums';
 import {
   MOBILE_MESSAGE,
@@ -199,7 +199,7 @@ export class HoroscopeDetailsDto {
 
   @ApiPropertyOptional({ description: 'Uploaded chart' })
   @IsOptional()
-  @IsUrl({ require_protocol: true })
+  @IsUploadedUrl()
   horoscopeDocumentUrl?: string;
 }
 
@@ -478,7 +478,7 @@ export class PartnerPreferencesDto {
 
 export class SetPrimaryPhotoDto {
   @ApiProperty({ description: 'One of the photos already on the profile' })
-  @IsUrl({ require_protocol: true })
+  @IsUploadedUrl()
   url: string;
 }
 

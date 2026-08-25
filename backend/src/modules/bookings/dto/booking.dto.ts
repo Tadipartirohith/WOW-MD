@@ -7,13 +7,13 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUrl,
   IsUUID,
   Max,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { BookingStatus, PaymentMilestone, ProviderType } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -153,7 +153,7 @@ export class BookingMessageDto {
 
   @ApiPropertyOptional({ maxLength: 2048 })
   @IsOptional()
-  @IsUrl({ require_protocol: true })
+  @IsUploadedUrl()
   @MaxLength(2048)
   mediaUrl?: string;
 }

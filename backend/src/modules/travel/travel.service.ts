@@ -68,7 +68,7 @@ export class TravelService {
         userId,
         title: dto.title,
         packageId: dto.packageId ?? null,
-        items: dto.items,
+        items: dto.items ?? [],
       }),
     );
   }

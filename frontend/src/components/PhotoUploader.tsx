@@ -16,9 +16,18 @@ import { api, apiMessage } from '../lib/api';
 export default function PhotoUploader({
   onUploaded,
   label = 'Upload a photo',
+  kind = 'photo',
 }: {
   onUploaded: (url: string) => void;
   label?: string;
+  /**
+   * What is being attached.
+   *
+   * A profile photograph must be an image — a PDF there renders as a broken
+   * box on somebody's biodata. Evidence on a support case is whatever proves
+   * the point, and in practice that is as often an invoice as a photograph.
+   */
+  kind?: 'photo' | 'attachment';
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -29,8 +38,9 @@ export default function PhotoUploader({
     if (!file) return;
 
     setError('');
-    if (!file.type.startsWith('image/')) {
-      setError('Choose an image file.');
+    const isDocument = kind === 'attachment' && file.type === 'application/pdf';
+    if (!file.type.startsWith('image/') && !isDocument) {
+      setError(kind === 'attachment' ? 'Choose an image or a PDF.' : 'Choose an image file.');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -40,7 +50,10 @@ export default function PhotoUploader({
 
     setBusy(true);
     try {
-      const { data } = await api.post('/media/profile-photo/presign', { filename: file.name });
+      const { data } = await api.post(
+        kind === 'attachment' ? '/media/attachment/presign' : '/media/profile-photo/presign',
+        { filename: file.name },
+      );
 
       const response = await fetch(data.uploadUrl, {
         method: 'PUT',
@@ -65,7 +78,7 @@ export default function PhotoUploader({
       <input
         ref={input}
         type="file"
-        accept="image/*"
+        accept={kind === 'attachment' ? 'image/*,application/pdf' : 'image/*'}
         className="hidden"
         onChange={pick}
         disabled={busy}

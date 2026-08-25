@@ -8,7 +8,6 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   Matches,
   MaxLength,
@@ -16,6 +15,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { Transform } from 'class-transformer';
 import { ProfileVisibility } from '../../../common/enums';
 import { MOBILE_PATTERN, NAME_PATTERN, normaliseMobile } from '../../../common/util/identity-fields';
@@ -92,7 +92,7 @@ export class CreateProfileDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   @MaxLength(2048, { each: true })
   photos?: string[];
 

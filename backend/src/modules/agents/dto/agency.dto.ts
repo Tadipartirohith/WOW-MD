@@ -6,11 +6,11 @@ import {
   IsDateString,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import {
   MOBILE_MESSAGE,
   MOBILE_PATTERN,
@@ -57,7 +57,7 @@ export class UpsertAgencyDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   pictures?: string[];
 
   @ApiPropertyOptional({ maxLength: 2000 })

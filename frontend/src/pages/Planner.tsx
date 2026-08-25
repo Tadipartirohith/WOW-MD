@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { NOT_SET, daysAway, formatDate, hasDate, relativeToToday } from '../lib/dates';
+import WeddingDashboard from '../components/WeddingDashboard';
 
 interface Task {
   id: string;
@@ -102,6 +103,13 @@ export default function Planner() {
       </div>
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+      {/*
+        Above the form on purpose. Somebody who already has a plan opens this
+        page to see how it is going, not to make another one — and the create
+        form was the first thing they met every time.
+      */}
+      <WeddingDashboard />
 
       <form onSubmit={createPlan} className="card flex flex-wrap items-end gap-3">
         <div>

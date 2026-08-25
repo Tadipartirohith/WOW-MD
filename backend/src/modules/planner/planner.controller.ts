@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PlannerService } from './planner.service';
+import { WeddingDashboardService } from './wedding-dashboard.service';
 import {
   AddTaskDto,
   CreatePlanDto,
@@ -15,7 +16,10 @@ import { Permission } from '../../common/authz/permissions';
 @ApiBearerAuth()
 @Controller('planner')
 export class PlannerController {
-  constructor(private readonly planner: PlannerService) {}
+  constructor(
+    private readonly planner: PlannerService,
+    private readonly weddingDashboard: WeddingDashboardService,
+  ) {}
 
   @RequirePermissions(Permission.PLAN_MANAGE_OWN)
   @Post('plan')
@@ -27,6 +31,20 @@ export class PlannerController {
    * Reachable by hosts (PLAN_MANAGE_OWN) and by engaged planners
    * (PLAN_MANAGE_ENGAGED); the service decides what each caller actually sees.
    */
+  @ApiOperation({
+    summary: 'The whole wedding on one screen',
+    description:
+      'Countdown, budget against what has actually been committed, the guest list, the journey ' +
+      'through the plan, and what is happening next. Assembled server-side: the joins — ' +
+      'budgeted against committed, invited against replied — are the interesting part, and a ' +
+      'client that computes them is a second implementation that will drift.',
+  })
+  @RequirePermissions(Permission.PLAN_MANAGE_OWN)
+  @Get('dashboard')
+  dashboard(@CurrentUser('userId') userId: string) {
+    return this.weddingDashboard.summary(userId);
+  }
+
   @Get('plans')
   @ApiOperation({ summary: 'Plans you host, represent, or are engaged on' })
   myPlans(@CurrentUser() actor: AuthUser) {

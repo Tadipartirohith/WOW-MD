@@ -1,7 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { MediaService } from './media.service';
-import { AddMediaItemDto, CreateAlbumDto, PresignDto } from './dto/media.dto';
+import {
+  AddMediaItemDto,
+  CreateAlbumDto,
+  PresignAttachmentDto,
+  PresignDto,
+} from './dto/media.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -55,6 +60,26 @@ export class MediaController {
     return this.media.presignUpload(userId, dto.filename);
   }
 
+  /**
+   * An upload slot for something a person is attaching as proof.
+   *
+   * Gated on `CASE_RAISE` rather than on a media permission: everybody who can
+   * raise a complaint needs to be able to attach the receipt for it, and that
+   * includes a vendor, who holds no media permissions at all. Attaching a
+   * document to a support case went through the *profile photograph* route
+   * before this existed, which refused every PDF anybody tried.
+   */
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.CASE_RAISE)
+  @ApiOperation({ summary: 'Get an upload URL for evidence — an image or a PDF' })
+  @Post('attachment/presign')
+  presignAttachment(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: PresignAttachmentDto,
+  ) {
+    return this.media.presignUpload(userId, dto.filename);
+  }
+
   @ApiBearerAuth()
   @RequirePermissions(Permission.MEDIA_MANAGE_OWN)
   @Post('albums/:id/items')
@@ -71,6 +96,31 @@ export class MediaController {
   @Get('albums/:id/items')
   listItems(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.media.listItems(userId, id);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.MEDIA_MANAGE_OWN)
+  @ApiOperation({ summary: 'Remove one photograph from an album' })
+  @Delete('albums/:id/items/:itemId')
+  removeItem(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+  ) {
+    return this.media.removeItem(userId, id, itemId);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.MEDIA_MANAGE_OWN)
+  @ApiOperation({
+    summary: 'Delete an album and everything in it',
+    description:
+      'The photographs go with it. There is no cascade on the key, so removing the album alone ' +
+      'would leave them as rows pointing at nothing.',
+  })
+  @Delete('albums/:id')
+  removeAlbum(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.media.removeAlbum(userId, id);
   }
 
   @Public()

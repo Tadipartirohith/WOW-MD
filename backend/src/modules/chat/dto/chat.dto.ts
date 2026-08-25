@@ -4,10 +4,10 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  IsUrl,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class SendMessageDto {
@@ -23,7 +23,7 @@ export class SendMessageDto {
 
   @ApiPropertyOptional({ maxLength: 2048 })
   @IsOptional()
-  @IsUrl({ require_protocol: true })
+  @IsUploadedUrl()
   @MaxLength(2048)
   mediaUrl?: string;
 }

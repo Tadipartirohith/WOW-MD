@@ -332,7 +332,11 @@ function RaiseCase({
             </span>
           ))}
           {evidence.length < 10 && (
-            <PhotoUploader label="Attach" onUploaded={(url) => setEvidence([...evidence, url])} />
+            <PhotoUploader
+              kind="attachment"
+              label="Attach"
+              onUploaded={(url) => setEvidence([...evidence, url])}
+            />
           )}
         </div>
       </div>

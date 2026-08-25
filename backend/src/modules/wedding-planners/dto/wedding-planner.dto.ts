@@ -7,13 +7,13 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class PlannerPackageDto {
@@ -85,7 +85,7 @@ export class UpsertPlannerProfileDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(30)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   @MaxLength(2048, { each: true })
   portfolio?: string[];
 }

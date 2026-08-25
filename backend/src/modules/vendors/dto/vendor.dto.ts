@@ -8,7 +8,6 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   MaxLength,
   Min,
@@ -17,6 +16,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { Transform } from 'class-transformer';
 import { VendorCategory } from '../../../common/enums';
 import {
@@ -108,7 +108,7 @@ export class VendorComplianceDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsUrl({ require_tld: false }, { each: true })
+  @IsUploadedUrl({ each: true })
   complianceDocuments?: string[];
 }
 
@@ -157,7 +157,7 @@ export class CreateVendorDto extends VendorComplianceDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(30)
-  @IsUrl({ require_protocol: true }, { each: true })
+  @IsUploadedUrl({ each: true })
   @MaxLength(2048, { each: true })
   portfolio?: string[];
 }
