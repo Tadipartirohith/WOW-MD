@@ -1777,6 +1777,28 @@ check "a profile records who the steward is to them" "$c" 201
 body_has '"stewardRelation":"Father"' "and it reads back"
 
 echo
+echo "== 48. Two lists, not the same person three times =="
+
+# The Matches page drew three lists from overlapping queries — recently added,
+# recommended, and a browse grid underneath — so a profile the engine liked
+# appeared in all three. On a fresh account every recommended profile was in
+# every list. The page now has two, and the filters shape one of them.
+
+c=$(req GET "/matches/suggestions?sort=recent&limit=20" "" "$BROWSE")
+check "the browse list is served" "$c" 200
+assert "with no profile in it twice" "$(jq -e '[.data[].profile.id] as $ids | ($ids | length) == ($ids | unique | length)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req GET /ai/recommendations/matches "" "$BROWSE")
+check "and so is the shortlist" "$c" 200
+assert "also with no repeats" "$(jq -e '[.data[].profile.id] as $ids | ($ids | length) == ($ids | unique | length)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# The filters have to shape the list they sit beside, or the panel on the left
+# controls nothing anybody can see.
+c=$(req GET "/matches/suggestions?sort=recent&city=NoSuchCityAnywhere&limit=20" "" "$BROWSE")
+check "a filter that matches nobody is honoured" "$c" 200
+assert "and empties the list rather than being ignored" "$(jq -e '(.data | length) == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

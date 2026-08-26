@@ -99,11 +99,12 @@ back it will be a test failure rather than six more reports.
 | E2 | Events: cards for total, confirmed, pending and unanswered guests | **done** — Invited, coming, not answered, declined — with heads as well as invitations |
 | M1 | Matches in three columns: filters, recently uploaded, AI recommended with a percentage | **done** — Three panels |
 | M2 | Show who accepted the interest, bride or groom | **done** — Named, or "You accepted this" |
-| M3 | No duplicate rows; a name opens that profile | **partly done** — the profile opens, and each interest now appears once in exactly one bucket on the Interests board. Duplicate rows elsewhere were not reproducible and need a specific case |
+| M3 | No duplicate rows; a name opens that profile | **done** — reproduced and fixed. The page drew three lists from overlapping queries, so a profile the engine liked appeared in all three; on a fresh account every recommended profile was in every list. Two lists remain, and the filters shape one of them |
 | N1 | Rename Proposals to **Interests**, and give individuals the section | **done** |
 | N2 | Interests: received, sent, pending, accepted, rejected | **done** — One read, with the actions each row allows |
 | N3 | Unsend a sent or pending request | **done** |
 | N4 | Block from received and accepted; a clear decline | **done** |
+
 ## Agent portal
 
 | # | Item | Status |

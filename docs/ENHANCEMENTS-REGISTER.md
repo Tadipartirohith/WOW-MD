@@ -219,7 +219,7 @@ missing.
 | B26 | Payment ladder enforced backend-side | done |
 | B27 | Booking chat, unlocked at advance, read-only after completion | **done** |
 | B28 | Disputes raisable by both sides with evidence | done |
-| B29 | Accounts: payment details, escrow, earnings, payouts, settlements, transaction history | partly done — payouts and settlements arrived last round |
+| B29 | Accounts: payment details, escrow, earnings, payouts, settlements, transaction history | **done** — the payout account, the escrow position, earnings including what is owed but not yet moved, the ledger, and "settle my payment" where a payout is stuck |
 | B30 | Notifications with deep links carrying `booking_id`, `business_id`, `quotation_id`, … | **done** — `targetModule`/`targetAction`/`targetId`, from a total map keyed on the type |
 | B31 | Vendor dashboard as a summary, every card linking onward | **done** — a per-business row following the header switcher |
 | B32 | Final vendor navbar; remove Chat, Media, WOW Genie | **done** — Chat is now inside the booking |
@@ -264,7 +264,7 @@ Nine of these are new, and three restate Part 2.
 | M8 | New business listing under the same account after rejection | **done** | See B1 and the confirmed bug |
 | M9 | **Push notifications** for all four personas | **done** | Provider behind an interface, `log` by default, FCM on configuration. Registering a device is the consent; a token claimed by another account moves, because it belongs to an installation rather than to a person |
 | M10 | **WhatsApp notifications**, opt-in only | **done** | Opt-in never inferred from having a phone number, and template-only: five approved templates covering money and jobs. A type with no template does not go out that way rather than being sent as free text the API would refuse |
-| M11 | AI-generated images restricted platform-wide | new | Same item as P1 |
+| M11 | AI-generated images restricted platform-wide | **done** | Same item as P1 |
 | M12 | All critical rules enforced backend-side | done | This has been the standing rule throughout |
 
 ---
