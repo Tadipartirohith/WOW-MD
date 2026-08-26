@@ -419,5 +419,64 @@ c=$(req POST /ai/budget-insight '{"totalBudget":100000}' "$VENDOR")
 check "nor the couple's planning assistant" "$c" 403
 
 echo
+echo "== A whole biodata, saved and then edited =="
+
+# Six reports came in as separate defects — Family Details not working, Edit
+# not working, Gothram not reflected after saving, marital status only partly
+# saved, saving losing previously entered details. None of them reproduces
+# here, and the reason is almost certainly that they were all one thing: the
+# Personal section requires three photographs, uploading a photograph was
+# broken end-to-end, and nobody could get past the first section. The agent
+# report says so outright — "because the mandatory photograph cannot be
+# uploaded, the Agent is unable to proceed".
+#
+# So this walks the whole form the way a person does, and then edits it, which
+# is the part no test covered. If any of it breaks again it will be a failure
+# here rather than six separate reports.
+
+reg biouser individual bride
+BIO=$(field /tmp/biouser.json accessToken)
+req PUT /users/me/profile '{"displayName":"Bio Person","gender":"female","dateOfBirth":"1996-02-02","city":"Hyderabad"}' "$BIO" >/dev/null
+c=$(req GET /users/me "" "$BIO")
+BIO_P=$(field /tmp/body id)
+
+c=$(req PUT "/profiles/$BIO_P/details/personal" '{"firstName":"Asha","lastName":"Rao","heightCm":162,"complexion":"fair","communicationAddress":"12 MG Road, Hyderabad","alternateMobile":"9876543210","residence":{"city":"Hyderabad"}}' "$BIO")
+check "personal details are refused until the photographs are there" "$c" 400
+
+seed_photos "$BIO_P" "$BIO"
+c=$(req PUT "/profiles/$BIO_P/details/personal" '{"firstName":"Asha","lastName":"Rao","heightCm":162,"complexion":"fair","communicationAddress":"12 MG Road, Hyderabad","alternateMobile":"9876543210","residence":{"city":"Hyderabad"}}' "$BIO")
+check "and accepted once they are" "$c" 200
+
+c=$(req PUT "/profiles/$BIO_P/details/religion" '{"religion":"hindu","caste":"Reddy","subCaste":"Ontari","motherTongue":"Telugu"}' "$BIO")
+check "religion saves" "$c" 200
+c=$(req PUT "/profiles/$BIO_P/details/horoscope" '{"horoscopeAvailable":true,"rashi":"Mesha","star":"Ashwini","padam":"2","gothram":"Kashyapa","kujaDosham":"No","timeOfBirth":"04:35"}' "$BIO")
+check "the horoscope saves, gothram and all" "$c" 200
+c=$(req PUT "/profiles/$BIO_P/details/marital" '{"maritalStatus":"divorced","divorceDate":"2024-03-01","reason":"We grew apart.","yearsMarried":4}' "$BIO")
+check "marital status saves with its history" "$c" 200
+c=$(req PUT "/profiles/$BIO_P/details/family" '{"father":{"name":"Ramesh"},"mother":{"name":"Sita"},"familyType":"nuclear","familyStatus":"middle_class","nativePlace":"Warangal","brothers":1,"sisters":0}' "$BIO")
+check "family details save" "$c" 200
+c=$(req PUT "/profiles/$BIO_P/details/education" '{"highestQualification":"masters","course":"MBA","institution":"Osmania","occupationStatus":"employed","employment":{"role":"Analyst"},"incomeVisible":false}' "$BIO")
+check "education saves" "$c" 200
+
+c=$(req GET "/profiles/$BIO_P/details" "" "$BIO")
+check "and the whole biodata reads back" "$c" 200
+assert "gothram survived the save" "$(jqok '.details.horoscope.gothram == "Kashyapa"')"
+assert "so did the rest of the chart" "$(jqok '.details.horoscope.rashi == "Mesha" and .details.horoscope.star == "Ashwini"')"
+# "Only some details are currently being saved" — the whole history is there,
+# including the reason, which is the field somebody would notice missing.
+assert "the marital history is whole, reason included" "$(jqok '.details.maritalHistory.reason == "We grew apart." and .details.maritalHistory.yearsMarried == 4')"
+assert "family status and complexion are stored" "$(jqok '.details.familyStatus == "middle_class" and .details.complexion == "fair"')"
+assert "and native place sits under family, where it moved to" "$(jqok '.details.nativePlace == "Warangal"')"
+
+# Editing one section must not disturb the others. This is the "saving loses
+# previously entered details" report, and it is the assertion that would have
+# caught it.
+c=$(req PUT "/profiles/$BIO_P/details/religion" '{"religion":"hindu","caste":"Reddy","subCaste":"Edited","motherTongue":"Telugu"}' "$BIO")
+check "one section is edited" "$c" 200
+c=$(req GET "/profiles/$BIO_P/details" "" "$BIO")
+assert "the edit lands" "$(jqok '.details.subCaste == "Edited"')"
+assert "and every other section is untouched" "$(jqok '.details.horoscope.gothram == "Kashyapa" and .details.maritalStatus == "divorced" and .details.familyStatus == "middle_class" and .details.nativePlace == "Warangal"')"
+
+echo
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

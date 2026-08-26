@@ -148,7 +148,7 @@ genuinely new is separated out.
 | P1 | **AI-generated photos must be rejected** | **done** | Provider behind an interface: a hosted detector, and a default that refuses what is plainly labelled rather than a no-op that never exercises the rejection path |
 | P2 | Upload 3 photographs before Personal Details can continue | **done** | A gate on section order |
 | P3 | Biodata saves into a **card** — Edit, View Complete Profile, Upload Photos, Delete Profile | **done** | The read-back view exists; the card and its four actions do not |
-| P4 | Marital status "Divorced" reveals a descriptive reason field | **not done** | A `divorceDate` exists; the descriptive reason field the document asks for does not |
+| P4 | Marital status "Divorced" reveals a descriptive reason field | **done** | Optional, and stored inside `maritalHistory` rather than as a column of its own — which is why a grep for a `divorceReason` field found nothing and I briefly recorded this as missing |
 | P5 | Native Place moves from Personal Details to **Family Details** | **done** | Place of Birth removed from Personal Details entirely |
 | P6 | **Mobile Number** on every relevant biodata section, not just the alternate | **done** | The contact block returns both; the sections do not all show it |
 | P7 | Section-by-section navigation with Next/Continue, redirecting rather than scrolling | **done** | The accordion is one long page today |
