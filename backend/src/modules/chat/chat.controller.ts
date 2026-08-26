@@ -14,8 +14,11 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import {
   BlockUserDto,
+  ConversationTargetDto,
   MessageHistoryQueryDto,
+  MuteConversationDto,
   ReportUserDto,
+  SearchConversationDto,
   SendMessageDto,
 } from './dto/chat.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -102,4 +105,49 @@ export class ChatController {
   report(@CurrentUser('userId') userId: string, @Body() dto: ReportUserDto) {
     return this.chat.report(userId, dto.userId, dto.reason, dto.detail);
   }
+  @ApiOperation({
+    summary: 'Find a phrase inside one conversation',
+    description:
+      'Scoped to the thread, because that is the question being asked. Messages you have '
+      + 'cleared stay hidden — searching a thread you emptied should not hand back what you '
+      + 'removed.',
+  })
+  @Get('search')
+  search(@CurrentUser('userId') userId: string, @Query() q: SearchConversationDto) {
+    return this.chat.searchConversation(userId, q.withUserId, q.term);
+  }
+
+  @ApiOperation({
+    summary: 'Mute or unmute one conversation',
+    description: 'Yours alone. It still receives messages; it stops interrupting you.',
+  })
+  @Put('mute')
+  mute(@CurrentUser('userId') userId: string, @Body() dto: MuteConversationDto) {
+    return this.chat.setMuted(userId, dto.withUserId, dto.muted === true);
+  }
+
+  @ApiOperation({
+    summary: 'Empty a conversation, for you',
+    description:
+      'A watermark rather than a delete. The other side keeps their copy, and the messages '
+      + 'remain for a report or a dispute to be investigated with — which is also what the '
+      + 'request means: an empty screen, not a destroyed record.',
+  })
+  @Put('clear')
+  clear(@CurrentUser('userId') userId: string, @Body() dto: ConversationTargetDto) {
+    return this.chat.clear(userId, dto.withUserId);
+  }
+
+  @ApiOperation({
+    summary: 'Remove a conversation from your list',
+    description: 'A new message brings it back, empty.',
+  })
+  @Put('delete-conversation')
+  removeConversation(
+    @CurrentUser('userId') userId: string,
+    @Body() dto: ConversationTargetDto,
+  ) {
+    return this.chat.deleteConversation(userId, dto.withUserId);
+  }
+
 }

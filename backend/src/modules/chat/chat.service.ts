@@ -5,11 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, MoreThan, Repository } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
 import { ChatBlock, ChatReport } from './entities/chat-block.entity';
+import { ChatPreference } from './entities/chat-preference.entity';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
@@ -29,6 +30,8 @@ import { redactContacts } from '../../common/util/redaction';
 export interface ConversationSummary {
   conversationId: string;
   withUserId: string;
+  /** This reader's own setting. The other side's list is unaffected. */
+  muted: boolean;
   displayName: string;
   photoUrl: string | null;
   lastMessage: string | null;
@@ -48,6 +51,7 @@ export class ChatService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(ChatBlock) private readonly blocks: Repository<ChatBlock>,
     @InjectRepository(ChatReport) private readonly reports: Repository<ChatReport>,
+    @InjectRepository(ChatPreference) private readonly prefs: Repository<ChatPreference>,
     private readonly audit: AuditService,
     private readonly cfg: AppConfigService,
     private readonly presence: PresenceService,
@@ -277,8 +281,16 @@ export class ChatService {
   ): Promise<PaginatedResult<Message>> {
     await this.assertCanChat(userId, withUserId);
     const convo = await this.getOrCreateConversation(userId, withUserId);
+    const pref = await this.prefs.findOne({ where: { userId, conversationId: convo.id } });
+
+    // Everything before this reader cleared the thread is theirs to not see.
+    // The other side's copy is untouched, and the rows are still there for a
+    // report or a dispute — clearing is about one person's screen.
     const [data, total] = await this.messages.findAndCount({
-      where: { conversationId: convo.id },
+      where: {
+        conversationId: convo.id,
+        ...(pref?.clearedAt ? { createdAt: MoreThan(pref.clearedAt) } : {}),
+      },
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -325,6 +337,7 @@ export class ChatService {
     const silent: ConversationSummary[] = pending.map((otherUserId) => ({
       conversationId: '',
       withUserId: otherUserId,
+      muted: false,
       displayName: profileByUser.get(otherUserId)?.displayName ?? 'Match',
       photoUrl: profileByUser.get(otherUserId)?.photos?.[0] ?? null,
       lastMessage: null,
@@ -334,16 +347,30 @@ export class ChatService {
       online: online.has(otherUserId),
     }));
 
+    // This reader's settings for these threads, in one read rather than one
+    // per row.
+    const prefs = rows.length
+      ? await this.prefs.find({ where: { userId, conversationId: In(rows.map((c) => c.id)) } })
+      : [];
+    const prefByConvo = new Map(prefs.map((p) => [p.conversationId, p]));
+
     const summaries = await Promise.all(
       rows.map(async (convo) => {
         const otherUserId = convo.participantA === userId ? convo.participantB : convo.participantA;
+        const pref = prefByConvo.get(convo.id);
+        const since = pref?.clearedAt ? { createdAt: MoreThan(pref.clearedAt) } : {};
         const [last, unread] = await Promise.all([
           this.messages.findOne({
-            where: { conversationId: convo.id },
+            where: { conversationId: convo.id, ...since },
             order: { createdAt: 'DESC' },
           }),
           this.messages.count({
-            where: { conversationId: convo.id, senderId: otherUserId, readAt: IsNull() },
+            where: {
+              conversationId: convo.id,
+              senderId: otherUserId,
+              readAt: IsNull(),
+              ...since,
+            },
           }),
         ]);
         const profile = profileByUser.get(otherUserId);
@@ -351,6 +378,7 @@ export class ChatService {
         return {
           conversationId: convo.id,
           withUserId: otherUserId,
+          muted: Boolean(pref?.muted),
           displayName: profile?.displayName ?? 'Match',
           photoUrl: profile?.photos?.[0] ?? null,
           lastMessage: last?.body ?? null,
@@ -362,9 +390,18 @@ export class ChatService {
       }),
     );
 
+    // A thread this reader deleted stays out of their list until something new
+    // arrives in it. Hiding it for good would mean a message sent to somebody
+    // who is never shown it, which is worse than a conversation reappearing.
+    const visible = summaries.filter((row) => {
+      const pref = prefByConvo.get(row.conversationId);
+      if (!pref?.deletedAt) return true;
+      return Boolean(row.lastMessageAt && row.lastMessageAt > pref.deletedAt);
+    });
+
     // Most recent first, and a conversation nobody has spoken in yet sinks to
     // the bottom rather than sitting at the top on its creation date.
-    return [...summaries, ...silent].sort((a, b) => {
+    return [...visible, ...silent].sort((a, b) => {
       const at = a.lastMessageAt?.getTime() ?? 0;
       const bt = b.lastMessageAt?.getTime() ?? 0;
       return bt - at;
@@ -421,6 +458,95 @@ export class ChatService {
     if (block) {
       throw new ForbiddenException('This conversation is closed.');
     }
+  }
+
+  /**
+   * This reader's settings for one thread, created on first use.
+   *
+   * Per reader rather than per conversation: muting and clearing are one
+   * side's decisions about their own screen, and putting them on the shared row
+   * would make them instructions to the other person.
+   */
+  private async preference(userId: string, conversationId: string): Promise<ChatPreference> {
+    const existing = await this.prefs.findOne({ where: { userId, conversationId } });
+    if (existing) return existing;
+    return this.prefs.save(this.prefs.create({ userId, conversationId }));
+  }
+
+  /** Stop this thread interrupting you. It still receives messages. */
+  async setMuted(userId: string, withUserId: string, muted: boolean) {
+    const convo = await this.getOrCreateConversation(userId, withUserId);
+    const pref = await this.preference(userId, convo.id);
+    pref.muted = muted;
+    await this.prefs.save(pref);
+    return { muted };
+  }
+
+  /**
+   * Empties the thread for the person who asked, and for nobody else.
+   *
+   * A watermark rather than a delete. Messages are what a dispute is argued
+   * from and what a report is investigated with, so clearing hides the history
+   * from this reader and destroys nothing — which is also what the request
+   * actually means: they want their screen empty, not the record gone.
+   */
+  async clear(userId: string, withUserId: string) {
+    const convo = await this.getOrCreateConversation(userId, withUserId);
+    const pref = await this.preference(userId, convo.id);
+    pref.clearedAt = new Date();
+    await this.prefs.save(pref);
+    return { cleared: true, clearedAt: pref.clearedAt };
+  }
+
+  /**
+   * Removes the thread from this reader's list.
+   *
+   * A new message brings it back, and that is deliberate: the alternative is a
+   * message sent to somebody who is never shown it, which is worse than a
+   * conversation reappearing.
+   */
+  async deleteConversation(userId: string, withUserId: string) {
+    const convo = await this.getOrCreateConversation(userId, withUserId);
+    const pref = await this.preference(userId, convo.id);
+    pref.deletedAt = new Date();
+    // Deleting implies clearing: a thread that comes back should come back
+    // empty rather than showing everything the reader thought they had removed.
+    pref.clearedAt = new Date();
+    await this.prefs.save(pref);
+    return { deleted: true };
+  }
+
+  /**
+   * Finds a phrase inside one conversation.
+   *
+   * Scoped to the thread rather than searching everything, because that is the
+   * question being asked — "where did they say the venue" — and a search across
+   * every conversation somebody has is a different feature with different
+   * privacy consequences.
+   *
+   * Cleared messages stay hidden. Somebody who emptied a thread and then
+   * searched it would otherwise get back exactly what they had removed.
+   */
+  async searchConversation(
+    userId: string,
+    withUserId: string,
+    term: string,
+  ): Promise<Message[]> {
+    await this.assertCanChat(userId, withUserId);
+    const convo = await this.getOrCreateConversation(userId, withUserId);
+    const pref = await this.prefs.findOne({ where: { userId, conversationId: convo.id } });
+
+    const qb = this.messages
+      .createQueryBuilder('m')
+      .where('m."conversationId" = :id', { id: convo.id })
+      // Case-insensitive contains. The bodies are already redacted, so a search
+      // cannot recover a number the platform stripped on the way in.
+      .andWhere('LOWER(m.body) LIKE :term', { term: `%${term.toLowerCase()}%` })
+      .orderBy('m."createdAt"', 'DESC')
+      .take(50);
+
+    if (pref?.clearedAt) qb.andWhere('m."createdAt" > :since', { since: pref.clearedAt });
+    return qb.getMany();
   }
 
   /** Idempotent: tapping block twice is one block, not two. */

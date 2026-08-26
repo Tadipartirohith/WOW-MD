@@ -1676,6 +1676,68 @@ c=$(req GET /matches/interests "" "$VENDOR")
 check "a vendor has no interests to see" "$c" 403
 
 echo
+echo "== 46. The chat menu, and a number spelled sideways =="
+
+# Two matched profiles, so they may talk at all.
+c=$(req POST /matches/interest "{\"toProfileId\":\"$P_IC\"}" "$IA")
+check "an interest opens a conversation" "$c" 201
+CHAT_I=$(field /tmp/body id)
+c=$(req PUT "/matches/$CHAT_I/accept" "" "$IC")
+check "and is accepted" "$c" 200
+
+IA_ID=$(jq -r '.user.id' /tmp/ia.json)
+IC_ID=$(jq -r '.user.id' /tmp/ic.json)
+
+c=$(req POST /chat/messages "{\"toUserId\":\"$IC_ID\",\"body\":\"Lovely to match. The venue is in Jubilee Hills.\"}" "$IA")
+check "she sends a message" "$c" 201
+c=$(req POST /chat/messages "{\"toUserId\":\"$IA_ID\",\"body\":\"Shall we meet on Sunday afternoon?\"}" "$IC")
+check "he replies" "$c" 201
+
+# Alternating figures and words is the obvious thing to try once neither form
+# works alone, and it used to go straight through.
+c=$(req POST /chat/messages "{\"toUserId\":\"$IC_ID\",\"body\":\"reach me on nine eight 7 six 5 four 3 two 1 zero\"}" "$IA")
+check "a number written half in words and half in figures is accepted" "$c" 201
+body_has 'contact removed' "and stripped before it is stored"
+grep -q '"redactedCount":1' /tmp/body && assert "counted, so repeated attempts are visible" 1 || assert "the redaction was not counted" 0
+
+# Search is scoped to the thread, which is the question being asked.
+c=$(req GET "/chat/search?withUserId=$IC_ID&term=Jubilee" "" "$IA")
+check "search finds a phrase in the conversation" "$c" 200
+assert "and returns the message that has it" "$(jq -e 'any(.[]; .body | test("Jubilee"))' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET "/chat/search?withUserId=$IC_ID&term=x" "" "$IA")
+check "a one-character search is refused" "$c" 400
+
+# Muting is one side's decision about their own screen.
+c=$(req PUT /chat/mute "{\"withUserId\":\"$IC_ID\",\"muted\":true}" "$IA")
+check "she mutes the thread" "$c" 200
+c=$(req GET /chat/conversations "" "$IA")
+assert "her list shows it muted" "$(jq -e --arg u "$IC_ID" 'any(.[]; .withUserId == $u and .muted == true)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET /chat/conversations "" "$IC")
+assert "and his is unaffected, because it was never about him" "$(jq -e --arg u "$IA_ID" 'any(.[]; .withUserId == $u and .muted == false)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Clearing empties one side's screen and destroys nothing.
+c=$(req PUT /chat/clear "{\"withUserId\":\"$IC_ID\"}" "$IA")
+check "she clears the conversation" "$c" 200
+c=$(req GET "/chat/messages?withUserId=$IC_ID&limit=50" "" "$IA")
+assert "her history is empty" "$(jq -e '(.data | length) == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET "/chat/messages?withUserId=$IA_ID&limit=50" "" "$IC")
+assert "his copy is untouched — clearing is not a delete" "$(jq -e '(.data | length) >= 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET "/chat/search?withUserId=$IC_ID&term=Jubilee" "" "$IA")
+assert "and searching what she cleared hands nothing back" "$(jq -e 'length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Deleting removes the thread from her list until something new arrives.
+c=$(req PUT /chat/delete-conversation "{\"withUserId\":\"$IC_ID\"}" "$IA")
+check "she removes the conversation from her list" "$c" 200
+c=$(req GET /chat/conversations "" "$IA")
+grep -q "$IC_ID" /tmp/body && assert "it is still listed" 0 || assert "and it is gone from the list" 1
+c=$(req POST /chat/messages "{\"toUserId\":\"$IA_ID\",\"body\":\"Are you still there?\"}" "$IC")
+check "he messages her again" "$c" 201
+c=$(req GET /chat/conversations "" "$IA")
+assert "which brings it back rather than swallowing the message" "$(jq -e --arg u "$IC_ID" 'any(.[]; .withUserId == $u)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+c=$(req GET "/chat/messages?withUserId=$IC_ID&limit=50" "" "$IA")
+assert "and it comes back empty but for the new message" "$(jq -e '(.data | length) == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

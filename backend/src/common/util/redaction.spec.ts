@@ -38,6 +38,31 @@ describe('redactContacts', () => {
     expect(redactions).toBe(2);
   });
 
+  /*
+   * Alternating figures and words is the obvious next thing to try once
+   * somebody notices that neither form works on its own, and it went straight
+   * through: the figures broke the spelled run into pieces too short to match,
+   * and the words broke the digit run the same way.
+   */
+  it('catches a number written half in words and half in figures', () => {
+    const { text, redactions } = redactContacts('nine eight 7 six 5 four 3 two 1 zero');
+    expect(text).toBe('[contact removed]');
+    expect(redactions).toBe(1);
+  });
+
+  it('takes the whole number, not the tail of it', () => {
+    // Redacting from the middle leaves the first digits sitting in the message
+    // beside a notice saying the number was removed.
+    const { text } = redactContacts('my number is nine eight 76 five four three two one zero');
+    expect(text).toBe('my number is [contact removed]');
+  });
+
+  it('leaves a run that is not long enough to be a number', () => {
+    const { text, redactions } = redactContacts('table 12 seats four, table 3 seats two');
+    expect(text).toBe('table 12 seats four, table 3 seats two');
+    expect(redactions).toBe(0);
+  });
+
   it('does not mangle ordinary numbers in a sentence', () => {
     const { text, redactions } = redactContacts('We expect 250 guests and a budget of 400000');
     expect(text).toBe('We expect 250 guests and a budget of 400000');

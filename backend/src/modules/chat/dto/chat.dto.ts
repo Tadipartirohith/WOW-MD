@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 
 export class SendMessageDto {
   @ApiProperty({ format: 'uuid' })
@@ -70,4 +71,25 @@ export class ReportUserDto {
   @IsString()
   @MaxLength(2000)
   detail?: string;
+}
+
+/** Which conversation a menu action applies to. */
+export class ConversationTargetDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  withUserId: string;
+}
+
+export class MuteConversationDto extends ConversationTargetDto {
+  @ApiProperty({ type: Boolean })
+  @StrictBoolean()
+  muted: boolean | string;
+}
+
+export class SearchConversationDto extends ConversationTargetDto {
+  @ApiProperty({ minLength: 2, maxLength: 100 })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  term: string;
 }
