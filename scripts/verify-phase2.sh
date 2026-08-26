@@ -173,7 +173,7 @@ assert "nothing is complete yet" "$(jqok '.completion.complete == false')"
 assert "and every required section is listed as missing" "$(jqok '.completion.missing | length >= 7')"
 
 seed_photos "$BRIDE_PROFILE" "$BRIDE"
-c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Anjali","lastName":"Kumari","heightCm":163,"complexion":"Fair","communicationAddress":"14 Banjara Hills, Hyderabad"}' "$BRIDE")
+c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Anjali","lastName":"Kumari","heightCm":163,"complexion":"fair","communicationAddress":"14 Banjara Hills, Hyderabad"}' "$BRIDE")
 check "personal details save on their own" "$c" 200
 
 c=$(req GET "/profiles/$BRIDE_PROFILE/details" "" "$BRIDE")
@@ -203,7 +203,7 @@ check "marital status saves" "$c" 200
 c=$(req GET "/profiles/$BRIDE_PROFILE/details" "" "$BRIDE")
 assert "never-married carries no history" "$(jqok '.details.maritalHistory == {}')"
 
-c=$(req PUT "/profiles/$BRIDE_PROFILE/details/family" '{"father":{"name":"Ramesh Kumar","profession":"Retired"},"mother":{"name":"Lakshmi Kumari"},"familyType":"nuclear","familyStatus":"Middle class","brothers":1,"sisters":0}' "$BRIDE")
+c=$(req PUT "/profiles/$BRIDE_PROFILE/details/family" '{"father":{"name":"Ramesh Kumar","profession":"Retired"},"mother":{"name":"Lakshmi Kumari"},"familyType":"nuclear","familyStatus":"middle_class","brothers":1,"sisters":0}' "$BRIDE")
 check "family saves" "$c" 200
 c=$(req PUT "/profiles/$BRIDE_PROFILE/details/education" '{"highestQualification":"M.Tech","course":"Computer Science","occupationStatus":"employed","employment":{"company":"Infosys","designation":"Senior Engineer","salary":"18 LPA"},"incomeVisible":false}' "$BRIDE")
 check "education and occupation save" "$c" 200
@@ -237,7 +237,7 @@ echo
 echo "== 5. Somebody else's biodata is not yours to edit =="
 c=$(req GET "/profiles/$BRIDE_PROFILE/details" "" "$GROOM")
 check "another user cannot read it" "$c" 403
-c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Someone","lastName":"Else","heightCm":170,"complexion":"Fair","communicationAddress":"Z"}' "$GROOM")
+c=$(req PUT "/profiles/$BRIDE_PROFILE/details/personal" '{"firstName":"Someone","lastName":"Else","heightCm":170,"complexion":"fair","communicationAddress":"Z"}' "$GROOM")
 check "nor write to it" "$c" 403
 
 echo
@@ -471,6 +471,31 @@ assert "and native place sits under family, where it moved to" "$(jqok '.details
 # Editing one section must not disturb the others. This is the "saving loses
 # previously entered details" report, and it is the assertion that would have
 # caught it.
+# Complexion and family status are closed lists now. Free text made them
+# unmatchable — "Fair", "fair" and "Fair/Wheatish" are three values a
+# preference filter cannot compare.
+c=$(req PUT "/profiles/$BIO_P/details/personal" '{"firstName":"Asha","lastName":"Rao","heightCm":162,"complexion":"peaches","communicationAddress":"12 MG Road","residence":{"city":"Hyderabad"}}' "$BIO")
+check "a complexion outside the list is refused" "$c" 400
+c=$(req PUT "/profiles/$BIO_P/details/family" '{"father":{"name":"Ramesh"},"mother":{"name":"Sita"},"familyType":"nuclear","familyStatus":"quite well off","nativePlace":"Warangal","brothers":1,"sisters":0}' "$BIO")
+check "and so is an invented family status" "$c" 400
+
+# Horoscope expectations belong with the preferences: the chart is a fact about
+# you, this is what you are asking of somebody else. The document attaches from
+# the same screen, because that is where a family has it to hand.
+c=$(req POST /media/attachment/presign '{"filename":"chart.pdf"}' "$BIO")
+check "an upload slot for the chart is issued" "$c" 201
+CHART=$(field /tmp/body publicUrl)
+c=$(req PUT "/profiles/$BIO_P/details/preferences" "{\"preferredAgeMin\":24,\"preferredAgeMax\":34,\"preferredHeightMinCm\":150,\"preferredHeightMaxCm\":190,\"horoscopeExpectation\":\"required\",\"kujaDosham\":\"must_match\",\"preferredStars\":\"Ashwini\",\"horoscopeDocumentUrl\":\"$CHART\"}" "$BIO")
+check "horoscope expectations save with the preferences" "$c" 200
+c=$(req GET "/profiles/$BIO_P/details" "" "$BIO")
+assert "the expectation reads back" "$(jqok '.details.partnerPreferences.horoscopeExpectation == "required"')"
+assert "so does the dosham answer" "$(jqok '.details.partnerPreferences.kujaDosham == "must_match"')"
+# The chart is the person's own, so it lands where charts go rather than in the
+# preferences bag — one place, not two to keep in step.
+assert "and the chart attaches to the horoscope, not the preferences" "$(jqok '.details.horoscopeDocumentUrl != null')"
+c=$(req PUT "/profiles/$BIO_P/details/preferences" '{"preferredAgeMin":24,"preferredAgeMax":34,"preferredHeightMinCm":150,"preferredHeightMaxCm":190,"horoscopeExpectation":"whenever"}' "$BIO")
+check "an expectation outside the three answers is refused" "$c" 400
+
 c=$(req PUT "/profiles/$BIO_P/details/religion" '{"religion":"hindu","caste":"Reddy","subCaste":"Edited","motherTongue":"Telugu"}' "$BIO")
 check "one section is edited" "$c" 200
 c=$(req GET "/profiles/$BIO_P/details" "" "$BIO")

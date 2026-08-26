@@ -329,11 +329,11 @@ c=$(req PUT "/circulation/profiles/$POOLED/pool" '{"visibility":"pool"}' "$AGENT
 check "an incomplete biodata cannot enter the pool either" "$c" 400
 
 seed_photos "$POOLED" "$AGENT"
-req PUT "/profiles/$POOLED/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"Fair","communicationAddress":"12 Jubilee Hills"}' "$AGENT" >/dev/null
+req PUT "/profiles/$POOLED/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"fair","communicationAddress":"12 Jubilee Hills"}' "$AGENT" >/dev/null
 req PUT "/profiles/$POOLED/details/religion" '{"religion":"Hindu","caste":"Kamma","subCaste":"None","motherTongue":"Telugu"}' "$AGENT" >/dev/null
 req PUT "/profiles/$POOLED/details/horoscope" '{"horoscopeAvailable":false}' "$AGENT" >/dev/null
 req PUT "/profiles/$POOLED/details/marital" '{"maritalStatus":"never_married"}' "$AGENT" >/dev/null
-req PUT "/profiles/$POOLED/details/family" '{"father":{"name":"Ramesh Sharma"},"mother":{"name":"Lakshmi Sharma"},"familyType":"nuclear","familyStatus":"Middle class","brothers":1,"sisters":0}' "$AGENT" >/dev/null
+req PUT "/profiles/$POOLED/details/family" '{"father":{"name":"Ramesh Sharma"},"mother":{"name":"Lakshmi Sharma"},"familyType":"nuclear","familyStatus":"middle_class","brothers":1,"sisters":0}' "$AGENT" >/dev/null
 req PUT "/profiles/$POOLED/details/education" '{"highestQualification":"B.Tech","course":"IT","occupationStatus":"employed","employment":{"company":"TCS","designation":"Engineer"}}' "$AGENT" >/dev/null
 req PUT "/profiles/$POOLED/details/preferences" '{"preferredAgeMin":26,"preferredAgeMax":34,"preferredHeightMinCm":165,"preferredHeightMaxCm":190}' "$AGENT" >/dev/null
 

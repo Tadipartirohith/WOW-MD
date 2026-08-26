@@ -11,10 +11,13 @@ import {
   OCCUPATION_LABEL,
   OccupationStatus,
   Permission,
+  COMPLEXION_LABEL,
+  FAMILY_STATUS_LABEL,
   can,
 } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
 import ProfilePhotos from '../components/ProfilePhotos';
+import PhotoUploader from '../components/PhotoUploader';
 import SavedBiodata from '../components/SavedBiodata';
 import ProfileCard from '../components/ProfileCard';
 import { formatDate } from '../lib/dates';
@@ -456,7 +459,19 @@ function PersonalForm({
           />
         </Field>
         <Field label="Complexion">
-          <input className="input mt-1" value={String(draft.complexion ?? '')} onChange={set('complexion')} required />
+          <select
+            className="input mt-1"
+            value={String(draft.complexion ?? '')}
+            onChange={set('complexion')}
+            required
+          >
+            <option value="">Select…</option>
+            {Object.entries(COMPLEXION_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
         </Field>
         {/*
           The primary number lives on the account, not the biodata, so it is
@@ -838,7 +853,19 @@ function FamilyForm({
             </select>
           </Field>
           <Field label="Family status">
-            <input className="input mt-1" value={String(values.familyStatus ?? '')} onChange={set('familyStatus')} required />
+            <select
+              className="input mt-1"
+              value={String(values.familyStatus ?? '')}
+              onChange={set('familyStatus')}
+              required
+            >
+              <option value="">Select…</option>
+              {Object.entries(FAMILY_STATUS_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Native place" hint="Where the family is from">
             <input className="input mt-1" value={String(values.nativePlace ?? '')} onChange={set('nativePlace')} />
@@ -1113,6 +1140,10 @@ function PreferencesForm({ initial, onSave }: { initial: Draft; onSave: (b: Draf
       profession: prefs.profession ?? '',
       locations: prefs.locations ?? '',
       other: prefs.other ?? '',
+      horoscopeExpectation: prefs.horoscopeExpectation ?? '',
+      kujaDosham: prefs.kujaDosham ?? '',
+      preferredStars: prefs.preferredStars ?? '',
+      horoscopeDocumentUrl: initial?.horoscopeDocumentUrl ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
@@ -1137,6 +1168,10 @@ function PreferencesForm({ initial, onSave }: { initial: Draft; onSave: (b: Draf
             locations: values.locations || undefined,
             other: values.other || undefined,
           },
+          horoscopeExpectation: values.horoscopeExpectation || undefined,
+          kujaDosham: values.kujaDosham || undefined,
+          preferredStars: values.preferredStars || undefined,
+          horoscopeDocumentUrl: values.horoscopeDocumentUrl || undefined,
         });
       }}
       className="space-y-3"
@@ -1171,6 +1206,62 @@ function PreferencesForm({ initial, onSave }: { initial: Draft; onSave: (b: Draf
         <Field label="Preferred locations">
           <input className="input mt-1" value={String(values.locations ?? '')} onChange={set('locations')} />
         </Field>
+      </div>
+
+      {/*
+        Horoscope expectations belong here rather than on the chart itself: the
+        chart is a fact about you, this is what you are asking of somebody
+        else. "No preference" is a real answer and is offered as one — a family
+        that does not use horoscopes is not asking anybody to abandon theirs.
+      */}
+      <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
+        <Field label="Horoscope">
+          <select
+            className="input mt-1"
+            value={String(values.horoscopeExpectation ?? '')}
+            onChange={set('horoscopeExpectation')}
+          >
+            <option value="">No preference</option>
+            <option value="required">Required</option>
+            <option value="preferred">Preferred</option>
+            <option value="not_required">Not required</option>
+          </select>
+        </Field>
+        <Field label="Kuja dosham">
+          <select
+            className="input mt-1"
+            value={String(values.kujaDosham ?? '')}
+            onChange={set('kujaDosham')}
+          >
+            <option value="">No preference</option>
+            <option value="must_match">Must match</option>
+            <option value="no_objection">No objection</option>
+          </select>
+        </Field>
+        <Field label="Stars or rashis you are looking for">
+          <input
+            className="input mt-1"
+            placeholder="Ashwini, Bharani…"
+            value={String(values.preferredStars ?? '')}
+            onChange={set('preferredStars')}
+          />
+        </Field>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div>
+          <p className="text-sm font-medium text-gray-800">Your horoscope</p>
+          <p className="text-xs text-gray-500">
+            {values.horoscopeDocumentUrl
+              ? 'Attached. Shown only to people who may already see your chart.'
+              : 'Attach the chart while you have it to hand — an image or a PDF.'}
+          </p>
+        </div>
+        <PhotoUploader
+          kind="attachment"
+          label={values.horoscopeDocumentUrl ? 'Replace' : 'Attach horoscope'}
+          onUploaded={(url: string) => setValues((v) => ({ ...v, horoscopeDocumentUrl: url }))}
+        />
       </div>
       <Field label="Anything else">
         <textarea className="input mt-1" rows={2} value={String(values.other ?? '')} onChange={set('other')} />

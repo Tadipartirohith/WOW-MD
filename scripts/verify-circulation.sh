@@ -140,11 +140,11 @@ fill_biodata() {
   pid=$1
   tok=$2
   seed_photos "$pid" "$tok"
-  req PUT "/profiles/$pid/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"Fair","communicationAddress":"12 Jubilee Hills, Hyderabad"}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/personal" '{"firstName":"Priya","lastName":"Sharma","heightCm":163,"complexion":"fair","communicationAddress":"12 Jubilee Hills, Hyderabad"}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/religion" '{"religion":"Hindu","caste":"Kamma","subCaste":"None","motherTongue":"Telugu"}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/horoscope" '{"horoscopeAvailable":false}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/marital" '{"maritalStatus":"never_married"}' "$tok" >/dev/null
-  req PUT "/profiles/$pid/details/family" '{"father":{"name":"Ramesh Sharma","profession":"Retired"},"mother":{"name":"Lakshmi Sharma"},"familyType":"nuclear","familyStatus":"Middle class","brothers":1,"sisters":0}' "$tok" >/dev/null
+  req PUT "/profiles/$pid/details/family" '{"father":{"name":"Ramesh Sharma","profession":"Retired"},"mother":{"name":"Lakshmi Sharma"},"familyType":"nuclear","familyStatus":"middle_class","brothers":1,"sisters":0}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/education" '{"highestQualification":"M.Tech","course":"Computer Science","occupationStatus":"employed","employment":{"company":"Infosys","designation":"Senior Engineer"}}' "$tok" >/dev/null
   req PUT "/profiles/$pid/details/preferences" '{"preferredAgeMin":26,"preferredAgeMax":34,"preferredHeightMinCm":165,"preferredHeightMaxCm":190}' "$tok" >/dev/null
 }

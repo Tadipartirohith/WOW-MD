@@ -324,3 +324,25 @@ export function canAny(
   if (!permissions) return false;
   return wanted.some((p) => permissions.includes(p));
 }
+
+/**
+ * Complexion and family status, as closed lists.
+ *
+ * Mirrors the server enums. Free text made both unmatchable — "Fair", "fair"
+ * and "Fair/Wheatish" are three values a partner-preference filter cannot
+ * compare, so a preference for one silently excluded the others.
+ */
+export const COMPLEXION_LABEL: Record<string, string> = {
+  fair: 'Fair',
+  wheatish: 'Wheatish',
+  dusky: 'Dusky',
+  dark: 'Dark',
+  not_specified: 'Rather not say',
+};
+
+export const FAMILY_STATUS_LABEL: Record<string, string> = {
+  lower_middle_class: 'Lower middle class',
+  middle_class: 'Middle class',
+  upper_middle_class: 'Upper middle class',
+  affluent: 'Affluent',
+};

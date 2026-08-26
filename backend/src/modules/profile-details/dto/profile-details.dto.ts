@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsObject,
   IsOptional,
@@ -16,7 +17,14 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
-import { FamilyAssetType, FamilyType, MaritalStatus, OccupationStatus } from '../../../common/enums';
+import {
+  Complexion,
+  FamilyAssetType,
+  FamilyStatus,
+  FamilyType,
+  MaritalStatus,
+  OccupationStatus,
+} from '../../../common/enums';
 import {
   MOBILE_MESSAGE,
   MOBILE_PATTERN,
@@ -84,10 +92,17 @@ export class PersonalDetailsDto {
   @Max(230)
   heightCm: number;
 
-  @ApiProperty({ example: 'Fair' })
-  @IsString()
-  @MaxLength(40)
-  complexion: string;
+  /**
+   * One of a closed list. Free text made this unmatchable: "Fair", "fair" and
+   * "Fair/Wheatish" are three values a preference filter cannot compare.
+   *
+   * Existing rows hold whatever was typed, and are left alone — rewriting
+   * somebody's description of themselves to fit a new list is not a migration.
+   * The next save moves them onto it.
+   */
+  @ApiProperty({ enum: Complexion })
+  @IsEnum(Complexion)
+  complexion: Complexion;
 
   /**
    * Both moved out of this section.
@@ -325,10 +340,9 @@ export class FamilyDetailsDto {
   @IsEnum(FamilyType)
   familyType: FamilyType;
 
-  @ApiProperty({ example: 'Middle class' })
-  @IsString()
-  @MaxLength(60)
-  familyStatus: string;
+  @ApiProperty({ enum: FamilyStatus })
+  @IsEnum(FamilyStatus)
+  familyStatus: FamilyStatus;
 
   @ApiProperty({ minimum: 0, maximum: 20 })
   @IsInt()
@@ -474,6 +488,50 @@ export class PartnerPreferencesDto {
   @IsOptional()
   @IsObject()
   preferences?: Record<string, unknown>;
+
+  /**
+   * Whether a horoscope matters to this family at all.
+   *
+   * Three answers rather than a checkbox, and the third is the point: "no
+   * preference" is a real position and very different from "no". A family that
+   * does not use horoscopes is not asking anybody else to abandon theirs.
+   */
+  @ApiPropertyOptional({ enum: ['required', 'preferred', 'not_required'] })
+  @IsOptional()
+  @IsIn(['required', 'preferred', 'not_required'])
+  horoscopeExpectation?: 'required' | 'preferred' | 'not_required';
+
+  /**
+   * Whether a kuja dosham match is being asked for.
+   *
+   * Separate from the above because they are separate questions: plenty of
+   * families want to see a chart without treating dosham as disqualifying.
+   */
+  @ApiPropertyOptional({ enum: ['must_match', 'no_objection'] })
+  @IsOptional()
+  @IsIn(['must_match', 'no_objection'])
+  kujaDosham?: 'must_match' | 'no_objection';
+
+  /** Stars or rashis the family is looking for. Free text; usage varies. */
+  @ApiPropertyOptional({ maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  preferredStars?: string;
+
+  /**
+   * The chart itself, attached from this screen.
+   *
+   * The same document as on the horoscope section, and deliberately the same
+   * field — a family filling in preferences usually has the chart to hand, and
+   * making them go back to another section to attach it is where they stop.
+   * Uploaded here it lands in exactly one place.
+   */
+  @ApiPropertyOptional({ maxLength: 2048 })
+  @IsOptional()
+  @IsUploadedUrl()
+  @MaxLength(2048)
+  horoscopeDocumentUrl?: string;
 }
 
 export class SetPrimaryPhotoDto {

@@ -997,13 +997,13 @@ assert "and a comma-separated location list, split" "$(jq -e '.preferences.prefe
 echo
 echo "== 27. One name field, and a plan that cannot run backwards =="
 seed_photos "$PREF_PROFILE" "$BRIDE"
-c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","lastName":"Reddy","heightCm":163,"complexion":"Fair","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
+c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","lastName":"Reddy","heightCm":163,"complexion":"fair","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
 check "personal details save with a single name field" "$c" 200
 c=$(req GET "/profiles/$PREF_PROFILE/details" "" "$BRIDE")
 assert "the surname column is no longer written" "$(jq -e '.details.surname == null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # A client still sending a surname must not lose the name it carries.
-c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","surname":"Kondapur","lastName":"","heightCm":163,"complexion":"Fair","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
+c=$(req PUT "/profiles/$PREF_PROFILE/details/personal" '{"firstName":"Ananya","surname":"Kondapur","lastName":"","heightCm":163,"complexion":"fair","communicationAddress":"5 Jubilee Hills, Hyderabad"}' "$BRIDE")
 check "an older client sending only a surname is still accepted" "$c" 200
 c=$(req GET "/profiles/$PREF_PROFILE/details" "" "$BRIDE")
 assert "and its value became the last name rather than being dropped" "$(jq -e '.details.lastName == "Kondapur"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -1061,19 +1061,19 @@ assert "and neither was stored" "$(jq -e '.photos | length == 1' /tmp/body >/dev
 echo
 echo "== 30. Photographs before the rest of the biodata =="
 # Asking at the end means asking somebody who has already finished.
-c=$(req PUT "/profiles/$GEN_PROFILE/details/personal" '{"firstName":"Meera","lastName":"Nair","heightCm":160,"complexion":"Fair","communicationAddress":"3 Kondapur, Hyderabad"}' "$GEN")
+c=$(req PUT "/profiles/$GEN_PROFILE/details/personal" '{"firstName":"Meera","lastName":"Nair","heightCm":160,"complexion":"fair","communicationAddress":"3 Kondapur, Hyderabad"}' "$GEN")
 check "one photograph is not enough to start the details" "$c" 400
 body_has 'photographs before' "and says how many are needed"
 body_has '1 so far' "and how many there are"
 
 req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/second.jpg"}' "$GEN" >/dev/null
 req POST "/profiles/$GEN_PROFILE/details/photos" '{"url":"https://cdn.example.com/third.jpg"}' "$GEN" >/dev/null
-c=$(req PUT "/profiles/$GEN_PROFILE/details/personal" '{"firstName":"Meera","lastName":"Nair","heightCm":160,"complexion":"Fair","communicationAddress":"3 Kondapur, Hyderabad"}' "$GEN")
+c=$(req PUT "/profiles/$GEN_PROFILE/details/personal" '{"firstName":"Meera","lastName":"Nair","heightCm":160,"complexion":"fair","communicationAddress":"3 Kondapur, Hyderabad"}' "$GEN")
 check "with three, the details save" "$c" 200
 
 echo
 echo "== 31. Native place moved, and a divorce may be explained =="
-c=$(req PUT "/profiles/$GEN_PROFILE/details/family" '{"father":{"name":"Rajan Nair","profession":"Teacher"},"mother":{"name":"Latha Nair","profession":"Homemaker"},"familyType":"nuclear","familyStatus":"middle","brothers":1,"sisters":0,"nativePlace":"Palakkad"}' "$GEN")
+c=$(req PUT "/profiles/$GEN_PROFILE/details/family" '{"father":{"name":"Rajan Nair","profession":"Teacher"},"mother":{"name":"Latha Nair","profession":"Homemaker"},"familyType":"nuclear","familyStatus":"middle_class","brothers":1,"sisters":0,"nativePlace":"Palakkad"}' "$GEN")
 check "the native place is asked with the family now" "$c" 200
 c=$(req GET "/profiles/$GEN_PROFILE/details" "" "$GEN")
 assert "and stored there" "$(jq -e '.details.nativePlace == "Palakkad"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"

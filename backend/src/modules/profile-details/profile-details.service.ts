@@ -208,12 +208,26 @@ export class ProfileDetailsService {
       throw new BadRequestException('The minimum height cannot be above the maximum');
     }
 
+    /*
+     * The horoscope answers are preferences and are stored with the rest of
+     * them. The *document* is not: it is this person's own chart rather than a
+     * preference about anybody else's, so it goes where charts go. Attaching it
+     * from this screen is a convenience — a family filling in preferences
+     * usually has it to hand, and sending them to another section to attach it
+     * is where they stop — but it lands in exactly one place.
+     */
     Object.assign(row, {
       preferredAgeMin: dto.preferredAgeMin,
       preferredAgeMax: dto.preferredAgeMax,
       preferredHeightMinCm: dto.preferredHeightMinCm,
       preferredHeightMaxCm: dto.preferredHeightMaxCm,
-      partnerPreferences: dto.preferences ?? {},
+      partnerPreferences: {
+        ...(dto.preferences ?? {}),
+        ...(dto.horoscopeExpectation ? { horoscopeExpectation: dto.horoscopeExpectation } : {}),
+        ...(dto.kujaDosham ? { kujaDosham: dto.kujaDosham } : {}),
+        ...(dto.preferredStars ? { preferredStars: dto.preferredStars } : {}),
+      },
+      ...(dto.horoscopeDocumentUrl ? { horoscopeDocumentUrl: dto.horoscopeDocumentUrl } : {}),
     });
     const saved = await this.persist(profileId, row);
 

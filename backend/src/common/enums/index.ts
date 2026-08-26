@@ -202,6 +202,35 @@ export enum AgentChargeType {
   MATCH_SETTLEMENT = 'match_settlement',
 }
 
+/**
+ * Complexion, as this market actually describes it.
+ *
+ * A closed list rather than free text, and the reason is matching rather than
+ * tidiness: "Fair", "fair", "Fair/Wheatish" and "Very fair" were four different
+ * values that a partner-preference filter could not compare, so a preference
+ * for one of them silently excluded the other three.
+ *
+ * Deliberately short. A longer scale invites finer distinctions than anybody
+ * can make honestly about themselves, and this is a field people already feel
+ * uncomfortable filling in.
+ */
+export enum Complexion {
+  FAIR = 'fair',
+  WHEATISH = 'wheatish',
+  DUSKY = 'dusky',
+  DARK = 'dark',
+  /** For somebody who would rather not say. Always an option. */
+  NOT_SPECIFIED = 'not_specified',
+}
+
+/** How a family describes its circumstances. Closed, for the same reason. */
+export enum FamilyStatus {
+  LOWER_MIDDLE_CLASS = 'lower_middle_class',
+  MIDDLE_CLASS = 'middle_class',
+  UPPER_MIDDLE_CLASS = 'upper_middle_class',
+  AFFLUENT = 'affluent',
+}
+
 /** Present marital status. Drives which of the history fields even appear. */
 export enum MaritalStatus {
   NEVER_MARRIED = 'never_married',
