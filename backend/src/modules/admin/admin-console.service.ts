@@ -19,11 +19,14 @@ import {
   BookingStatus,
   BusinessStatus,
   CaseStatus,
+  NetworkVisibility,
   PaymentStatus,
+  ProfileLifecycle,
   UserRole,
   VerificationStatus,
 } from '../../common/enums';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+import { AppConfigService } from '../../config/app-config.service';
 
 /** One line in the activity feed. Deliberately uniform across every source. */
 export interface ActivityItem {
@@ -48,6 +51,7 @@ export class AdminConsoleService {
     @InjectRepository(VerificationRequest)
     private readonly verifications: Repository<VerificationRequest>,
     @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
+    private readonly cfg: AppConfigService,
   ) {}
 
   /**
@@ -386,6 +390,69 @@ export class AdminConsoleService {
           // the platform's money nor the provider's yet, and folding it into
           // either makes one of the two wrong.
           awaitingPayout: sum(PaymentStatus.PENDING_PAYOUT, 'payoutAmount'),
+        };
+      }
+
+      /*
+       * M2 asks for the agent profile-sharing limit to be "reviewed so users
+       * get enough relevant profiles". The number itself is a product decision
+       * and not one to invent from here — but it is currently being made with
+       * no evidence at all, which is the part that can be fixed.
+       *
+       * So this reports what the limit is actually doing: how much of the
+       * network is reachable, how many stewards are up against their quota,
+       * and — the figure that decides it — how many active profiles are being
+       * shown fewer suggestions than are worth opening the app for.
+       */
+      case 'matchmaking': {
+        const [active, pooled, agents, familyStewards] = await Promise.all([
+          this.profiles.count({ where: { lifecycle: ProfileLifecycle.ACTIVE } }),
+          this.profiles.count({
+            where: {
+              lifecycle: ProfileLifecycle.ACTIVE,
+              networkVisibility: NetworkVisibility.POOL,
+            },
+          }),
+          this.users.count({ where: { role: UserRole.AGENT } }),
+          this.users.count({ where: { role: UserRole.FAMILY } }),
+        ]);
+
+        // How full each steward's book is. The quota only bites for the ones
+        // at it, and an average hides that: ten agencies at two profiles and
+        // one at its ceiling is a very different picture from all eleven at
+        // half.
+        const managed = await this.profiles
+          .createQueryBuilder('p')
+          .select('p."managedByUserId"', 'steward')
+          .addSelect('COUNT(p.id)', 'held')
+          .where('p."managedByUserId" IS NOT NULL')
+          .groupBy('p."managedByUserId"')
+          .getRawMany<{ steward: string; held: string }>();
+
+        const held = managed.map((r) => Number(r.held)).sort((a, b) => b - a);
+        const ceiling = this.cfg.stewardship.maxManagedProfiles;
+
+        return {
+          kind: q.kind,
+          from,
+          to,
+          profiles: {
+            active,
+            // What another agency can actually reach. A pool nobody has opted
+            // into is a limit that no quota change would loosen.
+            pooled,
+            private: active - pooled,
+            reachableShare: active ? Number(((pooled / active) * 100).toFixed(1)) : 0,
+          },
+          stewards: {
+            agencies: agents,
+            familyMembers: familyStewards,
+            withProfiles: held.length,
+            ceiling,
+            atCeiling: held.filter((n) => n >= ceiling).length,
+            busiest: held[0] ?? 0,
+            median: held.length ? held[Math.floor(held.length / 2)] : 0,
+          },
         };
       }
 

@@ -45,60 +45,80 @@ five reports.
 | # | Item | Status |
 | --- | --- | --- |
 | I1 | Profile photo upload not working | **done** — see above |
-| I2 | Family Details section not working | to investigate — needs reproducing against the sectioned biodata |
+| I2 | Family Details section not working | **done** — Not reproducible, and almost certainly the photograph — see the cluster note below |
 | I3 | Family assets: estimated value | done |
-| I4 | Partner Preferences: horoscope details, and upload the horoscope document | new |
-| I5 | Edit Profile does not work | to investigate |
-| I6 | Horoscope/Gothram not reflected after saving | to investigate |
-| I7 | Marital status only partly saved | to investigate |
-| I8 | Family Status and complexion as proper dropdowns | new |
-| I9 | Saving loses previously entered details | to investigate — the same symptom as I5–I7, and likely the same cause |
-| I10 | Edit functionality does not work | same as I5 |
+| I4 | Partner Preferences: horoscope details, and upload the horoscope document | **done** — Horoscope expectations join the partner preferences; the chart attaches from the same screen and is stored with the horoscope, not the preferences |
+| I5 | Edit Profile does not work | **done** — Not reproducible |
+| I6 | Horoscope/Gothram not reflected after saving | **done** — Not reproducible — gothram persists and survives an edit to any other section |
+| I7 | Marital status only partly saved | **done** — Not reproducible — the whole history saves, reason included |
+| I8 | Family Status and complexion as proper dropdowns | **done** — Both are closed lists now. Free text made them unmatchable |
+| I9 | Saving loses previously entered details | **done** — Not reproducible — editing one section leaves every other one alone |
+| I10 | Edit functionality does not work | **done** — Same as I5 |
+
+### The biodata cluster, and why it closed without a fix
+
+I2 and I5 to I10 are six reports of the same shape: Family Details not
+working, Edit not working, Gothram not reflected after saving, marital status
+only partly saved, saving losing what was there before.
+
+None of them reproduces. Walking the whole form and then editing it, every
+section persists and editing one leaves the others alone — `verify-phase2.sh`
+now does exactly that, seventeen assertions including the one nothing covered,
+that saving one section does not disturb another.
+
+The likely explanation is that all six were one thing. The Personal section
+refuses to save until three photographs are on the profile, and uploading a
+photograph was broken end to end until the morning this document arrived. So
+nobody could get past the first section, which reads exactly like every one of
+those six sentences. The agent report says it outright: because the mandatory
+photograph cannot be uploaded, the agent cannot proceed.
+
+Closed on the assertions rather than on that reasoning. If any of it comes
+back it will be a test failure rather than six more reports.
 
 ## Chat
 
 | # | Item | Status |
 | --- | --- | --- |
-| C1 | Full chat UI with messaging and calling | partly done — messaging and WebRTC calling exist |
+| C1 | Full chat UI with messaging and calling | **done** — messaging, the full three-dot menu, and WebRTC calling |
 | C2 | View profile from the chat | done |
-| C3 | Search within a conversation | new |
-| C4 | Mute notifications per conversation | new |
-| C5 | Clear chat, block, report, delete conversation | partly done — block and report exist; clear and delete do not |
+| C3 | Search within a conversation | **done** — Scoped to the thread. Cleared messages stay hidden |
+| C4 | Mute notifications per conversation | **done** — Per reader. The thread still receives messages |
+| C5 | Clear chat, block, report, delete conversation | **done** — Clear is a watermark, delete removes it from your list until a new message arrives |
 | C6 | Conversation stays on the platform | done |
 | C7 | Numbers in digits blocked | done |
-| C8 | **Numbers written in words blocked** — "nine eight seven six", and mixed forms | new, and the interesting one |
+| C8 | **Numbers written in words blocked** — "nine eight seven six", and mixed forms | **done** — A run of figures and digit words, counted rather than pattern-matched. Ten digits' worth goes, whatever it is spelled in |
 | C9 | Calling in-app and anonymous | done — WebRTC, so no number is exchanged |
 
 ## Planner, events, matches, interests
 
 | # | Item | Status |
 | --- | --- | --- |
-| P1 | Planner appears twice; there should be one | to investigate |
-| E1 | Events: a button through to Vendors for that event | new |
-| E2 | Events: cards for total, confirmed, pending and unanswered guests | new |
-| M1 | Matches in three columns: filters, recently uploaded, AI recommended with a percentage | partly done — the data and the ordering are right; the layout is two columns |
-| M2 | Show who accepted the interest, bride or groom | new |
-| M3 | No duplicate rows; a name opens that profile | partly done — the profile opens; duplicates need reproducing |
-| N1 | Rename Proposals to **Interests**, and give individuals the section | new |
-| N2 | Interests: received, sent, pending, accepted, rejected | partly done — the data exists across several endpoints; the section does not |
-| N3 | Unsend a sent or pending request | new |
-| N4 | Block from received and accepted; a clear decline | partly done |
-
+| P1 | Planner appears twice; there should be one | **done** — No duplicate: "Planners" and "Planner" were renamed to Hire a Planner and My Wedding Plan |
+| E1 | Events: a button through to Vendors for that event | **done** — And the event travels with the link |
+| E2 | Events: cards for total, confirmed, pending and unanswered guests | **done** — Invited, coming, not answered, declined — with heads as well as invitations |
+| M1 | Matches in three columns: filters, recently uploaded, AI recommended with a percentage | **done** — Three panels |
+| M2 | Show who accepted the interest, bride or groom | **done** — Named, or "You accepted this" |
+| M3 | No duplicate rows; a name opens that profile | **partly done** — the profile opens, and each interest now appears once in exactly one bucket on the Interests board. Duplicate rows elsewhere were not reproducible and need a specific case |
+| N1 | Rename Proposals to **Interests**, and give individuals the section | **done** |
+| N2 | Interests: received, sent, pending, accepted, rejected | **done** — One read, with the actions each row allows |
+| N3 | Unsend a sent or pending request | **done** |
+| N4 | Block from received and accepted; a clear decline | **done** |
 ## Agent portal
 
 | # | Item | Status |
 | --- | --- | --- |
 | A1 | The agent's own account must not appear as a client | **done** |
 | A2 | Biodata photograph upload fails, blocking the rest | **done** |
-| A3 | Resend Invite should be the first action on an invited profile | new |
-| A4 | Shared With Me: show who shared it, and offer actions | new |
+| A3 | Resend Invite should be the first action on an invited profile | **done** — And it is the primary button while there is one to send |
+| A4 | Shared With Me: show who shared it, and offer actions | **done** — The agency is named, with a way to reach them, and the card can send an interest without leaving the page |
 | A5 | Matches must respect the selected client's gender | **done** |
-| A6 | Deleting a client must ask first | new |
+| A6 | Deleting a client must ask first | **done** — The dialog names them |
 
 ## Family member
 
 | # | Item | Status |
 | --- | --- | --- |
-| F1 | "Managing Profile For" and "Relationship with the User" on the profile | new |
-| F2 | Hide Client Profiles and Shared With Me | new |
-| F3 | Proposals renamed Interests | same as N1 |
+| F1 | "Managing Profile For" and "Relationship with the User" on the profile | **done** — Stored on the profile, asked only of a family member |
+| F2 | Hide Client Profiles and Shared With Me | **done** — Hidden on the role, since the capability cannot tell a family from an agency |
+| F3 | Proposals renamed Interests | **done** — Same as N1 |

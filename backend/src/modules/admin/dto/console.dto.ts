@@ -92,6 +92,7 @@ export const REPORT_KINDS = [
   'bookings',
   'financial',
   'verification',
+  'matchmaking',
 ] as const;
 
 export class ReportQueryDto {

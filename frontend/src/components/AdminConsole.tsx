@@ -441,7 +441,15 @@ export function Staff() {
   );
 }
 
-const REPORTS = ['users', 'agents', 'vendors', 'bookings', 'financial', 'verification'] as const;
+const REPORTS = [
+  'users',
+  'agents',
+  'vendors',
+  'bookings',
+  'financial',
+  'verification',
+  'matchmaking',
+] as const;
 
 export function Reports() {
   const [kind, setKind] = useState<(typeof REPORTS)[number]>('bookings');

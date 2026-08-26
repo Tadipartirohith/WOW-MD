@@ -91,6 +91,15 @@ export default function Events() {
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<EventStatus | ''>('');
+  /*
+   * How the days are shown.
+   *
+   * A list is right when you know which day you want and are moving between
+   * them; cards are right when you are looking at the shape of the whole
+   * wedding and want the date, the venue and the numbers at a glance. Neither
+   * is better, which is why it is a choice rather than a redesign.
+   */
+  const [view, setView] = useState<'list' | 'cards'>('list');
   const [search, setSearch] = useState('');
   // The three fields everybody fills in stay visible; the rest are behind a
   // disclosure, because a fourteen-field form for "add the mehendi" is a form
@@ -276,8 +285,23 @@ export default function Events() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4">
           <div className="card">
-            <h2 className="mb-2 font-semibold text-gray-900">Your days</h2>
-            <div className="space-y-1">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="font-semibold text-gray-900">Your days</h2>
+              <div className="flex gap-1">
+                {(['list', 'cards'] as const).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`rounded px-2 py-0.5 text-xs ${
+                      view === v ? 'bg-brand-light text-brand-dark' : 'text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    {v === 'list' ? 'List' : 'Cards'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={view === 'cards' ? 'grid gap-2 sm:grid-cols-2' : 'space-y-1'}>
               {events.map((ev) => (
                 <div key={ev.id}>
                   {editing === ev.id ? (
@@ -291,9 +315,17 @@ export default function Events() {
                     />
                   ) : (
                     <div
-                      className={`flex items-center justify-between rounded px-3 py-2 ${
-                        selected === ev.id ? 'bg-brand-light' : 'hover:bg-gray-50'
-                      }`}
+                      className={
+                        view === 'cards'
+                          ? `flex flex-col gap-1 rounded border p-3 ${
+                              selected === ev.id
+                                ? 'border-brand bg-brand-light'
+                                : 'border-gray-200 hover:bg-gray-50'
+                            }`
+                          : `flex items-center justify-between rounded px-3 py-2 ${
+                              selected === ev.id ? 'bg-brand-light' : 'hover:bg-gray-50'
+                            }`
+                      }
                     >
                       <button className="flex-1 text-left" onClick={() => setSelected(ev.id)}>
                         <span className="block text-sm font-medium text-gray-900">{ev.name}</span>

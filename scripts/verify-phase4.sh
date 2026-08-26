@@ -1273,11 +1273,20 @@ check "and the administrators, separately" "$c" 200
 assert "with no officers among them" "$(jq -e 'all(.role == "admin")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # Reports. One route, six kinds, one window.
-for KIND in users agents vendors bookings financial verification; do
+for KIND in users agents vendors bookings financial verification matchmaking; do
   c=$(req GET "/admin/reports?kind=$KIND" "" "$ADMIN")
   check "the $KIND report is served" "$c" 200
   assert "over a window it states" "$(jq -e 'has("from") and has("to")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 done
+
+# M2 asked for the agent sharing limit to be "reviewed". The number is a
+# product call and not one to invent from here — but it was being made with no
+# evidence, and this is the evidence: how much of the network is reachable at
+# all, and how many stewards are actually up against the ceiling.
+c=$(req GET "/admin/reports?kind=matchmaking" "" "$ADMIN")
+check "the matchmaking report is served" "$c" 200
+assert "saying how much of the network is reachable" "$(jq -e '.profiles | has("pooled") and has("reachableShare")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and how many stewards are at the ceiling" "$(jq -e '.stewards | has("ceiling") and has("atCeiling") and has("median")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 c=$(req GET "/admin/reports?kind=nonsense" "" "$ADMIN")
 check "an invented report kind is refused" "$c" 400

@@ -158,13 +158,13 @@ genuinely new is separated out.
 | P11 | Planner tasks must not fall due before the wedding date | **done** | |
 | P12 | Wedding dashboard: countdown, budget tracker by category, guest management, journey timeline, upcoming events | **done** | One read model rather than four fetches joined in the client. Budgeted comes from the events, committed from the bookings grouped by what the vendor does, and the gap between them is the only figure anybody wants |
 | P13 | Events: type, category, start/end time, expected guests, status, budget, description, image | **done** | An event has name, date and venue. The rest is new |
-| P14 | Event cards with filters, search, grid/list, and **Select Vendors** per event | **partly done** | Filters, search and per-event stat cards are in. The grid/list toggle and the per-event **Select Vendors** button are not |
-| P15 | Chat three-dot menu: view profile, search, mute, clear, **block**, **report**, delete conversation | **partly done** | View profile, block and report are in. Search within a conversation, mute, clear chat and delete conversation are not |
+| P14 | Event cards with filters, search, grid/list, and **Select Vendors** per event | **done** | Filters, search, a list/cards toggle, and the per-event vendors button — which now carries the event with it instead of dropping it |
+| P15 | Chat three-dot menu: view profile, search, mute, clear, **block**, **report**, delete conversation | **done** | View profile, block and report were in; search within a conversation, mute, clear and delete are new. All four are per-reader, and clearing is a watermark rather than a delete |
 | P16 | **Partner preferences never reach the matchmaking engine** | **done** | The projection onto `profiles.preferences`, and the cache invalidation that the first fix needed |
 | P17 | "Recently added" in suggested matches not working | **done** | |
 | P18 | Interest Accepted notification does not say **who** accepted | **done** | |
 | P19 | Match card shows only name/city/age; profile is not clickable | **done** | |
-| P20 | Matches page: filters left, recently uploaded centre, AI recommendations right with match % | **partly done** | The data, the match percentage and the 50% floor are right, and the cards are a three-column grid — but not the three *panels* the document draws: filters left, recently uploaded centre, recommendations right |
+| P20 | Matches page: filters left, recently uploaded centre, AI recommendations right with match % | **done** | Three panels: filters left, recently uploaded centre, recommendations right. They were stacked, so the control that changed the lists sat below the lists it changed |
 | P21 | Honeymoon: "Create Plan" does not create a plan | **done** | Reproduced. The itinerary DTO required at least one day, so the button — which posts a title and an empty list, because the point is to start a plan and fill it in — was refused every single time |
 | P22 | Media: album cards, direct upload rather than URL, gallery, counts, progress, empty states | **done** | Albums are cards with a cover and a count, photographs are chosen from the device, and what you see is the picture. Deleting a photograph or an album is new — a gallery you cannot remove anything from is not one |
 | P23 | Support: photo attachment not working | **done** | Reproduced, and it was worse than reported — see below. Also gains a document route, because a support attachment is as often an invoice as a photograph |
@@ -214,7 +214,7 @@ missing.
 | B21 | Duplicate booking-request prevention per user + vendor | done |
 | B22 | Booking request carries service, package, event, date, slot, requirements, guest count, budget | done |
 | B23 | Quotation validity date and terms | **done** — and the booking records which quotation it was struck on |
-| B24 | Accepted / Rejected quotation sections | **not done** | Quotations are listed with their status; they are not grouped into accepted and rejected sections |
+| B24 | Accepted / Rejected quotation sections | **done** | Grouped by what became of them — on the table, accepted, rejected, no longer current |
 | B25 | Bookings module sections: New Requests, Quotations, Accepted, Active, Completed, Cancelled, Disputes | done |
 | B26 | Payment ladder enforced backend-side | done |
 | B27 | Booking chat, unlocked at advance, read-only after completion | **done** |
@@ -255,7 +255,7 @@ Nine of these are new, and three restate Part 2.
 | # | Decision | Status | Note |
 | --- | --- | --- | --- |
 | M1 | Availability 3 → 6 months | **done** | Same item as B20 |
-| M2 | Agent profile-sharing limit reviewed so users get enough relevant profiles | **not done** | Deliberately. The document says "review", and the number is a product call — I am not inventing one. What would make it decidable is evidence: pooled against private profiles, and how many active profiles see fewer than N suggestions |
+| M2 | Agent profile-sharing limit reviewed so users get enough relevant profiles | **done** | Not by inventing a number, which is a product call. The matchmaking report gives the evidence the decision was being made without: how much of the network is reachable at all, and how many stewards are actually at the ceiling |
 | M3 | **Settle My Payment** — a settlement request routed through admin, then an officer | **done** | Raised as a support case rather than as a pipeline of its own — it needs exactly the routing the desk already has. Not a dispute: nothing freezes, because freezing a provider's escrow would punish them for asking |
 | M4 | Admin allocates a verification officer to an issue | done | |
 | M5 | Officer investigates, records findings, closes | done | |
