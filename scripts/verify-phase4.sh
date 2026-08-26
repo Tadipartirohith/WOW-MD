@@ -1601,6 +1601,81 @@ check "so is the recently-added list" "$c" 200
 assert "and that is gender-filtered too" "$(jq -e '[.data[].profile.gender] | all(. != "female")' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 echo
+echo "== 45. Interests, in one place =="
+
+# The parts existed as three endpoints and nothing at all for declined, so the
+# question people actually ask — who has asked about me, and what came of it —
+# had no screen that answered it.
+
+if command -v redis-cli >/dev/null 2>&1; then
+  KEYS=$(redis-cli -h "${REDIS_HOST:-redis}" --scan --pattern 'throttle:*' 2>/dev/null)
+  [ -n "$KEYS" ] && echo "$KEYS" | xargs -r redis-cli -h "${REDIS_HOST:-redis}" DEL >/dev/null 2>&1
+fi
+
+PREF_I='{"religion":"hindu","education":"masters","lifestyle":["vegetarian"]}'
+reg ia individual bride
+reg ib individual groom
+reg ic individual groom
+IA=$(field /tmp/ia.json accessToken)
+IB=$(field /tmp/ib.json accessToken)
+IC=$(field /tmp/ic.json accessToken)
+req PUT /users/me/profile "{\"displayName\":\"Ia\",\"gender\":\"female\",\"dateOfBirth\":\"1997-05-05\",\"city\":\"Hyderabad\",\"preferences\":$PREF_I}" "$IA" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Ib\",\"gender\":\"male\",\"dateOfBirth\":\"1994-05-05\",\"city\":\"Hyderabad\",\"preferences\":$PREF_I}" "$IB" >/dev/null
+req PUT /users/me/profile "{\"displayName\":\"Ic\",\"gender\":\"male\",\"dateOfBirth\":\"1993-05-05\",\"city\":\"Hyderabad\",\"preferences\":$PREF_I}" "$IC" >/dev/null
+req GET /users/me "" "$IA" >/dev/null; P_IA=$(field /tmp/body id)
+req GET /users/me "" "$IB" >/dev/null; P_IB=$(field /tmp/body id)
+req GET /users/me "" "$IC" >/dev/null; P_IC=$(field /tmp/body id)
+
+c=$(req GET /matches/interests "" "$IA")
+check "the board is served, empty" "$c" 200
+assert "with nothing in any bucket" "$(jq -e '.counts.received == 0 and .counts.sent == 0 and .counts.accepted == 0 and .counts.declined == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# One she sent, one she received, so both directions are on the same board.
+c=$(req POST /matches/interest "{\"toProfileId\":\"$P_IB\"}" "$IA")
+check "she sends one" "$c" 201
+SENT_ID=$(field /tmp/body id)
+c=$(req POST /matches/interest "{\"toProfileId\":\"$P_IA\"}" "$IC")
+check "and receives another" "$c" 201
+RECV_ID=$(field /tmp/body id)
+
+c=$(req GET /matches/interests "" "$IA")
+check "the board shows both" "$c" 200
+assert "one received, one sent" "$(jq -e '.counts.received == 1 and .counts.sent == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and pending is the union of the two, not a third count" "$(jq -e '.counts.pending == 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# What you may do depends on which side you are on, and that decision travels
+# with the row rather than being re-derived by the client.
+assert "a received request can be accepted or declined, not unsent" "$(jq -e --arg id "$RECV_ID" '.received[] | select(.id == $id) | .actions.accept and .actions.decline and (.actions.unsend | not)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "a sent one can be unsent, not accepted by the sender" "$(jq -e --arg id "$SENT_ID" '.sent[] | select(.id == $id) | .actions.unsend and (.actions.accept | not)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and each row says which way it went" "$(jq -e --arg id "$RECV_ID" '.received[] | select(.id == $id) | .direction == "incoming"' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Unsend is the document's word for withdraw, and it is the sender's to use.
+c=$(req PUT "/matches/$SENT_ID/withdraw" "" "$IA")
+check "she unsends the one she sent" "$c" 200
+c=$(req GET /matches/interests "" "$IA")
+assert "it leaves the sent list" "$(jq -e '.counts.sent == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "and is kept as withdrawn rather than deleted" "$(jq -e --arg id "$SENT_ID" 'any(.withdrawn[]; .id == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# Declined is kept too. Deleting it is how the same profile gets asked twice.
+c=$(req PUT "/matches/$RECV_ID/reject" "" "$IA")
+check "she declines the one she received" "$c" 200
+c=$(req GET /matches/interests "" "$IA")
+assert "which moves it to declined" "$(jq -e '.counts.declined == 1 and .counts.received == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+# An accepted interest shows the counterpart more fully than a pending one.
+c=$(req POST /matches/interest "{\"toProfileId\":\"$P_IA\"}" "$IB")
+check "somebody else asks" "$c" 201
+ACC_ID=$(field /tmp/body id)
+c=$(req PUT "/matches/$ACC_ID/accept" "" "$IA")
+check "and she accepts" "$c" 200
+c=$(req GET /matches/interests "" "$IA")
+assert "it lands under accepted" "$(jq -e '.counts.accepted == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+assert "still offering block, which is where people reach for it" "$(jq -e --arg id "$ACC_ID" '.accepted[] | select(.id == $id) | .actions.block' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+c=$(req GET /matches/interests "" "$VENDOR")
+check "a vendor has no interests to see" "$c" 403
+
+echo
 echo "============================="
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 echo "============================="

@@ -37,6 +37,19 @@ export class MatchmakingController {
   }
 
   @RequirePermissions(Permission.MATCH_BROWSE)
+  @ApiOperation({
+    summary: 'Every interest, grouped',
+    description:
+      'Received, sent, pending, accepted and declined in one read, with the actions each row ' +
+      'allows. What you may do depends on the status and on which side you are — decline one ' +
+      'that came to you, unsend one you sent — so that decision travels with the row rather ' +
+      'than being re-derived by every client.',
+  })
+  @Get('interests')
+  interests(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
+    return this.matchmaking.interestBoard(actor, q.profileId);
+  }
+
   @Get('incoming')
   incoming(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
     return this.matchmaking.incoming(actor, q.profileId);

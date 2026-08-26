@@ -28,7 +28,7 @@ import AgentClients from './pages/AgentClients';
 import ManagedProfiles from './pages/ManagedProfiles';
 import SharedWithMe from './pages/SharedWithMe';
 import NetworkPool from './pages/NetworkPool';
-import Proposals from './pages/Proposals';
+import Interests from './pages/Interests';
 import SharedBiodata from './pages/SharedBiodata';
 import Agency from './pages/Agency';
 import Security from './pages/Security';
@@ -87,7 +87,18 @@ const NAV: NavEntry[] = [
   },
   { to: '/shared-with-me', label: 'Shared With Me', requires: [Permission.ACT_ON_BEHALF] },
   { to: '/pool', label: 'Network Pool', requires: [Permission.NETWORK_POOL_BROWSE] },
-  { to: '/proposals', label: 'Proposals', requires: [Permission.ACT_ON_BEHALF] },
+  {
+    to: '/interests',
+    label: 'Interests',
+    // Everybody who can be asked about, plus the stewards who answer on
+    // somebody's behalf. It used to be steward-only and called Proposals,
+    // which left an individual with no screen showing who had asked about
+    // them.
+    requires: [Permission.MATCH_BROWSE, Permission.ACT_ON_BEHALF],
+    // A family member stewards a relative and is also a client; a vendor has
+    // no profile to be asked about at all.
+    hideFor: ['vendor', 'planner', 'in_person'],
+  },
   { to: '/clients', label: 'My Clients', requires: [Permission.CLIENT_READ] },
   { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE] },
   { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE] },
@@ -449,13 +460,16 @@ export default function App() {
         }
       />
       <Route
-        path="/proposals"
+        path="/interests"
         element={
-          <Protected requires={[Permission.ACT_ON_BEHALF]}>
-            <Proposals />
+          <Protected requires={[Permission.MATCH_BROWSE, Permission.ACT_ON_BEHALF]}>
+            <Interests />
           </Protected>
         }
       />
+      {/* The old address still works: a bookmark should not 404 because a
+          section was renamed. */}
+      <Route path="/proposals" element={<Navigate to="/interests" replace />} />
       <Route
         path="/clients"
         element={

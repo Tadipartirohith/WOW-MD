@@ -523,6 +523,96 @@ export class MatchmakingService {
     return this.decorate(me.id, rows, true);
   }
 
+  /**
+   * Every interest this profile is part of, grouped the way a person thinks
+   * about them.
+   *
+   * The pieces existed as three endpoints — incoming, outgoing, accepted — and
+   * nothing at all for declined, so a client wanting the whole picture made
+   * three calls and did the grouping itself. Which is why nobody built the
+   * screen, and why a profile could not answer the question people actually
+   * ask: who has asked about me, who have I asked, and what came of it.
+   *
+   * `actions` travels with each row rather than being inferred by the client.
+   * What you may do to an interest depends on its status *and* on which side of
+   * it you are — you decline one that came to you and unsend one you sent, and
+   * those are different buttons on rows that otherwise look identical. A client
+   * working that out is a second copy of the rule, in the place least able to
+   * enforce it.
+   */
+  async interestBoard(actor: AuthUser, profileId?: string) {
+    const me = await this.resolveSubject(actor, profileId);
+
+    const rows = await this.interests.find({
+      where: [{ fromProfileId: me.id }, { toProfileId: me.id }],
+      order: { updatedAt: 'DESC' },
+    });
+
+    // Decorated in two passes, because an accepted interest is allowed to show
+    // more of the counterpart than a pending one. Doing it in one pass would
+    // mean choosing which of those two to get wrong.
+    const accepted = rows.filter((r) => r.status === InterestStatus.ACCEPTED);
+    const rest = rows.filter((r) => r.status !== InterestStatus.ACCEPTED);
+    const [acceptedViews, restViews] = await Promise.all([
+      this.decorate(me.id, accepted, true),
+      this.decorate(me.id, rest, false),
+    ]);
+
+    const status = new Map(rows.map((r) => [r.id, r.status]));
+    const withActions = [...acceptedViews, ...restViews].map((view) => {
+      const st = status.get(view.id)!;
+      const incoming = view.direction === 'incoming';
+      const pending = st === InterestStatus.PENDING;
+      return {
+        ...view,
+        actions: {
+          accept: incoming && pending,
+          decline: incoming && pending,
+          unsend: !incoming && pending,
+          // Offered wherever there is somebody to block: a request you have not
+          // answered, and a match you have. Those are the two places people
+          // actually reach for it.
+          block: st === InterestStatus.PENDING || st === InterestStatus.ACCEPTED,
+        },
+      };
+    });
+
+    const of = (...want: InterestStatus[]) => withActions.filter((v) => want.includes(status.get(v.id)!));
+
+    const pending = of(InterestStatus.PENDING);
+    const received = pending.filter((v) => v.direction === 'incoming');
+    const sent = pending.filter((v) => v.direction === 'outgoing');
+    const acceptedList = of(InterestStatus.ACCEPTED);
+    const declined = of(InterestStatus.REJECTED);
+
+    return {
+      profileId: me.id,
+      received,
+      sent,
+      /*
+       * Everything still waiting on somebody, from either side.
+       *
+       * Deliberately the union of received and sent rather than a fourth
+       * disjoint bucket. The document lists Pending as its own section, and
+       * "waiting on an answer" is worth seeing in one place regardless of who
+       * asked — but the counts below treat it as the union it is, so nothing
+       * is added up twice.
+       */
+      pending,
+      accepted: acceptedList,
+      declined,
+      withdrawn: of(InterestStatus.WITHDRAWN),
+      blocked: of(InterestStatus.BLOCKED),
+      counts: {
+        received: received.length,
+        sent: sent.length,
+        pending: pending.length,
+        accepted: acceptedList.length,
+        declined: declined.length,
+      },
+    };
+  }
+
   /** Incoming pending interests for the subject, for the inbox view. */
   async incoming(actor: AuthUser, profileId?: string): Promise<InterestView[]> {
     const me = await this.resolveSubject(actor, profileId);

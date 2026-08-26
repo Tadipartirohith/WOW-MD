@@ -46,10 +46,11 @@ const TILES: Tile[] = [
     requires: [Permission.NETWORK_POOL_BROWSE],
   },
   {
-    to: '/proposals',
-    title: 'Proposals',
-    desc: 'Talk through a pairing with the agent on the other side',
-    requires: [Permission.ACT_ON_BEHALF],
+    to: '/interests',
+    title: 'Interests',
+    desc: 'Who has asked about you, who you have asked, and what came of it',
+    requires: [Permission.MATCH_BROWSE, Permission.ACT_ON_BEHALF],
+    hideFor: ['vendor', 'planner', 'in_person'],
   },
   {
     to: '/clients',
