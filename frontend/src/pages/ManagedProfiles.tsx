@@ -17,6 +17,7 @@ import PhotoUploader from '../components/PhotoUploader';
 interface ManagedProfile {
   id: string;
   displayName: string;
+  stewardRelation?: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
   networkVisibility: 'private' | 'pool';
@@ -68,6 +69,7 @@ interface AgencyStatus {
 
 const emptyDraft = {
   displayName: '',
+  stewardRelation: '',
   contactPhone: '',
   contactEmail: '',
   gender: 'female',
@@ -87,6 +89,9 @@ const emptyDraft = {
 export default function ManagedProfiles() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
+  // A family member holds the same stewardship capability an agency does, so
+  // the permission cannot tell them apart — only the role can.
+  const isFamily = useAuth((s) => s.user?.role) === 'family';
   const isAgent = can(permissions, Permission.AGENCY_MANAGE);
 
   const [draft, setDraft] = useState(emptyDraft);
@@ -124,6 +129,7 @@ export default function ManagedProfiles() {
       if (draft.dateOfBirth) payload.dateOfBirth = draft.dateOfBirth;
       if (draft.city) payload.city = draft.city;
       if (draft.bio) payload.bio = draft.bio;
+      if (draft.stewardRelation) payload.stewardRelation = draft.stewardRelation;
       return (await api.post('/agents/profiles', payload)).data as ManagedProfile;
     },
     onSuccess: (profile, inviteNow) => {
@@ -252,6 +258,26 @@ export default function ManagedProfiles() {
             <label className="label">Full name</label>
             <input className="input" value={draft.displayName} onChange={set('displayName')} required />
           </div>
+          {/*
+            Only asked of a family member. An agency's relationship to a client
+            is commercial and is recorded on the agency; asking an agent how
+            they are related to their client would be a strange question with
+            no honest answer.
+          */}
+          {isFamily && (
+            <div>
+              <label className="label">Your relationship to them</label>
+              <input
+                className="input"
+                placeholder="Father, elder brother, maternal uncle"
+                value={draft.stewardRelation}
+                onChange={set('stewardRelation')}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Shown to families looking at this profile. It is the first thing they ask.
+              </p>
+            </div>
+          )}
           <div>
             <label className="label">Mobile number</label>
             <input
@@ -335,6 +361,13 @@ export default function ManagedProfiles() {
             <div key={p.id} className="py-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
+                  {/* Who this profile is for, and what they are to you. */}
+                  {isFamily && (
+                    <p className="text-xs text-gray-500">
+                      Managing profile for {p.displayName}
+                      {p.stewardRelation ? ` · you are their ${p.stewardRelation}` : ''}
+                    </p>
+                  )}
                   <p className="font-medium">
                     {p.displayName}
                     <span
@@ -373,6 +406,25 @@ export default function ManagedProfiles() {
                     const allow = p.actions;
                     return (
                     <>
+                      {/*
+                        The invite goes first, and it is the primary button
+                        while it is the thing that matters.
+
+                        A profile whose invitation is outstanding has exactly
+                        one useful next action, and it was sitting fourth —
+                        after Photos, Reach and Circulate — where an agent
+                        working through a list has to look for it every time.
+                        Once the client has claimed the profile there is nothing
+                        to send and the button is gone, so nothing else moves.
+                      */}
+                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && allow?.canInvite && (
+                        <button
+                          className={p.claimStatus === 'invited' ? 'btn' : 'btn-outline'}
+                          onClick={() => invite.mutate(p.id)}
+                        >
+                          {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
+                        </button>
+                      )}
                       {allow?.canManagePhotos && (
                       <button
                         className="btn-outline"
@@ -417,11 +469,6 @@ export default function ManagedProfiles() {
                             {sharing === p.id ? 'Done' : 'Circulate'}
                           </button>
                         ))}
-                      {can(permissions, Permission.MANAGED_PROFILE_INVITE) && allow?.canInvite && (
-                        <button className="btn-outline" onClick={() => invite.mutate(p.id)}>
-                          {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
-                        </button>
-                      )}
                       {allow?.canPause && p.lifecycle === 'deactivated' ? (
                         <button
                           className="btn-outline"
@@ -466,7 +513,25 @@ export default function ManagedProfiles() {
                         </button>
                       )}
                       {allow?.canDelete && (
-                        <button className="btn-outline" onClick={() => remove.mutate(p.id)}>
+                        <button
+                          className="btn-outline"
+                          onClick={() => {
+                            // Deleting a client removed them the instant the
+                            // button was pressed, with nothing in between —
+                            // and it sits at the end of a row of six other
+                            // buttons an agent clicks all day. The dialog names
+                            // the person, because "are you sure?" is a question
+                            // nobody reads.
+                            if (
+                              !window.confirm(
+                                `Delete ${p.displayName}? This removes the profile and everything on it, and cannot be undone. Pause or Close keeps the record.`,
+                              )
+                            ) {
+                              return;
+                            }
+                            remove.mutate(p.id);
+                          }}
+                        >
                           Delete
                         </button>
                       )}

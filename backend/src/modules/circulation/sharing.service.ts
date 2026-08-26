@@ -58,6 +58,14 @@ export interface ShareResult {
  * A share grants READ ONLY. It never lets the recipient edit the profile or act
  * as it; that stays with the owner and the steward.
  */
+/** Who circulated a profile, as the receiving agent needs to see it. */
+export interface SharerView {
+  agencyName: string | null;
+  city: string | null;
+  contactPhone: string | null;
+  email: string | null;
+}
+
 @Injectable()
 export class SharingService {
   constructor(
@@ -420,21 +428,61 @@ export class SharingService {
   // ------------------------------------------------------- reading and audit
 
   /** Profiles other people have circulated to the caller. */
-  async sharedWithMe(actor: AuthUser): Promise<{ share: ProfileShare; profile: Profile }[]> {
+  /**
+   * Profiles other agencies have circulated to this one.
+   *
+   * `sharedByUserId` has been on the row since the beginning and nothing ever
+   * resolved it, so the receiving agent was shown "Via an agent" and had no way
+   * to tell *which* — on a screen whose entire purpose is deciding whether to
+   * take a stranger's client seriously. The agency behind the share is the
+   * single most useful thing on the card, and it was the one thing missing.
+   */
+  async sharedWithMe(
+    actor: AuthUser,
+  ): Promise<{ share: ProfileShare; profile: Profile; sharedBy: SharerView | null }[]> {
     const shares = await this.shares.find({
       where: { recipientUserId: actor.userId, revokedAt: IsNull() },
       order: { createdAt: 'DESC' },
     });
     if (shares.length === 0) return [];
 
-    const profiles = await this.profiles.find({
-      where: { id: In(shares.map((s) => s.profileId)) },
-    });
+    const [profiles, sharers, agencies] = await Promise.all([
+      this.profiles.find({ where: { id: In(shares.map((s) => s.profileId)) } }),
+      this.users.find({
+        where: { id: In(shares.map((s) => s.sharedByUserId)) },
+        select: ['id', 'email'],
+      }),
+      this.agencies.find({ where: { ownerUserId: In(shares.map((s) => s.sharedByUserId)) } }),
+    ]);
+
     const byId = new Map(profiles.map((p) => [p.id, p]));
+    const userById = new Map(sharers.map((u) => [u.id, u]));
+    const agencyByUser = new Map(agencies.map((a) => [a.ownerUserId, a]));
 
     return shares.flatMap((share) => {
       const profile = byId.get(share.profileId);
-      return profile ? [{ share, profile }] : [];
+      if (!profile) return [];
+
+      const agency = agencyByUser.get(share.sharedByUserId);
+      const user = userById.get(share.sharedByUserId);
+      return [
+        {
+          share,
+          profile,
+          sharedBy: agency
+            ? {
+                agencyName: agency.agencyName,
+                city: agency.city ?? null,
+                // The agency's own contact, not the sharer's login. An agent
+                // ringing about a client should reach the desk.
+                contactPhone: agency.contactPhone ?? null,
+                email: user?.email ?? null,
+              }
+            : user
+              ? { agencyName: null, city: null, contactPhone: null, email: user.email }
+              : null,
+        },
+      ];
     });
   }
 

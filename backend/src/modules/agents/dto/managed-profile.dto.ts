@@ -93,6 +93,18 @@ export class IntakeConsentDto {
  * needed if and when they are invited to claim the profile.
  */
 export class CreateManagedProfileDto {
+  /**
+   * How you are related to them, for a family member stewarding a relative.
+   *
+   * Optional, because an agency has no answer to it — their relationship to a
+   * client is commercial and lives on the agency record.
+   */
+  @ApiPropertyOptional({ example: 'Father', maxLength: 60 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  stewardRelation?: string;
+
   @ApiProperty({ example: 'Priya Sharma', minLength: 2, maxLength: 120 })
   @IsString()
   @MinLength(2)

@@ -32,12 +32,14 @@ const TILES: Tile[] = [
     title: 'Client Profiles',
     desc: 'Build a profile for someone who has not joined yet, then invite them',
     requires: [Permission.MANAGED_PROFILE_MANAGE],
+    hideFor: ['family'],
   },
   {
     to: '/shared-with-me',
     title: 'Shared With Me',
     desc: 'Biodata other agencies have circulated to you',
     requires: [Permission.ACT_ON_BEHALF],
+    hideFor: ['family'],
   },
   {
     to: '/pool',

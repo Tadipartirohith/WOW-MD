@@ -1577,7 +1577,10 @@ AGENCY_X=$(field /tmp/body id)
 c=$(req PUT "/admin/agents/$AGENCY_X/approve" "" "$ADMIN")
 check "the agency is approved" "$c" 200
 
-AGENT_CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh","givenAt":"2026-08-01"}'
+# Circulation consent is separate from consent to hold the profile at all, and
+# deliberately so — agreeing that an agency may keep your details is not
+# agreeing that they may pass them to other agencies.
+AGENT_CONSENT='"consent":{"method":"in_person","givenByRelation":"father","givenByName":"Ramesh","givenAt":"2026-08-01","allowsCirculation":true}'
 c=$(req POST /agents/profiles "{\"displayName\":\"Client One\",\"gender\":\"female\",\"dateOfBirth\":\"1998-04-04\",\"city\":\"Hyderabad\",\"contactPhone\":\"98765$(date +%s | tail -c 6)\",$AGENT_CONSENT}" "$AGENTX")
 check "the agency takes on a client" "$c" 201
 CLIENT_ONE=$(field /tmp/body id)
@@ -1736,6 +1739,33 @@ c=$(req GET /chat/conversations "" "$IA")
 assert "which brings it back rather than swallowing the message" "$(jq -e --arg u "$IC_ID" 'any(.[]; .withUserId == $u)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 c=$(req GET "/chat/messages?withUserId=$IC_ID&limit=50" "" "$IA")
 assert "and it comes back empty but for the new message" "$(jq -e '(.data | length) == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+
+echo
+echo "== 47. What a steward is to the person =="
+
+# Who shared a profile is asserted in verify-circulation, which already builds
+# the complete biodata that circulating requires. This is the other half: what
+# a steward is to the person whose profile they run.
+
+if command -v redis-cli >/dev/null 2>&1; then
+  KEYS=$(redis-cli -h "${REDIS_HOST:-redis}" --scan --pattern 'throttle:*' 2>/dev/null)
+  [ -n "$KEYS" ] && echo "$KEYS" | xargs -r redis-cli -h "${REDIS_HOST:-redis}" DEL >/dev/null 2>&1
+fi
+
+reg agenty agent ""
+AGENTY=$(field /tmp/agenty.json accessToken)
+c=$(req PUT /agents/agency "{\"agencyName\":\"Second Agency $STAMP\",\"city\":\"Chennai\",\"contactPhone\":\"9876500022\"}" "$AGENTY")
+check "a second agency registers" "$c" 200
+AGENCY_Y=$(field /tmp/body id)
+c=$(req PUT "/admin/agents/$AGENCY_Y/approve" "" "$ADMIN")
+check "and is approved" "$c" 200
+AGENTY_UID=$(jq -r '.user.id' /tmp/agenty.json)
+
+# A steward's relationship to the person, which the platform never recorded.
+FAM_CONSENT='"consent":{"method":"in_person","givenByRelation":"self","givenByName":"Meera","givenAt":"2026-08-01"}'
+c=$(req POST /agents/profiles "{\"displayName\":\"Meera\",\"gender\":\"female\",\"dateOfBirth\":\"1999-01-01\",\"city\":\"Chennai\",\"contactPhone\":\"98765$(date +%s | tail -c 6)\",\"stewardRelation\":\"Father\",$FAM_CONSENT}" "$AGENTY")
+check "a profile records who the steward is to them" "$c" 201
+body_has '"stewardRelation":"Father"' "and it reads back"
 
 echo
 echo "============================="

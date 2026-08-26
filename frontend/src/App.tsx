@@ -84,8 +84,26 @@ const NAV: NavEntry[] = [
     to: '/client-profiles',
     label: 'Client Profiles',
     requires: [Permission.MANAGED_PROFILE_MANAGE],
+    /*
+     * A family member has relatives, not clients.
+     *
+     * They hold the same stewardship capability an agency does — that is how
+     * a father runs his daughter's profile — so the permission cannot tell the
+     * two apart. But "Client Profiles" and "Shared With Me" are an agency's
+     * vocabulary for an agency's business, and putting them in front of a
+     * family reads as though the platform has mistaken them for one. The
+     * profiles themselves are still reachable from Biodata, where a family
+     * member actually looks for them.
+     */
+    hideFor: ['family'],
   },
-  { to: '/shared-with-me', label: 'Shared With Me', requires: [Permission.ACT_ON_BEHALF] },
+  {
+    to: '/shared-with-me',
+    label: 'Shared With Me',
+    requires: [Permission.ACT_ON_BEHALF],
+    // Circulation is agency-to-agency. Nothing is ever shared with a family.
+    hideFor: ['family'],
+  },
   { to: '/pool', label: 'Network Pool', requires: [Permission.NETWORK_POOL_BROWSE] },
   {
     to: '/interests',

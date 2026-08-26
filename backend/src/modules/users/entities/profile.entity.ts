@@ -62,6 +62,21 @@ export class Profile {
   @Column({ type: 'uuid', nullable: true })
   managedByUserId: string | null;
 
+  /**
+   * How the steward is related to the person whose profile this is.
+   *
+   * "Father", "elder brother", "maternal uncle". Only meaningful for a family
+   * member stewarding a relative — an agency's relationship to a client is
+   * commercial and is recorded on the agency, not here.
+   *
+   * Worth storing because it is the question everybody on the other side asks
+   * first. A profile run by the father reads very differently from one run by
+   * a cousin, and until now the platform knew there was a steward but not who
+   * they were to the person.
+   */
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  stewardRelation: string | null;
+
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'managedByUserId' })
   managedBy: User | null;

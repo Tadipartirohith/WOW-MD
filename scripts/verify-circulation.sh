@@ -221,6 +221,16 @@ check "agent B sees it in shared-with-me" "$c" 200
 assert "the biodata carries the detail needed to assess it" "$(jqok '.[0].profile.displayName != null and (.[0].profile | has("photos"))')"
 assert "and the covering note came through" "$(jqok '.[0].message != null')"
 
+# `sharedByUserId` has been on the row since the beginning and nothing resolved
+# it, so this screen said "Via an agent" and stopped — on the one page whose
+# job is deciding whether to take a stranger's client seriously.
+assert "it names the agency that sent it" "$(jqok '.[0].sharedBy.agencyName != null')"
+# A way to reach them is carried when the agency has recorded one, and the
+# login address is the fallback — an agent who cannot contact the sender is
+# back to guessing who they are.
+assert "with a way to reach them" "$(jqok '.[0].sharedBy | has("contactPhone") and (.contactPhone != null or .email != null)')"
+assert "and where they are" "$(jqok '.[0].sharedBy.city != null')"
+
 c=$(req PUT "/agents/profiles/$PRIYA" '{"city":"Chennai"}' "$AGENT_B")
 check "a share grants read only, never edit" "$c" 403
 c=$(req GET "/matches/suggestions?profileId=$PRIYA" "" "$AGENT_B")

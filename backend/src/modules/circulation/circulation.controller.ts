@@ -184,10 +184,14 @@ export class CirculationController {
   @Get('shared-with-me')
   async sharedWithMe(@CurrentUser() actor: AuthUser) {
     const rows = await this.sharing.sharedWithMe(actor);
-    return rows.map(({ share, profile }) => ({
+    return rows.map(({ share, profile, sharedBy }) => ({
       shareId: share.id,
       sharedAt: share.createdAt,
       message: share.message,
+      // Which agency sent it. The card used to say "Via an agent" and stop
+      // there, on a screen whose whole job is deciding whether to take a
+      // stranger's client seriously.
+      sharedBy,
       // A recipient gets the full biodata: the point of circulating is that they
       // can assess the match. They still cannot edit it or act as it.
       profile: toBiodata(profile),
