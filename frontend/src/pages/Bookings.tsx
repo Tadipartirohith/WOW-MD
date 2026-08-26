@@ -246,6 +246,22 @@ export default function Bookings() {
   );
 }
 
+/**
+ * Quotations, grouped by what became of them.
+ *
+ * A re-quoted booking shows four rows differing only by a status word in the
+ * corner, and the one that matters — the offer that was actually agreed — is
+ * not necessarily the newest. Superseded and expired go together because they
+ * mean the same thing to a reader: an offer that is no longer on the table and
+ * nobody refused.
+ */
+const QUOTE_GROUPS: { key: string; label: string; statuses: string[] }[] = [
+  { key: 'live', label: 'On the table', statuses: ['sent'] },
+  { key: 'accepted', label: 'Accepted', statuses: ['accepted'] },
+  { key: 'rejected', label: 'Rejected', statuses: ['rejected'] },
+  { key: 'past', label: 'No longer current', statuses: ['superseded', 'expired'] },
+];
+
 /** Why a milestone that is next in line still is not payable. */
 const WAITING_ON: Record<MilestoneKey, string> = {
   advance: 'Waiting on the provider to accept',
@@ -295,7 +311,22 @@ function BookingDetail({
             The provider has not priced this yet. They will send a quotation.
           </p>
         )}
-        {(quotations ?? []).map((q) => (
+        {/*
+          Grouped by what became of them. A booking that has been re-quoted
+          three times shows four rows that differ only by a status word in the
+          corner, and the one that matters — the offer that was agreed — is not
+          necessarily the newest. The heading says which pile you are looking
+          at.
+        */}
+        {QUOTE_GROUPS.map(({ key, label, statuses }) => {
+          const inGroup = (quotations ?? []).filter((q) => statuses.includes(q.status));
+          if (inGroup.length === 0) return null;
+          return (
+            <div key={key} className="mt-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {label}
+              </p>
+              {inGroup.map((q) => (
           <div key={q.id} className="mt-2 rounded bg-gray-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-medium">
@@ -343,8 +374,11 @@ function BookingDetail({
                 </button>
               </div>
             )}
-          </div>
-        ))}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       {milestones && (

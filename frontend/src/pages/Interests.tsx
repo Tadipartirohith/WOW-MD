@@ -23,6 +23,12 @@ interface InterestRow {
   direction: 'incoming' | 'outgoing';
   counterpart: Counterpart;
   actions: { accept: boolean; decline: boolean; unsend: boolean; block: boolean };
+  acceptedBy: {
+    profileId: string;
+    displayName: string;
+    gender: string | null;
+    mine: boolean;
+  } | null;
 }
 
 interface Board {
@@ -202,6 +208,19 @@ export default function Interests() {
                           ? `They asked about you · ${new Date(row.createdAt).toLocaleDateString()}`
                           : `You asked about them · ${new Date(row.createdAt).toLocaleDateString()}`}
                       </p>
+                      {/*
+                        "Accepted" on its own, with no name against it, was the
+                        complaint. Somebody who has sent five interests and
+                        received three cannot tell from the word alone whether
+                        they agreed to this or somebody agreed to them.
+                      */}
+                      {row.acceptedBy && (
+                        <p className="mt-0.5 text-xs text-emerald-700">
+                          {row.acceptedBy.mine
+                            ? 'You accepted this'
+                            : `Accepted by ${row.acceptedBy.displayName}`}
+                        </p>
+                      )}
                     </div>
                   </div>
 

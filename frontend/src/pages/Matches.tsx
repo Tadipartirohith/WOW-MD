@@ -238,13 +238,135 @@ export default function Matches() {
       )}
 
       {/*
-        Two lists side by side, because they answer different questions. The
-        newest is a browse: everybody, in the order they arrived. The
-        recommendations are a shortlist: only what the engine rates at 50% or
-        better, best first, padded with nothing.
+        Three panels, which is how the page is meant to read: what you are
+        filtering by on the left, what is new in the middle, what the engine
+        recommends on the right.
+
+        They were stacked before — two lists side by side with the filters
+        underneath them — so the control that changes the lists sat below the
+        lists it changed, and on a laptop you scrolled past the answer to reach
+        the question. Below `lg` they stack in the same order, because three
+        columns on a phone is one column with the words squeezed.
       */}
       {ready && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-[18rem_1fr_1fr] lg:items-start">
+          {/* Left: the filters, open by default where there is room for them. */}
+          <div className="lg:sticky lg:top-4">
+  <div className="card space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <h2 className="font-semibold text-gray-900">Narrow the list</h2>
+                {activeFilterCount > 0 && (
+                  <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark">
+                    {activeFilterCount} applied
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {activeFilterCount > 0 && (
+                  <button className="btn-outline" onClick={() => setFilters(NO_FILTERS)}>
+                    Clear
+                  </button>
+                )}
+                <button className="btn-outline" onClick={() => setShowFilters((f) => !f)}>
+                  {showFilters ? 'Hide' : 'Filters'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={pill(filters.sort === 'recent')}
+                onClick={() =>
+                  setFilters((f) => ({
+                    ...f,
+                    sort: f.sort === 'recent' ? '' : 'recent',
+                    addedWithinDays: f.sort === 'recent' ? '' : '30',
+                  }))
+                }
+              >
+                Recently added
+              </button>
+              <button
+                className={pill(filters.minScore === '50')}
+                onClick={() =>
+                  setFilters((f) => ({ ...f, minScore: f.minScore === '50' ? '' : '50' }))
+                }
+              >
+                50% match and above
+              </button>
+            </div>
+
+            {showFilters && (
+              <div
+                  // One field per row on a wide screen: the panel is a sidebar
+                  // now, and three columns inside eighteen rems is three
+                  // columns of truncated labels.
+                  className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-1"
+                >
+                <Filter label="Age from" value={filters.ageMin} onChange={setField('ageMin')} type="number" />
+                <Filter label="Age to" value={filters.ageMax} onChange={setField('ageMax')} type="number" />
+                <Filter label="City" value={filters.city} onChange={setField('city')} />
+                <Filter
+                  label="Height from (cm)"
+                  value={filters.heightMinCm}
+                  onChange={setField('heightMinCm')}
+                  type="number"
+                />
+                <Filter
+                  label="Height to (cm)"
+                  value={filters.heightMaxCm}
+                  onChange={setField('heightMaxCm')}
+                  type="number"
+                />
+                <Filter label="Religion" value={filters.religion} onChange={setField('religion')} />
+                <Filter label="Caste" value={filters.caste} onChange={setField('caste')} />
+                <Filter
+                  label="Mother tongue"
+                  value={filters.motherTongue}
+                  onChange={setField('motherTongue')}
+                />
+                <Filter
+                  label="Qualification"
+                  value={filters.qualification}
+                  onChange={setField('qualification')}
+                />
+                <label className="block text-sm">
+                  <span className="text-gray-700">Marital status</span>
+                  <select
+                    className="input mt-1"
+                    value={filters.maritalStatus}
+                    onChange={(e) => setField('maritalStatus')(e.target.value)}
+                  >
+                    <option value="">Any</option>
+                    {Object.entries(MARITAL_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="text-gray-700">Occupation</span>
+                  <select
+                    className="input mt-1"
+                    value={filters.occupationStatus}
+                    onChange={(e) => setField('occupationStatus')(e.target.value)}
+                  >
+                    <option value="">Any</option>
+                    {Object.entries(OCCUPATION_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
+          </div>
+
+
           <div className="card space-y-2">
             <div>
               <h2 className="font-semibold text-gray-900">Recently added</h2>
@@ -294,116 +416,6 @@ export default function Matches() {
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {ready && (
-        <div className="card space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-gray-900">Narrow the list</h2>
-              {activeFilterCount > 0 && (
-                <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark">
-                  {activeFilterCount} applied
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              {activeFilterCount > 0 && (
-                <button className="btn-outline" onClick={() => setFilters(NO_FILTERS)}>
-                  Clear
-                </button>
-              )}
-              <button className="btn-outline" onClick={() => setShowFilters((f) => !f)}>
-                {showFilters ? 'Hide' : 'Filters'}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              className={pill(filters.sort === 'recent')}
-              onClick={() =>
-                setFilters((f) => ({
-                  ...f,
-                  sort: f.sort === 'recent' ? '' : 'recent',
-                  addedWithinDays: f.sort === 'recent' ? '' : '30',
-                }))
-              }
-            >
-              Recently added
-            </button>
-            <button
-              className={pill(filters.minScore === '50')}
-              onClick={() =>
-                setFilters((f) => ({ ...f, minScore: f.minScore === '50' ? '' : '50' }))
-              }
-            >
-              50% match and above
-            </button>
-          </div>
-
-          {showFilters && (
-            <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
-              <Filter label="Age from" value={filters.ageMin} onChange={setField('ageMin')} type="number" />
-              <Filter label="Age to" value={filters.ageMax} onChange={setField('ageMax')} type="number" />
-              <Filter label="City" value={filters.city} onChange={setField('city')} />
-              <Filter
-                label="Height from (cm)"
-                value={filters.heightMinCm}
-                onChange={setField('heightMinCm')}
-                type="number"
-              />
-              <Filter
-                label="Height to (cm)"
-                value={filters.heightMaxCm}
-                onChange={setField('heightMaxCm')}
-                type="number"
-              />
-              <Filter label="Religion" value={filters.religion} onChange={setField('religion')} />
-              <Filter label="Caste" value={filters.caste} onChange={setField('caste')} />
-              <Filter
-                label="Mother tongue"
-                value={filters.motherTongue}
-                onChange={setField('motherTongue')}
-              />
-              <Filter
-                label="Qualification"
-                value={filters.qualification}
-                onChange={setField('qualification')}
-              />
-              <label className="block text-sm">
-                <span className="text-gray-700">Marital status</span>
-                <select
-                  className="input mt-1"
-                  value={filters.maritalStatus}
-                  onChange={(e) => setField('maritalStatus')(e.target.value)}
-                >
-                  <option value="">Any</option>
-                  {Object.entries(MARITAL_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="text-gray-700">Occupation</span>
-                <select
-                  className="input mt-1"
-                  value={filters.occupationStatus}
-                  onChange={(e) => setField('occupationStatus')(e.target.value)}
-                >
-                  <option value="">Any</option>
-                  {Object.entries(OCCUPATION_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
         </div>
       )}
 

@@ -559,12 +559,49 @@ export class MatchmakingService {
     ]);
 
     const status = new Map(rows.map((r) => [r.id, r.status]));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    // Everybody's name, for saying who accepted. One read rather than one per
+    // row, and it covers both sides because either can be the accepter.
+    const names = new Map(
+      (
+        await this.profiles.find({
+          where: { id: In(rows.flatMap((r) => [r.fromProfileId, r.toProfileId])) },
+          select: ['id', 'displayName', 'gender'],
+        })
+      ).map((pr) => [pr.id, pr]),
+    );
+
     const withActions = [...acceptedViews, ...restViews].map((view) => {
       const st = status.get(view.id)!;
+      const row = byId.get(view.id)!;
       const incoming = view.direction === 'incoming';
       const pending = st === InterestStatus.PENDING;
+
+      /*
+       * Who said yes.
+       *
+       * Only the side that received an interest can accept it, so the accepter
+       * is always the `to` profile — but "accepted" on its own, with no name
+       * against it, was the reported complaint. Somebody who has sent five
+       * interests and received three cannot tell from the word alone whether
+       * they agreed to this or somebody agreed to them.
+       */
+      const accepter = st === InterestStatus.ACCEPTED ? names.get(row.toProfileId) : undefined;
+      const acceptedBy = accepter
+        ? {
+            profileId: accepter.id,
+            displayName: accepter.displayName,
+            gender: accepter.gender ?? null,
+            // Whether it was this profile that accepted, so the client can say
+            // "you accepted" rather than making the reader work it out.
+            mine: row.toProfileId === me.id,
+          }
+        : null;
+
       return {
         ...view,
+        acceptedBy,
         actions: {
           accept: incoming && pending,
           decline: incoming && pending,

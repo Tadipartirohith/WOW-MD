@@ -142,6 +142,18 @@ export default function Events() {
     enabled: Boolean(selected),
   });
 
+  // Two head counts, and they are different numbers: invitations are what was
+  // sent, people are what turns up.
+  const { data: rsvp } = useQuery<{
+    invitations: { total: number; attending: number; declined: number; maybe: number; pending: number };
+    people: { attending: number };
+  }>({
+    queryKey: ['event-rsvp', selected],
+    queryFn: async () => (await api.get(`/events/${selected}/rsvp`)).data,
+    enabled: Boolean(selected),
+    retry: false,
+  });
+
   async function act(fn: () => Promise<unknown>, keys: string[]) {
     setError('');
     try {
@@ -451,10 +463,41 @@ export default function Events() {
 
           {current && (
             <>
+              {/*
+                What an organiser plans from: how many were asked, how many
+                said yes, and how many have not answered. Heads rather than
+                invitations for the ones coming, because a household of six
+                that is sending two is two — and catering ordered from the
+                invitation count feeds four people who are not there.
+              */}
+              {rsvp && (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <GuestStat label="Invited" value={rsvp.invitations.total} />
+                  <GuestStat
+                    label="Coming"
+                    value={rsvp.invitations.attending}
+                    note={`${rsvp.people.attending} people`}
+                    tone="text-emerald-700"
+                  />
+                  <GuestStat
+                    label="Not answered"
+                    value={rsvp.invitations.pending}
+                    tone={rsvp.invitations.pending > 0 ? 'text-amber-700' : undefined}
+                  />
+                  <GuestStat label="Declined" value={rsvp.invitations.declined} />
+                </div>
+              )}
+
               <div className="card">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="font-semibold text-gray-900">Vendors for {current.name}</h2>
-                  <Link className="btn-outline" to="/vendors">
+                  {/*
+                    The event travels with the link. It used to drop it, so an
+                    organiser who pressed this landed on a vendor list with
+                    nothing selected and had to find the same day again from a
+                    dropdown — having just been looking at it.
+                  */}
+                  <Link className="btn-outline" to={`/vendors?eventId=${current.id}`}>
                     Book someone for this day
                   </Link>
                 </div>
@@ -646,5 +689,26 @@ function Stat({
     </button>
   ) : (
     <div className="card">{body}</div>
+  );
+}
+
+/** One guest number. Small enough that four fit on a phone, two across. */
+function GuestStat({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: number;
+  note?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="card">
+      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`text-2xl font-semibold tabular-nums ${tone ?? 'text-gray-900'}`}>{value}</p>
+      {note && <p className="text-xs text-gray-500">{note}</p>}
+    </div>
   );
 }

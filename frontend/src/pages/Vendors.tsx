@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { VENDOR_CATEGORIES } from '../lib/permissions';
 import DynamicForm, { Answers, FieldSpec, cleanAnswers, validateAnswers } from '../components/DynamicForm';
@@ -184,8 +184,12 @@ function offeringPrice(o: Offering): string {
 
 function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => void }) {
   const nav = useNavigate();
+  // Arriving from an event carries it in. An organiser who pressed "book
+  // someone for this day" has already told the app which day, and asking again
+  // in a dropdown is asking them to repeat themselves.
+  const [params] = useSearchParams();
   const [slotId, setSlotId] = useState('');
-  const [eventId, setEventId] = useState('');
+  const [eventId, setEventId] = useState(params.get('eventId') ?? '');
   const [serviceId, setServiceId] = useState('');
   const [offeringId, setOfferingId] = useState('');
   const [quantity, setQuantity] = useState('');
