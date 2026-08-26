@@ -145,26 +145,26 @@ genuinely new is separated out.
 
 | # | Item | Status | Note |
 | --- | --- | --- | --- |
-| P1 | **AI-generated photos must be rejected** | new | Platform-wide: user, agent and vendor profile photos, biodata, galleries. Backend-enforced, not a disabled button. Needs a detection provider — the same shape as the Aadhaar and payment providers |
-| P2 | Upload 3 photographs before Personal Details can continue | new | A gate on section order |
-| P3 | Biodata saves into a **card** — Edit, View Complete Profile, Upload Photos, Delete Profile | new | The read-back view exists; the card and its four actions do not |
-| P4 | Marital status "Divorced" reveals a descriptive reason field | new | Optional, and privacy-handled |
-| P5 | Native Place moves from Personal Details to **Family Details** | new | Place of Birth removed from Personal Details entirely |
-| P6 | **Mobile Number** on every relevant biodata section, not just the alternate | partly done | The contact block returns both; the sections do not all show it |
-| P7 | Section-by-section navigation with Next/Continue, redirecting rather than scrolling | new | The accordion is one long page today |
-| P8 | Surname **or** Last Name — only one should exist | decided | Collapse to `lastName`, migrating existing surnames where the last name is empty. See above |
+| P1 | **AI-generated photos must be rejected** | **done** | Provider behind an interface: a hosted detector, and a default that refuses what is plainly labelled rather than a no-op that never exercises the rejection path |
+| P2 | Upload 3 photographs before Personal Details can continue | **done** | A gate on section order |
+| P3 | Biodata saves into a **card** — Edit, View Complete Profile, Upload Photos, Delete Profile | **done** | The read-back view exists; the card and its four actions do not |
+| P4 | Marital status "Divorced" reveals a descriptive reason field | **not done** | A `divorceDate` exists; the descriptive reason field the document asks for does not |
+| P5 | Native Place moves from Personal Details to **Family Details** | **done** | Place of Birth removed from Personal Details entirely |
+| P6 | **Mobile Number** on every relevant biodata section, not just the alternate | **done** | The contact block returns both; the sections do not all show it |
+| P7 | Section-by-section navigation with Next/Continue, redirecting rather than scrolling | **done** | The accordion is one long page today |
+| P8 | Surname **or** Last Name — only one should exist | **done** | Collapsed to `lastName`, migrating existing surnames where the last name was empty |
 | P9 | Family assets: estimated value of the property | done | `estimatedValue` already exists and is shown |
-| P10 | Planner must reject past wedding dates | new | It accepts `05-11-2025` today |
-| P11 | Planner tasks must not fall due before the wedding date | new | |
+| P10 | Planner must reject past wedding dates | **done** | It accepts `05-11-2025` today |
+| P11 | Planner tasks must not fall due before the wedding date | **done** | |
 | P12 | Wedding dashboard: countdown, budget tracker by category, guest management, journey timeline, upcoming events | **done** | One read model rather than four fetches joined in the client. Budgeted comes from the events, committed from the bookings grouped by what the vendor does, and the gap between them is the only figure anybody wants |
-| P13 | Events: type, category, start/end time, expected guests, status, budget, description, image | partly done | An event has name, date and venue. The rest is new |
-| P14 | Event cards with filters, search, grid/list, and **Select Vendors** per event | partly done | Per-event vendors exist; the presentation does not |
-| P15 | Chat three-dot menu: view profile, search, mute, clear, **block**, **report**, delete conversation | new | Block and report are the substantial ones |
-| P16 | **Partner preferences never reach the matchmaking engine** | new | Confirmed: `savePreferences` writes `profile_details.partnerPreferences`; `compatibility.engine` reads `profiles.preferences`. Two stores, never synchronised. The document's root-cause analysis is correct |
-| P17 | "Recently added" in suggested matches not working | new | |
-| P18 | Interest Accepted notification does not say **who** accepted | new | |
-| P19 | Match card shows only name/city/age; profile is not clickable | new | |
-| P20 | Matches page: filters left, recently uploaded centre, AI recommendations right with match % | partly done | Eleven filters and a ≥50% floor exist; the three-column layout does not |
+| P13 | Events: type, category, start/end time, expected guests, status, budget, description, image | **done** | An event has name, date and venue. The rest is new |
+| P14 | Event cards with filters, search, grid/list, and **Select Vendors** per event | **partly done** | Filters, search and per-event stat cards are in. The grid/list toggle and the per-event **Select Vendors** button are not |
+| P15 | Chat three-dot menu: view profile, search, mute, clear, **block**, **report**, delete conversation | **partly done** | View profile, block and report are in. Search within a conversation, mute, clear chat and delete conversation are not |
+| P16 | **Partner preferences never reach the matchmaking engine** | **done** | The projection onto `profiles.preferences`, and the cache invalidation that the first fix needed |
+| P17 | "Recently added" in suggested matches not working | **done** | |
+| P18 | Interest Accepted notification does not say **who** accepted | **done** | |
+| P19 | Match card shows only name/city/age; profile is not clickable | **done** | |
+| P20 | Matches page: filters left, recently uploaded centre, AI recommendations right with match % | **partly done** | The data, the match percentage and the 50% floor are right, and the cards are a three-column grid — but not the three *panels* the document draws: filters left, recently uploaded centre, recommendations right |
 | P21 | Honeymoon: "Create Plan" does not create a plan | **done** | Reproduced. The itinerary DTO required at least one day, so the button — which posts a title and an empty list, because the point is to start a plan and fill it in — was refused every single time |
 | P22 | Media: album cards, direct upload rather than URL, gallery, counts, progress, empty states | **done** | Albums are cards with a cover and a count, photographs are chosen from the device, and what you see is the picture. Deleting a photograph or an album is new — a gallery you cannot remove anything from is not one |
 | P23 | Support: photo attachment not working | **done** | Reproduced, and it was worse than reported — see below. Also gains a document route, because a support attachment is as often an invoice as a photograph |
@@ -191,13 +191,13 @@ missing.
 
 | # | Item | Status |
 | --- | --- | --- |
-| B6 | States: DRAFT → READY_FOR_REVIEW → FIRST_REVIEW → PENDING_VERIFICATION → VERIFICATION_IN_PROGRESS → APPROVED → VERIFIED → LIVE | new |
-| B7 | REVERIFICATION_REQUIRED as a distinct branch from REJECTED | new |
-| B8 | REJECTED → LOCKED → archive, and create a new business instead | new |
-| B9 | Completion check across Business Details / Catalog / Documents / Portfolio, gating Submit Verification in **both** frontend and backend | new |
-| B10 | First Review screen, with Go Back & Edit / Submit Verification | new |
-| B11 | Business + catalog **locked** on submission, enforced by the update API | new |
-| B12 | Locked again after approval; legal changes go through re-verification | new |
+| B6 | States: DRAFT → READY_FOR_REVIEW → FIRST_REVIEW → PENDING_VERIFICATION → VERIFICATION_IN_PROGRESS → APPROVED → VERIFIED → LIVE | **done** |
+| B7 | REVERIFICATION_REQUIRED as a distinct branch from REJECTED | **done** |
+| B8 | REJECTED → LOCKED → archive, and create a new business instead | **done** |
+| B9 | Completion check across Business Details / Catalog / Documents / Portfolio, gating Submit Verification in **both** frontend and backend | **done** |
+| B10 | First Review screen, with Go Back & Edit / Submit Verification | **done** |
+| B11 | Business + catalog **locked** on submission, enforced by the update API | **done** |
+| B12 | Locked again after approval; legal changes go through re-verification | **done** |
 | B13 | Vendor sees the exact reason for re-verification or rejection | **done** — shown on My Business, read from the owner-only route |
 | B14 | Catalog stays manageable after the business is verified | done |
 | B15 | Major catalog changes optionally go through admin review | **done** — off unless `CATALOG_REVIEW_THRESHOLD_PERCENT` is set. A held change is parked beside the live price rather than replacing it, so the shop keeps selling at the old one while somebody looks |
@@ -214,7 +214,7 @@ missing.
 | B21 | Duplicate booking-request prevention per user + vendor | done |
 | B22 | Booking request carries service, package, event, date, slot, requirements, guest count, budget | done |
 | B23 | Quotation validity date and terms | **done** — and the booking records which quotation it was struck on |
-| B24 | Accepted / Rejected quotation sections | partly done |
+| B24 | Accepted / Rejected quotation sections | **not done** | Quotations are listed with their status; they are not grouped into accepted and rejected sections |
 | B25 | Bookings module sections: New Requests, Quotations, Accepted, Active, Completed, Cancelled, Disputes | done |
 | B26 | Payment ladder enforced backend-side | done |
 | B27 | Booking chat, unlocked at advance, read-only after completion | **done** |
@@ -255,13 +255,13 @@ Nine of these are new, and three restate Part 2.
 | # | Decision | Status | Note |
 | --- | --- | --- | --- |
 | M1 | Availability 3 → 6 months | **done** | Same item as B20 |
-| M2 | Agent profile-sharing limit reviewed so users get enough relevant profiles | decision | There is a network-pool quota today. Changing it is a product call, and the document says "review", not a number |
+| M2 | Agent profile-sharing limit reviewed so users get enough relevant profiles | **not done** | Deliberately. The document says "review", and the number is a product call — I am not inventing one. What would make it decidable is evidence: pooled against private profiles, and how many active profiles see fewer than N suggestions |
 | M3 | **Settle My Payment** — a settlement request routed through admin, then an officer | **done** | Raised as a support case rather than as a pipeline of its own — it needs exactly the routing the desk already has. Not a dispute: nothing freezes, because freezing a provider's escrow would punish them for asking |
 | M4 | Admin allocates a verification officer to an issue | done | |
 | M5 | Officer investigates, records findings, closes | done | |
-| M6 | **72-hour verification SLA**, backend-controlled | new | Needs `verification_submitted_at`, `officer_allocated_at`, `verification_started_at`, `verification_completed_at`, `sla_deadline` |
-| M7 | SLA breach → rejected/expired, vendor notified, may create a new listing | new | The document asks explicitly that the final status name be standardised |
-| M8 | New business listing under the same account after rejection | partly done | See B1 and the confirmed bug |
+| M6 | **72-hour verification SLA**, backend-controlled | **done** | The clock starts on submission and is swept for breaches; the timestamps it needed are on the request |
+| M7 | SLA breach → rejected/expired, vendor notified, may create a new listing | **done** | The document asks explicitly that the final status name be standardised |
+| M8 | New business listing under the same account after rejection | **done** | See B1 and the confirmed bug |
 | M9 | **Push notifications** for all four personas | **done** | Provider behind an interface, `log` by default, FCM on configuration. Registering a device is the consent; a token claimed by another account moves, because it belongs to an installation rather than to a person |
 | M10 | **WhatsApp notifications**, opt-in only | **done** | Opt-in never inferred from having a phone number, and template-only: five approved templates covering money and jobs. A type with no template does not go out that way rather than being sent as free text the API would refuse |
 | M11 | AI-generated images restricted platform-wide | new | Same item as P1 |
