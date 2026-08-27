@@ -89,7 +89,7 @@ images while the objection was about punctuation.
 | --- | --- | --- |
 | EV1 | Button through to Vendors for that event | already delivered — the event travels with the link |
 | EV2 | Cards for total, confirmed, pending and not-responded guests with RSVP tracking | already delivered — invited, coming, not answered, declined, with heads as well as invitations |
-| EV3 | The same in every login, bride/groom and family member | **verified** — events are per account and family members hold the same permission, so the page and its cards are identical in both |
+| EV3 | The same in every login, bride/groom and family member | **verified** — asserted rather than reasoned about: the suite creates a day, adds a guest, invites them and reads the RSVP dashboard as a bride and again as a family member, and gets the same answers |
 
 ## Uploads
 
@@ -140,7 +140,7 @@ one-line change with a clearly stated weaker guarantee.
 
 ## Verification
 
-`scripts/verify-wow1.sh` — 106 live assertions across fourteen sections,
+`scripts/verify-wow1.sh` — 126 live assertions across fifteen sections,
 covering all of the above against a running stack. `scripts/lib-identity.sh`
 carries the shared verification fixture the other six suites now use, since
 every persona that sends or accepts an interest has to pass the gate first.

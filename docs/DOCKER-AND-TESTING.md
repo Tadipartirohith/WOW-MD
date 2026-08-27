@@ -81,7 +81,7 @@ docker compose -f docker/docker-compose.test.yml down
 ## Verification suites
 
 The eight verification suites in `scripts/` drive the live API the way a person
-would, and assert on what comes back. Between them they carry 1401 assertions.
+would, and assert on what comes back. Between them they carry 1421 assertions.
 They run from inside the compose network, against a stack that is already up.
 
 | Suite | Covers |

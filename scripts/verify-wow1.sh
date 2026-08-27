@@ -336,5 +336,41 @@ c=$(req GET /matches/suggestions "" "$BRIDE")
 check "a fixed profile is out of matchmaking" "$c" 403
 
 echo
+echo "== 15. Events, in a family member's login as well as a bride's =="
+# Reported as missing for family members. Events belong to the account rather
+# than to a profile and a family member holds the same permission, so the claim
+# is that both logins see the same thing — which is worth asserting rather than
+# reading off the permission table.
+reg w1family family "Ramesh Reddy"
+FAMILY=$(field /tmp/w1family.json accessToken)
+
+for who in BRIDE FAMILY; do
+  eval "TOK=\$$who"
+  label=$(echo "$who" | tr 'A-Z' 'a-z')
+
+  c=$(req POST /events "{\"name\":\"Reception ($label)\",\"eventType\":\"reception\",\"eventDate\":\"2027-02-14\"}" "$TOK")
+  check "the $label creates an event" "$c" 201
+  EV=$(field /tmp/body id)
+
+  c=$(req POST /events/guests "{\"name\":\"Guest One\",\"partySize\":3}" "$TOK")
+  check "adds a guest" "$c" 201
+  G1=$(field /tmp/body id)
+  c=$(req POST "/events/$EV/invite" "{\"guestId\":\"$G1\"}" "$TOK")
+  check "invites them to that day" "$c" 201
+
+  c=$(req GET "/events/$EV/rsvp" "" "$TOK")
+  check "and the RSVP dashboard reads" "$c" 200
+  assert "with a total to show on a card" "$(jqok '.totalInvited == 1')"
+  assert "how many are coming" "$(jqok '.categories.coming.invitations == 0')"
+  assert "how many have not answered" "$(jqok '.categories.notResponded.invitations == 1')"
+  assert "how many are not coming" "$(jqok '.categories | has("notComing")')"
+  # Heads, not invitations: a family of five is one invitation and five chairs.
+  assert "and heads as well as invitations" "$(jqok '.totalInvitedHeadcount == 3')"
+
+  c=$(req GET "/events/$EV/vendors" "" "$TOK")
+  check "the per-event vendor list is reachable, which is what the button opens" "$c" 200
+done
+
+echo
 printf ' PASSED: %s   FAILED: %s\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
