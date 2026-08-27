@@ -4,6 +4,29 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
+import { isValidAadhaar } from '../src/common/util/government-id';
+
+/**
+ * A valid Aadhaar number nobody has used yet.
+ *
+ * The check digit is found by asking the platform's own validator rather than
+ * reimplementing Verhoeff in the fixture — a second copy of that table is a
+ * second chance to get it wrong, in the one place a mistake would look like a
+ * bug in the thing under test.
+ *
+ * One document, one profile is enforced by a unique index, so each call has to
+ * produce a number no earlier call did.
+ */
+let aadhaarSeed = 0;
+function freshAadhaar(): string {
+  aadhaarSeed += 1;
+  const body = `2${String(Date.now()).slice(-7)}${String(aadhaarSeed).padStart(3, '0')}`;
+  for (let check = 0; check < 10; check += 1) {
+    const candidate = `${body}${check}`;
+    if (isValidAadhaar(candidate)) return candidate;
+  }
+  throw new Error(`no valid check digit for ${body}`);
+}
 
 /**
  * Functional / integration (DFT) tests. These hit real HTTP endpoints against a
@@ -60,6 +83,7 @@ describe('WOW API (e2e)', () => {
   let agentToken: string;
   let vendorToken: string;
   let groomProfileId: string;
+  let soloProfileId: string;
 
   const http = () => request(app.getHttpServer());
 
@@ -200,11 +224,12 @@ describe('WOW API (e2e)', () => {
   });
 
   it('creates profiles for both individuals', async () => {
-    await http()
+    const solo = await http()
       .put('/api/users/me/profile')
       .set('Authorization', `Bearer ${soloToken}`)
       .send({ displayName: 'Solo', gender: 'Female', dateOfBirth: '1996-01-01', city: 'Mumbai' })
       .expect(200);
+    soloProfileId = solo.body.id;
 
     const res = await http()
       .put('/api/users/me/profile')
@@ -280,7 +305,40 @@ describe('WOW API (e2e)', () => {
     });
   });
 
+  /**
+   * Identity verification, through the real OTP flow.
+   *
+   * Sending and accepting an interest both require the subject profile's
+   * document to have been confirmed, so this is a precondition of the flow
+   * below rather than a test of its own. `AADHAAR_PROVIDER=mock` returns the
+   * code on the response, which is what makes it possible here.
+   */
+  const verifyIdentity = async (profileId: string, token: string) => {
+    const started = await http()
+      .post(`/api/profiles/${profileId}/identity/aadhaar/send-otp`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ aadhaarNumber: freshAadhaar() })
+      .expect(200);
+
+    await http()
+      .post(`/api/profiles/${profileId}/identity/aadhaar/verify-otp`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ sessionId: started.body.sessionId, code: started.body.devCode })
+      .expect(200);
+  };
+
+  it('will not let an unverified profile send an interest', async () => {
+    await http()
+      .post('/api/matches/interest')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .send({ toProfileId: groomProfileId })
+      .expect(403);
+  });
+
   it('runs the interest to accept flow between two individuals', async () => {
+    await verifyIdentity(soloProfileId, soloToken);
+    await verifyIdentity(groomProfileId, groomToken);
+
     const sent = await http()
       .post('/api/matches/interest')
       .set('Authorization', `Bearer ${soloToken}`)
