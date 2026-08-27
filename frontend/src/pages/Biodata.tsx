@@ -284,7 +284,11 @@ export default function Biodata() {
       </Accordion>
 
       <Accordion title="Partner preferences" name="preferences" open={open} setOpen={setOpen}>
-        <PreferencesForm initial={details} onSave={(b) => save('preferences', b)} />
+        <PreferencesForm
+          initial={details}
+          onSave={(b) => save('preferences', b)}
+          onSaveHoroscope={(b) => save('horoscope', b)}
+        />
       </Accordion>
 
       <Accordion title="Identity verification" name="identity" open={open} setOpen={setOpen}>
@@ -564,6 +568,23 @@ function ReligionForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) 
   );
 }
 
+/**
+ * Rupees, grouped the Indian way.
+ *
+ * 75,00,000 rather than 7,500,000 — the grouping is not decoration, it is how
+ * the number is read aloud, and a lakh written in thousands has to be counted
+ * on fingers before it means anything.
+ */
+function rupees(value: number | string): string {
+  const amount = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(amount)) return String(value);
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
   const chart = (initial?.horoscope ?? {}) as Draft;
   const [available, setAvailable] = useState(Boolean(initial?.horoscopeAvailable));
@@ -806,6 +827,10 @@ function FamilyForm({
       nativePlace: initial?.nativePlace ?? '',
       brothers: initial?.brothers ?? 0,
       sisters: initial?.sisters ?? 0,
+      // `numeric` comes back from the API as a string, so it is kept as one
+      // here and only converted on the way out.
+      familyNetWorth: initial?.familyNetWorth ?? '',
+      familyNetWorthVisible: Boolean(initial?.familyNetWorthVisible),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
@@ -826,6 +851,13 @@ function FamilyForm({
             nativePlace: values.nativePlace || undefined,
             brothers: Number(values.brothers) || 0,
             sisters: Number(values.sisters) || 0,
+            // Omitted rather than sent as zero when it is blank. Zero is a
+            // claim about the family's finances; "not answered" is not.
+            familyNetWorth:
+              String(values.familyNetWorth ?? '').trim() === ''
+                ? undefined
+                : Number(values.familyNetWorth),
+            familyNetWorthVisible: Boolean(values.familyNetWorthVisible),
           });
         }}
         className="space-y-3"
@@ -876,6 +908,30 @@ function FamilyForm({
           <Field label="Sisters">
             <input className="input mt-1" type="number" min={0} value={String(values.sisters ?? 0)} onChange={set('sisters')} />
           </Field>
+          {/*
+            One figure for the family, alongside the itemised assets rather
+            than instead of them. Optional, and private unless the family says
+            otherwise — the same rule money follows everywhere else here.
+          */}
+          <Field label="Family net worth" hint="Rupees. Optional, and hidden unless you say otherwise">
+            <input
+              className="input mt-1"
+              type="number"
+              min={0}
+              value={String(values.familyNetWorth ?? '')}
+              onChange={set('familyNetWorth')}
+            />
+          </Field>
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(values.familyNetWorthVisible)}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, familyNetWorthVisible: e.target.checked }))
+              }
+            />
+            <span>Show net worth on the biodata</span>
+          </label>
         </div>
         <button className="btn">Save family details</button>
       </form>
@@ -898,35 +954,71 @@ function FamilyForm({
           ))}
           {siblings.length === 0 && <p className="py-2 text-sm text-gray-400">None added.</p>}
         </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <input
-            className="input flex-1"
-            placeholder="Name"
-            value={String(sibling.name ?? '')}
-            onChange={(e) => setSibling((s) => ({ ...s, name: e.target.value }))}
-          />
-          <input
-            className="input w-24"
-            type="number"
-            placeholder="Age"
-            onChange={(e) => setSibling((s) => ({ ...s, age: Number(e.target.value) || undefined }))}
-          />
-          <input
-            className="input w-40"
-            placeholder="Profession"
-            onChange={(e) => setSibling((s) => ({ ...s, profession: e.target.value || undefined }))}
-          />
-          <button
-            className="btn"
-            disabled={!String(sibling.name ?? '').trim()}
-            onClick={() => {
-              onAddSibling(sibling);
-              setSibling({ name: '' });
-            }}
-          >
-            Add
-          </button>
+        {/*
+          A labelled grid, and every input controlled.
+
+          Only "Name" had a `value`, so after adding a sibling the state reset
+          and the two uncontrolled boxes kept what had been typed in them — the
+          form showed an empty name next to a stale age and profession, which is
+          exactly the "not looking good, should be in good order" report. React
+          never wrote to those inputs at all; they were the browser's.
+        */}
+        <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Name">
+            <input
+              className="input mt-1"
+              value={String(sibling.name ?? '')}
+              onChange={(e) => setSibling((s) => ({ ...s, name: e.target.value }))}
+            />
+          </Field>
+          <Field label="Age">
+            <input
+              className="input mt-1"
+              type="number"
+              min={0}
+              max={120}
+              value={String(sibling.age ?? '')}
+              onChange={(e) =>
+                setSibling((s) => ({ ...s, age: Number(e.target.value) || undefined }))
+              }
+            />
+          </Field>
+          <Field label="Marital status">
+            <select
+              className="input mt-1"
+              value={String(sibling.maritalStatus ?? '')}
+              onChange={(e) =>
+                setSibling((s) => ({ ...s, maritalStatus: e.target.value || undefined }))
+              }
+            >
+              <option value="">Not stated</option>
+              {Object.entries(MARITAL_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Profession">
+            <input
+              className="input mt-1"
+              value={String(sibling.profession ?? '')}
+              onChange={(e) =>
+                setSibling((s) => ({ ...s, profession: e.target.value || undefined }))
+              }
+            />
+          </Field>
         </div>
+        <button
+          className="btn mt-2"
+          disabled={!String(sibling.name ?? '').trim()}
+          onClick={() => {
+            onAddSibling(sibling);
+            setSibling({ name: '' });
+          }}
+        >
+          Add sibling
+        </button>
       </div>
 
       <div className="border-t pt-4">
@@ -941,6 +1033,8 @@ function FamilyForm({
               <span>
                 {ASSET_TYPE_LABEL[a.type] ?? a.type}
                 {a.location ? ` · ${a.location}` : ''}
+                {a.area ? ` · ${a.area}` : ''}
+                {a.estimatedValue ? ` · ${rupees(a.estimatedValue)}` : ''}
                 {a.visible ? ' · shown on biodata' : ' · private'}
               </span>
               <button className="btn-outline" onClick={() => onRemoveAsset(a.id)}>
@@ -950,26 +1044,60 @@ function FamilyForm({
           ))}
           {assets.length === 0 && <p className="py-2 text-sm text-gray-400">None recorded.</p>}
         </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <select
-            className="input w-48"
-            value={String(asset.type ?? '')}
-            onChange={(e) => setAsset((a) => ({ ...a, type: e.target.value }))}
-          >
-            {Object.entries(ASSET_TYPE_LABEL).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="input flex-1"
-            placeholder="Location"
-            onChange={(e) => setAsset((a) => ({ ...a, location: e.target.value || undefined }))}
-          />
+        {/*
+          Estimated value has a box now.
+
+          The field existed on the API and had done from the start, and this
+          form never offered it — so a family that entered one through some
+          other route saw it saved and never displayed, which is precisely what
+          was reported. Same fix on both halves: a labelled, controlled input
+          here, and the figure printed in the list above.
+        */}
+        <div className="mt-3 grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Type">
+            <select
+              className="input mt-1"
+              value={String(asset.type ?? '')}
+              onChange={(e) => setAsset((a) => ({ ...a, type: e.target.value }))}
+            >
+              {Object.entries(ASSET_TYPE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Location">
+            <input
+              className="input mt-1"
+              value={String(asset.location ?? '')}
+              onChange={(e) => setAsset((a) => ({ ...a, location: e.target.value || undefined }))}
+            />
+          </Field>
+          <Field label="Area" hint="Acres, square yards — whatever it is measured in">
+            <input
+              className="input mt-1"
+              value={String(asset.area ?? '')}
+              onChange={(e) => setAsset((a) => ({ ...a, area: e.target.value || undefined }))}
+            />
+          </Field>
+          <Field label="Estimated value" hint="Rupees">
+            <input
+              className="input mt-1"
+              type="number"
+              min={0}
+              value={String(asset.estimatedValue ?? '')}
+              onChange={(e) =>
+                setAsset((a) => ({ ...a, estimatedValue: Number(e.target.value) || undefined }))
+              }
+            />
+          </Field>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              checked={Boolean(asset.visible)}
               onChange={(e) => setAsset((a) => ({ ...a, visible: e.target.checked }))}
             />
             <span>Show on biodata</span>
@@ -981,7 +1109,7 @@ function FamilyForm({
               setAsset({ type: 'independent_house' });
             }}
           >
-            Add
+            Add asset
           </button>
         </div>
       </div>
@@ -1124,9 +1252,33 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
   );
 }
 
-function PreferencesForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
+/**
+ * Partner preferences, with your own chart on the same screen.
+ *
+ * What a family expects of a horoscope and what their own says are asked in
+ * the same breath in person, and were two separate sections here — so the
+ * preferences screen offered an "attach horoscope" button and nothing to say
+ * what the chart contained. The structured fields sit alongside the
+ * expectations now.
+ *
+ * They still save to the horoscope section, not into preferences: rashi and
+ * gothram are facts about this person, and duplicating them under partner
+ * preferences would be two copies of one truth waiting to disagree.
+ */
+function PreferencesForm({
+  initial,
+  onSave,
+  onSaveHoroscope,
+}: {
+  initial: Draft;
+  onSave: (b: Draft) => void;
+  onSaveHoroscope: (b: Draft) => void;
+}) {
   const prefs = (initial?.partnerPreferences ?? {}) as Draft;
+  const chart = (initial?.horoscope ?? {}) as Draft;
   const [values, setValues] = useState<Draft>({});
+  const [mine, setMine] = useState<Draft>({});
+  const [chartAvailable, setChartAvailable] = useState(false);
 
   useEffect(() => {
     setValues({
@@ -1144,6 +1296,15 @@ function PreferencesForm({ initial, onSave }: { initial: Draft; onSave: (b: Draf
       kujaDosham: prefs.kujaDosham ?? '',
       preferredStars: prefs.preferredStars ?? '',
       horoscopeDocumentUrl: initial?.horoscopeDocumentUrl ?? '',
+    });
+    setChartAvailable(Boolean(initial?.horoscopeAvailable));
+    setMine({
+      rashi: chart.rashi ?? '',
+      star: chart.star ?? '',
+      padam: chart.padam ?? '',
+      gothram: chart.gothram ?? '',
+      kujaDosham: chart.kujaDosham ?? '',
+      timeOfBirth: chart.timeOfBirth ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
@@ -1248,20 +1409,109 @@ function PreferencesForm({ initial, onSave }: { initial: Draft; onSave: (b: Draf
         </Field>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div>
-          <p className="text-sm font-medium text-gray-800">Your horoscope</p>
-          <p className="text-xs text-gray-500">
-            {values.horoscopeDocumentUrl
-              ? 'Attached. Shown only to people who may already see your chart.'
-              : 'Attach the chart while you have it to hand — an image or a PDF.'}
-          </p>
+      <div className="space-y-3 rounded border border-gray-200 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-gray-800">Your own horoscope</p>
+            <p className="text-xs text-gray-500">
+              The same chart as on the Horoscope section — filled in here because this is where
+              families have it to hand. Saved separately from the preferences above.
+            </p>
+          </div>
+          <PhotoUploader
+            kind="attachment"
+            label={values.horoscopeDocumentUrl ? 'Replace chart' : 'Attach chart'}
+            onUploaded={(url: string) => setValues((v) => ({ ...v, horoscopeDocumentUrl: url }))}
+          />
         </div>
-        <PhotoUploader
-          kind="attachment"
-          label={values.horoscopeDocumentUrl ? 'Replace' : 'Attach horoscope'}
-          onUploaded={(url: string) => setValues((v) => ({ ...v, horoscopeDocumentUrl: url }))}
-        />
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={chartAvailable}
+            onChange={(e) => setChartAvailable(e.target.checked)}
+          />
+          <span>A horoscope is available</span>
+        </label>
+
+        {chartAvailable && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Rashi">
+                <input
+                  className="input mt-1"
+                  value={String(mine.rashi ?? '')}
+                  onChange={(e) => setMine((m) => ({ ...m, rashi: e.target.value }))}
+                />
+              </Field>
+              <Field label="Star / Nakshatra">
+                <input
+                  className="input mt-1"
+                  value={String(mine.star ?? '')}
+                  onChange={(e) => setMine((m) => ({ ...m, star: e.target.value }))}
+                />
+              </Field>
+              <Field label="Padam">
+                <input
+                  className="input mt-1"
+                  value={String(mine.padam ?? '')}
+                  onChange={(e) => setMine((m) => ({ ...m, padam: e.target.value }))}
+                />
+              </Field>
+              <Field label="Gothram">
+                <input
+                  className="input mt-1"
+                  value={String(mine.gothram ?? '')}
+                  onChange={(e) => setMine((m) => ({ ...m, gothram: e.target.value }))}
+                />
+              </Field>
+              <Field label="Kuja Dosham">
+                <select
+                  className="input mt-1"
+                  value={String(mine.kujaDosham ?? '')}
+                  onChange={(e) => setMine((m) => ({ ...m, kujaDosham: e.target.value }))}
+                >
+                  <option value="">Not stated</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </Field>
+              <Field label="Time of birth">
+                <input
+                  className="input mt-1"
+                  type="time"
+                  value={String(mine.timeOfBirth ?? '')}
+                  onChange={(e) => setMine((m) => ({ ...m, timeOfBirth: e.target.value }))}
+                />
+              </Field>
+            </div>
+          </>
+        )}
+
+        {/*
+          Its own button, because it saves a different section. One button
+          saving two sections would mean a validation failure in either one
+          silently discarding the other.
+        */}
+        <button
+          type="button"
+          className="btn-outline"
+          onClick={() =>
+            onSaveHoroscope(
+              chartAvailable
+                ? {
+                    horoscopeAvailable: true,
+                    ...Object.fromEntries(
+                      Object.entries(mine).filter(([, v]) => v !== '' && v !== undefined),
+                    ),
+                  }
+                : { horoscopeAvailable: false },
+            )
+          }
+        >
+          Save horoscope
+        </button>
       </div>
       <Field label="Anything else">
         <textarea className="input mt-1" rows={2} value={String(values.other ?? '')} onChange={set('other')} />

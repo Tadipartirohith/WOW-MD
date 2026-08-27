@@ -159,6 +159,23 @@ export class ProfileDetails {
   @Column({ type: 'int', nullable: true })
   sisters: number | null;
 
+  /**
+   * What the family is worth, taken together.
+   *
+   * Asked as one figure because that is how it is asked in person. The
+   * itemised assets are still there for a family that would rather show the
+   * house and the land than name a number.
+   *
+   * Read back as a string: `numeric` arrives from pg as text so that a rupee
+   * figure larger than a double can hold survives the round trip intact.
+   */
+  @Column({ type: 'numeric', precision: 14, scale: 2, nullable: true })
+  familyNetWorth: string | null;
+
+  /** Off unless the family says otherwise, like every other money field here. */
+  @Column({ type: 'boolean', default: false })
+  familyNetWorthVisible: boolean;
+
   // ------------------------------------------------- education and career
 
   @Index()

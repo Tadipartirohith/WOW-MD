@@ -49,6 +49,100 @@ export class PublicProfileView {
   /** True when an agent or family member is handling this profile. */
   @ApiProperty()
   managed: boolean;
+
+  /** The short code a family can read out. */
+  @ApiProperty({ example: 'WOW10231' })
+  profileCode: string;
+
+  /** An officer has seen the identity document in person. */
+  @ApiProperty()
+  verified: boolean;
+
+  /** Null when the profile has never signed in — an agency-built one, say. */
+  @ApiPropertyOptional({ type: String, format: 'date-time' })
+  lastActiveAt: string | null;
+
+  /**
+   * The handful of biodata fields a card is useless without.
+   *
+   * Not the whole biodata — that is what circulation is for, and it goes
+   * through consent. This is the subset a family reads before deciding whether
+   * to look further: what they do, what they studied, whether they have been
+   * married before. A card carrying only a name, a town and an age band was the
+   * reported problem, and it is a fair one: there is nothing there to judge.
+   */
+  @ApiPropertyOptional()
+  card?: ProfileCardFacts;
+}
+
+export interface ProfileCardFacts {
+  heightCm: number | null;
+  religion: string | null;
+  caste: string | null;
+  motherTongue: string | null;
+  maritalStatus: string | null;
+  highestQualification: string | null;
+  occupationStatus: string | null;
+  /** Job title, or the business name when self-employed. */
+  profession: string | null;
+}
+
+/**
+ * Reads the card facts off a biodata row.
+ *
+ * Income is deliberately absent even when `incomeVisible` is set: it belongs on
+ * the profile somebody has chosen to open, not on a card in a grid of forty.
+ */
+export function toCardFacts(details: {
+  heightCm: number | null;
+  religion: string | null;
+  caste: string | null;
+  motherTongue: string | null;
+  maritalStatus: string | null;
+  highestQualification: string | null;
+  occupationStatus: string | null;
+  employment: Record<string, unknown>;
+  business: Record<string, unknown>;
+}): ProfileCardFacts {
+  const text = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+
+  return {
+    heightCm: details.heightCm,
+    religion: details.religion,
+    caste: details.caste,
+    motherTongue: details.motherTongue,
+    maritalStatus: details.maritalStatus,
+    highestQualification: details.highestQualification,
+    occupationStatus: details.occupationStatus,
+    profession:
+      text(details.employment?.role) ??
+      text(details.employment?.designation) ??
+      text(details.employment?.company) ??
+      text(details.business?.name) ??
+      null,
+  };
+}
+
+/**
+ * A profile as its own owner sees it.
+ *
+ * Everything the entity holds except the two fields nobody outside the server
+ * has any use for. `governmentIdHash` is the peppered fingerprint of an
+ * identity document — the one value that answers "is this the same person as
+ * that other profile?" — and it was going out with every `GET /users/me`, which
+ * put it in the browser, in devtools, and in anything that logs a response
+ * body. Hashing the number and then handing out the hash gives back most of
+ * what hashing it was for.
+ *
+ * `idVerifiedByUserId` names the officer who confirmed the document, which is
+ * an internal audit fact rather than something the subject is owed.
+ */
+export type OwnProfileView = Omit<Profile, 'governmentIdHash' | 'idVerifiedByUserId'>;
+
+export function toOwnProfile(profile: Profile): OwnProfileView {
+  const { governmentIdHash: _hash, idVerifiedByUserId: _officer, ...rest } = profile;
+  return rest;
 }
 
 /**
@@ -65,6 +159,7 @@ export class PublicProfileView {
  */
 export interface BiodataView {
   id: string;
+  profileCode: string;
   displayName: string;
   gender?: string;
   ageRange: string | null;
@@ -92,6 +187,7 @@ export function toBiodata(profile: Profile): BiodataView {
     preferences: profile.preferences,
     claimStatus: profile.claimStatus,
     managed: profile.managedByUserId !== null,
+    profileCode: profile.profileCode,
   };
 }
 
@@ -119,7 +215,7 @@ export function ageBand(dateOfBirth: string | null): string | null {
  */
 export function toPublicProfile(
   profile: Profile,
-  opts: { matched?: boolean } = {},
+  opts: { matched?: boolean; card?: ProfileCardFacts } = {},
 ): PublicProfileView {
   const matched = Boolean(opts.matched);
   const allPhotos = profile.photos ?? [];
@@ -153,5 +249,9 @@ export function toPublicProfile(
       : undefined,
     claimStatus: profile.claimStatus,
     managed: profile.managedByUserId !== null,
+    profileCode: profile.profileCode,
+    verified: Boolean(profile.idVerifiedAt),
+    lastActiveAt: profile.lastActiveAt ? profile.lastActiveAt.toISOString() : null,
+    card: opts.card,
   };
 }

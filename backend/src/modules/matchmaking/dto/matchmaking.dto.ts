@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 import {
   IsEnum,
   IsIn,
@@ -106,15 +107,39 @@ export class SuggestionsQueryDto extends PaginationDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100)
   minScore?: number;
 
+  @ApiPropertyOptional({ maxLength: 120, description: 'Job title or business name' })
+  @IsOptional() @IsString() @MaxLength(120)
+  profession?: string;
+
+  /**
+   * Name, profile code, or a word from the biodata.
+   *
+   * One box rather than three, because the person typing does not think of
+   * "WOW10231" and "Anitha" as different kinds of search — they think of both
+   * as the thing they remember about the profile they are looking for.
+   */
+  @ApiPropertyOptional({ maxLength: 80, example: 'WOW10231' })
+  @IsOptional() @IsString() @MaxLength(80)
+  q?: string;
+
+  /** Only profiles on this profile's shortlist. */
+  @ApiPropertyOptional()
+  @IsOptional() @StrictBoolean()
+  shortlistedOnly?: boolean;
+
   /**
    * `score` is the default and is what matchmaking is for. `recent` exists
    * because families check back for new arrivals, and a newcomer buried at
    * rank 40 by an eighty-percent match they have already seen is a newcomer
-   * they never see.
+   * they never see. `active` surfaces the profiles that will actually answer,
+   * and `age` is how a family with a firm age range reads a list.
    */
-  @ApiPropertyOptional({ enum: ['score', 'recent'], default: 'score' })
-  @IsOptional() @IsIn(['score', 'recent'])
-  sort?: 'score' | 'recent';
+  @ApiPropertyOptional({
+    enum: ['score', 'recent', 'active', 'age', 'ageDesc'],
+    default: 'score',
+  })
+  @IsOptional() @IsIn(['score', 'recent', 'active', 'age', 'ageDesc'])
+  sort?: 'score' | 'recent' | 'active' | 'age' | 'ageDesc';
 
   /** Only profiles added in the last N days. */
   @ApiPropertyOptional({ minimum: 1, maximum: 365 })
@@ -123,3 +148,16 @@ export class SuggestionsQueryDto extends PaginationDto {
 }
 
 export class SubjectQueryDto extends ActingProfileDto {}
+
+/**
+ * The optional reason a profile was kept.
+ *
+ * The profile being shortlisted is in the path and the shortlist's owner is in
+ * the query, so the body carries only the note — which is private to the side
+ * that wrote it and never travels with the profile.
+ */
+export class ShortlistNoteDto {
+  @ApiPropertyOptional({ maxLength: 500, example: 'Same town as my sister' })
+  @IsOptional() @IsString() @MaxLength(500)
+  note?: string;
+}

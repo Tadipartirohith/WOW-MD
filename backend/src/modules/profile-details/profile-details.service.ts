@@ -179,6 +179,16 @@ export class ProfileDetailsService {
       ...(dto.nativePlace ? { nativePlace: dto.nativePlace } : {}),
       brothers: dto.brothers,
       sisters: dto.sisters,
+      // Sent as a number, stored as numeric, and only written when the family
+      // actually answered — `undefined` here would blank a figure entered on a
+      // previous save, which is the shape of bug this whole file exists to
+      // avoid.
+      ...(dto.familyNetWorth === undefined
+        ? {}
+        : { familyNetWorth: String(dto.familyNetWorth) }),
+      ...(dto.familyNetWorthVisible === undefined
+        ? {}
+        : { familyNetWorthVisible: dto.familyNetWorthVisible }),
     });
     return this.persist(profileId, row);
   }

@@ -11,6 +11,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { IdentityService } from './identity.service';
+import { toOwnProfile } from './dto/public-profile.dto';
 import { DataRightsService } from './data-rights.service';
 import { CreateProfileDto } from './dto/profile.dto';
 import { SubmitGovernmentIdDto } from './dto/identity.dto';
@@ -55,13 +56,13 @@ export class UsersController {
 
 
   @Get('me')
-  getMe(@CurrentUser('userId') userId: string) {
-    return this.users.getByUserId(userId);
+  async getMe(@CurrentUser('userId') userId: string) {
+    return toOwnProfile(await this.users.getByUserId(userId));
   }
 
   @Put('me/profile')
-  upsert(@CurrentUser('userId') userId: string, @Body() dto: CreateProfileDto) {
-    return this.users.upsert(userId, dto);
+  async upsert(@CurrentUser('userId') userId: string, @Body() dto: CreateProfileDto) {
+    return toOwnProfile(await this.users.upsert(userId, dto));
   }
 
   // ---------------------------------------------------------------- identity

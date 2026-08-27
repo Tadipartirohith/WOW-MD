@@ -727,6 +727,22 @@ export class AuthService {
   ): Promise<AuthResult> {
     const refresh = await this.mintRefreshToken(user);
     await this.sessions.create(user.id, refresh.token, refresh.expiresAt, ctx);
+
+    /*
+     * "Recently active", recorded where a session actually begins.
+     *
+     * Every sign-in and every silent refresh passes through here, and the
+     * refresh happens whenever a short-lived access token expires under real
+     * use — so this tracks being present without a write on every request.
+     *
+     * Deliberately not awaited into the response path's critical section by
+     * way of a transaction: a failure to record when somebody was last seen is
+     * not a reason to fail their sign-in.
+     */
+    await this.profiles
+      .update({ userId: user.id }, { lastActiveAt: new Date() })
+      .catch(() => undefined);
+
     return {
       user: this.publicUser(user),
       accessToken: await this.mintAccessToken(user),

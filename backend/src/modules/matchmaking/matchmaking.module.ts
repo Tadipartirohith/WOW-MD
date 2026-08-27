@@ -5,6 +5,7 @@ import { Profile } from '../users/entities/profile.entity';
 import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { User } from '../auth/entities/user.entity';
 import { MatchmakingService } from './matchmaking.service';
+import { ProfileShortlist } from './entities/shortlist.entity';
 import { MatchmakingController } from './matchmaking.controller';
 import { InvitationsModule } from '../invitations/invitations.module';
 import { CompatibilityEngine } from './compatibility.engine';
@@ -14,7 +15,7 @@ import { AgentsModule } from '../agents/agents.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Interest, Profile, User, ProfileDetails]),
+    TypeOrmModule.forFeature([Interest, Profile, User, ProfileDetails, ProfileShortlist]),
     VerificationModule,
     InvitationsModule,
     forwardRef(() => AgentsModule),

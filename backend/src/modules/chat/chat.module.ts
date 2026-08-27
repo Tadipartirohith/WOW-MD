@@ -12,13 +12,16 @@ import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
 import { PresenceService } from './presence.service';
+import { CompatibilityEngine } from '../matchmaking/compatibility.engine';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Conversation, Message, Interest, User, Profile, ChatBlock, ChatReport, ChatPreference]),
     JwtModule.register({}),
   ],
-  providers: [ChatService, ChatGateway, PresenceService],
+  // The engine depends on configuration and nothing else, so it is provided
+  // here rather than importing the whole matchmaking module for one score.
+  providers: [ChatService, ChatGateway, PresenceService, CompatibilityEngine],
   controllers: [ChatController],
   exports: [ChatService, PresenceService],
 })

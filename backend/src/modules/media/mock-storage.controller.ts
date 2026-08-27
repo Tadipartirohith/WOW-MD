@@ -19,13 +19,27 @@ import { AppConfigService } from '../../config/app-config.service';
 const CONTENT_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
+  jpe: 'image/jpeg',
+  // Chrome on Windows writes ordinary JPEGs under this extension. Serving it
+  // as octet-stream makes the browser download the photograph instead of
+  // showing it, which reads as "the upload did not work".
+  jfif: 'image/jpeg',
+  pjpeg: 'image/jpeg',
   png: 'image/png',
+  apng: 'image/apng',
   webp: 'image/webp',
   gif: 'image/gif',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
   heic: 'image/heic',
+  heif: 'image/heif',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
   mp4: 'video/mp4',
+  m4v: 'video/mp4',
   mov: 'video/quicktime',
   webm: 'video/webm',
+  '3gp': 'video/3gpp',
   pdf: 'application/pdf',
 };
 

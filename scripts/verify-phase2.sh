@@ -73,36 +73,8 @@ seed_photos() { # seed_photos <profileId> <token>
 # Aadhaar endpoint, which was correct all along. The table is now indexed with
 # substr() out of one string per row so a row can be read against the standard
 # at a glance, and the permutation table is generated rather than typed.
-verhoeff() {
-  awk -v body="$1" '
-    function cell(table, row, col) { return substr(table, row * 10 + col + 1, 1) + 0 }
-    BEGIN {
-      D = "0123456789" "1234067895" "2340178956" "3401289567" "4012395678" "5987604321" "6598710432" "7659821043" "8765932104" "9876543210";
-      INV = "0432156789";
+. /scripts/lib-identity.sh
 
-      # The permutation table is generated from its first row rather than typed
-      # out: eight hand-copied rows is eight chances to introduce a
-      # transposition into the very check that exists to catch transpositions.
-      P = "0123456789";
-      prev = "0123456789";
-      for (r = 1; r <= 7; r++) {
-        row = "";
-        for (c = 0; c < 10; c++) {
-          row = row substr("1576283094", substr(prev, c + 1, 1) + 1, 1);
-        }
-        P = P row;
-        prev = row;
-      }
-
-      n = length(body);
-      c = 0;
-      for (i = 1; i <= n; i++) {
-        digit = substr(body, n - i + 1, 1) + 0;
-        c = cell(D, c, cell(P, i % 8, digit));
-      }
-      printf "%d", substr(INV, c + 1, 1);
-    }'
-}
 AADHAAR_BODY="2$(date +%s | tail -c 8)$(printf '%03d' $(( $$ % 1000 )))"
 AADHAAR="${AADHAAR_BODY}$(verhoeff "$AADHAAR_BODY")"
 AADHAAR_LAST4=$(echo "$AADHAAR" | tail -c 5)
@@ -293,11 +265,19 @@ check "a buyer has no seller account to read" "$c" 403
 
 echo
 echo "== 10. Chat: an accepted match is reachable before a word is said =="
+# The bride verified in section 6. The groom has to as well before he can
+# accept — which is the gate under test, so it is asserted rather than assumed.
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\"}" "$BRIDE")
 check "the bride sends an interest" "$c" 201
 INTEREST=$(field /tmp/body id)
 c=$(req PUT "/matches/$INTEREST/accept" '{}' "$GROOM")
-check "the groom accepts" "$c" 200
+check "an unverified profile cannot accept an interest" "$c" 403
+assert "and is told why, not just refused" \
+  "$(jq -e '.error.message | test("[Ii]dentity verification")' /tmp/body >/dev/null && echo 1 || echo 0)"
+
+verify_identity "$GROOM_PROFILE" "$GROOM" >/dev/null
+c=$(req PUT "/matches/$INTEREST/accept" '{}' "$GROOM")
+check "the groom accepts once his document is confirmed" "$c" 200
 
 c=$(req GET /chat/conversations "" "$BRIDE")
 check "the chat dashboard reads" "$c" 200

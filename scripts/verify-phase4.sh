@@ -60,6 +60,12 @@ body_has() {
 
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Identity verification now gates sending an interest, accepting one and
+# fixing a match. Every persona that does any of those has to go through it
+# first — the gate itself is asserted in verify-phase2.
+. /scripts/lib-identity.sh
+
+
 # A GST number is unique platform-wide, so a random four digits collides once a
 # suite has been run a few hundred times — and it fails as "already registered",
 # which reads like a real defect rather than a repeated run. Derived from the
@@ -261,6 +267,10 @@ req PUT /users/me/profile "{\"displayName\":\"Bride\",\"gender\":\"female\",\"da
 req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
 c=$(req GET /users/me "" "$GROOM")
 GROOM_PROFILE=$(field /tmp/body id)
+c=$(req GET /users/me "" "$BRIDE")
+BRIDE_PROFILE=$(field /tmp/body id)
+verify_identity "$BRIDE_PROFILE" "$BRIDE" >/dev/null
+verify_identity "$GROOM_PROFILE" "$GROOM" >/dev/null
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\"}" "$BRIDE")
 check "bride sends the groom an interest" "$c" 201
 BG=$(field /tmp/body id)
@@ -1637,6 +1647,9 @@ req PUT /users/me/profile "{\"displayName\":\"Ic\",\"gender\":\"male\",\"dateOfB
 req GET /users/me "" "$IA" >/dev/null; P_IA=$(field /tmp/body id)
 req GET /users/me "" "$IB" >/dev/null; P_IB=$(field /tmp/body id)
 req GET /users/me "" "$IC" >/dev/null; P_IC=$(field /tmp/body id)
+verify_identity "$P_IA" "$IA" >/dev/null
+verify_identity "$P_IB" "$IB" >/dev/null
+verify_identity "$P_IC" "$IC" >/dev/null
 
 c=$(req GET /matches/interests "" "$IA")
 check "the board is served, empty" "$c" 200

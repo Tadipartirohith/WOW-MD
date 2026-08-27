@@ -1,6 +1,12 @@
 import { ChangeEvent, useRef, useState } from 'react';
 import { api, apiMessage } from '../lib/api';
 
+/** Kept in step with `UPLOAD_IMAGE_EXTENSIONS` on the API. */
+const IMAGE_EXTENSIONS = [
+  'jpg', 'jpeg', 'jpe', 'jfif', 'pjpeg', 'png', 'apng', 'webp',
+  'gif', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff',
+];
+
 /**
  * Picks a file, uploads it, and hands back the URL it now lives at.
  *
@@ -38,9 +44,23 @@ export default function PhotoUploader({
     if (!file) return;
 
     setError('');
-    const isDocument = kind === 'attachment' && file.type === 'application/pdf';
-    if (!file.type.startsWith('image/') && !isDocument) {
-      setError(kind === 'attachment' ? 'Choose an image or a PDF.' : 'Choose an image file.');
+    /*
+     * Judged on the extension as well as the reported type, because the type is
+     * not always reported. Windows hands over an empty `file.type` for HEIC and
+     * for AVIF unless the codec is installed, so a photograph straight off an
+     * iPhone looked to this check like something that was not an image at all —
+     * which is what "it is not taking all types of images" was describing.
+     */
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+    const looksLikeImage = file.type.startsWith('image/') || IMAGE_EXTENSIONS.includes(extension);
+    const isDocument =
+      kind === 'attachment' && (file.type === 'application/pdf' || extension === 'pdf');
+    if (!looksLikeImage && !isDocument) {
+      setError(
+        kind === 'attachment'
+          ? 'Choose an image or a PDF.'
+          : 'Choose an image file — JPEG, PNG, WebP, HEIC and the rest are all fine.',
+      );
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -78,7 +98,16 @@ export default function PhotoUploader({
       <input
         ref={input}
         type="file"
-        accept={kind === 'attachment' ? 'image/*,application/pdf' : 'image/*'}
+        /*
+         * The extensions are listed alongside `image/*` rather than instead of
+         * it: the picker on Windows will not offer a HEIC file under `image/*`
+         * alone, so the file the person came to upload is greyed out.
+         */
+        accept={
+          kind === 'attachment'
+            ? `image/*,application/pdf,.pdf,${IMAGE_EXTENSIONS.map((e) => `.${e}`).join(',')}`
+            : `image/*,${IMAGE_EXTENSIONS.map((e) => `.${e}`).join(',')}`
+        }
         className="hidden"
         onChange={pick}
         disabled={busy}

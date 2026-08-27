@@ -59,6 +59,11 @@ assert() {
   fi
 }
 body_has() { grep -q "$1" /tmp/body && assert "$2" 1 || assert "$2" 0; }
+# Identity verification now gates sending an interest, accepting one and
+# fixing a match. Every persona that does any of those has to go through it
+# first — the gate itself is asserted in verify-phase2.
+. /scripts/lib-identity.sh
+
 
 # Precise extraction; jq is present in the runner image.
 field() { jq -r ".$2 // empty" "$1"; }
@@ -358,6 +363,10 @@ GROOM_PROFILE=$(field /tmp/body id)
 c=$(req GET /users/me "" "$BRIDE")
 BRIDE_PROFILE=$(field /tmp/body id)
 
+verify_identity "$GROOM_PROFILE" "$GROOM" >/dev/null
+verify_identity "$BRIDE_PROFILE" "$BRIDE" >/dev/null
+verify_identity "$MANAGED" "$AGENT" >/dev/null
+
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\",\"profileId\":\"$MANAGED\"}" "$AGENT2")
 check "second agent cannot send interest from that profile" "$c" 403
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\",\"profileId\":\"$MANAGED\"}" "$AGENT")
@@ -508,6 +517,7 @@ else
   c=$(req POST /agents/profiles "{\"displayName\":\"Partner\",\"contactEmail\":\"partner-$STAMP@t.com\",\"contactPhone\":\"$(phone 005)\",\"gender\":\"male\",\"dateOfBirth\":\"1995-05-05\",\"city\":\"Hyderabad\",$CONSENT}" "$AGENT")
   check "agent builds the counterpart profile" "$c" 201
   PARTNER=$(field /tmp/body id)
+  verify_identity "$PARTNER" "$AGENT" >/dev/null
 
   c=$(req POST /bookings "{\"providerType\":\"vendor\",\"providerId\":\"$LISTING\",\"amount\":2500,\"onBehalfOfUserId\":\"$CLIENT_ID\"}" "$AGENT")
   check "agent cannot book for a client with no fixed match" "$c" 403

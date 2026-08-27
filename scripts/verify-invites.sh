@@ -45,6 +45,11 @@ assert() {
 }
 
 field() { jq -r ".$2 // empty" "$1"; }
+# Identity verification now gates sending an interest, accepting one and
+# fixing a match. Every persona that does any of those has to go through it
+# first — the gate itself is asserted in verify-phase2.
+. /scripts/lib-identity.sh
+
 
 # Phone is the duplicate key for an agency-built profile, and the check is
 # global by design — the same number twice means the same person twice. So the
@@ -192,6 +197,8 @@ check "another agent cannot browse as it" "$c" 403
 GROOM_PROFILE=$(req GET /agents/profiles/actable "" "$GROOM" >/dev/null 2>&1; echo "")
 c=$(req GET /users/me "" "$GROOM")
 GP=$(field /tmp/body id)
+verify_identity "$GP" "$GROOM" >/dev/null
+verify_identity "$MANAGED" "$AGENT" >/dev/null
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GP\",\"profileId\":\"$MANAGED\"}" "$AGENT")
 check "agent sends an interest FROM the unclaimed profile" "$c" 201
 INTEREST=$(field /tmp/body id)

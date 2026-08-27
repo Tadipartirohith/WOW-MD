@@ -1,8 +1,23 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { MatchmakingService } from './matchmaking.service';
 import { MatchLifecycleService } from './match-lifecycle.service';
-import { SendInterestDto, SubjectQueryDto, SuggestionsQueryDto } from './dto/matchmaking.dto';
+import {
+  SendInterestDto,
+  ShortlistNoteDto,
+  SubjectQueryDto,
+  SuggestionsQueryDto,
+} from './dto/matchmaking.dto';
 import { ConfirmMatchFixedDto, EndMatchDto, ReportMatchDto } from './dto/lifecycle.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -71,6 +86,42 @@ export class MatchmakingController {
   @Put(':id/reject')
   reject(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.matchmaking.respond(actor, id, false);
+  }
+
+  /**
+   * Keep a profile for later.
+   *
+   * Browsing is the permission, not responding: shortlisting says nothing to
+   * the other family and commits to nothing. Anyone who can see a profile can
+   * make a private note that they saw it.
+   */
+  @ApiOperation({ summary: 'Add a profile to this profile\'s shortlist' })
+  @RequirePermissions(Permission.MATCH_BROWSE)
+  @Put('shortlist/:id')
+  addShortlist(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: SubjectQueryDto,
+    @Body() body: ShortlistNoteDto,
+  ) {
+    return this.matchmaking.shortlist(actor, id, q.profileId, body?.note);
+  }
+
+  @RequirePermissions(Permission.MATCH_BROWSE)
+  @Delete('shortlist/:id')
+  removeShortlist(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: SubjectQueryDto,
+  ) {
+    return this.matchmaking.unshortlist(actor, id, q.profileId);
+  }
+
+  @ApiOperation({ summary: 'The shortlist, newest first' })
+  @RequirePermissions(Permission.MATCH_BROWSE)
+  @Get('shortlist')
+  shortlist(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
+    return this.matchmaking.shortlisted(actor, q.profileId);
   }
 
   @RequirePermissions(Permission.MATCH_BROWSE)

@@ -16,15 +16,33 @@ import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import {
   InterestStatus,
+  MatchFixedState,
   ThreadKind,
   UserRole,
   isIndividual,
   isProvider,
 } from '../../common/enums';
+import { ageBand } from '../users/dto/public-profile.dto';
+import { CompatibilityEngine } from '../matchmaking/compatibility.engine';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { AppConfigService } from '../../config/app-config.service';
 import { PresenceService } from './presence.service';
 import { redactContacts } from '../../common/util/redaction';
+
+/**
+ * Why these two are talking at all.
+ *
+ * A conversation list of names and last messages loses the one fact that makes
+ * a matrimony chat different from any other: this thread exists because two
+ * families agreed to it. Carrying the score and the standing means the header
+ * can say "82% match \u00b7 interest accepted" rather than leaving the reader
+ * to remember which of four conversations this is.
+ */
+export interface ConversationContext {
+  interestId: string;
+  score: number | null;
+  standing: 'accepted' | 'fixed';
+}
 
 /** One row of the chat dashboard. */
 export interface ConversationSummary {
@@ -37,8 +55,23 @@ export interface ConversationSummary {
   lastMessage: string | null;
   lastMessageAt: Date | null;
   lastMessageMine: boolean;
+  /** True when the last message in the thread has been read by the other side. */
+  lastMessageRead: boolean;
   unread: number;
   online: boolean;
+  /**
+   * Who this is, beyond a name.
+   *
+   * Two people called Pardhu in the same list is not a hypothetical — it was
+   * the reported problem. The code disambiguates them permanently; the age and
+   * town are what a reader actually uses to tell them apart at a glance.
+   */
+  profileId: string | null;
+  profileCode: string | null;
+  ageRange: string | null;
+  city: string | null;
+  lastActiveAt: Date | null;
+  context: ConversationContext | null;
 }
 
 @Injectable()
@@ -55,6 +88,7 @@ export class ChatService {
     private readonly audit: AuditService,
     private readonly cfg: AppConfigService,
     private readonly presence: PresenceService,
+    private readonly engine: CompatibilityEngine,
   ) {}
 
   private async loadPair(a: string, b: string): Promise<[User, User]> {
@@ -307,6 +341,35 @@ export class ChatService {
    * said last, whether anything is waiting on them, and whether the other side
    * is there right now.
    */
+  /**
+   * The accepted interest behind a conversation, scored.
+   *
+   * Looked up by the two *profiles* rather than the two accounts, because that
+   * is what an interest is between — an agency-built profile has no account at
+   * all until its subject claims it.
+   */
+  private async contextFor(
+    mine: Profile | undefined,
+    theirs: Profile | undefined,
+  ): Promise<ConversationContext | null> {
+    if (!mine || !theirs) return null;
+    const interest = await this.interests.findOne({
+      where: [
+        { fromProfileId: mine.id, toProfileId: theirs.id },
+        { fromProfileId: theirs.id, toProfileId: mine.id },
+      ],
+      order: { createdAt: 'DESC' },
+    });
+    if (!interest || interest.status !== InterestStatus.ACCEPTED) return null;
+
+    return {
+      interestId: interest.id,
+      score: this.engine.score(mine, theirs).score,
+      standing:
+        interest.matchFixedState === MatchFixedState.CONFIRMED ? 'fixed' : 'accepted',
+    };
+  }
+
   async listConversations(userId: string): Promise<ConversationSummary[]> {
     // Direct threads only. A booking's thread lives on the booking, where its
     // rules are — surfacing it here would offer a vendor a conversation the
@@ -334,18 +397,32 @@ export class ChatService {
     ]);
     const profileByUser = new Map(profiles.map((p) => [p.userId as string, p]));
 
-    const silent: ConversationSummary[] = pending.map((otherUserId) => ({
-      conversationId: '',
-      withUserId: otherUserId,
-      muted: false,
-      displayName: profileByUser.get(otherUserId)?.displayName ?? 'Match',
-      photoUrl: profileByUser.get(otherUserId)?.photos?.[0] ?? null,
-      lastMessage: null,
-      lastMessageAt: null,
-      lastMessageMine: false,
-      unread: 0,
-      online: online.has(otherUserId),
-    }));
+    const myProfile = await this.profiles.findOne({ where: { userId } });
+
+    const silent: ConversationSummary[] = await Promise.all(
+      pending.map(async (otherUserId) => {
+        const profile = profileByUser.get(otherUserId);
+        return {
+          conversationId: '',
+          withUserId: otherUserId,
+          muted: false,
+          displayName: profile?.displayName ?? 'Match',
+          photoUrl: profile?.photos?.[0] ?? null,
+          lastMessage: null,
+          lastMessageAt: null,
+          lastMessageMine: false,
+          lastMessageRead: false,
+          unread: 0,
+          online: online.has(otherUserId),
+          profileId: profile?.id ?? null,
+          profileCode: profile?.profileCode ?? null,
+          ageRange: ageBand(profile?.dateOfBirth ?? null),
+          city: profile?.city ?? null,
+          lastActiveAt: profile?.lastActiveAt ?? null,
+          context: await this.contextFor(myProfile ?? undefined, profile),
+        };
+      }),
+    );
 
     // This reader's settings for these threads, in one read rather than one
     // per row.
@@ -384,8 +461,17 @@ export class ChatService {
           lastMessage: last?.body ?? null,
           lastMessageAt: last?.createdAt ?? null,
           lastMessageMine: last ? last.senderId === userId : false,
+          // Only meaningful on a message this reader sent: it is the second
+          // tick. On a received message it is trivially true and says nothing.
+          lastMessageRead: Boolean(last && last.senderId === userId && last.readAt),
           unread,
           online: online.has(otherUserId),
+          profileId: profile?.id ?? null,
+          profileCode: profile?.profileCode ?? null,
+          ageRange: ageBand(profile?.dateOfBirth ?? null),
+          city: profile?.city ?? null,
+          lastActiveAt: profile?.lastActiveAt ?? null,
+          context: await this.contextFor(myProfile ?? undefined, profile),
         };
       }),
     );

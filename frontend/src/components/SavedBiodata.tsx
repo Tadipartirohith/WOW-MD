@@ -30,6 +30,17 @@ interface Asset {
  * Rendered from the server's response rather than from any local draft, so it
  * cannot show something that failed to save.
  */
+/** Rupees, grouped the Indian way — lakhs and crores, not thousands. */
+function rupees(value: number | string): string {
+  const amount = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(amount)) return String(value);
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export default function SavedBiodata({
   details,
   siblings,
@@ -132,6 +143,14 @@ export default function SavedBiodata({
         <Row label="Native place">{str('nativePlace')}</Row>
         <Row label="Family type">{str('familyType')}</Row>
         <Row label="Family status">{str('familyStatus')}</Row>
+        {/*
+          Only when the family chose to publish it. A net worth on file and a
+          net worth on the biodata are two different decisions, and this
+          component is not the place to make the second one on their behalf.
+        */}
+        {details?.familyNetWorthVisible && details?.familyNetWorth ? (
+          <Row label="Family net worth">{rupees(details.familyNetWorth as string)}</Row>
+        ) : null}
         <Row label="Brothers / sisters">
           {num('brothers') !== null || num('sisters') !== null
             ? `${num('brothers') ?? 0} / ${num('sisters') ?? 0}`
@@ -200,7 +219,9 @@ export default function SavedBiodata({
         <Group title="Family assets">
           {assets.map((a) => (
             <Row key={a.id} label={a.type.replace(/_/g, ' ')}>
-              {[a.location, a.area, a.estimatedValue].filter(Boolean).join(' · ') || '—'}
+              {[a.location, a.area, a.estimatedValue ? rupees(a.estimatedValue) : null]
+                .filter(Boolean)
+                .join(' · ') || '—'}
               {/* Family assets are private unless individually published. */}
               {!a.visible && <span className="ml-2 text-xs text-gray-400">(private)</span>}
             </Row>

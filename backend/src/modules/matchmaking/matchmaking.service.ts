@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { ILike, In, Not, Repository } from 'typeorm';
 import { Interest } from './entities/interest.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
@@ -25,14 +25,39 @@ import {
 } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
-import { PublicProfileView, toPublicProfile } from '../users/dto/public-profile.dto';
+import {
+  ProfileCardFacts,
+  PublicProfileView,
+  toCardFacts,
+  toPublicProfile,
+} from '../users/dto/public-profile.dto';
+import { ProfileShortlist } from './entities/shortlist.entity';
 import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { SuggestionsQueryDto } from './dto/matchmaking.dto';
+
+/**
+ * Where the viewer already stands with a candidate.
+ *
+ * `declined_by_you` and `declined_by_them` are kept apart deliberately. They
+ * look the same in the database and mean opposite things to the family reading
+ * the card: one is a decision they made and may want to revisit, the other is
+ * an answer they were given.
+ */
+export type InteractionState =
+  | 'none'
+  | 'interest_sent'
+  | 'interest_received'
+  | 'accepted'
+  | 'declined_by_you'
+  | 'declined_by_them';
 
 export interface Suggestion {
   profile: PublicProfileView;
   score: number;
   breakdown: Record<string, number>;
+  shortlisted?: boolean;
+  note?: string | null;
+  interaction?: InteractionState;
 }
 
 export interface InterestView {
@@ -42,6 +67,15 @@ export interface InterestView {
   /** The other side of the interest, in public form. */
   counterpart: PublicProfileView;
   direction: 'incoming' | 'outgoing';
+}
+
+/** An accepted match, with everything the Confirmed Matches card has to state. */
+export interface AcceptedMatchView extends InterestView {
+  score: number;
+  matchFixedState: MatchFixedState;
+  confirmedByYouAt: Date | null;
+  confirmedByThemAt: Date | null;
+  fixedAt: Date | null;
 }
 
 /**
@@ -58,6 +92,8 @@ export class MatchmakingService {
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(ProfileDetails) private readonly details: Repository<ProfileDetails>,
+    @InjectRepository(ProfileShortlist)
+    private readonly shortlists: Repository<ProfileShortlist>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly engine: CompatibilityEngine,
     private readonly cfg: AppConfigService,
@@ -120,6 +156,31 @@ export class MatchmakingService {
    * a half-filled profile wastes the time of everyone it is shown to, and a
    * fixed match is the end of matchmaking for that person rather than a pause.
    */
+  /**
+   * Identity, before anything that binds two families together.
+   *
+   * Browsing is deliberately left open. Somebody who has not verified yet still
+   * needs to see what is on the other side of the step, and a blank page is a
+   * poor argument for producing a passport. What is closed is everything that
+   * commits: sending an interest, accepting one, and fixing a match.
+   *
+   * The check lives here rather than in a guard because it is a fact about the
+   * *subject profile*, not about the account making the call. An agency is
+   * verified as a business and still must not send interests on behalf of a
+   * client whose own document has not been seen — the client is the person
+   * whose identity the other family is relying on.
+   */
+  async assertIdentityVerified(profile: Profile, action: string): Promise<void> {
+    if (profile.idVerifiedAt) return;
+    throw new ForbiddenException(
+      profile.idSubmittedAt
+        ? `Identity verification is still pending for this profile, so you cannot ${action} yet. ` +
+          'A verification officer confirms the document in person.'
+        : `Identity verification is required before you can ${action}. ` +
+          'Add an identity document on the biodata, and an officer will confirm it.',
+    );
+  }
+
   private async assertMatchmakingOpen(profile: Profile): Promise<void> {
     if (profile.lifecycle !== ProfileLifecycle.ACTIVE) {
       throw new ForbiddenException(`This profile is ${profile.lifecycle} and is not matchmaking`);
@@ -216,15 +277,53 @@ export class MatchmakingService {
         }
       }
       if (candidates.length === 0) {
-        candidates = await this.profiles.find({
-          where: {
-            id: Not(me.id),
-            visibility: Not(ProfileVisibility.PRIVATE),
-            lifecycle: ProfileLifecycle.ACTIVE,
-            ...(me.gender ? { gender: Not(me.gender) } : {}),
-          },
-          take: this.cfg.matchmaking.maxSuggestions,
-        });
+        /*
+         * Newest first, and only then capped.
+         *
+         * The cap was there all along and the order was not, so the pool was
+         * whatever fifty rows Postgres happened to return — which on a database
+         * with more than fifty profiles meant a profile that joined this morning
+         * usually was not in it. "Recently added" then showed everything except
+         * what was recently added, and a search for a specific profile code
+         * found nothing, because the profile had been dropped before any filter
+         * ran.
+         *
+         * Recency is the right order for a bounded pool whatever the requested
+         * sort: it is the only one that guarantees a new arrival is considered
+         * at all, and every other order is applied to the scored list below.
+         */
+        const base = {
+          id: Not(me.id),
+          visibility: Not(ProfileVisibility.PRIVATE),
+          lifecycle: ProfileLifecycle.ACTIVE,
+          ...(me.gender ? { gender: Not(me.gender) } : {}),
+        };
+
+        /*
+         * A search asks the database, not the pool.
+         *
+         * Filtering a capped pool is fine for narrowing what is on offer and
+         * useless for finding one specific person: somebody typing a profile
+         * code has that profile in mind, and it is almost certainly not among
+         * the fifty most recent. So a search widens the query instead — same
+         * eligibility rules, different starting set.
+         */
+        const term = q.q?.trim();
+        candidates = term
+          ? await this.profiles.find({
+              where: [
+                { ...base, profileCode: term.replace(/\s+/g, '').toUpperCase() },
+                { ...base, displayName: ILike(`%${term}%`) },
+                { ...base, city: ILike(`%${term}%`) },
+              ],
+              order: { createdAt: 'DESC' },
+              take: this.cfg.matchmaking.maxSuggestions,
+            })
+          : await this.profiles.find({
+              where: base,
+              order: { createdAt: 'DESC' },
+              take: this.cfg.matchmaking.maxSuggestions,
+            });
       }
 
       const eligible = await this.eligibleProfileIds(candidates);
@@ -251,10 +350,32 @@ export class MatchmakingService {
       //
       // An explicit `minScore` is still honoured either way: somebody who asked
       // for a floor meant it.
-      const browsing = q.sort === 'recent';
+      // Only `score` is recommending. Every other order is browsing, and the
+      // compatibility floor has no business in a browse — it makes a profile
+      // that joined this morning invisible for not matching preferences the
+      // family may not even have set yet.
+      const browsing = (q.sort ?? 'score') !== 'score';
       const floor = browsing
         ? (q.minScore ?? 0)
         : Math.max(this.cfg.matchmaking.minScore, q.minScore ?? 0);
+
+      const shortlisted = await this.shortlistedIds(me.id);
+      if (q.shortlistedOnly) {
+        candidates = candidates.filter((c) => shortlisted.has(c.id));
+      }
+
+      const millis = (d: Date | null) => (d ? d.getTime() : 0);
+      const orderBy: Record<string, (a: Profile, b: Profile, sa: number, sb: number) => number> = {
+        score: (_a, _b, sa, sb) => sb - sa,
+        recent: (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+        active: (a, b) => millis(b.lastActiveAt) - millis(a.lastActiveAt),
+        // A missing date of birth sorts last either way rather than reading as
+        // age zero, which would put every incomplete profile at the top of an
+        // ascending sort.
+        age: (a, b) => (this.ageOf(a.dateOfBirth) ?? 999) - (this.ageOf(b.dateOfBirth) ?? 999),
+        ageDesc: (a, b) => (this.ageOf(b.dateOfBirth) ?? -1) - (this.ageOf(a.dateOfBirth) ?? -1),
+      };
+      const compare = orderBy[q.sort ?? 'score'] ?? orderBy.score;
 
       const scored = candidates
         .map((profile) => {
@@ -262,20 +383,185 @@ export class MatchmakingService {
           return { profile, score, breakdown };
         })
         .filter((s) => s.score >= floor)
-        .sort((a, b) =>
-          browsing
-            ? b.profile.createdAt.getTime() - a.profile.createdAt.getTime()
-            : b.score - a.score,
-        );
+        .sort((a, b) => compare(a.profile, b.profile, a.score, b.score));
 
       const start = (page - 1) * limit;
-      const pageItems = scored.slice(start, start + limit).map((s) => ({
-        profile: toPublicProfile(s.profile, { matched: acceptedWith.has(s.profile.id) }),
+      const window = scored.slice(start, start + limit);
+
+      // The facts for the cards, and how each one already stands with this
+      // profile — both fetched for the page rather than the pool, because a
+      // biodata row per candidate over a fifty-profile pool is fifty rows read
+      // to render ten.
+      const [facts, interactions] = await Promise.all([
+        this.cardFactsFor(window.map((w) => w.profile.id)),
+        this.interactionsFor(me.id, window.map((w) => w.profile.id)),
+      ]);
+
+      const pageItems = window.map((s) => ({
+        profile: toPublicProfile(s.profile, {
+          matched: acceptedWith.has(s.profile.id),
+          card: facts.get(s.profile.id),
+        }),
         score: s.score,
         breakdown: s.breakdown,
+        shortlisted: shortlisted.has(s.profile.id),
+        interaction: interactions.get(s.profile.id) ?? 'none',
       }));
       return paginate(pageItems, scored.length, page, limit);
     });
+  }
+
+  /** Biodata facts for a page of cards, in one query. */
+  private async cardFactsFor(profileIds: string[]): Promise<Map<string, ProfileCardFacts>> {
+    if (profileIds.length === 0) return new Map();
+    const rows = await this.details.find({ where: { profileId: In(profileIds) } });
+    return new Map(rows.map((d) => [d.profileId, toCardFacts(d)]));
+  }
+
+  /**
+   * How each candidate already stands with this profile.
+   *
+   * Showing "Show interest" against somebody who was approached last week, or
+   * who has already said no, is the part of the page that wastes the most time
+   * — the family sends it again, and the other side sees a second identical
+   * request. The card says which it is instead.
+   */
+  private async interactionsFor(
+    profileId: string,
+    candidateIds: string[],
+  ): Promise<Map<string, InteractionState>> {
+    const state = new Map<string, InteractionState>();
+    if (candidateIds.length === 0) return state;
+
+    const rows = await this.interests.find({
+      where: [
+        { fromProfileId: profileId, toProfileId: In(candidateIds) },
+        { toProfileId: profileId, fromProfileId: In(candidateIds) },
+      ],
+      order: { createdAt: 'ASC' },
+    });
+
+    for (const row of rows) {
+      const other = row.fromProfileId === profileId ? row.toProfileId : row.fromProfileId;
+      const outgoing = row.fromProfileId === profileId;
+      let value: InteractionState;
+      switch (row.status) {
+        case InterestStatus.ACCEPTED:
+          value = 'accepted';
+          break;
+        case InterestStatus.REJECTED:
+          value = outgoing ? 'declined_by_them' : 'declined_by_you';
+          break;
+        case InterestStatus.WITHDRAWN:
+          value = 'none';
+          break;
+        default:
+          value = outgoing ? 'interest_sent' : 'interest_received';
+      }
+      // Rows are read oldest first, so a later interest overwrites an earlier
+      // one — which is what the family means by "where do we stand now".
+      state.set(other, value);
+    }
+    return state;
+  }
+
+  private async shortlistedIds(ownerProfileId: string): Promise<Set<string>> {
+    const rows = await this.shortlists.find({
+      where: { ownerProfileId },
+      select: ['profileId'],
+    });
+    return new Set(rows.map((r) => r.profileId));
+  }
+
+  // ------------------------------------------------------------- shortlist
+
+  /**
+   * Keep a profile for a second look.
+   *
+   * Idempotent: pressing it twice is the same intent, not an error, and a
+   * second press with a note updates the note rather than being refused.
+   */
+  async shortlist(
+    actor: AuthUser,
+    targetProfileId: string,
+    ownerProfileId?: string,
+    note?: string,
+  ): Promise<{ shortlisted: boolean }> {
+    const me = await this.resolveSubject(actor, ownerProfileId);
+    if (me.id === targetProfileId) {
+      throw new BadRequestException('You cannot shortlist your own profile');
+    }
+    const target = await this.profiles.findOne({ where: { id: targetProfileId } });
+    if (!target) throw new NotFoundException('That profile is unavailable');
+
+    const existing = await this.shortlists.findOne({
+      where: { ownerProfileId: me.id, profileId: targetProfileId },
+    });
+    if (existing) {
+      if (note !== undefined) {
+        existing.note = note || null;
+        await this.shortlists.save(existing);
+      }
+      return { shortlisted: true };
+    }
+
+    await this.shortlists.save(
+      this.shortlists.create({
+        ownerProfileId: me.id,
+        profileId: targetProfileId,
+        note: note || null,
+      }),
+    );
+    await this.invalidateSuggestions(me.id);
+    return { shortlisted: true };
+  }
+
+  async unshortlist(
+    actor: AuthUser,
+    targetProfileId: string,
+    ownerProfileId?: string,
+  ): Promise<{ shortlisted: boolean }> {
+    const me = await this.resolveSubject(actor, ownerProfileId);
+    await this.shortlists.delete({ ownerProfileId: me.id, profileId: targetProfileId });
+    await this.invalidateSuggestions(me.id);
+    return { shortlisted: false };
+  }
+
+  /** The shortlist itself, newest first, with the same card facts as a suggestion. */
+  async shortlisted(actor: AuthUser, ownerProfileId?: string): Promise<Suggestion[]> {
+    const me = await this.resolveSubject(actor, ownerProfileId);
+    const rows = await this.shortlists.find({
+      where: { ownerProfileId: me.id },
+      order: { createdAt: 'DESC' },
+    });
+    if (rows.length === 0) return [];
+
+    const profiles = await this.profiles.find({ where: { id: In(rows.map((r) => r.profileId)) } });
+    const byId = new Map(profiles.map((p) => [p.id, p]));
+    const acceptedWith = await this.acceptedCounterpartIds(me.id);
+    const [facts, interactions] = await Promise.all([
+      this.cardFactsFor(profiles.map((p) => p.id)),
+      this.interactionsFor(me.id, profiles.map((p) => p.id)),
+    ]);
+
+    return rows
+      .map((row) => {
+        const profile = byId.get(row.profileId);
+        if (!profile) return null;
+        const { score, breakdown } = this.engine.score(me, profile);
+        return {
+          profile: toPublicProfile(profile, {
+            matched: acceptedWith.has(profile.id),
+            card: facts.get(profile.id),
+          }),
+          score,
+          breakdown,
+          shortlisted: true,
+          note: row.note,
+          interaction: interactions.get(profile.id) ?? 'none',
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
   }
 
   /** A stable, short key for whichever filters are actually set. */
@@ -298,6 +584,9 @@ export class MatchmakingService {
     add('min', q.minScore);
     add('sort', q.sort);
     add('new', q.addedWithinDays);
+    add('prof', q.profession);
+    add('q', q.q);
+    add('short', q.shortlistedOnly);
     return parts.length ? parts.join('|') : 'none';
   }
 
@@ -337,6 +626,28 @@ export class MatchmakingService {
       pool = pool.filter((p) => p.createdAt.getTime() >= cutoff);
     }
 
+    /*
+     * The one box that searches everything.
+     *
+     * A profile code is exact — it is a code, and a family typing one has one
+     * specific profile in mind, so a partial match on it would be noise. A name
+     * is not: people search "anitha" for "Anitha Reddy". Both go in the same
+     * box because that is how the person typing thinks about it.
+     */
+    if (q.q) {
+      const term = q.q.trim().toLowerCase();
+      const asCode = term.replace(/\s+/g, '');
+      pool = pool.filter(
+        (p) =>
+          p.profileCode.toLowerCase() === asCode ||
+          p.displayName.toLowerCase().includes(term) ||
+          (p.city ?? '').toLowerCase().includes(term) ||
+          (p.bio ?? '').toLowerCase().includes(term),
+      );
+    }
+
+    if (pool.length === 0) return pool;
+
     const wantsBiodata =
       q.heightMinCm !== undefined ||
       q.heightMaxCm !== undefined ||
@@ -345,7 +656,8 @@ export class MatchmakingService {
       Boolean(q.motherTongue) ||
       Boolean(q.qualification) ||
       Boolean(q.maritalStatus) ||
-      Boolean(q.occupationStatus);
+      Boolean(q.occupationStatus) ||
+      Boolean(q.profession);
 
     if (!wantsBiodata || pool.length === 0) return pool;
 
@@ -368,6 +680,19 @@ export class MatchmakingService {
       if (!same(d.highestQualification, q.qualification)) return false;
       if (q.maritalStatus && d.maritalStatus !== q.maritalStatus) return false;
       if (q.occupationStatus && d.occupationStatus !== q.occupationStatus) return false;
+      if (q.profession) {
+        const wanted = q.profession.trim().toLowerCase();
+        const haystack = [
+          d.employment?.role,
+          d.employment?.designation,
+          d.employment?.company,
+          d.business?.name,
+        ]
+          .filter((v): v is string => typeof v === 'string')
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(wanted)) return false;
+      }
       return true;
     });
   }
@@ -404,6 +729,7 @@ export class MatchmakingService {
   ): Promise<Interest> {
     const from = await this.resolveSubject(actor, fromProfileId);
     await this.assertMatchmakingOpen(from);
+    await this.assertIdentityVerified(from, 'send an interest');
     if (from.id === toProfileId) throw new BadRequestException('Cannot send interest to yourself');
 
     const target = await this.profiles.findOne({ where: { id: toProfileId } });
@@ -480,7 +806,12 @@ export class MatchmakingService {
     if (!interest) throw new NotFoundException('Interest not found');
 
     // Throws unless the caller controls the recipient profile.
-    await this.resolveSubject(actor, interest.toProfileId);
+    const recipient = await this.resolveSubject(actor, interest.toProfileId);
+
+    // Declining is always available. Requiring a verified document before
+    // somebody may say no would trap them in a conversation they have already
+    // decided against, which is the opposite of what the gate is for.
+    if (accept) await this.assertIdentityVerified(recipient, 'accept an interest');
 
     interest.status = accept ? InterestStatus.ACCEPTED : InterestStatus.REJECTED;
     interest.respondedByUserId = actor.userId;
@@ -511,7 +842,15 @@ export class MatchmakingService {
     if (keys.length) await this.redis.del(...keys);
   }
 
-  async accepted(actor: AuthUser, profileId?: string): Promise<InterestView[]> {
+  /**
+   * Matches both sides agreed to, with where each one stands.
+   *
+   * A row here used to carry a name and a town, which is not enough to act on:
+   * "Match Fixed" as a heading with nothing under it explaining whose match,
+   * confirmed by whom, or when, was the reported complaint. The state, both
+   * confirmations and the score travel with the row so the card can say it.
+   */
+  async accepted(actor: AuthUser, profileId?: string): Promise<AcceptedMatchView[]> {
     const me = await this.resolveSubject(actor, profileId);
     const rows = await this.interests.find({
       where: [
@@ -520,7 +859,36 @@ export class MatchmakingService {
       ],
       order: { updatedAt: 'DESC' },
     });
-    return this.decorate(me.id, rows, true);
+    const views = await this.decorate(me.id, rows, true);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+
+    const counterparts = await this.profiles.find({
+      where: { id: In(views.map((v) => v.counterpart.id)) },
+    });
+    const scoreFor = new Map(
+      counterparts.map((c) => [c.id, this.engine.score(me, c).score] as const),
+    );
+
+    return views.map((view) => {
+      const row = byId.get(view.id);
+      const mineIsFrom = row?.fromProfileId === me.id;
+      const myConfirmation = mineIsFrom ? row?.fixedConfirmedFromAt : row?.fixedConfirmedToAt;
+      const theirConfirmation = mineIsFrom ? row?.fixedConfirmedToAt : row?.fixedConfirmedFromAt;
+
+      return {
+        ...view,
+        score: scoreFor.get(view.counterpart.id) ?? 0,
+        matchFixedState: row?.matchFixedState ?? MatchFixedState.NONE,
+        confirmedByYouAt: myConfirmation ?? null,
+        confirmedByThemAt: theirConfirmation ?? null,
+        // The date the match became fixed is the later of the two, because it
+        // is not fixed until both have said so.
+        fixedAt:
+          myConfirmation && theirConfirmation
+            ? new Date(Math.max(myConfirmation.getTime(), theirConfirmation.getTime()))
+            : null,
+      };
+    });
   }
 
   /**

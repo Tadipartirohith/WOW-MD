@@ -5,6 +5,21 @@ import { api, apiMessage } from '../lib/api';
 import { useCall } from '../lib/useCall';
 import CallPanel from '../components/CallPanel';
 import ChatMenu from '../components/ChatMenu';
+import ProfilePreview from '../components/ProfilePreview';
+
+/**
+ * A time a reader can scan.
+ *
+ * Today gets a clock, this week gets a weekday, anything older gets a date.
+ * A full timestamp on every row is four rows of noise for one row of use.
+ */
+function shortTime(iso: string): string {
+  const then = new Date(iso);
+  const days = (Date.now() - then.getTime()) / 86_400_000;
+  if (days < 1) return then.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (days < 7) return then.toLocaleDateString([], { weekday: 'short' });
+  return then.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
 
 interface Conversation {
   conversationId: string;
@@ -14,8 +29,16 @@ interface Conversation {
   lastMessage: string | null;
   lastMessageAt: string | null;
   lastMessageMine: boolean;
+  lastMessageRead: boolean;
   unread: number;
   online: boolean;
+  profileId: string | null;
+  profileCode: string | null;
+  ageRange: string | null;
+  city: string | null;
+  lastActiveAt: string | null;
+  /** Why these two are talking: the accepted interest, and how it scored. */
+  context: { interestId: string; score: number | null; standing: 'accepted' | 'fixed' } | null;
 }
 
 interface Message {
@@ -24,6 +47,7 @@ interface Message {
   body: string;
   redactedCount: number;
   createdAt: string;
+  readAt: string | null;
 }
 
 /**
@@ -70,6 +94,8 @@ export default function Chat() {
   // Exactly one thread is open at a time, of either kind.
   const [interestId, setInterestId] = useState(params.get('proposal') ?? '');
   const [menuOpen, setMenuOpen] = useState(false);
+  // Which profile is open over the thread, if any.
+  const [previewId, setPreviewId] = useState('');
   const [body, setBody] = useState('');
   const [error, setError] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
@@ -157,6 +183,8 @@ export default function Chat() {
 
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
+      {previewId && <ProfilePreview profileId={previewId} onClose={() => setPreviewId('')} />}
+
       <div className="grid gap-4 md:grid-cols-[18rem,1fr]">
         <div className="card max-h-[32rem] overflow-y-auto p-0">
           {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
@@ -203,15 +231,33 @@ export default function Chat() {
                   <span className="truncate text-sm font-medium text-gray-900">
                     {c.displayName}
                   </span>
-                  {c.unread > 0 && (
-                    <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-white">
-                      {c.unread}
-                    </span>
-                  )}
+                  <span className="flex shrink-0 items-center gap-1">
+                    {c.lastMessageAt && (
+                      <span className="text-[10px] text-gray-400">{shortTime(c.lastMessageAt)}</span>
+                    )}
+                    {c.unread > 0 && (
+                      <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-white">
+                        {c.unread}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                {/*
+                  The code and the town, under the name.
+
+                  Two people called Pardhu in one list was the reported
+                  problem, and a name on its own cannot solve it. The profile
+                  code is unique and the town is what a reader actually uses to
+                  tell them apart without thinking about it.
+                */}
+                <span className="block truncate text-[11px] text-gray-400">
+                  {[c.profileCode, c.ageRange ? `${c.ageRange} yrs` : null, c.city]
+                    .filter(Boolean)
+                    .join(' \u00b7 ')}
                 </span>
                 <span className="block truncate text-xs text-gray-500">
                   {c.lastMessage
-                    ? `${c.lastMessageMine ? 'You: ' : ''}${c.lastMessage}`
+                    ? `${c.lastMessageMine ? (c.lastMessageRead ? '\u2713\u2713 ' : '\u2713 ') : ''}${c.lastMessage}`
                     : 'No messages yet'}
                 </span>
               </span>
@@ -290,22 +336,68 @@ export default function Chat() {
           {withUserId && !interestId && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {active?.displayName ?? 'Conversation'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {presence?.online
-                      ? 'Online now'
-                      : presence?.lastSeen
-                        ? `Last seen ${new Date(presence.lastSeen).toLocaleString()}`
-                        : 'Offline'}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  {active?.photoUrl ? (
+                    <img
+                      src={active.photoUrl}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-600">
+                      {(active?.displayName ?? '?').slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-gray-900">
+                      {active?.displayName ?? 'Conversation'}
+                    </p>
+                    {/*
+                      Who this is, on one line. The header said a name and an
+                      online dot, which is not enough to know which of several
+                      conversations you have opened.
+                    */}
+                    <p className="truncate text-xs text-gray-500">
+                      {[
+                        active?.profileCode,
+                        active?.ageRange ? `${active.ageRange} yrs` : null,
+                        active?.city,
+                      ]
+                        .filter(Boolean)
+                        .join(' \u00b7 ')}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {presence?.online
+                        ? 'Online now'
+                        : presence?.lastSeen
+                          ? `Last seen ${new Date(presence.lastSeen).toLocaleString()}`
+                          : 'Offline'}
+                      {active?.context && (
+                        <span className="ml-2 rounded-full bg-brand-light px-2 py-0.5 text-brand-dark">
+                          {active.context.score !== null && `${active.context.score}% match \u00b7 `}
+                          {active.context.standing === 'fixed' ? 'Match fixed' : 'Interest accepted'}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
                 {/* Only when they are actually there: a call to somebody
                     offline can only ring out, which teaches people the button
                     does not work. */}
                 <div className="flex items-center gap-2">
+                  {/*
+                    Straight to the profile, from the conversation about it.
+                    Going back to Matches and finding them again was the only
+                    route, and by then the reason for looking is gone.
+                  */}
+                  {active?.profileId && (
+                    <button
+                      className="btn-outline text-xs"
+                      onClick={() => setPreviewId(active.profileId as string)}
+                    >
+                      View profile
+                    </button>
+                  )}
                   {presence?.online && call.state === 'idle' && (
                     <>
                       <button className="btn-outline" onClick={() => call.call(withUserId, 'audio')}>
@@ -364,6 +456,12 @@ export default function Chat() {
                             hour: '2-digit',
                             minute: '2-digit',
                           })}
+                          {/*
+                            One tick delivered, two read, and only on your own
+                            messages — a tick on a message you received says
+                            nothing anybody wanted to know.
+                          */}
+                          {mine && (m.readAt ? ' \u00b7 \u2713\u2713' : ' \u00b7 \u2713')}
                           {m.redactedCount > 0 && ' · contact details removed'}
                         </p>
                       </div>

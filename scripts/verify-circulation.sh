@@ -73,6 +73,11 @@ PHONE_BASE=$(date +%s | tail -c 7)
 phone() { echo "+919${PHONE_BASE}$1"; }
 
 jqok()  { jq -e "$1" /tmp/body >/dev/null 2>&1 && echo 1 || echo 0; }
+# Identity verification now gates sending an interest, accepting one and
+# fixing a match. Every persona that does any of those has to go through it
+# first — the gate itself is asserted in verify-phase2.
+. /scripts/lib-identity.sh
+
 
 if command -v redis-cli >/dev/null 2>&1; then
   KEYS=$(redis-cli -h "${REDIS_HOST:-redis}" --scan --pattern 'throttle:*' 2>/dev/null)
@@ -309,6 +314,8 @@ req POST "/circulation/profiles/$PRIYA/consent" '{"scope":"circulation","method"
 c=$(req POST /agents/profiles "{\"displayName\":\"Arjun\",\"contactPhone\":\"+9198765${NUM}2\",\"gender\":\"male\",\"dateOfBirth\":\"1995-02-02\",\"city\":\"Hyderabad\",$CONSENT_OK}" "$AGENT_B")
 check "agent B builds the other side" "$c" 201
 ARJUN=$(field /tmp/body id)
+verify_identity "$ARJUN" "$AGENT_B" >/dev/null
+verify_identity "$PRIYA" "$AGENT_A" >/dev/null
 
 c=$(req POST /matches/interest "{\"toProfileId\":\"$ARJUN\",\"profileId\":\"$PRIYA\"}" "$AGENT_A")
 check "agent A proposes the pairing" "$c" 201

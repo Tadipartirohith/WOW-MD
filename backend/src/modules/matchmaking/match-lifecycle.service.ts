@@ -225,6 +225,16 @@ export class MatchLifecycleService {
     if (interest.status !== InterestStatus.ACCEPTED) {
       throw new BadRequestException('Only an accepted match can be fixed');
     }
+
+    // Fixing a match is the point at which two families act on this. Whichever
+    // side is confirming, the profile they are confirming for must have had its
+    // document seen.
+    const confirmingProfileId =
+      (requestedSide ?? sides[0]) === 'from' ? interest.fromProfileId : interest.toProfileId;
+    const confirming = await this.profiles.findOne({ where: { id: confirmingProfileId } });
+    if (confirming) {
+      await this.matchmaking.assertIdentityVerified(confirming, 'confirm a match as fixed');
+    }
     if (interest.matchFixedState === MatchFixedState.CONFIRMED) {
       throw new BadRequestException('This match is already fixed');
     }
@@ -459,6 +469,8 @@ export class MatchLifecycleService {
     interestId: string | null;
     counterpartProfileId: string | null;
     servicesUnlocked: boolean;
+    identitySubmitted: boolean;
+    identityVerified: boolean;
   }> {
     const me = await this.matchmaking.resolveSubject(actor, profileId);
 
@@ -504,6 +516,12 @@ export class MatchLifecycleService {
       // would imply. With the gate off everybody is unlocked, and a screen
       // that says otherwise sends people to look for a lock that is not there.
       servicesUnlocked: !this.cfg.features.servicesRequireMatchFixed || Boolean(fixed),
+      // Reported rather than inferred from the completion percentage. The
+      // biodata can read 88% complete with identity as the missing section, and
+      // a screen that only knows the percentage cannot tell the user which of
+      // the eight sections is the one holding up the buttons.
+      identitySubmitted: Boolean(me.idSubmittedAt),
+      identityVerified: Boolean(me.idVerifiedAt),
     };
   }
 

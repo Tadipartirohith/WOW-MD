@@ -28,6 +28,9 @@ describe('AuthService', () => {
     create: jest.fn((x) => x),
     save: jest.fn(async (x) => ({ id: 'profile-1', ...x })),
     findOne: jest.fn(),
+    // Every issued token stamps `lastActiveAt` on the profile, so the mock has
+    // to answer `update` or the whole sign-in path throws.
+    update: jest.fn(async () => ({ affected: 1 })),
   };
   const emailTokenRepo = {
     create: jest.fn((x) => x),

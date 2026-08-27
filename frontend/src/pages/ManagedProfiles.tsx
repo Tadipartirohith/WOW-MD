@@ -67,6 +67,9 @@ interface AgencyStatus {
   agencyName: string | null;
 }
 
+/** The categories, in the order a family would think of them. */
+const STEWARD_RELATIONS = ['Self', 'Parent', 'Sibling', 'Relative', 'Friend', 'Other'];
+
 const emptyDraft = {
   displayName: '',
   stewardRelation: '',
@@ -266,13 +269,44 @@ export default function ManagedProfiles() {
           */}
           {isFamily && (
             <div>
-              <label className="label">Your relationship to them</label>
-              <input
+              <label className="label">Relationship with the user</label>
+              {/*
+                A list first, free text after.
+
+                Free text alone was unmatchable and produced forty spellings of
+                "father". A list alone loses "maternal uncle", which is a real
+                distinction in this market and the first thing the other family
+                asks. Both: pick the category, then say it exactly if it matters.
+              */}
+              <select
                 className="input"
-                placeholder="Father, elder brother, maternal uncle"
-                value={draft.stewardRelation}
-                onChange={set('stewardRelation')}
-              />
+                value={
+                  STEWARD_RELATIONS.includes(draft.stewardRelation)
+                    ? draft.stewardRelation
+                    : draft.stewardRelation
+                      ? 'Other'
+                      : ''
+                }
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, stewardRelation: e.target.value }))
+                }
+              >
+                <option value="">Select…</option>
+                {STEWARD_RELATIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              {draft.stewardRelation === 'Other' ||
+              (draft.stewardRelation && !STEWARD_RELATIONS.includes(draft.stewardRelation)) ? (
+                <input
+                  className="input mt-2"
+                  placeholder="Maternal uncle, elder brother…"
+                  value={draft.stewardRelation === 'Other' ? '' : draft.stewardRelation}
+                  onChange={set('stewardRelation')}
+                />
+              ) : null}
               <p className="mt-1 text-xs text-gray-500">
                 Shown to families looking at this profile. It is the first thing they ask.
               </p>
@@ -306,10 +340,17 @@ export default function ManagedProfiles() {
             </p>
           </div>
           <div>
-            <label className="label">Gender</label>
+            {/*
+              "Managing profile for", not "gender".
+
+              The field stores the same thing either way, but a steward
+              filling this in is answering "is this a bride or a groom" — which
+              is the question, and the one that was asked as "User Type" before.
+            */}
+            <label className="label">Managing profile for</label>
             <select className="input" value={draft.gender} onChange={set('gender')}>
-              <option value="female">Female</option>
-              <option value="male">Male</option>
+              <option value="female">Bride</option>
+              <option value="male">Groom</option>
             </select>
           </div>
           <div>

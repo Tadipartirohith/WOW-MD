@@ -18,8 +18,35 @@ export interface PresignedUpload {
 export class MediaStorageProvider {
   constructor(private readonly cfg: AppConfigService) {}
 
+  /**
+   * The stored name.
+   *
+   * The filename comes from someone's phone or laptop, so it arrives with
+   * spaces, brackets, apostrophes and occasionally an emoji in it. Those are
+   * fine in a filename and awkward in a URL — a raw space produces a link that
+   * some clients encode and others truncate, and the file appears to vanish.
+   *
+   * So the name is folded down here rather than refused at the door. What the
+   * person sees is unchanged; what goes in the key is the same name with the
+   * awkward runs turned into hyphens, and the extension preserved because that
+   * is what decides the content type on the way back out.
+   */
+  private safeName(filename: string): string {
+    const dot = filename.lastIndexOf('.');
+    const stem = dot > 0 ? filename.slice(0, dot) : filename;
+    const extension = dot > 0 ? filename.slice(dot + 1).toLowerCase() : '';
+
+    const folded =
+      stem
+        .normalize('NFKD')
+        .replace(/[^A-Za-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80) || 'file';
+    return extension ? `${folded}.${extension.replace(/[^a-z0-9]/g, '')}` : folded;
+  }
+
   presign(userId: string, filename: string): PresignedUpload {
-    const key = `uploads/${userId}/${Date.now()}-${filename}`;
+    const key = `uploads/${userId}/${Date.now()}-${this.safeName(filename)}`;
     if (this.cfg.media.storageProvider === 's3' && this.cfg.media.s3Bucket) {
       return this.presignS3(key);
     }

@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -17,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 import {
   Complexion,
   FamilyAssetType,
@@ -355,6 +357,24 @@ export class FamilyDetailsDto {
   @Min(0)
   @Max(20)
   sisters: number;
+
+  /**
+   * The family's net worth in rupees.
+   *
+   * Optional, and hidden by default. Plenty of families will not answer it and
+   * should not be blocked from completing the section for that.
+   */
+  @ApiPropertyOptional({ minimum: 0, example: 7500000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  familyNetWorth?: number;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @StrictBoolean()
+  familyNetWorthVisible?: boolean;
 }
 
 export class SiblingDto {

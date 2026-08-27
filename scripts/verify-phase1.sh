@@ -51,6 +51,12 @@ assert() {
 body_has() { grep -q "$1" /tmp/body && assert "$2" 1 || assert "$2" 0; }
 field() { jq -r ".$2 // empty" "$1"; }
 
+# Identity verification now gates sending an interest, accepting one and
+# fixing a match. Every persona that does any of those has to go through it
+# first — the gate itself is asserted in verify-phase2.
+. /scripts/lib-identity.sh
+
+
 # A business now has a life rather than a boolean, so getting one live means
 # walking the path a vendor actually walks: fill in the catalog, look it over,
 # submit, then allocate, visit and decide. Skipping to "approved" is refused,
@@ -316,6 +322,11 @@ body_has '"inEscrow"' "the ledger reports what is being held"
 
 echo
 echo "== 7. Match Fixed provisions the customer account =="
+# MANAGED was confirmed by the officer in section 5. PARTNER has a document on
+# file that nobody has confirmed — which is precisely the state the gate
+# refuses, so the officer confirms it here rather than the fixture faking it.
+c=$(req PUT "/verification/identity/$PARTNER/verify" "" "$OFFICER")
+check "the officer confirms the counterpart's document too" "$c" 200
 c=$(req POST /matches/interest "{\"toProfileId\":\"$PARTNER\",\"profileId\":\"$MANAGED\"}" "$AGENT")
 check "agent introduces two of their own clients" "$c" 201
 INTEREST=$(field /tmp/body id)
@@ -408,6 +419,8 @@ req PUT /users/me/profile "{\"displayName\":\"Bride\",\"gender\":\"female\",\"da
 req PUT /users/me/profile "{\"displayName\":\"Groom\",\"gender\":\"male\",\"dateOfBirth\":\"1994-03-02\",\"city\":\"Hyderabad\",\"preferences\":$PREFS}" "$GROOM" >/dev/null
 c=$(req GET /users/me "" "$GROOM")
 GROOM_PROFILE=$(field /tmp/body id)
+c=$(req GET /users/me "" "$BRIDE")
+BRIDE_PROFILE=$(field /tmp/body id)
 
 # The marketplace is open before any match is fixed, and that is deliberate.
 # The platform earns on this booking whether or not the couple met here, and a
@@ -420,6 +433,8 @@ EARLY_BOOKING=$(field /tmp/body id)
 c=$(req PUT "/bookings/$EARLY_BOOKING/cancel" '{"reason":"Only here to prove the door is open."}' "$BRIDE")
 check "she withdraws it again, leaving the rest of the suite as it was" "$c" 200
 
+verify_identity "$BRIDE_PROFILE" "$BRIDE" >/dev/null
+verify_identity "$GROOM_PROFILE" "$GROOM" >/dev/null
 c=$(req POST /matches/interest "{\"toProfileId\":\"$GROOM_PROFILE\"}" "$BRIDE")
 check "bride sends the groom an interest" "$c" 201
 BG=$(field /tmp/body id)

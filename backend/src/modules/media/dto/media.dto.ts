@@ -14,17 +14,54 @@ export class CreateAlbumDto {
   isPublic?: boolean;
 }
 
+/**
+ * The extensions a browser will actually render, plus the ones phones produce.
+ *
+ * `jfif` is not a curiosity: Chrome on Windows saves ordinary JPEGs under it,
+ * so a photograph downloaded and re-uploaded arrives with that extension
+ * through no choice of the person doing it. `avif` and `heic` are what recent
+ * phones write by default.
+ */
+export const UPLOAD_IMAGE_EXTENSIONS =
+  'jpg|jpeg|jpe|jfif|pjpeg|png|apng|webp|gif|bmp|avif|heic|heif|tif|tiff';
+export const UPLOAD_VIDEO_EXTENSIONS = 'mp4|m4v|mov|webm|3gp';
+
+/**
+ * Any filename a real device produces, judged on its extension alone.
+ *
+ * The previous pattern also demanded `^[A-Za-z0-9._-]+$` for the name, which is
+ * the rule that produced "it is not taking all types of images". It was not the
+ * type it objected to — it was the name. `WhatsApp Image 2026-08-26 at 5.28.11
+ * PM.jpeg` has spaces. `pic (1).png` is what Windows calls the second copy of
+ * anything. Both are jpeg and png, and both were refused, so the message the
+ * uploader saw was about images when the objection was about punctuation.
+ *
+ * The name is not the security boundary and never was: the storage key is built
+ * server-side, the base name is sanitised into it, and the mock storage
+ * controller re-resolves the path against its root regardless. Validating the
+ * user's filename bought nothing and cost every upload with a space in it.
+ */
+/**
+ * The name part, kept raw so the regex engine sees the escapes rather than
+ * the template literal eating them. Path separators and control characters
+ * are the only things excluded, and only so a name cannot look like a path
+ * at a glance; the key is still built server-side, and the storage
+ * controller still resolves it against its own root before writing a byte.
+ */
+const NAME_PART = String.raw`[^\\/\x00-\x1f]{1,200}`;
+
+const FILENAME = new RegExp(
+  `^${NAME_PART}\\.(${UPLOAD_IMAGE_EXTENSIONS}|${UPLOAD_VIDEO_EXTENSIONS})$`,
+  'i',
+);
+
 export class PresignDto {
-  /**
-   * Constrained to a bare filename with a known media extension. Without the
-   * pattern this value reaches object-storage key construction, where `../`
-   * segments would let a caller write outside their own prefix.
-   */
-  @ApiProperty({ example: 'photo.jpg', maxLength: 200 })
+  @ApiProperty({ example: 'holiday photo (1).jpeg', maxLength: 200 })
   @IsString()
   @MaxLength(200)
-  @Matches(/^[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp|gif|heic|mp4|mov|webm)$/i, {
-    message: 'filename must be a simple name with a supported image or video extension',
+  @Matches(FILENAME, {
+    message:
+      'Choose an image or video file. Accepted: JPEG, PNG, WebP, GIF, BMP, AVIF, HEIC, TIFF, MP4, MOV, WebM.',
   })
   filename: string;
 }
@@ -39,11 +76,11 @@ export class PresignDto {
  * often an invoice as a photograph. The album route stays image-and-video only.
  */
 export class PresignAttachmentDto {
-  @ApiProperty({ example: 'invoice.pdf', maxLength: 200 })
+  @ApiProperty({ example: 'invoice april 2026.pdf', maxLength: 200 })
   @IsString()
   @MaxLength(200)
-  @Matches(/^[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp|heic|pdf)$/i, {
-    message: 'filename must be a simple name ending in an image extension or .pdf',
+  @Matches(new RegExp(`^${NAME_PART}\\.(${UPLOAD_IMAGE_EXTENSIONS}|pdf)$`, 'i'), {
+    message: 'Choose an image or a PDF.',
   })
   filename: string;
 }

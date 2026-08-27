@@ -145,6 +145,30 @@ export class Profile {
   @Column({ type: 'text', nullable: true })
   address: string | null;
 
+  /**
+   * The number a family can say out loud.
+   *
+   * A uuid identifies a profile perfectly and communicates nothing: nobody
+   * reads one over the phone, writes it on a shortlist, or types it into a
+   * search box. Families were identifying a match by name and city instead,
+   * which collides constantly. Assigned by the database on insert, never
+   * reused, and unique.
+   */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 12, insert: false, update: false })
+  profileCode: string;
+
+  /**
+   * When this profile was last doing something.
+   *
+   * Distinct from the presence key in Redis, which knows only whether a socket
+   * is open right now. "Recently active" is the question a family actually
+   * asks before spending an interest — a profile last seen in March is a
+   * profile that will not answer.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastActiveAt: Date | null;
+
   @Column({ type: 'jsonb', default: {} })
   preferences: ProfilePreferences;
 
