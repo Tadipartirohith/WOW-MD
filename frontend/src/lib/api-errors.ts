@@ -1,5 +1,3 @@
-import type { AxiosError } from 'axios';
-
 /**
  * Pulls the human-readable message out of an error response.
  *
@@ -21,7 +19,7 @@ import type { AxiosError } from 'axios';
  * error or a proxy's 502 page is neither.
  */
 export function apiMessage(err: unknown, fallback = 'Something went wrong.'): string {
-  const res = (err as AxiosError<ApiErrorBody>).response;
+  const res = (err as ErrorWithResponse).response;
   const body = res?.data;
   const msg = body?.error?.message ?? body?.message;
 
@@ -38,4 +36,20 @@ export function apiMessage(err: unknown, fallback = 'Something went wrong.'): st
 interface ApiErrorBody {
   message?: string | string[];
   error?: { message?: string | string[] };
+}
+
+/**
+ * Just enough of a rejected request to read, described structurally rather
+ * than imported from axios.
+ *
+ * This file is shared with the mobile app, which reaches it across a project
+ * boundary — and a file outside its own project resolves bare imports against
+ * its own node_modules, not the importer's. `import type` looks free because
+ * it emits nothing, but the type-checker still has to find the package, so it
+ * broke the mobile build in CI while passing locally, where the web client's
+ * node_modules happened to be sitting on disk. The rule the boundary actually
+ * needs is that a shared module resolves nothing at all.
+ */
+interface ErrorWithResponse {
+  response?: { data?: ApiErrorBody };
 }
