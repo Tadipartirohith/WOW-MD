@@ -24,7 +24,9 @@ import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
 import {
+  MatchFixedState,
   NetworkVisibility,
+  ProfileLifecycle,
   ProfileVisibility,
   InterestStatus,
   ShareAudience,
@@ -402,7 +404,31 @@ export class SharingService {
       .createQueryBuilder('p')
       .where('p."networkVisibility" = :pool', { pool: NetworkVisibility.POOL })
       .andWhere('p.visibility != :private', { private: ProfileVisibility.PRIVATE })
-      .andWhere('(p."managedByUserId" IS NULL OR p."managedByUserId" != :me)', { me: actor.userId });
+      .andWhere('(p."managedByUserId" IS NULL OR p."managedByUserId" != :me)', { me: actor.userId })
+      /*
+       * Somebody whose match is fixed is not available.
+       *
+       * The pool is a list of people to propose matches *for*, and it was
+       * showing profiles that had already settled — with "Propose a match"
+       * beside them. An agent acting on that is introducing a family that is no
+       * longer looking, and two agencies can end up brokering conflicting
+       * matches for the same person.
+       *
+       * Checked against the interest rather than a flag on the profile so that
+       * unfixing a match puts the profile back in the pool by itself, with
+       * nothing to remember to reset.
+       */
+      .andWhere(
+        `NOT EXISTS (
+           SELECT 1 FROM interests i
+            WHERE i."matchFixedState" = :fixed
+              AND (i."fromProfileId" = p.id OR i."toProfileId" = p.id)
+         )`,
+        { fixed: MatchFixedState.CONFIRMED },
+      )
+      // A profile that has been paused, matched or archived is not on offer
+      // either, whatever its pool flag still says.
+      .andWhere('p.lifecycle = :active', { active: ProfileLifecycle.ACTIVE });
 
     if (q.gender) qb.andWhere('LOWER(p.gender) = LOWER(:gender)', { gender: q.gender });
     if (q.city) qb.andWhere('LOWER(p.city) = LOWER(:city)', { city: q.city });
@@ -425,6 +451,43 @@ export class SharingService {
     return paginate(data, total, q.page, q.limit);
   }
 
+  /**
+   * The receiving agent dismisses a shared profile.
+   *
+   * Shared With Me offered only "Send interest", so an agent who had looked at
+   * a profile and decided against it had nothing to do but leave the card
+   * there — or approach a family they had already ruled out. Ignoring is the
+   * other half of that decision, and it belongs to the receiver alone: the
+   * original profile is untouched, and the agency that shared it is not told.
+   */
+  async ignoreShare(actor: AuthUser, shareId: string): Promise<{ ignored: true }> {
+    const share = await this.shares.findOne({ where: { id: shareId } });
+    if (!share) throw new NotFoundException('That share does not exist');
+    if (share.recipientUserId !== actor.userId) {
+      throw new ForbiddenException('That profile was not shared with you');
+    }
+
+    if (!share.ignoredAt) {
+      share.ignoredAt = new Date();
+      share.ignoredByUserId = actor.userId;
+      await this.shares.save(share);
+    }
+    return { ignored: true };
+  }
+
+  /** Undoes an ignore, for the agent who changed their mind. */
+  async unignoreShare(actor: AuthUser, shareId: string): Promise<{ ignored: false }> {
+    const share = await this.shares.findOne({ where: { id: shareId } });
+    if (!share) throw new NotFoundException('That share does not exist');
+    if (share.recipientUserId !== actor.userId) {
+      throw new ForbiddenException('That profile was not shared with you');
+    }
+    share.ignoredAt = null;
+    share.ignoredByUserId = null;
+    await this.shares.save(share);
+    return { ignored: false };
+  }
+
   // ------------------------------------------------------- reading and audit
 
   /** Profiles other people have circulated to the caller. */
@@ -440,8 +503,10 @@ export class SharingService {
   async sharedWithMe(
     actor: AuthUser,
   ): Promise<{ share: ProfileShare; profile: Profile; sharedBy: SharerView | null }[]> {
+    // Dismissed shares drop off this list. They are not deleted: the audit
+    // trail of who sent what to whom is the sharing agency's record too.
     const shares = await this.shares.find({
-      where: { recipientUserId: actor.userId, revokedAt: IsNull() },
+      where: { recipientUserId: actor.userId, revokedAt: IsNull(), ignoredAt: IsNull() },
       order: { createdAt: 'DESC' },
     });
     if (shares.length === 0) return [];

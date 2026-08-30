@@ -8,6 +8,7 @@ import { ChatPreference } from './entities/chat-preference.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
 import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
 import { ChatGateway } from './chat.gateway';
@@ -16,7 +17,17 @@ import { CompatibilityEngine } from '../matchmaking/compatibility.engine';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Conversation, Message, Interest, User, Profile, ChatBlock, ChatReport, ChatPreference]),
+    TypeOrmModule.forFeature([
+      Conversation,
+      Message,
+      Interest,
+      User,
+      Profile,
+      ProfileDetails,
+      ChatBlock,
+      ChatReport,
+      ChatPreference,
+    ]),
     JwtModule.register({}),
   ],
   // The engine depends on configuration and nothing else, so it is provided

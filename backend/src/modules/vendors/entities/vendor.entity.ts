@@ -11,6 +11,10 @@ import { BusinessStatus, VendorCategory } from '../../../common/enums';
 export interface VendorPricing {
   currency?: string;
   startingAt?: number;
+  /** What the starting price is per — a plate, an hour, a day, an event. */
+  unit?: string;
+  /** Anything that qualifies it: minimum numbers, what is and is not included. */
+  notes?: string;
   packages?: { name: string; price: number }[];
 }
 

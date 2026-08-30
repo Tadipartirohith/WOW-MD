@@ -59,6 +59,30 @@ export class VendorPricingDto {
   @Max(100_000_000)
   startingAt?: number;
 
+  /**
+   * What the starting price is *per*: a plate, an hour, a day, an event.
+   *
+   * A number on its own is not a price in this market — ₹30,000 for a caterer
+   * means something entirely different per plate than per event, and a family
+   * comparing two vendors cannot do it without this. The form has always
+   * offered the field; the DTO did not accept it, and because unknown
+   * properties are rejected outright the whole listing failed to save with
+   * "property unit should not exist". Anyone who typed into the box lost the
+   * listing; anyone who left it empty did not.
+   */
+  @ApiPropertyOptional({ maxLength: 40, example: 'plate' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  unit?: string;
+
+  /** Anything that qualifies the price — minimum numbers, what is included. */
+  @ApiPropertyOptional({ maxLength: 500, example: 'Minimum 100 plates. Service staff included.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+
   @ApiPropertyOptional({ type: [VendorPackageDto], maxItems: 20 })
   @IsOptional()
   @IsArray()

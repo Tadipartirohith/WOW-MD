@@ -5,12 +5,15 @@ import { PlannerProfile } from './entities/planner-profile.entity';
 import { PlannerSearchDto, UpsertPlannerProfileDto } from './dto/wedding-planner.dto';
 import { RedisService } from '../../platform/redis/redis.service';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+import { VerificationService } from '../verification/verification.service';
+import { ApplicantType } from '../../common/enums';
 
 @Injectable()
 export class WeddingPlannersService {
   constructor(
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     private readonly redis: RedisService,
+    private readonly verification: VerificationService,
   ) {}
 
   /**
@@ -24,6 +27,23 @@ export class WeddingPlannersService {
     }
     Object.assign(profile, dto);
     const saved = await this.planners.save(profile);
+
+    /*
+     * Saving the listing is what puts a planner in front of an administrator.
+     *
+     * Nothing did this before, so the screen said "pending administrator
+     * review" and no administrator was ever shown anything to review — the
+     * planner sat at that step permanently with no way forward and nobody to
+     * ask. `raise` is idempotent per subject, so editing the listing again does
+     * not queue a second visit.
+     *
+     * Only while unapproved: an approved planner editing their prices is not
+     * asking to be verified again.
+     */
+    if (!saved.isApproved) {
+      await this.verification.raise(ApplicantType.PLANNER, ownerUserId, saved.id);
+    }
+
     await this.invalidateSearchCache();
     return saved;
   }

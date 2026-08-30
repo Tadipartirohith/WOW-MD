@@ -398,12 +398,40 @@ export default function Chat() {
                       View profile
                     </button>
                   )}
-                  {presence?.online && call.state === 'idle' && (
+                  {/*
+                    Always shown, disabled when they are not there.
+                    
+                    Hiding the buttons while the other side was offline meant
+                    that for most people, most of the time, the chat had no
+                    calling in it at all — and "call is not visible in chat"
+                    is exactly how that gets reported. A control that explains
+                    why it cannot be used teaches the feature; a control that
+                    vanishes teaches that there isn't one.
+                  */}
+                  {call.state === 'idle' && (
                     <>
-                      <button className="btn-outline" onClick={() => call.call(withUserId, 'audio')}>
+                      <button
+                        className="btn-outline text-xs"
+                        disabled={!presence?.online}
+                        title={
+                          presence?.online
+                            ? 'Audio call, in the app — no number is exchanged'
+                            : 'They are offline. Calls connect only while both of you are here.'
+                        }
+                        onClick={() => call.call(withUserId, 'audio')}
+                      >
                         Call
                       </button>
-                      <button className="btn-outline" onClick={() => call.call(withUserId, 'video')}>
+                      <button
+                        className="btn-outline text-xs"
+                        disabled={!presence?.online}
+                        title={
+                          presence?.online
+                            ? 'Video call, in the app'
+                            : 'They are offline. Calls connect only while both of you are here.'
+                        }
+                        onClick={() => call.call(withUserId, 'video')}
+                      >
                         Video
                       </button>
                     </>

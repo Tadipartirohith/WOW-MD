@@ -80,8 +80,8 @@ docker compose -f docker/docker-compose.test.yml down
 
 ## Verification suites
 
-The eight verification suites in `scripts/` drive the live API the way a person
-would, and assert on what comes back. Between them they carry 1421 assertions.
+The nine verification suites in `scripts/` drive the live API the way a person
+would, and assert on what comes back. Between them they carry 1470 assertions.
 They run from inside the compose network, against a stack that is already up.
 
 | Suite | Covers |
@@ -94,6 +94,7 @@ They run from inside the compose network, against a stack that is already up.
 | `verify-phase3.sh` | SMS delivery, phone verification, phone-only invitations, profile claim requests, recovery codes, data export and erasure, the pool quota, circulation reach and photo uploads |
 | `verify-phase4.sh` | The catalog, availability and capacity, the business lifecycle, geography-aware allocation, events, blocking and reporting, the admin console, settlement requests, and the notification channels |
 | `verify-wow1.sh` | The match card and its facts, search, sorting, pagination, the shortlist, the identity gate on matchmaking, the chat header's context, the biodata money fields, and the upload path under real-world filenames |
+| `verify-wow2.sh` | Values written to the database appearing in the UI, compatibility scored from the biodata, the vendor draft/verification handshake, planner verification, the agent's whole client book, the network pool, and the Genie |
 
 `scripts/lib-identity.sh` is not a suite. It is the shared fixture that takes a
 persona through Aadhaar verification, which every suite now needs: sending an

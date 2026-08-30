@@ -24,6 +24,7 @@ import {
 } from '../../common/enums';
 import { ageBand } from '../users/dto/public-profile.dto';
 import { CompatibilityEngine } from '../matchmaking/compatibility.engine';
+import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { AppConfigService } from '../../config/app-config.service';
 import { PresenceService } from './presence.service';
@@ -89,6 +90,8 @@ export class ChatService {
     private readonly cfg: AppConfigService,
     private readonly presence: PresenceService,
     private readonly engine: CompatibilityEngine,
+    @InjectRepository(ProfileDetails)
+    private readonly details: Repository<ProfileDetails>,
   ) {}
 
   private async loadPair(a: string, b: string): Promise<[User, User]> {
@@ -362,9 +365,17 @@ export class ChatService {
     });
     if (!interest || interest.status !== InterestStatus.ACCEPTED) return null;
 
+    // Both biodata rows, so the number on the chat header is the same number
+    // the match card showed.
+    const details = await this.details.find({ where: { profileId: In([mine.id, theirs.id]) } });
+    const byProfile = new Map(details.map((d) => [d.profileId, d]));
+
     return {
       interestId: interest.id,
-      score: this.engine.score(mine, theirs).score,
+      score: this.engine.score(
+        { profile: mine, details: byProfile.get(mine.id) ?? null },
+        { profile: theirs, details: byProfile.get(theirs.id) ?? null },
+      ).score,
       standing:
         interest.matchFixedState === MatchFixedState.CONFIRMED ? 'fixed' : 'accepted',
     };

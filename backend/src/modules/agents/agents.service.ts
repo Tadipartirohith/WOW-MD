@@ -15,14 +15,27 @@ import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
  * the subject accepts and chooses their own password.
  */
 export interface ClientView {
-  id: string;
-  email: string;
-  role: string;
+  /** The profile. Always present — it is the thing the agent built. */
+  profileId: string;
+  profileCode: string;
+  /**
+   * The account, once there is one.
+   *
+   * Null for a client who has not been invited, or has been invited and not yet
+   * accepted. That is a normal and long-lived state in this business: an agency
+   * builds the profile from a form filled in at the counter, and the person may
+   * never sign in at all.
+   */
+  id: string | null;
+  email: string | null;
+  role: string | null;
   isActive: boolean;
   createdAt: Date;
   displayName: string | null;
   city: string | null;
   profileCompleted: boolean;
+  /** self | invited | claimed — what the agent may do with it. */
+  claimStatus: string;
 }
 
 @Injectable()
@@ -33,43 +46,65 @@ export class AgentsService {
   ) {}
 
   /**
-   * The agent's book of business, always scoped to `managedByAgentId`.
+   * The agent's whole book, whether or not the client has an account yet.
    *
-   * Profiles are loaded in a second query rather than joined: mixing a raw join
+   * This listed *accounts* — `users` where `managedByAgentId` matched — which
+   * meant a profile the agency had built and not yet invited could not appear
+   * at all, because no account existed for it to be found by. So an agent
+   * looking at Client Profiles saw four people and My Clients showed three,
+   * with nothing to explain where the fourth had gone.
+   *
+   * It lists profiles now, and attaches the account to the ones that have one.
+   * Claim status decides what an agent may *do* with a client, not whether the
+   * client is in their own list.
+   *
+   * Profiles and accounts are two queries rather than a join: mixing a raw join
    * alias with orderBy + skip/take makes TypeORM build an ORDER BY over columns
    * it has no metadata for, which throws at runtime.
    */
   async listClients(agentId: string, q: ClientSearchDto): Promise<PaginatedResult<ClientView>> {
-    const qb = this.users
-      .createQueryBuilder('u')
-      .where('u."managedByAgentId" = :agentId', { agentId });
-
-    if (q.isActive !== undefined) qb.andWhere('u."isActive" = :isActive', { isActive: q.isActive });
+    const qb = this.profiles
+      .createQueryBuilder('p')
+      .where('p."managedByUserId" = :agentId', { agentId })
+      .andWhere('p."archivedAt" IS NULL');
 
     if (q.q) {
       const term = `%${q.q.toLowerCase()}%`;
       qb.andWhere(
-        `(LOWER(u.email) LIKE :term
+        `(LOWER(p."displayName") LIKE :term
+          OR LOWER(p."profileCode") LIKE :term
           OR EXISTS (
-            SELECT 1 FROM profiles p
-             WHERE p."userId" = u.id AND LOWER(p."displayName") LIKE :term
+            SELECT 1 FROM users u WHERE u.id = p."userId" AND LOWER(u.email) LIKE :term
           ))`,
         { term },
       );
     }
 
-    qb.orderBy('u."createdAt"', 'DESC')
+    /*
+     * "Active" is a question about the account, and a profile without one has
+     * no answer. Rather than guess, an explicit filter on account status
+     * narrows to clients who actually have accounts — which is what somebody
+     * asking that question means.
+     */
+    if (q.isActive !== undefined) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM users u WHERE u.id = p."userId" AND u."isActive" = :isActive)`,
+        { isActive: q.isActive },
+      );
+    }
+
+    qb.orderBy('p."createdAt"', 'DESC')
       .skip((q.page - 1) * q.limit)
       .take(q.limit);
 
     const [rows, total] = await qb.getManyAndCount();
     if (rows.length === 0) return paginate([], total, q.page, q.limit);
 
-    const profiles = await this.profiles.find({
-      where: { userId: In(rows.map((r) => r.id)) },
-    });
-    const byUser = new Map(profiles.map((p) => [p.userId, p]));
-    const data = rows.map((u) => this.toView(u, byUser.get(u.id) ?? null));
+    const userIds = rows.map((r) => r.userId).filter((id): id is string => Boolean(id));
+    const users = userIds.length ? await this.users.find({ where: { id: In(userIds) } }) : [];
+    const byId = new Map(users.map((u) => [u.id, u]));
+
+    const data = rows.map((p) => this.toView(p, p.userId ? (byId.get(p.userId) ?? null) : null));
     return paginate(data, total, q.page, q.limit);
   }
 
@@ -90,7 +125,9 @@ export class AgentsService {
 
   async getClient(agentId: string, clientUserId: string): Promise<ClientView> {
     const client = await this.assertManages(agentId, clientUserId);
-    return this.toView(client, await this.profiles.findOne({ where: { userId: client.id } }));
+    const profile = await this.profiles.findOne({ where: { userId: client.id } });
+    if (!profile) throw new NotFoundException('That client has no profile');
+    return this.toView(profile, client);
   }
 
   async setClientStatus(
@@ -107,19 +144,26 @@ export class AgentsService {
     }
     client.isActive = isActive;
     await this.users.save(client);
-    return this.toView(client, await this.profiles.findOne({ where: { userId: client.id } }));
+    const profile = await this.profiles.findOne({ where: { userId: client.id } });
+    if (!profile) throw new NotFoundException('That client has no profile');
+    return this.toView(profile, client);
   }
 
-  private toView(user: User, profile: Profile | null): ClientView {
+  private toView(profile: Profile, user: User | null): ClientView {
     return {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      isActive: user.isActive,
-      createdAt: user.createdAt,
-      displayName: profile?.displayName ?? null,
-      city: profile?.city ?? null,
-      profileCompleted: profile?.profileCompleted ?? false,
+      profileId: profile.id,
+      profileCode: profile.profileCode,
+      id: user?.id ?? null,
+      email: user?.email ?? null,
+      role: user?.role ?? null,
+      // A profile with no account is not "inactive" — nobody has deactivated
+      // anything. It is simply a client who has not signed in yet.
+      isActive: user ? user.isActive : true,
+      createdAt: profile.createdAt,
+      displayName: profile.displayName,
+      city: profile.city ?? null,
+      profileCompleted: profile.profileCompleted,
+      claimStatus: profile.claimStatus,
     };
   }
 }

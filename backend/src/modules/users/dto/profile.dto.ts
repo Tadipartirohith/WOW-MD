@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsIn,
   IsEnum,
   IsInt,
   IsOptional,
@@ -69,6 +70,23 @@ export class CreateProfileDto {
   @ApiPropertyOptional({ maxLength: 80 })
   @IsOptional() @IsString() @MaxLength(80)
   city?: string;
+
+  /**
+   * The two questions a family member is always asked first.
+   *
+   * Both optional and both meaningless for anyone else, so they are simply not
+   * shown to an individual filling in their own profile. The API accepts them
+   * from any account rather than gating on role — the values are inert for a
+   * bride or groom, and a role check here would be a second copy of a rule that
+   * belongs on the screen.
+   */
+  @ApiPropertyOptional({ enum: ['bride', 'groom'] })
+  @IsOptional() @IsIn(['bride', 'groom'])
+  managingFor?: string;
+
+  @ApiPropertyOptional({ maxLength: 60, example: 'Parent' })
+  @IsOptional() @IsString() @MaxLength(60)
+  stewardRelation?: string;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional() @IsString() @MaxLength(500)

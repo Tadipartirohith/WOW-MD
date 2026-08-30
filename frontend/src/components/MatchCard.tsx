@@ -43,6 +43,8 @@ export interface Suggestion {
   shortlisted?: boolean;
   note?: string | null;
   interaction?: InteractionState;
+  /** Set when a relative sent this over rather than the engine finding it. */
+  sharedByFamily?: { sharedAt: string; sharerEmail: string | null; note: string | null };
 }
 
 /**
@@ -58,6 +60,8 @@ const DIMENSION_LABEL: Record<string, string> = {
   age: 'Age',
   location: 'Location',
   religion: 'Religion',
+  caste: 'Community',
+  motherTongue: 'Mother tongue',
   education: 'Education',
   lifestyle: 'Lifestyle',
   preferences: 'Preferences',
@@ -190,6 +194,17 @@ export default function MatchCard({
           </div>
 
           <div className="mt-1 flex flex-wrap gap-1">
+            {/*
+              Where the suggestion came from, said before anything else.
+              A relative who knows both sides is a different kind of
+              recommendation from a percentage, and reading one as the other
+              is the whole reason this label exists.
+            */}
+            {suggestion.sharedByFamily && (
+              <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs font-medium text-brand-dark">
+                Shared by family member
+              </span>
+            )}
             {p.verified && (
               <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">
                 Verified
@@ -242,6 +257,11 @@ export default function MatchCard({
         )}
         {suggestion.note && (
           <span className="text-xs text-gray-500">&ldquo;{suggestion.note}&rdquo;</span>
+        )}
+        {suggestion.sharedByFamily?.note && (
+          <span className="text-xs text-gray-500">
+            &ldquo;{suggestion.sharedByFamily.note}&rdquo;
+          </span>
         )}
       </div>
     </div>

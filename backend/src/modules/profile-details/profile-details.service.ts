@@ -303,7 +303,6 @@ export class ProfileDetailsService {
     // at the copy from before the preferences were entered. Saving and not
     // invalidating is the exact shape of the vendor-profile bug fixed earlier:
     // the write lands, and nothing that reads it can tell.
-    if (profile.userId) await this.redis.del(`profile:${profile.userId}`);
   }
 
   // ------------------------------------------------------------- photographs
@@ -397,7 +396,6 @@ export class ProfileDetailsService {
     profile.photos = [];
     profile.profileCompleted = false;
     await this.profiles.save(profile);
-    if (profile.userId) await this.redis.del(`profile:${profile.userId}`);
 
     return { success: true };
   }
@@ -599,6 +597,7 @@ export class ProfileDetailsService {
       ...shareable,
       profile: {
         id: profile.id,
+        profileCode: profile.profileCode,
         displayName: profile.displayName,
         city: profile.city,
         gender: profile.gender,
@@ -608,8 +607,39 @@ export class ProfileDetailsService {
         // Whether a verification officer has seen the document, which is the
         // thing families ask about before anything else.
         identityVerified: Boolean(profile.idVerifiedAt),
+        // Who is answering for this person, and what they are to them.
+        //
+        // A family reading a biodata wants to know who they will actually be
+        // speaking to. "Managed by a family member — their father" is a
+        // materially different proposition from an agency listing, and the
+        // profile said nothing about either.
+        stewardship: await this.stewardshipOf(profile),
       },
     };
+  }
+
+  /**
+   * Who manages this profile, in the words a reader uses.
+   *
+   * Returns null for a self-managed profile, which is the common case and
+   * needs no label — saying "managed by themselves" on every card is noise.
+   */
+  private async stewardshipOf(
+    profile: Profile,
+  ): Promise<{ kind: 'family' | 'agency'; label: string; relation: string | null } | null> {
+    if (!profile.managedByUserId || profile.managedByUserId === profile.userId) return null;
+
+    const steward = await this.users.findOne({ where: { id: profile.managedByUserId } });
+    if (!steward) return null;
+
+    if (steward.role === UserRole.FAMILY) {
+      return {
+        kind: 'family',
+        label: 'Managed by a family member',
+        relation: profile.stewardRelation,
+      };
+    }
+    return { kind: 'agency', label: 'Managed by an agency', relation: null };
   }
 
   async findShareable(profileId: string) {
@@ -772,8 +802,29 @@ export class ProfileDetailsService {
     return existing ?? this.details.create({ profileId });
   }
 
+  /**
+   * Saves a section, and drops the match suggestions computed from it.
+   *
+   * The compatibility engine reads the biodata, and its results are cached for
+   * two minutes. Without this, a family could correct their religion or widen
+   * their age range, watch the field save, and be shown the same scores
+   * computed from what they had just changed — which reads as the edit not
+   * having taken. The cache exists to keep a browse cheap, not to outlive the
+   * data it was computed from.
+   *
+   * Both directions matter: this profile's own suggestions, and the suggestions
+   * of anyone this profile appears in. The second cannot be enumerated without
+   * scanning, so the key pattern covers it.
+   */
   private async persist(profileId: string, row: ProfileDetails): Promise<ProfileDetails> {
-    return this.details.save(row);
+    const saved = await this.details.save(row);
+    await this.invalidateSuggestions(profileId);
+    return saved;
+  }
+
+  private async invalidateSuggestions(profileId: string): Promise<void> {
+    const own = await this.redis.raw.keys(`match:suggestions:${profileId}:*`);
+    if (own.length) await this.redis.del(...own);
   }
 
   /**

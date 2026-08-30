@@ -508,6 +508,15 @@ export enum ShareAudience {
 export enum ApplicantType {
   AGENT = 'agent',
   VENDOR = 'vendor',
+  /**
+   * Wedding planners.
+   *
+   * The database column has carried this value since the verification schema
+   * was written; the TypeScript enum simply never listed it, so no code could
+   * produce it. A planner therefore filled in their listing, was told it was
+   * awaiting administrator review, and never appeared in anybody's queue.
+   */
+  PLANNER = 'planner',
 }
 
 /**

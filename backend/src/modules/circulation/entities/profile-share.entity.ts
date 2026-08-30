@@ -64,6 +64,22 @@ export class ProfileShare {
   @Column({ type: 'timestamptz', nullable: true })
   revokedAt: Date | null;
 
+  /**
+   * The receiver said no thank you.
+   *
+   * Kept apart from `revokedAt`, which is the sharer withdrawing the share.
+   * These are two different people making two different decisions, and the
+   * sharing agency must never be able to see that the receiving agent
+   * dismissed their client — so this is read on the receiver's screen and
+   * nowhere else.
+   */
+  @Index()
+  @Column({ type: 'timestamptz', nullable: true })
+  ignoredAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  ignoredByUserId: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

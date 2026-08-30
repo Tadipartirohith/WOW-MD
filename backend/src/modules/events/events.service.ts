@@ -108,7 +108,35 @@ export class EventsService {
     // Undated functions sort last rather than first: a day with no date yet is
     // the least urgent thing on the list, and NULLS FIRST puts it at the top.
     qb.orderBy('e."eventDate"', 'ASC', 'NULLS LAST').addOrderBy('e."startTime"', 'ASC', 'NULLS LAST');
-    return qb.getMany();
+    const rows = await qb.getMany();
+    if (rows.length === 0) return rows;
+
+    /*
+     * RSVP counts on every day, not only the one that happens to be selected.
+     *
+     * "How many are coming to the sangeet" was answerable in exactly one place:
+     * click the day, then read the panel. So the answer to "where are we with
+     * the wedding" took as many clicks as there were days, and the page that
+     * was supposed to summarise it summarised nothing.
+     *
+     * One query for every invitation across every day, counted in memory. The
+     * alternative is a correlated subquery per event, which is the same work
+     * done once per row.
+     */
+    const invites = await this.invites.find({ where: { eventId: In(rows.map((e) => e.id)) } });
+    const byEvent = new Map<string, { coming: number; notComing: number; noReply: number }>();
+    for (const event of rows) byEvent.set(event.id, { coming: 0, notComing: 0, noReply: 0 });
+
+    for (const invite of invites) {
+      const tally = byEvent.get(invite.eventId);
+      if (!tally) continue;
+      if (invite.status === RsvpStatus.ATTENDING) tally.coming += 1;
+      else if (invite.status === RsvpStatus.DECLINED) tally.notComing += 1;
+      // "Maybe" counts as not yet answered, because for a caterer it is.
+      else tally.noReply += 1;
+    }
+
+    return rows.map((event) => ({ ...event, rsvp: byEvent.get(event.id) }));
   }
 
   /**

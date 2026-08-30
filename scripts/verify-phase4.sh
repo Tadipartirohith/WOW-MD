@@ -866,6 +866,18 @@ c=$(req POST /vendors "{\"name\":\"Geo $STAMP\",\"category\":\"decor\",\"city\":
 check "a Hyderabad business applies" "$c" 201
 LISTING3=$(field /tmp/body id)
 
+# Creating a listing no longer queues a visit. A draft is a draft until it is
+# submitted, and submitting is what moves the business AND raises the request —
+# in one step, so the two cannot disagree about what stage the vendor is at.
+c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
+NOT_YET=$(jq -r --arg id "$LISTING3" '[(.data // .)[] | select(.subjectId == $id)] | length' /tmp/body)
+assert "a draft listing is not in the officer queue" "$([ "$NOT_YET" = "0" ] && echo 1 || echo 0)"
+
+seed_catalog "$VENDOR3" "$LISTING3" >/dev/null
+req POST "/vendors/$LISTING3/first-review" "" "$VENDOR3" >/dev/null
+c=$(req POST "/vendors/$LISTING3/submit-verification" "" "$VENDOR3")
+check "and enters it on submission" "$c" 200
+
 c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
 REQ3=$(jq -r --arg id "$LISTING3" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
 assert "it raised a request" "$([ -n "$REQ3" ] && echo 1 || echo 0)"
@@ -894,6 +906,10 @@ GST4=$(gst 4)
 c=$(req POST /vendors "{\"name\":\"Warangal $STAMP\",\"category\":\"decor\",\"city\":\"Warangal, Telangana\",\"gstNumber\":\"$GST4\",\"panNumber\":\"ASDFG8765K\",\"registeredAddress\":\"2 Hanamkonda, Warangal\",\"contactPhone\":\"9876543277\"}" "$VENDOR4")
 check "a business applies from a city nobody lists" "$c" 201
 LISTING4=$(field /tmp/body id)
+
+seed_catalog "$VENDOR4" "$LISTING4" >/dev/null
+req POST "/vendors/$LISTING4/first-review" "" "$VENDOR4" >/dev/null
+req POST "/vendors/$LISTING4/submit-verification" "" "$VENDOR4" >/dev/null
 
 c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
 REQ4=$(jq -r --arg id "$LISTING4" '(.data // .)[] | select(.subjectId == $id) | .id' /tmp/body | head -1)
@@ -970,16 +986,32 @@ c=$(req POST /vendors "{\"name\":\"MB Photos $STAMP\",\"category\":\"photography
 check "and a second under the same login" "$c" 201
 MB_B=$(field /tmp/body id)
 
+# Both submitted, because submission is what raises a request now. The property
+# under test is unchanged and is the interesting one: two businesses under one
+# account get two requests, not one request re-pointed at whichever was
+# submitted last.
+for biz in "$MB_A" "$MB_B"; do
+  seed_catalog "$MB" "$biz" >/dev/null
+  req POST "/vendors/$biz/first-review" "" "$MB" >/dev/null
+  req POST "/vendors/$biz/submit-verification" "" "$MB" >/dev/null
+done
+
 c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
 check "the verification queue is readable" "$c" 200
 assert "the first business has its own request" "$(jq -e --arg id "$MB_A" 'any((.data // .)[]; .subjectId == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 assert "and so does the second" "$(jq -e --arg id "$MB_B" 'any((.data // .)[]; .subjectId == $id)' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 assert "two requests, not one repointed" "$(jq -e --arg a "$MB_A" --arg b "$MB_B" '[(.data // .)[] | select(.subjectId == $a or .subjectId == $b)] | length == 2' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
-# Still idempotent where it should be: re-saving one business must not raise a
-# second request against it.
+# Still idempotent where it should be: re-submitting one business must not raise
+# a second request against it.
+#
+# Editing is no longer the way to test that. A submitted business is locked —
+# which is the point of submitting — so the re-submission is what gets asked
+# twice here, and it is the operation that used to duplicate.
 c=$(req PUT "/vendors/$MB_A" '{"description":"Edited, same business."}' "$MB")
-check "editing the first business is accepted" "$c" 200
+check "a submitted business is locked against edits" "$c" 403
+c=$(req POST "/vendors/$MB_A/submit-verification" "" "$MB")
+check "and submitting it again is refused rather than queueing a second visit" "$c" 400
 c=$(req GET "/verification/requests?applicantType=vendor&limit=100&status=new" "" "$ADMIN")
 assert "and did not raise a duplicate for it" "$(jq -e --arg a "$MB_A" '[(.data // .)[] | select(.subjectId == $a)] | length == 1' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
@@ -1232,7 +1264,12 @@ assert "and shows at least as many as the scored list ($RECENT_N vs $SCORED_N)" 
 # An explicit floor is still honoured: somebody who asked for one meant it.
 c=$(req GET "/matches/suggestions?sort=recent&minScore=99" "" "$BROWSE")
 check "an explicit minimum still applies" "$c" 200
-assert "and filters the newest list too" "$(jq -e '.data | length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
+# Asserted as the floor doing its job rather than as an empty list. A pair who
+# agree on everything they have both recorded can legitimately reach 99 now that
+# a dimension neither of them stated no longer counts against them, so "nobody
+# scores this high" is no longer a safe proxy for "the filter ran".
+assert "and filters the newest list too" \
+  "$(jq -e '[.data[] | select(.score < 99)] | length == 0' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 echo
 echo "== 37. The admin console answers questions about particular things =="

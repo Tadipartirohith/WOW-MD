@@ -77,6 +77,17 @@ export class Profile {
   @Column({ type: 'varchar', length: 60, nullable: true })
   stewardRelation: string | null;
 
+  /**
+   * Whether this steward is here for a bride or a groom.
+   *
+   * Asked of a family member on their own profile, and stored here rather than
+   * inferred from `gender`: the account holder's own gender says nothing about
+   * whose match they are looking for, and reading one as the other is how a
+   * father looking for a groom ends up listed as a bride.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  managingFor: string | null;
+
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'managedByUserId' })
   managedBy: User | null;

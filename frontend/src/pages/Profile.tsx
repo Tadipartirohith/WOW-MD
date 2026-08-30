@@ -15,7 +15,19 @@ const empty = {
   address: '',
   contactPhone: '',
   bio: '',
+  managingFor: '',
+  stewardRelation: '',
 };
+
+/**
+ * How a family member is related to the person whose match they are looking
+ * for. A closed list, because free text produced forty spellings of "father"
+ * and none of them could be matched on — with room after "Other" for the
+ * distinctions that matter here, like a maternal uncle.
+ */
+const STEWARD_RELATIONS = ['Self', 'Parent', 'Sibling', 'Relative', 'Friend', 'Other'];
+
+const MANAGING_FOR_LABEL: Record<string, string> = { bride: 'Bride', groom: 'Groom' };
 
 /**
  * The account holder's own profile.
@@ -35,6 +47,12 @@ export default function Profile() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const hasBiodata = can(permissions, Permission.MATCH_BROWSE);
+  /*
+   * Only a steward is asked these. A bride filling in her own profile has no
+   * answer to "who are you managing this for", and asking anyway is how a form
+   * teaches people to ignore it.
+   */
+  const isSteward = can(permissions, Permission.ACT_ON_BEHALF);
 
   const { data, isLoading } = useQuery({
     queryKey: ['me'],
@@ -64,6 +82,8 @@ export default function Profile() {
       address: data.address ?? '',
       contactPhone: data.contactPhone ?? '',
       bio: data.bio ?? '',
+      managingFor: data.managingFor ?? '',
+      stewardRelation: data.stewardRelation ?? '',
     });
   }, [data]);
 
@@ -75,7 +95,16 @@ export default function Profile() {
       // Blank optional fields are omitted rather than sent as empty strings,
       // which the validators would reject as malformed rather than absent.
       const payload: Record<string, string> = { displayName: form.displayName };
-      for (const key of ['gender', 'dateOfBirth', 'city', 'address', 'contactPhone', 'bio'] as const) {
+      for (const key of [
+        'gender',
+        'dateOfBirth',
+        'city',
+        'address',
+        'contactPhone',
+        'bio',
+        'managingFor',
+        'stewardRelation',
+      ] as const) {
         if (form[key]) payload[key] = form[key];
       }
       await api.put('/users/me/profile', payload);
@@ -123,6 +152,14 @@ export default function Profile() {
               {data.dateOfBirth ? formatDate(data.dateOfBirth) : null}
             </Saved>
             <Saved label="City">{data.city}</Saved>
+            {isSteward && (
+              <>
+                <Saved label="Managing profile for">
+                  {data.managingFor ? MANAGING_FOR_LABEL[data.managingFor] : null}
+                </Saved>
+                <Saved label="Relationship with the user">{data.stewardRelation}</Saved>
+              </>
+            )}
             <Saved label="Alternate mobile">{data.contactPhone}</Saved>
             <Saved label="Address">{data.address}</Saved>
             <Saved label="About you">{data.bio}</Saved>
@@ -140,6 +177,62 @@ export default function Profile() {
                 required
               />
             </label>
+
+            {/*
+              Two fields, not one "User type: Bride/Groom".
+
+              They are separate questions with separate answers: who the match
+              is for, and what this person is to them. Collapsing them into a
+              single dropdown made a father managing his daughter's profile pick
+              between labels that described neither of them.
+            */}
+            {isSteward && (
+              <div className="grid gap-3 rounded border border-gray-200 p-3 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="text-gray-700">Managing profile for</span>
+                  <select
+                    className="input mt-1"
+                    value={form.managingFor}
+                    onChange={set('managingFor')}
+                  >
+                    <option value="">Select…</option>
+                    <option value="bride">Bride</option>
+                    <option value="groom">Groom</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="text-gray-700">Relationship with the user</span>
+                  <select
+                    className="input mt-1"
+                    value={
+                      STEWARD_RELATIONS.includes(form.stewardRelation)
+                        ? form.stewardRelation
+                        : form.stewardRelation
+                          ? 'Other'
+                          : ''
+                    }
+                    onChange={set('stewardRelation')}
+                  >
+                    <option value="">Select…</option>
+                    {STEWARD_RELATIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  {(form.stewardRelation === 'Other' ||
+                    (form.stewardRelation &&
+                      !STEWARD_RELATIONS.includes(form.stewardRelation))) && (
+                    <input
+                      className="input mt-2"
+                      placeholder="Maternal uncle, elder brother…"
+                      value={form.stewardRelation === 'Other' ? '' : form.stewardRelation}
+                      onChange={set('stewardRelation')}
+                    />
+                  )}
+                </label>
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-sm">

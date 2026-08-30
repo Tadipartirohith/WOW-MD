@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { ILike, In, Not, Repository } from 'typeorm';
+import { ILike, In, IsNull, Not, Repository } from 'typeorm';
 import { Interest } from './entities/interest.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
@@ -32,6 +32,7 @@ import {
   toPublicProfile,
 } from '../users/dto/public-profile.dto';
 import { ProfileShortlist } from './entities/shortlist.entity';
+import { ProfileShare } from '../circulation/entities/profile-share.entity';
 import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { SuggestionsQueryDto } from './dto/matchmaking.dto';
 
@@ -58,6 +59,12 @@ export interface Suggestion {
   shortlisted?: boolean;
   note?: string | null;
   interaction?: InteractionState;
+  /** Set when a relative sent this over, rather than the engine finding it. */
+  sharedByFamily?: {
+    sharedAt: string;
+    sharerEmail: string | null;
+    note: string | null;
+  };
 }
 
 export interface InterestView {
@@ -94,6 +101,7 @@ export class MatchmakingService {
     @InjectRepository(ProfileDetails) private readonly details: Repository<ProfileDetails>,
     @InjectRepository(ProfileShortlist)
     private readonly shortlists: Repository<ProfileShortlist>,
+    @InjectRepository(ProfileShare) private readonly shares: Repository<ProfileShare>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly engine: CompatibilityEngine,
     private readonly cfg: AppConfigService,
@@ -377,9 +385,17 @@ export class MatchmakingService {
       };
       const compare = orderBy[q.sort ?? 'score'] ?? orderBy.score;
 
+      // Scored from the biodata, which is where religion, caste, mother tongue,
+      // qualification and the partner preferences actually live.
+      const pool = await this.detailsFor([me.id, ...candidates.map((c) => c.id)]);
+      const mine = { profile: me, details: pool.get(me.id) ?? null };
+
       const scored = candidates
         .map((profile) => {
-          const { score, breakdown } = this.engine.score(me, profile);
+          const { score, breakdown } = this.engine.score(mine, {
+            profile,
+            details: pool.get(profile.id) ?? null,
+          });
           return { profile, score, breakdown };
         })
         .filter((s) => s.score >= floor)
@@ -409,6 +425,18 @@ export class MatchmakingService {
       }));
       return paginate(pageItems, scored.length, page, limit);
     });
+  }
+
+  /**
+   * The biodata rows the engine needs, keyed by profile.
+   *
+   * One query for the whole pool rather than one per candidate: the pool is
+   * capped, and scoring fifty profiles should not be fifty round trips.
+   */
+  private async detailsFor(profileIds: string[]): Promise<Map<string, ProfileDetails>> {
+    if (profileIds.length === 0) return new Map();
+    const rows = await this.details.find({ where: { profileId: In(profileIds) } });
+    return new Map(rows.map((d) => [d.profileId, d]));
   }
 
   /** Biodata facts for a page of cards, in one query. */
@@ -539,16 +567,21 @@ export class MatchmakingService {
     const profiles = await this.profiles.find({ where: { id: In(rows.map((r) => r.profileId)) } });
     const byId = new Map(profiles.map((p) => [p.id, p]));
     const acceptedWith = await this.acceptedCounterpartIds(me.id);
-    const [facts, interactions] = await Promise.all([
+    const [facts, interactions, pool] = await Promise.all([
       this.cardFactsFor(profiles.map((p) => p.id)),
       this.interactionsFor(me.id, profiles.map((p) => p.id)),
+      this.detailsFor([me.id, ...profiles.map((p) => p.id)]),
     ]);
+    const mine = { profile: me, details: pool.get(me.id) ?? null };
 
     return rows
       .map((row) => {
         const profile = byId.get(row.profileId);
         if (!profile) return null;
-        const { score, breakdown } = this.engine.score(me, profile);
+        const { score, breakdown } = this.engine.score(mine, {
+          profile,
+          details: pool.get(profile.id) ?? null,
+        });
         return {
           profile: toPublicProfile(profile, {
             matched: acceptedWith.has(profile.id),
@@ -562,6 +595,82 @@ export class MatchmakingService {
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null);
+  }
+
+  /**
+   * Profiles a family member has deliberately sent to this person.
+   *
+   * Scored like any other suggestion, and marked so the card can say where it
+   * came from. A share from a relative is not a system recommendation and
+   * should not be dressed as one — but it also should not be invisible, which
+   * is what it was: shares landed on Shared With Me, a screen an individual
+   * does not have.
+   */
+  async familyShared(actor: AuthUser, profileId?: string): Promise<Suggestion[]> {
+    const me = await this.resolveSubject(actor, profileId);
+
+    const shares = await this.shares.find({
+      where: { recipientUserId: actor.userId, revokedAt: IsNull(), ignoredAt: IsNull() },
+      order: { createdAt: 'DESC' },
+      take: 10,
+    });
+    if (shares.length === 0) return [];
+
+    const sharers = await this.users.find({
+      where: { id: In(shares.map((row) => row.sharedByUserId)) },
+    });
+    const familyUserIds = new Set(
+      sharers.filter((u) => u.role === UserRole.FAMILY).map((u) => u.id),
+    );
+    const fromFamily = shares.filter((row) => familyUserIds.has(row.sharedByUserId));
+    if (fromFamily.length === 0) return [];
+
+    const profiles = await this.profiles.find({
+      where: {
+        id: In(fromFamily.map((row) => row.profileId)),
+        lifecycle: ProfileLifecycle.ACTIVE,
+      },
+    });
+    if (profiles.length === 0) return [];
+
+    const byId = new Map(profiles.map((p) => [p.id, p]));
+    const acceptedWith = await this.acceptedCounterpartIds(me.id);
+    const [facts, interactions, pool, shortlisted] = await Promise.all([
+      this.cardFactsFor(profiles.map((p) => p.id)),
+      this.interactionsFor(me.id, profiles.map((p) => p.id)),
+      this.detailsFor([me.id, ...profiles.map((p) => p.id)]),
+      this.shortlistedIds(me.id),
+    ]);
+    const mine = { profile: me, details: pool.get(me.id) ?? null };
+    const sharerById = new Map(sharers.map((u) => [u.id, u]));
+
+    return fromFamily.flatMap((row) => {
+      const profile = byId.get(row.profileId);
+      if (!profile || profile.id === me.id) return [];
+      const { score, breakdown } = this.engine.score(mine, {
+        profile,
+        details: pool.get(profile.id) ?? null,
+      });
+      return [
+        {
+          profile: toPublicProfile(profile, {
+            matched: acceptedWith.has(profile.id),
+            card: facts.get(profile.id),
+          }),
+          score,
+          breakdown,
+          shortlisted: shortlisted.has(profile.id),
+          interaction: interactions.get(profile.id) ?? 'none',
+          sharedByFamily: {
+            // The person, not the account: "shared by your father" is what the
+            // reader wants, and the email address is not that.
+            sharedAt: row.createdAt.toISOString(),
+            sharerEmail: sharerById.get(row.sharedByUserId)?.email ?? null,
+            note: row.message,
+          },
+        },
+      ];
+    });
   }
 
   /** A stable, short key for whichever filters are actually set. */
@@ -865,8 +974,13 @@ export class MatchmakingService {
     const counterparts = await this.profiles.find({
       where: { id: In(views.map((v) => v.counterpart.id)) },
     });
+    const pool = await this.detailsFor([me.id, ...counterparts.map((c) => c.id)]);
+    const mine = { profile: me, details: pool.get(me.id) ?? null };
     const scoreFor = new Map(
-      counterparts.map((c) => [c.id, this.engine.score(me, c).score] as const),
+      counterparts.map(
+        (c) =>
+          [c.id, this.engine.score(mine, { profile: c, details: pool.get(c.id) ?? null }).score] as const,
+      ),
     );
 
     return views.map((view) => {

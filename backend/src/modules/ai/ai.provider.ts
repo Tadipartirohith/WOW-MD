@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppConfigService } from '../../config/app-config.service';
+import { GENIE_FALLBACK, answerFor } from './genie-knowledge';
 
 /**
  * LLM abstraction. 'mock' returns deterministic, rule-based text so the WOW
@@ -10,10 +11,24 @@ export interface AiProvider {
   complete(prompt: string): Promise<string>;
 }
 
+/**
+ * WOW Genie without a model behind it.
+ *
+ * This used to echo the question back with a note about an environment
+ * variable, which is not an answer — somebody asked how to plan for thirty
+ * guests and was told about `AI_PROVIDER`. Reported as incorrect, and it was.
+ *
+ * It answers properly now, from `genie-knowledge.ts`. Deterministic rather than
+ * generated, which for this particular job is a feature: the budget split it
+ * quotes is the same one the Budget Insights panel beside it computes, and the
+ * booking and RSVP advice describes what this platform actually does. A model
+ * would be more fluent and would occasionally describe a product that does not
+ * exist.
+ */
 @Injectable()
 export class MockAiProvider implements AiProvider {
   async complete(prompt: string): Promise<string> {
-    return `WOW Genie (mock): Here's guidance based on "${prompt.slice(0, 80)}". Set AI_PROVIDER=openai with an API key for full AI responses.`;
+    return answerFor(prompt) ?? GENIE_FALLBACK;
   }
 }
 
@@ -25,7 +40,10 @@ export class OpenAiProvider implements AiProvider {
 
   async complete(prompt: string): Promise<string> {
     const { apiKey, model, baseUrl } = this.cfg.ai;
-    if (!apiKey) return 'WOW Genie is not configured (missing AI_API_KEY).';
+    // Configured for a model and missing the key: answer from what is known
+    // rather than telling the person about a configuration problem they cannot
+    // do anything about.
+    if (!apiKey) return answerFor(prompt) ?? GENIE_FALLBACK;
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
@@ -40,10 +58,12 @@ export class OpenAiProvider implements AiProvider {
     });
     if (!res.ok) {
       this.logger.error(`OpenAI call failed: ${res.status}`);
-      throw new Error('AI provider request failed');
+      // The provider being down is not a reason to show the user nothing.
+      return answerFor(prompt) ?? GENIE_FALLBACK;
     }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return data.choices?.[0]?.message?.content ?? '';
+    const content = data.choices?.[0]?.message?.content?.trim();
+    return content || (answerFor(prompt) ?? GENIE_FALLBACK);
   }
 }
 

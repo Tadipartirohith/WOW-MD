@@ -10,16 +10,9 @@ import { AI_PROVIDER, AiProvider } from './ai.provider';
  * assistant responses. Match/vendor recos reuse the real engines; budget
  * insights are rule-based; free-form Q&A goes through the pluggable AiProvider.
  */
-const BUDGET_ALLOCATION: { category: string; percent: number }[] = [
-  { category: 'Venue', percent: 30 },
-  { category: 'Catering', percent: 25 },
-  { category: 'Decor', percent: 12 },
-  { category: 'Photography', percent: 10 },
-  { category: 'Attire & Jewellery', percent: 10 },
-  { category: 'Makeup', percent: 5 },
-  { category: 'Entertainment', percent: 5 },
-  { category: 'Miscellaneous', percent: 3 },
-];
+// One table, shared with the Genie, so the panel and the answer beside it
+// cannot disagree about where the money goes.
+import { BUDGET_ALLOCATION } from './genie-knowledge';
 
 @Injectable()
 export class AiService {
@@ -49,13 +42,37 @@ export class AiService {
    * The gender rule itself lives in the matchmaking query, where it belongs,
    * and applies as soon as the right profile is asked about.
    */
-  matchRecommendations(actor: AuthUser, profileId?: string) {
-    return this.matchmaking.suggestions(actor, {
+  /**
+   * What the engine puts forward, plus what the family sent over.
+   *
+   * A profile a relative has deliberately shared is the strongest
+   * recommendation on this platform — somebody who knows both sides thought it
+   * was worth a look — and it was not appearing here at all. It went to Shared
+   * With Me, a screen an individual does not have, so in practice it went
+   * nowhere.
+   *
+   * Family shares are shown first and labelled, because where a suggestion came
+   * from changes how it is read: an aunt's suggestion is not a percentage, and
+   * presenting it as one would be worse than not showing it.
+   */
+  async matchRecommendations(actor: AuthUser, profileId?: string) {
+    const engine = await this.matchmaking.suggestions(actor, {
       page: 1,
       limit: 5,
       minScore: 50,
       ...(profileId ? { profileId } : {}),
     } as never);
+
+    const shared = await this.matchmaking.familyShared(actor, profileId);
+    if (shared.length === 0) return engine;
+
+    // De-duplicated: a profile the engine also liked appears once, as the
+    // family suggestion, because that is the more useful of the two framings.
+    const sharedIds = new Set(shared.map((row) => row.profile.id));
+    return {
+      ...engine,
+      data: [...shared, ...engine.data.filter((row) => !sharedIds.has(row.profile.id))],
+    };
   }
 
   vendorRecommendations(category?: VendorCategory) {

@@ -16,8 +16,7 @@ import {
   VendorSearchDto,
 } from './dto/vendor.dto';
 import { RedisService } from '../../platform/redis/redis.service';
-import { VerificationService } from '../verification/verification.service';
-import { ApplicantType, BusinessStatus, UserRole, VendorCategory } from '../../common/enums';
+import { BusinessStatus, UserRole, VendorCategory } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
@@ -85,20 +84,31 @@ export class VendorsService {
     @InjectRepository(VendorReview) private readonly reviews: Repository<VendorReview>,
     private readonly redis: RedisService,
     private readonly dataSource: DataSource,
-    private readonly verification: VerificationService,
     private readonly lifecycle: BusinessLifecycleService,
   ) {}
 
+  /**
+   * A new listing. It starts as a draft and stays one until it is submitted.
+   *
+   * This used to raise a field-verification request here, the moment the
+   * listing row was written — which put a half-filled draft into the officer's
+   * queue and produced the reported deadlock. The officer would visit, write up
+   * the findings, recommend approval, and the administrator would be refused
+   * with "A draft listing cannot be approved" — because nothing had ever moved
+   * the business out of DRAFT. Two systems each behaving correctly on their own
+   * and disagreeing about what stage the vendor was at.
+   *
+   * The request belongs to submission, where `BusinessLifecycleService`
+   * already raises it *and* moves the business to PENDING_VERIFICATION in the
+   * same step, which is the only place those two facts can be kept in step.
+   *
+   * The guard itself stays. It was telling the truth.
+   */
   async create(ownerUserId: string, dto: CreateVendorDto): Promise<Vendor> {
     // New listings always start unapproved regardless of what the client sent.
     const vendor = await this.saveListing(
       this.vendors.create({ ...dto, ownerUserId, isApproved: false, ratingAvg: 0, ratingCount: 0 }),
     );
-
-    // Listing puts the vendor in the field-verification queue. Approval is an
-    // officer's decision after a visit, not a form submission — the registered
-    // address on the listing is the address they go to.
-    await this.verification.raise(ApplicantType.VENDOR, ownerUserId, vendor.id);
 
     await this.invalidateSearchCache();
     return vendor;

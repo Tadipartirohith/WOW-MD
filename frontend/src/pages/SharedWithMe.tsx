@@ -44,6 +44,25 @@ export default function SharedWithMe() {
     retry: false,
   });
 
+  /**
+   * The other half of the decision.
+   *
+   * With only "Send interest" on the card, an agent who had looked at a profile
+   * and decided against it had nowhere to put that — so the card stayed, and
+   * the list grew into a pile of profiles already ruled out. Dismissing is
+   * private to this side: the profile is untouched and the agency that shared
+   * it is never told.
+   */
+  async function ignore(row: SharedRow) {
+    setError('');
+    try {
+      await api.put(`/circulation/shared-with-me/${row.shareId}/ignore`);
+      qc.invalidateQueries({ queryKey: ['shared-with-me'] });
+    } catch (err) {
+      setError(apiMessage(err));
+    }
+  }
+
   async function sendInterest(row: SharedRow) {
     setError('');
     try {
@@ -138,6 +157,15 @@ export default function SharedWithMe() {
                   onClick={() => void sendInterest(row)}
                 >
                   Send interest
+                </button>
+              )}
+              {!sentFor.includes(row.shareId) && (
+                <button
+                  className="btn-outline"
+                  title="Removes it from this list. The agency that shared it is not told."
+                  onClick={() => void ignore(row)}
+                >
+                  Ignore
                 </button>
               )}
             </div>

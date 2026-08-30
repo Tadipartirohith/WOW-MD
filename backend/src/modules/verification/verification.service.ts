@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import {
   AllocateRequestDto,
   DecideVerificationDto,
@@ -62,6 +63,7 @@ export class VerificationService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
@@ -445,6 +447,12 @@ export class VerificationService {
         agency.rejectionReason = null;
         await this.agencies.save(agency);
       }
+    } else if (request.applicantType === ApplicantType.PLANNER) {
+      // A planner listing has no draft/submit lifecycle of its own; approval is
+      // the single flag that puts it in the directory.
+      if (request.subjectId) {
+        await this.planners.update(request.subjectId, { isApproved: true });
+      }
     } else if (request.subjectId) {
       // Exactly the business that was verified, and no other.
       //
@@ -469,6 +477,13 @@ export class VerificationService {
         agency.isApproved = false;
         agency.rejectionReason = request.remarks ?? null;
         await this.agencies.save(agency);
+      }
+      return;
+    }
+
+    if (request.applicantType === ApplicantType.PLANNER) {
+      if (request.subjectId) {
+        await this.planners.update(request.subjectId, { isApproved: false });
       }
       return;
     }

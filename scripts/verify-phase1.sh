@@ -357,8 +357,11 @@ LISTING=$(field /tmp/body id)
 c=$(req POST /vendors "{\"name\":\"Bad GST\",\"category\":\"venue\",\"gstNumber\":\"NOTAGST\"}" "$VENDOR")
 check "a malformed GST number is refused" "$c" 400
 
+# Creating a listing does not queue a visit any more. A draft that has not been
+# submitted has nothing for an officer to go and look at, and putting one in the
+# queue is what produced "A draft listing cannot be approved" at the far end.
 c=$(req GET /verification/me "" "$VENDOR")
-body_has '"applicantType":"vendor"' "listing queued the vendor for a visit too"
+assert "a draft listing is not yet in the visit queue"   "$(jq -e '.applicantType == null' /tmp/body >/dev/null 2>&1 && echo 1 || echo 0)"
 
 # A listing is now walked to live rather than flipped. Nothing is verified
 # until the vendor has filled in a catalog, looked the whole thing over and

@@ -13,6 +13,13 @@ interface Viewable {
     photos: string[];
     bio: string | null;
     identityVerified: boolean;
+    profileCode?: string;
+    /** Null when the person runs their own profile, which needs no label. */
+    stewardship: {
+      kind: 'family' | 'agency';
+      label: string;
+      relation: string | null;
+    } | null;
   };
   details: Record<string, unknown> | null;
   siblings: { id: string; name: string; profession?: string | null }[];
@@ -171,6 +178,26 @@ export default function ProfilePreview({
                 {formatDate(String(bag('maritalHistory').marriageDate ?? ''), '')}
               </Row>
             </Group>
+
+            {/*
+              Who you would actually be speaking to.
+
+              A family reading a biodata asks this before they ask anything
+              else, and the profile said nothing about it — an agency listing
+              and a father running his daughter's profile looked identical.
+              Shown at the foot, where it reads as provenance rather than as a
+              claim about the person.
+            */}
+            {data.profile.stewardship && (
+              <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+                <p className="font-medium text-gray-800">{data.profile.stewardship.label}</p>
+                {data.profile.stewardship.relation && (
+                  <p className="text-gray-600">
+                    Their {data.profile.stewardship.relation.toLowerCase()}
+                  </p>
+                )}
+              </div>
+            )}
 
             {onSendInterest && (
               <button

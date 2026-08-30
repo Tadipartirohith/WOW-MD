@@ -198,6 +198,23 @@ export class CirculationController {
     }));
   }
 
+  @ApiOperation({
+    summary: 'Dismiss a profile somebody shared with you',
+    description:
+      'Removes it from your Shared With Me list. The original profile is untouched and the ' +
+      'agency that shared it is not told.',
+  })
+  @Put('shared-with-me/:id/ignore')
+  ignoreShare(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sharing.ignoreShare(actor, id);
+  }
+
+  @ApiOperation({ summary: 'Put a dismissed profile back on the list' })
+  @Delete('shared-with-me/:id/ignore')
+  unignoreShare(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sharing.unignoreShare(actor, id);
+  }
+
   @ApiBearerAuth()
   @RequirePermissions(Permission.NETWORK_POOL_BROWSE)
   @ApiOperation({ summary: 'Search the vetted-agent pool' })

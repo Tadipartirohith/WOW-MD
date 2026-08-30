@@ -238,6 +238,12 @@ export default () => ({
     weightAge: toNumber(process.env.MATCH_WEIGHT_AGE, 20),
     weightLocation: toNumber(process.env.MATCH_WEIGHT_LOCATION, 20),
     weightReligion: toNumber(process.env.MATCH_WEIGHT_RELIGION, 20),
+    // Caste and mother tongue are separate questions from religion in this
+    // market, and both are asked before anything else. They were not scored at
+    // all, which is part of why two families who agreed on every count still
+    // saw a low number.
+    weightCaste: toNumber(process.env.MATCH_WEIGHT_CASTE, 10),
+    weightMotherTongue: toNumber(process.env.MATCH_WEIGHT_MOTHER_TONGUE, 5),
     weightEducation: toNumber(process.env.MATCH_WEIGHT_EDUCATION, 15),
     weightLifestyle: toNumber(process.env.MATCH_WEIGHT_LIFESTYLE, 15),
     weightPreferences: toNumber(process.env.MATCH_WEIGHT_PREFERENCES, 10),
