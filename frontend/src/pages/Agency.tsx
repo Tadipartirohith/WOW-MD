@@ -129,7 +129,7 @@ export default function Agency() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Your Agency</h1>
+        <h1 className="page-title">Your Agency</h1>
         <p className="text-sm text-gray-500">
           These details are reviewed before you can build client profiles or send invitations.
         </p>
@@ -167,7 +167,7 @@ export default function Agency() {
             is their decision, not a formality on the form above.
           </p>
           {verification.remarks && (
-            <p className="rounded bg-white p-2 text-sm text-blue-900">{verification.remarks}</p>
+            <p className="rounded bg-surface p-2 text-sm text-blue-900">{verification.remarks}</p>
           )}
         </div>
       )}
@@ -292,7 +292,7 @@ export default function Agency() {
                   />
                   <button
                     type="button"
-                    className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs text-gray-700"
+                    className="absolute right-1 top-1 rounded bg-surface/90 px-1.5 text-xs text-gray-700"
                     onClick={() => setPictures((p) => p.filter((u) => u !== url))}
                   >
                     Remove

@@ -126,7 +126,7 @@ export default function Bookings() {
     if (!canSell) {
       return (
         <div className="card">
-          <h1 className="text-xl font-bold text-brand-dark">Bookings</h1>
+          <h1 className="page-title">Bookings</h1>
           <p className="mt-2 text-sm text-gray-600">
             Your account does not book services.
           </p>
@@ -136,7 +136,7 @@ export default function Bookings() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Bookings</h1>
+          <h1 className="page-title">Bookings</h1>
           <p className="text-sm text-gray-500">
             Everything coming in against your listings, in the order the work moves. Accepting a
             job is what takes the window off your calendar.
@@ -152,7 +152,7 @@ export default function Bookings() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-brand-dark">Bookings &amp; Escrow</h1>
+        <h1 className="page-title">Bookings &amp; Escrow</h1>
         <select
           className="input max-w-xs"
           value={status}
@@ -346,7 +346,7 @@ function BookingDetail({
             )}
             {q.notes && <p className="mt-1 text-sm text-gray-600">{q.notes}</p>}
             {q.terms && (
-              <div className="mt-2 rounded border border-gray-200 bg-white p-2">
+              <div className="mt-2 rounded border border-gray-200 bg-surface p-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Terms
                 </p>

@@ -10,7 +10,7 @@ export default function Forbidden() {
       <p className="text-4xl" aria-hidden>
         🔒
       </p>
-      <h1 className="mt-2 text-xl font-bold text-brand-dark">Not available for your account</h1>
+      <h1 className="page-title mt-2">Not available for your account</h1>
       <p className="mt-2 text-sm text-gray-600">
         {user ? `${ROLE_LABEL[user.role] ?? user.role} accounts` : 'Your account'} do not have
         access to this area. If you think this is wrong, contact support.

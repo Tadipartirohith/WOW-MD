@@ -265,7 +265,7 @@ function Control({
                 }
                 className={`rounded-full border px-3 py-1 text-xs ${
                   on
-                    ? 'border-brand bg-brand text-white'
+                    ? 'border-brand bg-brand text-brand-fg'
                     : 'border-gray-300 text-gray-700 hover:border-brand'
                 }`}
               >

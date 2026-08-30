@@ -38,7 +38,7 @@ export default function VerifyEmail() {
             <p className="text-4xl" aria-hidden>
               &#9989;
             </p>
-            <h1 className="mt-2 text-xl font-bold text-brand-dark">Email confirmed</h1>
+            <h1 className="page-title mt-2">Email confirmed</h1>
             <p className="mt-2 text-sm text-gray-600">Thank you, your account is fully set up.</p>
           </>
         )}
@@ -47,7 +47,7 @@ export default function VerifyEmail() {
             <p className="text-4xl" aria-hidden>
               &#9888;
             </p>
-            <h1 className="mt-2 text-xl font-bold text-brand-dark">We could not confirm that</h1>
+            <h1 className="page-title mt-2">We could not confirm that</h1>
             <p className="mt-2 text-sm text-gray-600">{message}</p>
           </>
         )}

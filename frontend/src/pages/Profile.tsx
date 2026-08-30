@@ -124,7 +124,7 @@ export default function Profile() {
       <div className="card space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h1 className="text-xl font-bold text-brand-dark">Your Profile</h1>
+            <h1 className="page-title">Your Profile</h1>
             <p className="text-sm text-gray-600">
               Your account details. {hasBiodata && 'The biodata families see lives separately.'}
             </p>

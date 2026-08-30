@@ -4,6 +4,46 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './store/auth';
 import { api, bootstrapSession } from './lib/api';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from './lib/permissions';
+import type { Icon } from '@phosphor-icons/react';
+import {
+  AddressBook,
+  AirplaneTilt,
+  Bell,
+  Briefcase,
+  Buildings,
+  CalendarBlank,
+  CalendarCheck,
+  ChatCircle,
+  ClipboardText,
+  Coins,
+  Confetti,
+  Gauge,
+  Graph,
+  HandHeart,
+  House,
+  IdentificationCard,
+  Images,
+  Lifebuoy,
+  MagicWand,
+  Receipt,
+  SealCheck,
+  ShareNetwork,
+  ShieldCheck,
+  Sparkle,
+  Storefront,
+  UsersThree,
+  CaretDown,
+  Desktop,
+  List,
+  Moon,
+  SignOut,
+  Sun,
+  UserCircle,
+  Warning,
+} from '@phosphor-icons/react';
+import Sidebar from './components/Sidebar';
+import { useTheme } from './store/theme';
+import { motion, useReducedMotion } from 'motion/react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AcceptInvite from './pages/AcceptInvite';
@@ -62,15 +102,43 @@ interface NavEntry {
    * A top-level Chat menu offers them a thread the booking rules cannot reach.
    */
   hideFor?: UserRole[];
+  /**
+   * Which band of the sidebar this sits in.
+   *
+   * The navigation carried twenty-five destinations in one wrapping pill row,
+   * which at any real window width became two lines of pills and stopped being
+   * scannable at about the eighth item. Grouping is what makes a list that long
+   * navigable: nobody reads twenty-five labels, everybody reads five headings.
+   *
+   * Most accounts see three or four of these, because the entries are already
+   * filtered by capability before the groups are drawn.
+   */
+  group: NavGroup;
+  icon: Icon;
 }
 
+export type NavGroup = 'main' | 'matchmaking' | 'clients' | 'wedding' | 'business' | 'operations' | 'account';
+
+/** Order is the order they appear. Titles are omitted for `main` on purpose. */
+export const NAV_GROUPS: { key: NavGroup; title: string | null }[] = [
+  { key: 'main', title: null },
+  { key: 'matchmaking', title: 'Matchmaking' },
+  { key: 'clients', title: 'Clients' },
+  { key: 'wedding', title: 'The wedding' },
+  { key: 'business', title: 'Your business' },
+  { key: 'operations', title: 'Operations' },
+  { key: 'account', title: 'Account' },
+];
+
 const NAV: NavEntry[] = [
-  { to: '/', label: 'Dashboard', requires: [] },
-  { to: '/matches', label: 'Matches', requires: [Permission.MATCH_BROWSE] },
+  { to: '/', label: 'Dashboard', requires: [], group: 'main', icon: House },
+  { to: '/matches', label: 'Matches', requires: [Permission.MATCH_BROWSE], group: 'matchmaking', icon: Sparkle },
   {
     to: '/biodata',
     label: 'Biodata',
     requires: [Permission.MATCH_BROWSE, Permission.MANAGED_PROFILE_MANAGE],
+    group: 'matchmaking',
+    icon: IdentificationCard,
   },
   {
     to: '/chat',
@@ -79,6 +147,8 @@ const NAV: NavEntry[] = [
     // Not for vendors: theirs is inside the booking, where it opens on the
     // advance and locks when the job is done.
     hideFor: ['vendor'],
+    group: 'matchmaking',
+    icon: ChatCircle,
   },
   {
     to: '/client-profiles',
@@ -96,6 +166,8 @@ const NAV: NavEntry[] = [
      * member actually looks for them.
      */
     hideFor: ['family'],
+    group: 'clients',
+    icon: UsersThree,
   },
   {
     to: '/shared-with-me',
@@ -103,8 +175,10 @@ const NAV: NavEntry[] = [
     requires: [Permission.ACT_ON_BEHALF],
     // Circulation is agency-to-agency. Nothing is ever shared with a family.
     hideFor: ['family'],
+    group: 'clients',
+    icon: ShareNetwork,
   },
-  { to: '/pool', label: 'Network Pool', requires: [Permission.NETWORK_POOL_BROWSE] },
+  { to: '/pool', label: 'Network Pool', requires: [Permission.NETWORK_POOL_BROWSE], group: 'clients', icon: Graph },
   {
     to: '/interests',
     label: 'Interests',
@@ -116,49 +190,59 @@ const NAV: NavEntry[] = [
     // A family member stewards a relative and is also a client; a vendor has
     // no profile to be asked about at all.
     hideFor: ['vendor', 'planner', 'in_person'],
+    group: 'matchmaking',
+    icon: HandHeart,
   },
-  { to: '/clients', label: 'My Clients', requires: [Permission.CLIENT_READ] },
-  { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE] },
-  { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE] },
+  { to: '/clients', label: 'My Clients', requires: [Permission.CLIENT_READ], group: 'clients', icon: AddressBook },
+  { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Buildings },
+  { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE], group: 'wedding', icon: Storefront },
   // "Planners" and "Planner" next to each other were indistinguishable. One is
   // the marketplace where a planner is hired; the other is the couple's own
   // timeline. The labels now say which is which.
-  { to: '/wedding-planners', label: 'Hire a Planner', requires: [Permission.BOOKING_CREATE] },
+  { to: '/wedding-planners', label: 'Hire a Planner', requires: [Permission.BOOKING_CREATE], group: 'wedding', icon: ClipboardText },
   {
     to: '/console',
     label: 'My Business',
     requires: [Permission.VENDOR_LISTING_MANAGE, Permission.PLANNER_LISTING_MANAGE],
+    group: 'business',
+    icon: Briefcase,
   },
-  { to: '/availability', label: 'Availability', requires: [Permission.VENDOR_LISTING_MANAGE] },
-  { to: '/accounts', label: 'Accounts', requires: [Permission.BOOKING_READ_INCOMING] },
+  { to: '/availability', label: 'Availability', requires: [Permission.VENDOR_LISTING_MANAGE], group: 'business', icon: CalendarBlank },
+  { to: '/accounts', label: 'Accounts', requires: [Permission.BOOKING_READ_INCOMING], group: 'business', icon: Coins },
   {
     to: '/planner',
     label: 'My Wedding Plan',
     requires: [Permission.PLAN_MANAGE_OWN, Permission.PLAN_MANAGE_ENGAGED],
+    group: 'wedding',
+    icon: CalendarCheck,
   },
   {
     to: '/bookings',
     label: 'Bookings',
     requires: [Permission.BOOKING_READ_OWN, Permission.BOOKING_READ_INCOMING],
+    group: 'wedding',
+    icon: Receipt,
   },
-  { to: '/events', label: 'Events', requires: [Permission.EVENT_MANAGE_OWN] },
-  { to: '/travel', label: 'Honeymoon', requires: [Permission.TRAVEL_BOOK] },
-  { to: '/media', label: 'Media', requires: [Permission.MEDIA_MANAGE_OWN] },
-  { to: '/genie', label: 'WOW Genie', requires: [Permission.AI_ASSIST] },
+  { to: '/events', label: 'Events', requires: [Permission.EVENT_MANAGE_OWN], group: 'wedding', icon: Confetti },
+  { to: '/travel', label: 'Honeymoon', requires: [Permission.TRAVEL_BOOK], group: 'wedding', icon: AirplaneTilt },
+  { to: '/media', label: 'Media', requires: [Permission.MEDIA_MANAGE_OWN], group: 'wedding', icon: Images },
+  { to: '/genie', label: 'WOW Genie', requires: [Permission.AI_ASSIST], group: 'account', icon: MagicWand },
   {
     to: '/verification',
     label: 'Verification',
     requires: [Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE],
+    group: 'operations',
+    icon: SealCheck,
   },
-  { to: '/notifications', label: 'Notifications', requires: [] },
+  { to: '/notifications', label: 'Notifications', requires: [], group: 'account', icon: Bell },
   // Vendors had nowhere at all to say something had gone wrong outside a
   // booking they were already inside. Everyone who can raise a case gets it.
-  { to: '/support', label: 'Support', requires: [Permission.CASE_RAISE] },
+  { to: '/support', label: 'Support', requires: [Permission.CASE_RAISE], group: 'account', icon: Lifebuoy },
   // Security sits in the navigation rather than under the email dropdown:
   // sessions, two-factor and recovery codes are things people go looking for,
   // and a menu they have to discover first is a menu they never open.
-  { to: '/security', label: 'Security', requires: [] },
-  { to: '/admin', label: 'Admin', requires: [Permission.ADMIN_ANALYTICS_READ] },
+  { to: '/security', label: 'Security', requires: [], group: 'account', icon: ShieldCheck },
+  { to: '/admin', label: 'Admin', requires: [Permission.ADMIN_ANALYTICS_READ], group: 'operations', icon: Gauge },
 ];
 
 /**
@@ -184,12 +268,13 @@ function useUnreadCount(): number {
   return data?.unread ?? 0;
 }
 
+
 /**
- * The email dropdown.
+ * How the account signs out, switches business, and changes theme.
  *
- * My Profile and Security live here rather than in the main navigation: they
- * are about the account, not about the work, and a vendor scanning the bar for
- * their bookings should not have to read past them.
+ * A popover rather than three controls in the bar: none of them is used often,
+ * and three rarely-used controls beside the one thing that is used constantly
+ * (the navigation) is how a header stops being scannable.
  */
 function AccountMenu({
   email,
@@ -202,48 +287,106 @@ function AccountMenu({
 }) {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
+  const { choice, set } = useTheme();
 
-  // Any navigation closes it, including a click on one of its own entries.
   useEffect(() => setOpen(false), [loc.pathname]);
+
+  const initial = (email ?? '?').slice(0, 1).toUpperCase();
 
   return (
     <div className="relative">
       <button
-        className="flex items-center gap-2 rounded px-2 py-1 text-left hover:bg-gray-100"
+        className="flex items-center gap-2.5 rounded-md p-1 pr-2 text-left transition-colors hover:bg-gray-100"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span className="hidden sm:block">
-          <span className="block text-sm text-gray-700">{email}</span>
-          <span className="block text-xs text-gray-400">
+        <span
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft
+            text-[0.8125rem] font-semibold text-brand-strong"
+          aria-hidden
+        >
+          {initial}
+        </span>
+        <span className="hidden text-left sm:block">
+          <span className="block max-w-[13rem] truncate text-[0.8125rem] font-medium text-gray-800">
+            {email}
+          </span>
+          <span className="block text-[0.6875rem] text-gray-400">
             {role ? (ROLE_LABEL[role] ?? role) : ''}
           </span>
         </span>
-        <span className="text-gray-400">{open ? '▴' : '▾'}</span>
+        <CaretDown size={14} className="shrink-0 text-gray-400" aria-hidden />
       </button>
 
       {open && (
         <>
           {/* Click-away. A bare document listener would fight the toggle above. */}
           <button
-            className="fixed inset-0 z-10 cursor-default"
+            className="fixed inset-0 z-30 cursor-default"
             aria-hidden
             tabIndex={-1}
             onClick={() => setOpen(false)}
           />
           <div
             role="menu"
-            className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded border border-gray-200 bg-white shadow-lg"
+            className="absolute right-0 z-40 mt-2 w-60 overflow-hidden rounded-lg border
+              border-gray-200 bg-surface-raised p-1.5 shadow-pop"
           >
-            <Link className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" to="/profile">
-              My Profile
+            <Link
+              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-gray-700
+                transition-colors hover:bg-gray-100"
+              to="/profile"
+            >
+              <UserCircle size={17} aria-hidden /> My Profile
             </Link>
+
+            <div className="my-1.5 px-2.5">
+              <p className="mb-1.5 text-[0.6875rem] font-medium uppercase tracking-[0.09em] text-gray-400">
+                Appearance
+              </p>
+              {/*
+                Three states, not a switch. "System" is a real answer and the
+                default one; a two-way toggle forces somebody whose laptop
+                already flips at dusk to pick a side and then re-pick it.
+              */}
+              <div
+                role="radiogroup"
+                aria-label="Appearance"
+                className="flex gap-1 rounded-md bg-surface-sunken p-1"
+              >
+                {(
+                  [
+                    ['light', 'Light', Sun],
+                    ['dark', 'Dark', Moon],
+                    ['system', 'Auto', Desktop],
+                  ] as const
+                ).map(([value, label, Glyph]) => (
+                  <button
+                    key={value}
+                    role="radio"
+                    aria-checked={choice === value}
+                    onClick={() => set(value)}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1.5
+                      text-[0.6875rem] font-medium transition-colors ${
+                        choice === value
+                          ? 'bg-surface-raised text-gray-900 shadow-btn'
+                          : 'text-gray-500 hover:text-gray-800'
+                      }`}
+                  >
+                    <Glyph size={13} aria-hidden />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
-              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm
+                text-gray-700 transition-colors hover:bg-gray-100"
               onClick={onSignOut}
             >
-              Logout
+              <SignOut size={17} aria-hidden /> Sign out
             </button>
           </div>
         </>
@@ -253,35 +396,20 @@ function AccountMenu({
 }
 
 function Layout({ children }: { children: ReactNode }) {
-  const user = useAuth((s) => s.user);
-  const clear = useAuth((s) => s.clear);
-  const setPermissions = useAuth((s) => s.setPermissions);
+  const { user, clear } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
+  const [drawer, setDrawer] = useState(false);
+  const reduce = useReducedMotion();
 
-  // Refresh capabilities on mount so a role or entitlement change on the server
-  // is reflected without the user having to sign out and back in.
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get('/auth/me/permissions')
-      .then(({ data }) => {
-        if (!cancelled) setPermissions(data.permissions);
-      })
-      .catch(() => {
-        /* 401 is already handled by the axios interceptor */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [setPermissions]);
-
-  async function signOut() {
-    // Clears the httpOnly refresh cookie and revokes the session server-side.
-    await api.post('/auth/logout', {}).catch(() => undefined);
-    clear();
-    nav('/login');
-  }
+  const signOut = async () => {
+    try {
+      await api.post('/auth/logout');
+    } finally {
+      clear();
+      nav('/login');
+    }
+  };
 
   const permissions = user?.permissions ?? [];
   const visible = NAV.filter(
@@ -290,59 +418,135 @@ function Layout({ children }: { children: ReactNode }) {
       (n.requires.length === 0 || canAny(permissions, n.requires)),
   );
   const unread = useUnreadCount();
+  const entries = visible.map((n) => ({
+    to: n.to,
+    label: n.label,
+    icon: n.icon,
+    group: n.group,
+    badge: n.to === '/notifications' ? unread : undefined,
+  }));
+
+  // The drawer closes on navigation. Leaving it open over the page somebody
+  // just asked for is the most common way a mobile menu goes wrong.
+  useEffect(() => setDrawer(false), [loc.pathname]);
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <Link to="/" className="text-xl font-bold text-brand">
-            WOW
-          </Link>
-          <nav className="hidden gap-1 md:flex md:flex-wrap">
-            {visible.map((n) => (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`rounded px-3 py-1.5 text-sm ${
-                  loc.pathname === n.to
-                    ? 'bg-brand-light text-brand-dark'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {n.label}
-                {n.to === '/notifications' && unread > 0 && (
-                  <span
-                    className="ml-1.5 inline-block min-w-[18px] rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-[18px] text-white"
-                    aria-label={`${unread} unread`}
-                  >
-                    {unread > 99 ? '99+' : unread}
-                  </span>
-                )}
-              </Link>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3">
-            {/* Only rendered for an account that holds more than one business. */}
-            {canAny(permissions, [Permission.VENDOR_LISTING_MANAGE]) && <BusinessSwitcher />}
-            <AccountMenu email={user?.email} role={user?.role} onSignOut={signOut} />
+    <div className="min-h-[100dvh] bg-canvas">
+      {/*
+        Two columns above `lg`, one below. The rail is sticky and scrolls
+        independently, so a long navigation never pushes the page down and the
+        content column keeps its own scroll position.
+      */}
+      <div className="mx-auto flex w-full max-w-content gap-8 px-4 sm:px-6 lg:px-8">
+        <aside className="sticky top-0 hidden h-[100dvh] w-[15.5rem] shrink-0 flex-col gap-5 py-5 lg:flex">
+          <Wordmark />
+          <div className="-mr-2 flex-1 overflow-y-auto pr-2">
+            <Sidebar entries={entries} groups={NAV_GROUPS} />
           </div>
-        </div>
-      </header>
+        </aside>
 
-      {user && !user.isVerified && (
-        <div className="border-b border-amber-200 bg-amber-50">
-          <div className="mx-auto max-w-6xl px-4 py-2 text-sm text-amber-900">
-            Please confirm your email address.{' '}
-            <Link className="underline" to="/security">
-              Resend the confirmation
-            </Link>
-            .
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header
+            className="sticky top-0 z-20 -mx-4 flex h-16 items-center justify-between gap-3
+              border-b border-gray-200 bg-canvas/80 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                className="btn-ghost -ml-1.5 px-2 lg:hidden"
+                onClick={() => setDrawer(true)}
+                aria-label="Open navigation"
+              >
+                <List size={20} aria-hidden />
+              </button>
+              <span className="lg:hidden">
+                <Wordmark compact />
+              </span>
+              <h1 className="hidden truncate text-sm font-medium text-gray-500 lg:block">
+                {visible.find((n) => n.to === loc.pathname)?.label ?? ''}
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Only rendered for an account that holds more than one business. */}
+              {canAny(permissions, [Permission.VENDOR_LISTING_MANAGE]) && <BusinessSwitcher />}
+              <AccountMenu email={user?.email} role={user?.role} onSignOut={signOut} />
+            </div>
+          </header>
+
+          {user && !user.isVerified && (
+            <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-caution-fg/25 bg-caution-bg px-4 py-3 text-sm text-caution-fg">
+              <Warning size={17} className="mt-0.5 shrink-0" aria-hidden />
+              <p>
+                Please confirm your email address.{' '}
+                <Link className="font-medium underline underline-offset-2" to="/security">
+                  Resend the confirmation
+                </Link>
+                .
+              </p>
+            </div>
+          )}
+
+          {/*
+            A short rise on route change. Long enough to register as a change of
+            place, short enough that nobody waiting on it notices waiting. It is
+            keyed on the path, so it fires per navigation rather than per render.
+          */}
+          <motion.main
+            key={loc.pathname}
+            initial={reduce ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className="flex-1 py-6 pb-20"
+          >
+            {children}
+          </motion.main>
+        </div>
+      </div>
+
+      {/* Mobile drawer. Same component, same grouping, different container. */}
+      {drawer && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <motion.button
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-scrim/55 backdrop-blur-sm"
+            aria-label="Close navigation"
+            onClick={() => setDrawer(false)}
+          />
+          <motion.div
+            initial={reduce ? false : { x: '-100%' }}
+            animate={{ x: 0 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+            className="absolute inset-y-0 left-0 flex w-[17rem] flex-col gap-5 overflow-y-auto
+              border-r border-gray-200 bg-surface p-5"
+          >
+            <Wordmark />
+            <Sidebar entries={entries} groups={NAV_GROUPS} onNavigate={() => setDrawer(false)} />
+          </motion.div>
         </div>
       )}
-
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
     </div>
+  );
+}
+
+/**
+ * The mark.
+ *
+ * Set in the display face at a tight track with the two halves weighted
+ * differently, so it reads as a wordmark rather than as the first heading on
+ * the page. No drawn logo: an invented glyph would be a decoration standing in
+ * for an identity the brand has not decided on yet.
+ */
+function Wordmark({ compact = false }: { compact?: boolean }) {
+  return (
+    <Link to="/" className="flex items-baseline gap-1.5 px-3 py-1">
+      <span className="text-[1.375rem] font-semibold tracking-[-0.04em] text-gray-900">WOW</span>
+      {!compact && (
+        <span className="text-[0.6875rem] font-medium uppercase tracking-[0.14em] text-gray-400">
+          World of Weddings
+        </span>
+      )}
+    </Link>
   );
 }
 

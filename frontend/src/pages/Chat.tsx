@@ -173,7 +173,7 @@ export default function Chat() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Messages</h1>
+        <h1 className="page-title">Messages</h1>
         <p className="text-sm text-gray-600">
           Every conversation you are part of: direct messages, and the proposal threads you are
           handling. Phone numbers and email addresses are removed from direct messages before they
@@ -236,7 +236,7 @@ export default function Chat() {
                       <span className="text-[10px] text-gray-400">{shortTime(c.lastMessageAt)}</span>
                     )}
                     {c.unread > 0 && (
-                      <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-white">
+                      <span className="rounded-full bg-brand px-1.5 text-xs font-semibold text-brand-fg">
                         {c.unread}
                       </span>
                     )}
@@ -471,13 +471,13 @@ export default function Chat() {
                     <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div
                         className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                          mine ? 'bg-brand text-white' : 'bg-gray-100 text-gray-800'
+                          mine ? 'bg-brand text-brand-fg' : 'bg-gray-100 text-gray-800'
                         }`}
                       >
                         <p className="whitespace-pre-wrap break-words">{m.body}</p>
                         <p
                           className={`mt-0.5 text-[10px] ${
-                            mine ? 'text-white/70' : 'text-gray-400'
+                            mine ? 'text-brand-fg/70' : 'text-gray-400'
                           }`}
                         >
                           {new Date(m.createdAt).toLocaleTimeString([], {
@@ -592,11 +592,11 @@ function ProposalPane({
           <div key={n.id} className={`flex ${n.mine ? 'justify-end' : 'justify-start'}`}>
             <div
               className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                n.mine ? 'bg-brand text-white' : 'bg-gray-100 text-gray-800'
+                n.mine ? 'bg-brand text-brand-fg' : 'bg-gray-100 text-gray-800'
               }`}
             >
               <p className="whitespace-pre-wrap">{n.body}</p>
-              <p className={`mt-1 text-[10px] ${n.mine ? 'text-white/70' : 'text-gray-500'}`}>
+              <p className={`mt-1 text-[10px] ${n.mine ? 'text-brand-fg/70' : 'text-gray-500'}`}>
                 {new Date(n.createdAt).toLocaleString()}
               </p>
             </div>

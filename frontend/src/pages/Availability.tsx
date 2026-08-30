@@ -67,7 +67,7 @@ const STATE_STYLE: Record<string, string> = {
   partially_booked: 'bg-sky-50 text-sky-800 border-sky-200',
   fully_booked: 'bg-gray-100 text-gray-600 border-gray-200',
   blocked: 'bg-red-50 text-red-700 border-red-200',
-  no_availability: 'bg-white text-gray-300 border-gray-100',
+  no_availability: 'bg-surface text-gray-300 border-gray-100',
 };
 
 const SLOT_STATE_STYLE: Record<SlotState, string> = {
@@ -184,7 +184,7 @@ export default function Availability() {
   if (!listing) {
     return (
       <div className="card">
-        <h1 className="text-xl font-bold text-brand-dark">Availability</h1>
+        <h1 className="page-title">Availability</h1>
         <p className="mt-2 text-sm text-gray-600">
           Create your business listing first — availability hangs off it.
         </p>
@@ -196,7 +196,7 @@ export default function Availability() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Availability</h1>
+          <h1 className="page-title">Availability</h1>
           <p className="text-sm text-gray-600">
             {window ? `Bookable from ${window.from} to ${window.to}.` : 'Rolling six-month window.'}{' '}
             Publish the windows you can actually take work in. A window stays open until you accept

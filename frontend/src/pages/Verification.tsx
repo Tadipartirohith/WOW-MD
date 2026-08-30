@@ -238,7 +238,7 @@ export default function Verification() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Verification</h1>
+        <h1 className="page-title">Verification</h1>
         <p className="text-sm text-gray-600">
           Agents and vendors are visited before they are activated. Nothing on this platform is
           approved from a form alone.
@@ -288,7 +288,7 @@ export default function Verification() {
                   onClick={() => setSection(section.key === section_ ? null : section.key)}
                   className={`rounded-full border px-3 py-1 text-xs ${
                     section.key === section_
-                      ? 'border-brand bg-brand text-white'
+                      ? 'border-brand bg-brand text-brand-fg'
                       : count > 0
                         ? 'border-gray-300 text-gray-700 hover:border-brand'
                         : 'border-gray-200 text-gray-400'

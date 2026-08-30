@@ -83,7 +83,7 @@ export default function GuestRsvp() {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="card w-full max-w-md text-center">
-          <h1 className="text-xl font-bold text-brand-dark">This invitation link is not valid</h1>
+          <h1 className="page-title">This invitation link is not valid</h1>
           <p className="mt-2 text-sm text-gray-600">
             {apiMessage(loadError, 'It may have expired. Ask your host for a new link.')}
           </p>
@@ -101,7 +101,7 @@ export default function GuestRsvp() {
           &#128141;
         </p>
         <div>
-          <h1 className="text-2xl font-bold text-brand">{data.eventName}</h1>
+          <h1 className="page-title">{data.eventName}</h1>
           <p className="mt-1 text-sm text-gray-600">
             {data.eventDate ? new Date(data.eventDate).toLocaleDateString() : 'Date to be confirmed'}
             {data.venue ? ` · ${data.venue}` : ''}

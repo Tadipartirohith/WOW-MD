@@ -227,7 +227,7 @@ export default function Events() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Events</h1>
+        <h1 className="page-title">Events</h1>
         <p className="text-sm text-gray-600">
           Each day of the wedding, with its guests and the vendors booked for it.
         </p>
@@ -274,7 +274,7 @@ export default function Events() {
             key={value || 'all'}
             className={`rounded-full border px-3 py-1 text-xs ${
               statusFilter === value
-                ? 'border-brand bg-brand text-white'
+                ? 'border-brand bg-brand text-brand-fg'
                 : 'border-gray-300 text-gray-700 hover:border-brand'
             }`}
             onClick={() => setStatusFilter(value)}

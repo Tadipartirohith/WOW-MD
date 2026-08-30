@@ -247,7 +247,7 @@ export default function Matches() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Matches</h1>
+          <h1 className="page-title">Matches</h1>
           <p className="text-sm text-gray-600">
             Finding and judging profiles. Who has asked about you lives on{' '}
             <Link className="text-brand-dark underline" to="/interests">

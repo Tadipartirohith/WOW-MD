@@ -121,7 +121,7 @@ export default function Notifications() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Notifications</h1>
+          <h1 className="page-title">Notifications</h1>
           <p className="text-sm text-gray-600">
             {unread > 0 ? `${unread} unread` : 'Nothing waiting on you.'}
           </p>

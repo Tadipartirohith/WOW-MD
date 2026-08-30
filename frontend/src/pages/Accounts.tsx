@@ -68,7 +68,7 @@ export default function Accounts() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Accounts</h1>
+        <h1 className="page-title">Accounts</h1>
         <p className="text-sm text-gray-600">
           Every rupee that has moved through your bookings, and where it currently sits.
         </p>

@@ -128,7 +128,7 @@ export default function ChatMenu({
   });
 
   return (
-    <div className="absolute right-0 z-30 mt-1 w-72 rounded border border-gray-200 bg-white p-2 shadow-lg">
+    <div className="absolute right-0 z-30 mt-1 w-72 rounded border border-gray-200 bg-surface p-2 shadow-lg">
       {error && <p className="mb-2 rounded bg-red-50 p-2 text-xs text-red-600">{error}</p>}
       {notice && <p className="mb-2 rounded bg-emerald-50 p-2 text-xs text-emerald-700">{notice}</p>}
 

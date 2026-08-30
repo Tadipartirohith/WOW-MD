@@ -54,7 +54,7 @@ export default function ProviderConsole() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">My Business</h1>
+        <h1 className="page-title">My Business</h1>
         <p className="text-sm text-gray-500">
           Your shop window: who you are, what you sell and what it costs. Your calendar and the
           work coming in have their own pages — this one is only about the business.
@@ -450,7 +450,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
                 <img src={url} alt="" className="h-20 w-28 rounded object-cover" loading="lazy" />
                 <button
                   type="button"
-                  className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs text-gray-700"
+                  className="absolute right-1 top-1 rounded bg-surface/90 px-1.5 text-xs text-gray-700"
                   onClick={() => setPortfolio((p) => p.filter((u) => u !== url))}
                 >
                   Remove

@@ -61,7 +61,7 @@ export default function NetworkPool() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Network Pool</h1>
+        <h1 className="page-title">Network Pool</h1>
         <p className="text-sm text-gray-500">
           Profiles other approved agencies have opened up to the network. Pick one of your own
           clients, then propose a pairing.

@@ -311,7 +311,7 @@ export default function ShareProfileDialog({
           )}
 
           {link && (
-            <div className="mt-3 rounded bg-white p-3">
+            <div className="mt-3 rounded bg-surface p-3">
               <p className="text-sm font-medium text-gray-700">Biodata link</p>
               <code className="mt-1 block break-all text-xs text-gray-600">{link}</code>
               <button

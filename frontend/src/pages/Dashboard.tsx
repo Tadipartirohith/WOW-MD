@@ -6,6 +6,8 @@ import { useBusinesses } from '../store/business';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from '../lib/permissions';
 import { ReactNode } from 'react';
 import ClaimRequests from '../components/ClaimRequests';
+import { motion, useReducedMotion } from 'motion/react';
+import { ArrowRight } from '@phosphor-icons/react';
 
 interface Tile {
   to: string;
@@ -241,6 +243,9 @@ export default function Dashboard() {
     enabled: isVendor && Boolean(active?.id),
   });
 
+  const reduce = useReducedMotion();
+  const firstName = (profile?.displayName ?? '').trim().split(' ')[0];
+
   const tiles = TILES.filter(
     (t) =>
       !(user && t.hideFor?.includes(user.role)) &&
@@ -248,17 +253,40 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-lg bg-brand p-6 text-white">
-        <h1 className="text-2xl font-bold">Welcome to WOW</h1>
-        <p className="opacity-90">
-          Signed in as <strong>{user ? (ROLE_LABEL[user.role] ?? user.role) : ''}</strong>
-          {user?.managedByAgentId ? ' · represented by an agent' : ''}.{' '}
-          {profile?.profileCompleted
-            ? 'Your profile is complete.'
-            : 'Finish your profile to unlock everything below.'}
+    <div className="space-y-10">
+      {/*
+        A masthead rather than a filled accent panel.
+
+        A solid brand-coloured block at the top of every visit is the loudest
+        thing on the page, competing with whatever the page is actually for.
+        The greeting carries the same information at a fraction of the volume,
+        and the one part of it that is actionable, an unfinished profile, gets
+        to be a control instead of a sentence.
+      */}
+      <header>
+        <p className="text-sm text-gray-500">
+          Signed in as {user ? (ROLE_LABEL[user.role] ?? user.role) : ''}
+          {user?.managedByAgentId ? ', represented by an agent' : ''}
         </p>
-      </div>
+        <h1 className="page-title mt-1">
+          {greeting()}
+          {firstName ? `, ${firstName}` : ''}
+        </h1>
+        {profile && !profile.profileCompleted && (
+          <div className="mt-5 flex flex-wrap items-center gap-4 rounded-lg border border-gray-200 bg-surface p-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-900">Your profile is not finished</p>
+              <p className="mt-0.5 text-sm text-gray-500">
+                Families see a complete profile far more often than an incomplete one.
+              </p>
+            </div>
+            <Link className="btn shrink-0" to="/profile">
+              Finish profile
+              <ArrowRight size={16} aria-hidden />
+            </Link>
+          </div>
+        )}
+      </header>
       <ClaimRequests />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -324,16 +352,53 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((t) => (
-          <Link key={t.to} to={t.to} className="card transition hover:shadow-md">
-            <h2 className="font-semibold text-brand-dark">{t.title}</h2>
-            <p className="mt-1 text-sm text-gray-600">{t.desc}</p>
-          </Link>
-        ))}
-      </div>
+      {/*
+        Where to go next.
+
+        Rows, not a grid of identical cards. Equal boxes side by side give every
+        destination the same weight and stop being scannable at about the sixth
+        one; a divided column reads top to bottom the way a list of choices is
+        actually read, and keeps each description on one line instead of
+        wrapping it into a paragraph nobody finishes.
+      */}
+      <section>
+        <h2 className="mb-3 text-sm font-medium text-gray-500">Where to go next</h2>
+        <ul className="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 bg-surface">
+          {tiles.map((t, i) => (
+            <motion.li
+              key={t.to}
+              initial={reduce ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: Math.min(i, 8) * 0.035, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <Link
+                to={t.to}
+                className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-gray-100"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900">{t.title}</p>
+                  <p className="mt-0.5 truncate text-sm text-gray-500">{t.desc}</p>
+                </div>
+                <ArrowRight
+                  size={17}
+                  className="shrink-0 text-gray-300 transition-[transform,color] duration-200 group-hover:translate-x-0.5 group-hover:text-brand-strong"
+                  aria-hidden
+                />
+              </Link>
+            </motion.li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
+}
+
+/** Time of day, from the browser. Nothing about it needs a round trip. */
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 function Counter({
@@ -349,11 +414,17 @@ function Counter({
   tone?: string;
 }) {
   return (
-    <Link to={to} className="card transition hover:shadow-md">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+    <Link
+      to={to}
+      className="group rounded-lg border border-gray-200 bg-surface p-4 transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card"
+    >
+      <p className="truncate text-[0.8125rem] text-gray-500">{label}</p>
+      {/*
+        Mono and tabular. These sit in a row and get compared against each
+        other; proportional digits make a column of numbers ripple.
+      */}
       <p
-        className={`mt-1 text-2xl font-semibold ${tone ?? 'text-gray-900'}`}
-        style={{ fontVariantNumeric: 'tabular-nums' }}
+        className={`mt-1.5 font-mono text-[1.75rem] font-medium leading-none tracking-[-0.02em] ${tone ?? 'text-gray-900'}`}
       >
         {value}
       </p>

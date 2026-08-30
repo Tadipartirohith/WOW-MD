@@ -191,7 +191,7 @@ export default function CatalogAdmin() {
               }}
               className={`rounded-full border px-3 py-1 text-sm ${
                 c.id === categoryId
-                  ? 'border-brand bg-brand text-white'
+                  ? 'border-brand bg-brand text-brand-fg'
                   : c.active
                     ? 'border-gray-300 text-gray-700 hover:border-brand'
                     : 'border-dashed border-gray-300 text-gray-400'
@@ -262,7 +262,7 @@ export default function CatalogAdmin() {
                 onClick={() => setDefinitionId(d.id === definitionId ? '' : d.id)}
                 className={`rounded-full border px-3 py-1 text-sm ${
                   d.id === definitionId
-                    ? 'border-brand bg-brand text-white'
+                    ? 'border-brand bg-brand text-brand-fg'
                     : d.active
                       ? 'border-gray-300 text-gray-700 hover:border-brand'
                       : 'border-dashed border-gray-300 text-gray-400'
@@ -567,7 +567,7 @@ function DefinitionForm({
                 onClick={() => setModels(on ? models.filter((x) => x !== m) : [...models, m])}
                 className={`rounded-full border px-3 py-1 text-xs ${
                   on
-                    ? 'border-brand bg-brand text-white'
+                    ? 'border-brand bg-brand text-brand-fg'
                     : 'border-gray-300 text-gray-700 hover:border-brand'
                 }`}
               >

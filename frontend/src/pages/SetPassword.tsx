@@ -51,7 +51,7 @@ export default function SetPassword() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <form onSubmit={submit} className="card w-full max-w-md space-y-4">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Choose your password</h1>
+          <h1 className="page-title">Choose your password</h1>
           <p className="mt-1 text-sm text-gray-600">
             Your account was created for you when your match was confirmed. Replace the temporary
             password we emailed {user?.email ? <strong>{user.email}</strong> : 'you'} with one of

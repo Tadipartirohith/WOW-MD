@@ -152,7 +152,7 @@ export default function Biodata() {
   if (isAgent && !profileId) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-bold text-brand-dark">Client biodata</h1>
+        <h1 className="page-title">Client biodata</h1>
         <ProfileSelector value={profileId} onChange={setProfileId} label="Client" />
         <p className="card text-sm text-gray-600">
           Pick a client to fill in their biodata. Everything here is what the other family will
@@ -166,7 +166,7 @@ export default function Biodata() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Biodata</h1>
+          <h1 className="page-title">Biodata</h1>
           <p className="text-sm text-gray-600">
             Saved section by section — you can stop and come back.
           </p>

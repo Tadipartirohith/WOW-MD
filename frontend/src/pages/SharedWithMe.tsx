@@ -82,7 +82,7 @@ export default function SharedWithMe() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Shared With Me</h1>
+        <h1 className="page-title">Shared With Me</h1>
         <p className="text-sm text-gray-500">
           Biodata other agencies have circulated to you. Pick the client you have in mind and you
           can act on any of these without leaving the page.

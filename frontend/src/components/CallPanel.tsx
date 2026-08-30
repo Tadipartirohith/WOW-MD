@@ -52,7 +52,7 @@ export default function CallPanel({
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+    <div className="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-gray-200 bg-surface p-4 shadow-lg">
       <p className="font-medium text-gray-900">{label[state]}</p>
       {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
 

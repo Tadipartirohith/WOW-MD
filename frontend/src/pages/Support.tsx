@@ -71,7 +71,7 @@ export default function Support() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Support</h1>
+          <h1 className="page-title">Support</h1>
           <p className="text-sm text-gray-600">
             Anything that has gone wrong — a booking, a payment, a listing that will not verify.
             Somebody reads every one of these.

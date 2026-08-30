@@ -127,7 +127,7 @@ export default function Interests() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Interests</h1>
+        <h1 className="page-title">Interests</h1>
         <p className="text-sm text-gray-600">
           Who has asked about this profile, who it has asked, and what came of each one.
         </p>

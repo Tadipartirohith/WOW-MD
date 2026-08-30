@@ -76,14 +76,14 @@ export default function BookingChat({ bookingId }: { bookingId: string }) {
               key={m.id}
               className={`max-w-[80%] rounded px-3 py-2 text-sm ${
                 m.senderId === me
-                  ? 'ml-auto bg-brand text-white'
-                  : 'bg-white text-gray-800 shadow-sm'
+                  ? 'ml-auto bg-brand text-brand-fg'
+                  : 'bg-surface text-gray-800 shadow-sm'
               }`}
             >
               <p className="whitespace-pre-wrap">{m.body}</p>
               <p
                 className={`mt-1 text-[10px] ${
-                  m.senderId === me ? 'text-white/70' : 'text-gray-400'
+                  m.senderId === me ? 'text-brand-fg/70' : 'text-gray-400'
                 }`}
               >
                 {new Date(m.createdAt).toLocaleString()}

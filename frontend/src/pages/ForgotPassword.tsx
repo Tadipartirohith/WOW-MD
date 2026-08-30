@@ -28,7 +28,7 @@ export default function ForgotPassword() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="card w-full max-w-sm space-y-4">
-        <h1 className="text-2xl font-bold text-brand">Reset your password</h1>
+        <h1 className="page-title">Reset your password</h1>
 
         {sent ? (
           <>

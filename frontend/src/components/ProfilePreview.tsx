@@ -79,7 +79,7 @@ export default function ProfilePreview({
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="my-8 w-full max-w-2xl rounded-lg bg-white p-6">
+      <div className="my-8 w-full max-w-2xl rounded-lg bg-surface p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900">
             {data?.profile.displayName ?? 'Profile'}

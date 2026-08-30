@@ -111,7 +111,7 @@ export default function Travel() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Honeymoon</h1>
+        <h1 className="page-title">Honeymoon</h1>
         <p className="text-sm text-gray-600">
           Start from your budget and the time you have. Picking a package opens an itinerary with a
           day for every night.

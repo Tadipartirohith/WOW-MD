@@ -148,7 +148,7 @@ export default function Register() {
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <form onSubmit={submit} className="card w-full max-w-2xl space-y-6" noValidate>
         <div>
-          <h1 className="text-2xl font-bold text-brand">Create your WOW account</h1>
+          <h1 className="page-title">Create your WOW account</h1>
           <p className="mt-1 text-sm text-gray-500">
             Pick the kind of account you need. This decides what you can do on the platform, and
             you cannot change it later without contacting support.

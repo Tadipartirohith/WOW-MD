@@ -65,7 +65,7 @@ export default function ProposalThread({ interestId }: { interestId: string }) {
           <div
             key={side.profile.id}
             className={`rounded border p-2 text-sm ${
-              side.isMine ? 'border-brand bg-brand-light' : 'border-gray-200 bg-white'
+              side.isMine ? 'border-brand bg-brand-light' : 'border-gray-200 bg-surface'
             }`}
           >
             <p className="font-medium">{side.profile.displayName}</p>
@@ -84,11 +84,11 @@ export default function ProposalThread({ interestId }: { interestId: string }) {
           <div
             key={n.id}
             className={`max-w-[85%] rounded p-2 text-sm ${
-              n.mine ? 'ml-auto bg-brand text-white' : 'bg-white text-gray-800 shadow-sm'
+              n.mine ? 'ml-auto bg-brand text-brand-fg' : 'bg-surface text-gray-800 shadow-sm'
             }`}
           >
             <p>{n.body}</p>
-            <p className={`mt-1 text-[10px] ${n.mine ? 'text-white/70' : 'text-gray-400'}`}>
+            <p className={`mt-1 text-[10px] ${n.mine ? 'text-brand-fg/70' : 'text-gray-400'}`}>
               {new Date(n.createdAt).toLocaleString()}
             </p>
           </div>

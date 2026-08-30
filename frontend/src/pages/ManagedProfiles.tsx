@@ -218,7 +218,7 @@ export default function ManagedProfiles() {
   if (isAgent && agency && !agency.approved) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-bold text-brand-dark">Client Profiles</h1>
+        <h1 className="page-title">Client Profiles</h1>
         <div className="card border-amber-200 bg-amber-50">
           <h2 className="font-semibold text-amber-900">
             {agency.registered ? 'Your agency is awaiting approval' : 'Register your agency first'}
@@ -244,7 +244,7 @@ export default function ManagedProfiles() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Client Profiles</h1>
+        <h1 className="page-title">Client Profiles</h1>
         <p className="text-sm text-gray-500">
           Build a complete profile for someone who has not joined yet. It can be matched
           immediately; when you invite them, they set their own password and take ownership.
@@ -658,7 +658,7 @@ function PhotoEditor({
               }}
             />
             <button
-              className="absolute right-1 top-1 rounded bg-white/90 px-1.5 text-xs"
+              className="absolute right-1 top-1 rounded bg-surface/90 px-1.5 text-xs"
               onClick={() => drop(photo)}
               aria-label="Remove photo"
             >

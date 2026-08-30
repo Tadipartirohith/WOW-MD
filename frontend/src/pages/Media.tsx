@@ -75,7 +75,7 @@ export default function Media() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Media and Memories</h1>
+        <h1 className="page-title">Media and Memories</h1>
         <p className="text-sm text-gray-600">
           Photographs from the wedding, kept together. An album you make public gets a link you can
           send to anyone — they do not need an account to open it.
@@ -222,7 +222,7 @@ export default function Media() {
                   loading="lazy"
                 />
                 <button
-                  className="absolute right-1 top-1 rounded bg-white/90 px-2 py-0.5 text-xs text-gray-700 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+                  className="absolute right-1 top-1 rounded bg-surface/90 px-2 py-0.5 text-xs text-gray-700 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
                   onClick={() =>
                     void run(() => api.delete(`/media/albums/${open.id}/items/${it.id}`), [
                       ['album-items', open.id],

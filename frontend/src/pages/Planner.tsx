@@ -92,7 +92,7 @@ export default function Planner() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">My Wedding Plan</h1>
+        <h1 className="page-title">My Wedding Plan</h1>
         <p className="text-sm text-gray-600">
           Your own timeline, worked backwards from the wedding date. Looking to{' '}
           <Link className="text-brand underline" to="/wedding-planners">

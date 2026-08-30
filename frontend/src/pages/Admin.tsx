@@ -137,7 +137,7 @@ export default function Admin() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-brand-dark">Admin</h1>
+      <h1 className="page-title">Admin</h1>
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
       {/*
@@ -176,7 +176,7 @@ export default function Admin() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
         {cards.map((c) => (
           <div key={c.label} className="card text-center">
-            <p className="text-2xl font-bold text-brand">{c.value}</p>
+            <p className="page-title">{c.value}</p>
             <p className="text-xs text-gray-500">{c.label}</p>
           </div>
         ))}

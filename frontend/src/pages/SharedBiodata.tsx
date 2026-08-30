@@ -32,7 +32,7 @@ export default function SharedBiodata() {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="card w-full max-w-md text-center">
-          <h1 className="text-xl font-bold text-brand-dark">This biodata is not available</h1>
+          <h1 className="page-title">This biodata is not available</h1>
           <p className="mt-2 text-sm text-gray-600">
             {apiMessage(error, 'The link may have expired, or been withdrawn by the agent.')}
           </p>

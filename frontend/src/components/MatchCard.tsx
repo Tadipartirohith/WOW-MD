@@ -1,4 +1,5 @@
 import { MARITAL_LABEL, MaritalStatus, OCCUPATION_LABEL, OccupationStatus } from '../lib/permissions';
+import { BookmarkSimple, CheckCircle } from '@phosphor-icons/react';
 
 /** Server-side privacy view: an age band, not a date of birth. */
 export interface PublicProfile {
@@ -157,18 +158,23 @@ export default function MatchCard({
   const active = activity(p.lastActiveAt);
 
   return (
-    <div className="rounded-lg border border-gray-200 p-3 transition hover:border-gray-300">
-      <div className="flex gap-3">
+    <article
+      className="group/card rounded-lg border border-gray-200 bg-surface p-4
+        transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card"
+    >
+      <div className="flex gap-4">
         {p.photos?.[0] ? (
           <img
             src={p.photos[0]}
             alt=""
-            className="h-20 w-20 shrink-0 rounded object-cover"
+            className="h-24 w-24 shrink-0 rounded-md object-cover ring-1 ring-inset ring-gray-900/5"
             loading="lazy"
           />
         ) : (
-          <span className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded bg-gray-100 text-center text-xs text-gray-500">
-            <span className="text-lg">{(p.displayName ?? '?').slice(0, 1).toUpperCase()}</span>
+          <span className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-md bg-surface-sunken text-center text-[0.6875rem] leading-tight text-gray-400">
+            <span className="text-xl font-medium text-gray-500">
+              {(p.displayName ?? '?').slice(0, 1).toUpperCase()}
+            </span>
             {/*
               Said plainly rather than shown as a broken image. "No photo yet"
               is information — it tells a family the biodata is unfinished,
@@ -181,14 +187,21 @@ export default function MatchCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <button className="min-w-0 text-left" onClick={onOpen}>
-              <span className="block truncate font-semibold text-gray-900 hover:underline">
+              <span className="block truncate text-[0.9375rem] font-semibold tracking-[-0.012em] text-gray-900 underline-offset-2 group-hover/card:underline">
                 {p.displayName}
               </span>
-              <span className="block font-mono text-xs text-gray-400">{p.profileCode}</span>
+              <span className="block font-mono text-[0.6875rem] text-gray-400">{p.profileCode}</span>
             </button>
             {showScore && (
-              <span className="shrink-0 rounded-full bg-brand-light px-2 py-0.5 text-sm font-semibold text-brand-dark">
-                {suggestion.score}% match
+              /*
+                The number and the word, sized apart. A score is the one figure
+                on this card somebody compares across a list, so it gets the
+                mono face and its own weight; "match" is a unit, not data, and
+                shrinks accordingly.
+              */
+              <span className="flex shrink-0 items-baseline gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-brand-strong">
+                <span className="font-mono text-sm font-semibold leading-none">{suggestion.score}%</span>
+                <span className="text-[0.6875rem] opacity-70">match</span>
               </span>
             )}
           </div>
@@ -224,25 +237,42 @@ export default function MatchCard({
             )}
           </div>
 
-          <p className="mt-1 text-sm text-gray-600">
-            {facts.length > 0 ? facts.join(' · ') : 'Biodata not filled in yet.'}
-          </p>
+          {/*
+            Facts as separate chips rather than one dot-joined sentence. A
+            reader scanning for "what do they do" finds it in a chip and cannot
+            find it in the middle of a run-on line.
+          */}
+          {facts.length > 0 ? (
+            <ul className="mt-2 flex flex-wrap gap-x-1.5 gap-y-1">
+              {facts.map((fact) => (
+                <li
+                  key={fact}
+                  className="rounded bg-surface-sunken px-1.5 py-0.5 text-[0.75rem] text-gray-600"
+                >
+                  {fact}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-gray-400">Biodata not filled in yet.</p>
+          )}
 
           {reasons.length > 0 && showScore && (
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+              <CheckCircle size={13} className="shrink-0 text-brand" weight="fill" aria-hidden />
               Matches on {reasons.join(', ').toLowerCase()}
             </p>
           )}
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button className="btn-outline text-xs" onClick={onOpen}>
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3">
+        <button className="btn-ghost px-2.5 py-1.5 text-xs" onClick={onOpen}>
           View profile
         </button>
         {onSendInterest && interaction === 'none' && (
           <button
-            className="btn text-xs"
+            className="btn px-3 py-1.5 text-xs"
             onClick={onSendInterest}
             disabled={Boolean(disabledReason)}
             title={disabledReason}
@@ -251,8 +281,19 @@ export default function MatchCard({
           </button>
         )}
         {onToggleShortlist && (
-          <button className="btn-outline text-xs" onClick={onToggleShortlist}>
-            {suggestion.shortlisted ? 'Shortlisted ✓' : 'Shortlist'}
+          <button
+            className={`btn-ghost px-2.5 py-1.5 text-xs ${
+              suggestion.shortlisted ? 'text-brand-strong' : ''
+            }`}
+            onClick={onToggleShortlist}
+            aria-pressed={Boolean(suggestion.shortlisted)}
+          >
+            <BookmarkSimple
+              size={14}
+              weight={suggestion.shortlisted ? 'fill' : 'regular'}
+              aria-hidden
+            />
+            {suggestion.shortlisted ? 'Shortlisted' : 'Shortlist'}
           </button>
         )}
         {suggestion.note && (
@@ -264,6 +305,6 @@ export default function MatchCard({
           </span>
         )}
       </div>
-    </div>
+    </article>
   );
 }

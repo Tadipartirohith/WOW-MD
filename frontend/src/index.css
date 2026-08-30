@@ -1,23 +1,366 @@
+/*
+ * WOW design foundation.
+ *
+ * Three tiers: primitive channel values, semantic tokens, component classes.
+ * Every colour in the app resolves through here, which is what makes a theme
+ * switch a variable swap rather than a rewrite of thirty-eight pages.
+ *
+ * Colours are stored as space-separated RGB channels, not hex, so Tailwind's
+ * `<alpha-value>` slot works: `bg-gray-900/60` composes correctly against a
+ * variable. Storing hex here would make every translucent surface in the app
+ * impossible.
+ */
+
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+@layer base {
+  /* ------------------------------------------------------------ tier 1 --
+   * Primitives. Named for what they are, never for where they are used.
+   *
+   * The neutral ramp is biased a few degrees toward the accent's hue. A pure
+   * mid-grey beside a jade accent reads as an accident; a grey that leans very
+   * slightly green reads as chosen. The bias is small enough that nobody will
+   * name it and large enough that the page hangs together.
+   */
+  :root {
+    --ink-50: 244 247 245;
+    --ink-100: 233 238 236;
+    --ink-200: 214 222 219;
+    --ink-300: 180 191 187;
+    --ink-400: 138 152 148;
+    --ink-500: 102 116 112;
+    --ink-600: 77 91 87;
+    --ink-700: 58 71 67;
+    --ink-800: 37 47 45;
+    --ink-900: 22 30 28;
+    --ink-950: 12 18 17;
+
+    /*
+     * Jade. Chosen against the brief's instruction to pick a palette, and
+     * against the two obvious defaults: the rose this app shipped with, and
+     * the beige-and-brass every "premium" brief reaches for. Jade carries
+     * luxury in this market through jewellery rather than through stationery,
+     * it survives both grounds, and it is nobody's idea of an AI accent.
+     */
+    --jade-50: 232 244 240;
+    --jade-100: 200 231 221;
+    --jade-200: 148 210 192;
+    --jade-300: 94 185 161;
+    --jade-400: 47 155 128;
+    --jade-500: 30 122 100;
+    --jade-600: 23 95 79;
+    --jade-700: 18 76 63;
+    --jade-800: 14 61 51;
+    --jade-900: 11 48 40;
+
+    /* Semantic hues, deliberately separate from the accent. A status colour
+     * that doubles as the brand colour cannot signal anything. */
+    --positive-fg: 21 94 76;
+    --positive-bg: 226 243 237;
+    --caution-fg: 124 74 12;
+    --caution-bg: 250 240 222;
+    --critical-fg: 154 44 38;
+    --critical-bg: 251 232 230;
+
+    /* ---------------------------------------------------------- tier 2 --
+     * Semantic tokens. Components only ever read these.
+     */
+    --canvas: var(--ink-50);
+    --surface: 253 254 253;
+    --surface-raised: 255 255 255;
+    --surface-sunken: 238 243 241;
+    --border: var(--ink-200);
+    --border-strong: var(--ink-300);
+
+    --brand: var(--jade-500);
+    --brand-strong: var(--jade-600);
+    --brand-soft: var(--jade-50);
+    /* What sits ON the accent. White here, near-black in dark mode, because
+     * the accent lifts in dark mode and white on it fails contrast. */
+    --brand-fg: 255 255 255;
+
+    --focus: var(--jade-400);
+
+    /* Shadows tinted to the ground rather than pure black. A black shadow on a
+     * green-grey canvas reads as a hole punched in the page. */
+    --shadow-color: 22 30 28;
+
+    /*
+     * The one colour that does not invert.
+     *
+     * Everything else in this file flips between themes, which is correct for
+     * anything sitting on the page and exactly wrong for anything sitting on a
+     * photograph. A scrim exists to make white text legible over an image; if
+     * it inverts, the dark overlay becomes a light one in dark mode and the
+     * caption disappears into it. Declared once, outside the ramp, so it
+     * cannot be reached by the swap below.
+     */
+    --scrim: 8 12 11;
+
+    --radius-sm: 0.5rem; /* inputs, chips */
+    --radius-md: 0.75rem; /* buttons */
+    --radius-lg: 1rem; /* cards, panels */
+
+    color-scheme: light;
+  }
+
+  /*
+   * Dark mode swaps tier 1 and a handful of tier 2. Nothing below this block
+   * knows which mode it is in, which is the entire point: a component that
+   * hard-codes a dark colour is a component that will be wrong in one mode.
+   *
+   * The ramp is inverted but not mirrored. A straight inversion produces muddy
+   * mid-tones and a washed accent; these are hand-set so hierarchy survives.
+   */
+  .dark {
+    --ink-50: 18 26 24;
+    --ink-100: 27 37 34;
+    --ink-200: 38 51 47;
+    --ink-300: 58 74 69;
+    --ink-400: 92 111 105;
+    --ink-500: 132 150 144;
+    --ink-600: 165 180 175;
+    --ink-700: 196 208 204;
+    --ink-800: 220 229 226;
+    --ink-900: 238 244 242;
+    --ink-950: 247 250 249;
+
+    --jade-50: 15 41 35;
+    --jade-100: 18 56 47;
+    --jade-200: 22 82 68;
+    --jade-300: 34 116 96;
+    --jade-400: 58 155 130;
+    --jade-500: 92 194 165;
+    --jade-600: 130 214 190;
+    --jade-700: 168 230 212;
+    --jade-800: 200 240 228;
+    --jade-900: 224 248 241;
+
+    --positive-fg: 126 214 186;
+    --positive-bg: 17 48 40;
+    --caution-fg: 226 186 116;
+    --caution-bg: 54 41 18;
+    --critical-fg: 246 165 158;
+    --critical-bg: 60 26 24;
+
+    --canvas: 10 15 14;
+    --surface: 18 25 23;
+    --surface-raised: 24 34 31;
+    --surface-sunken: 13 19 18;
+    --border: 35 46 43;
+    --border-strong: 52 66 62;
+
+    --brand: var(--jade-500);
+    --brand-strong: var(--jade-600);
+    --brand-soft: var(--jade-100);
+    --brand-fg: 8 14 12;
+
+    --focus: var(--jade-400);
+    --shadow-color: 0 0 0;
+
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-gray-800 antialiased;
+    font-family:
+      'Geist Variable',
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+    /* Only the theme flip animates. Animating every colour would mean every
+     * hover state in the app arrives late. */
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
+  }
+
+  /* Numbers, codes and identifiers. Profile codes are read aloud over the
+   * phone and compared down a column; proportional digits make that harder
+   * than it needs to be. */
+  .font-mono,
+  code,
+  kbd {
+    font-family: 'Geist Mono Variable', ui-monospace, 'SF Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Display type. Tight tracking is what separates a headline from a large
+   * paragraph; it belongs on the scale, not on individual pages. */
+  h1,
+  h2,
+  h3 {
+    @apply text-gray-900;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+
+  /* One visible focus treatment for the whole app. Keyboard users get a ring
+   * everywhere; pointer users never see it. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--focus));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::selection {
+    background: rgb(var(--brand) / 0.22);
+  }
+
+  /* Scrollbars, so a dark page does not come with a light gutter. */
+  * {
+    scrollbar-color: rgb(var(--border-strong)) transparent;
+    scrollbar-width: thin;
+  }
 }
 
-.btn {
-  @apply inline-flex items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50;
+@layer components {
+  /* ------------------------------------------------------------ tier 3 --
+   * Components. The whole application already speaks in these four class
+   * names, so upgrading them upgrades every page at once.
+   */
+
+  /*
+   * Radius rule, applied everywhere and written down so it stays applied:
+   * inputs and chips are `sm`, buttons are `md`, cards and panels are `lg`,
+   * and only badges are fully round. Mixed corner systems are the fastest way
+   * to make a considered page look assembled.
+   */
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap
+      rounded-[--radius-md] bg-brand px-4 py-2.5 text-sm font-medium text-brand-fg
+      shadow-btn transition-[transform,background-color,box-shadow] duration-150
+      hover:bg-brand-strong active:translate-y-px active:shadow-none
+      disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .btn-outline {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap
+      rounded-[--radius-md] border border-gray-300 bg-surface px-4 py-2.5 text-sm
+      font-medium text-gray-700 transition-[transform,background-color,border-color] duration-150
+      hover:border-gray-400 hover:bg-gray-100 active:translate-y-px
+      disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .btn-ghost {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap
+      rounded-[--radius-md] px-3 py-2 text-sm font-medium text-gray-600
+      transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900
+      disabled:pointer-events-none disabled:opacity-45;
+  }
+
+  .input {
+    @apply w-full rounded-[--radius-sm] border border-gray-300 bg-surface px-3 py-2.5
+      text-sm text-gray-900 transition-[border-color,box-shadow] duration-150
+      placeholder:text-gray-400
+      focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/12
+      disabled:opacity-55;
+  }
+
+  select.input {
+    @apply cursor-pointer appearance-none bg-[length:1.1em] bg-[right_0.6rem_center] bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A9894' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  .card {
+    @apply rounded-[--radius-lg] border border-gray-200 bg-surface p-5 shadow-card;
+  }
+
+  /* For the one or two places that genuinely need to sit above a card. */
+  .card-raised {
+    @apply rounded-[--radius-lg] border border-gray-200 bg-surface-raised p-5 shadow-lifted;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[0.8125rem] font-medium text-gray-700;
+  }
+
+  /* A page title and its one-line explanation, used at the top of every
+   * screen. Written once so the app has a single masthead rhythm. */
+  .page-title {
+    @apply text-2xl font-semibold tracking-[-0.025em] text-gray-900 sm:text-[1.75rem];
+  }
+
+  .page-subtitle {
+    @apply mt-1 max-w-[65ch] text-sm leading-relaxed text-gray-500;
+  }
+
+  /* Status pills. Fully round, which is the documented exception to the
+   * radius scale: a pill reads as a state, a rounded rectangle reads as a
+   * control you can press. */
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .pill-neutral {
+    @apply pill bg-gray-100 text-gray-600;
+  }
+  .pill-brand {
+    @apply pill bg-brand-soft text-brand-strong;
+  }
+  .pill-positive {
+    @apply pill bg-positive-bg text-positive-fg;
+  }
+  .pill-caution {
+    @apply pill bg-caution-bg text-caution-fg;
+  }
+  .pill-critical {
+    @apply pill bg-critical-bg text-critical-fg;
+  }
+
+  /*
+   * Loading placeholders shaped like the thing that is coming, rather than a
+   * spinner. A spinner says "wait"; a skeleton says "wait, and here is what
+   * for", which is the difference between a pause and a blank screen.
+   */
+  .skeleton {
+    @apply relative overflow-hidden rounded-[--radius-sm] bg-gray-200;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, rgb(var(--surface) / 0.55), transparent);
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /* A hairline that fades at both ends. Used to separate sections without the
+   * hard ruled-paper look of a full-bleed border. */
+  .rule {
+    @apply h-px w-full border-0;
+    background: linear-gradient(90deg, transparent, rgb(var(--border)) 18%, rgb(var(--border)) 82%, transparent);
+  }
 }
-.btn-outline {
-  @apply inline-flex items-center justify-center rounded-md border border-brand px-4 py-2 text-sm font-medium text-brand hover:bg-brand-light;
-}
-.input {
-  @apply w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand focus:outline-none;
-}
-.card {
-  @apply rounded-lg border border-gray-200 bg-white p-4 shadow-sm;
-}
-.label {
-  @apply mb-1 block text-sm font-medium text-gray-700;
+
+/*
+ * Everything above degrades to static under a reduced-motion preference.
+ * Shimmer, the theme fade and every transition collapse; nothing in this app
+ * conveys meaning through movement alone, so there is nothing to replace.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

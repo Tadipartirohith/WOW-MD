@@ -57,7 +57,7 @@ export default function Security() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-brand-dark">Security</h1>
+        <h1 className="page-title">Security</h1>
         <p className="text-sm text-gray-500">
           Your password, two-factor authentication, and the devices signed in to this account.
         </p>

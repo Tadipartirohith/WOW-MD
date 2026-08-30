@@ -75,7 +75,7 @@ export default function Vendors() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-brand-dark">Vendors</h1>
+          <h1 className="page-title">Vendors</h1>
           <p className="text-sm text-gray-600">
             Pick a window that suits you and tell them what you need. They come back with a price.
           </p>
@@ -286,7 +286,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-surface p-6">
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">{vendor.name}</h2>
