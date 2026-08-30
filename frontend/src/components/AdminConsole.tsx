@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
+import { Loading } from './ui/Feedback';
 
 /**
  * The parts of the admin console that are about *particular* things.
@@ -44,12 +45,12 @@ export function ActivityFeed() {
 
   return (
     <div className="card">
-      <h2 className="font-semibold text-gray-900">Recent activity</h2>
+      <h2 className="section-title">Recent activity</h2>
       <p className="mb-3 text-xs text-gray-500">
-        The ordinary life of the platform — sign-ups, listings, bookings, complaints. The audit
+        The ordinary life of the platform: sign-ups, listings, bookings, complaints. The audit
         trail below is a different thing: it records privileged actions only.
       </p>
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
       <div className="max-h-96 divide-y overflow-y-auto">
         {data.map((a) => (
           <div key={`${a.resourceType}-${a.resourceId}-${a.at}`} className="flex gap-3 py-2">
@@ -108,7 +109,7 @@ export function Directory() {
 
   return (
     <div className="card">
-      <h2 className="font-semibold text-gray-900">Accounts</h2>
+      <h2 className="section-title">Accounts</h2>
       <p className="mb-3 text-xs text-gray-500">
         {data?.meta.total ?? 0} matching. Suspended accounts are the ones people arrive looking
         for, so they are a filter rather than something to scroll past.
@@ -178,7 +179,7 @@ function AccountDetail({ userId }: { userId: string }) {
     queryFn: async () => (await api.get(`/admin/accounts/${userId}`)).data,
   });
 
-  if (!data) return <p className="pb-3 text-sm text-gray-400">Loading…</p>;
+  if (!data) return <Loading rows={2} className="py-2" />;
 
   const groups: [string, { id: string; label: string; note?: string }[]][] = [
     [
@@ -216,7 +217,7 @@ function AccountDetail({ userId }: { userId: string }) {
   ];
 
   return (
-    <div className="mb-3 grid gap-3 rounded bg-gray-50 p-3 sm:grid-cols-2">
+    <div className="mb-3 grid gap-3 rounded-sm bg-gray-50 p-3 sm:grid-cols-2">
       {groups.map(([title, rows]) => (
         <div key={title}>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
@@ -265,9 +266,9 @@ export function Businesses() {
 
   return (
     <div className="card">
-      <h2 className="font-semibold text-gray-900">Businesses</h2>
+      <h2 className="section-title">Businesses</h2>
       <p className="mb-3 text-xs text-gray-500">
-        Businesses, not vendor accounts — one account can hold several. {data?.meta.total ?? 0}{' '}
+        Businesses, not vendor accounts. One account can hold several. {data?.meta.total ?? 0}{' '}
         matching.
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
@@ -328,7 +329,7 @@ export function AllBookings() {
 
   return (
     <div className="card">
-      <h2 className="font-semibold text-gray-900">Every booking</h2>
+      <h2 className="section-title">Every booking</h2>
       <p className="mb-3 text-xs text-gray-500">
         A vendor sees their incoming work and a buyer their own. This is the whole book, which is
         where a dispute starts and the only way to notice forty bookings sitting unpaid.{' '}
@@ -398,7 +399,7 @@ export function Staff() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="card">
-        <h2 className="font-semibold text-gray-900">In-person officers</h2>
+        <h2 className="section-title">In-person officers</h2>
         <p className="mb-2 text-xs text-gray-500">Who is carrying what, right now.</p>
         <div className="divide-y">
           {(officers.data ?? []).map((o) => (
@@ -417,7 +418,7 @@ export function Staff() {
       </div>
 
       <div className="card">
-        <h2 className="font-semibold text-gray-900">Administrator accounts</h2>
+        <h2 className="section-title">Administrator accounts</h2>
         <p className="mb-2 text-xs text-gray-500">
           Separate on purpose. These accounts decide who gets access; listing them beside the
           officers is how somebody is given the wrong one.
@@ -477,9 +478,9 @@ export function Reports() {
 
   return (
     <div className="card">
-      <h2 className="font-semibold text-gray-900">Reports</h2>
+      <h2 className="section-title">Reports</h2>
       <p className="mb-3 text-xs text-gray-500">
-        Over a window, inclusive at both ends. Left blank it is the last thirty days — a report
+        Over a window, inclusive at both ends. Left blank it is the last thirty days. A report
         with no window means &ldquo;everything ever&rdquo;, which reads as a catastrophic month.
       </p>
 
@@ -514,7 +515,7 @@ export function Reports() {
       {scalars.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {scalars.map(([k, v]) => (
-            <div key={k} className="rounded bg-gray-50 p-3">
+            <div key={k} className="rounded-sm bg-gray-50 p-3">
               <p className="text-xs uppercase tracking-wide text-gray-500">
                 {k.replace(/([A-Z])/g, ' $1').toLowerCase()}
               </p>

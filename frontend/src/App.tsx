@@ -83,6 +83,7 @@ import Accounts from './pages/Accounts';
 import Notifications from './pages/Notifications';
 import Biodata from './pages/Biodata';
 import BusinessSwitcher from './components/BusinessSwitcher';
+import { Loading } from './components/ui/Feedback';
 
 /**
  * Every nav entry declares the capabilities it needs. A user sees an entry only
@@ -367,7 +368,7 @@ function AccountMenu({
                     role="radio"
                     aria-checked={choice === value}
                     onClick={() => set(value)}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1.5
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5
                       text-[0.6875rem] font-medium transition-colors ${
                         choice === value
                           ? 'bg-surface-raised text-gray-900 shadow-btn'
@@ -573,7 +574,7 @@ function Protected({
   if (!ready) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+        <Loading rows={3} />
       </div>
     );
   }

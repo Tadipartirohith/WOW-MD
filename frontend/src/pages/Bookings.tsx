@@ -7,6 +7,7 @@ import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/p
 import ProviderBookings from '../components/ProviderBookings';
 import BookingChat from '../components/BookingChat';
 import PhotoUploader from '../components/PhotoUploader';
+import { Loading } from '../components/ui/Feedback';
 
 interface Booking {
   id: string;
@@ -127,7 +128,7 @@ export default function Bookings() {
       return (
         <div className="card">
           <h1 className="page-title">Bookings</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="page-subtitle">
             Your account does not book services.
           </p>
         </div>
@@ -137,7 +138,7 @@ export default function Bookings() {
       <div className="space-y-6">
         <div>
           <h1 className="page-title">Bookings</h1>
-          <p className="text-sm text-gray-500">
+          <p className="page-subtitle">
             Everything coming in against your listings, in the order the work moves. Accepting a
             job is what takes the window off your calendar.
           </p>
@@ -173,8 +174,8 @@ export default function Bookings() {
         in escrow. Money reaches the provider only when the work is marked delivered.
       </p>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {isLoading && <p className="text-gray-500">Loading...</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {isLoading && <Loading rows={3} />}
 
       <div className="space-y-3">
         {!isLoading && bookings.length === 0 && (
@@ -305,7 +306,7 @@ function BookingDetail({
   return (
     <div className="space-y-4 border-t pt-3">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">Quotations</h3>
+        <h3 className="section-title text-sm">Quotations</h3>
         {(quotations ?? []).length === 0 && (
           <p className="text-sm text-gray-500">
             The provider has not priced this yet. They will send a quotation.
@@ -327,7 +328,7 @@ function BookingDetail({
                 {label}
               </p>
               {inGroup.map((q) => (
-          <div key={q.id} className="mt-2 rounded bg-gray-50 p-3">
+          <div key={q.id} className="mt-2 rounded-sm bg-gray-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-medium">
                 {q.currency} {q.amount}
@@ -346,7 +347,7 @@ function BookingDetail({
             )}
             {q.notes && <p className="mt-1 text-sm text-gray-600">{q.notes}</p>}
             {q.terms && (
-              <div className="mt-2 rounded border border-gray-200 bg-surface p-2">
+              <div className="mt-2 rounded-sm border border-gray-200 bg-surface p-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Terms
                 </p>
@@ -383,7 +384,7 @@ function BookingDetail({
 
       {milestones && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Instalments</h3>
+          <h3 className="section-title text-sm">Instalments</h3>
           <p className="text-xs text-gray-500">
             Paid in order. Everything held is released to the provider when the work is delivered.
           </p>
@@ -471,7 +472,7 @@ function DisputeForm({
     >
       <p className="text-sm text-gray-600">
         An officer investigates. Everything held in escrow on this booking stays frozen until they
-        decide — neither side can move it in the meantime.
+        decide, neither side can move it in the meantime.
       </p>
 
       <label className="block text-sm">

@@ -1,7 +1,9 @@
 import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { Images } from '@phosphor-icons/react';
 import PhotoUploader from '../components/PhotoUploader';
+import { EmptyState, Loading } from '../components/ui/Feedback';
 
 interface Album {
   id: string;
@@ -76,13 +78,13 @@ export default function Media() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Media and Memories</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Photographs from the wedding, kept together. An album you make public gets a link you can
-          send to anyone — they do not need an account to open it.
+          send to anyone. They do not need an account to open it.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <form onSubmit={createAlbum} className="card flex flex-wrap items-end gap-3">
         <div className="flex-1">
@@ -107,7 +109,7 @@ export default function Media() {
         </button>
       </form>
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
 
       {/*
         The empty state says what to do rather than that there is nothing. "No
@@ -118,7 +120,7 @@ export default function Media() {
         <div className="card p-8 text-center">
           <p className="font-medium text-gray-800">No albums yet</p>
           <p className="mt-1 text-sm text-gray-500">
-            Start one for each part of the wedding — the mehendi, the ceremony, the reception. You
+            Start one for each part of the wedding. The mehendi, the ceremony, the reception. You
             can add photographs straight from your phone.
           </p>
         </div>
@@ -130,7 +132,7 @@ export default function Media() {
             <button
               key={a.id}
               onClick={() => setOpenId(a.id === openId ? null : a.id)}
-              className={`card overflow-hidden p-0 text-left transition hover:shadow-md ${
+              className={`card overflow-hidden p-0 text-left transition hover:shadow-lifted ${
                 a.id === openId ? 'ring-2 ring-brand' : ''
               }`}
             >
@@ -162,7 +164,7 @@ export default function Media() {
         <div className="card space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="font-semibold text-gray-900">{open.title}</h2>
+              <h2 className="section-title">{open.title}</h2>
               <p className="text-xs text-gray-500">
                 {open.itemCount} photo{open.itemCount === 1 ? '' : 's'}
               </p>
@@ -206,10 +208,12 @@ export default function Media() {
           </div>
 
           {items.length === 0 && (
-            <p className="rounded bg-gray-50 p-6 text-center text-sm text-gray-500">
-              Nothing here yet. Add photographs from your phone or computer — they upload straight
-              to storage, so a large one does not have to wait on the app.
-            </p>
+            <div className="rounded-lg bg-surface-sunken">
+              <EmptyState icon={Images} title="No photographs in this album">
+                Add them from a phone or a laptop; whoever the album is shared with sees them
+                straight away.
+              </EmptyState>
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -218,11 +222,11 @@ export default function Media() {
                 <img
                   src={it.url}
                   alt={it.caption ?? ''}
-                  className="h-32 w-full rounded object-cover"
+                  className="h-32 w-full rounded-sm object-cover"
                   loading="lazy"
                 />
                 <button
-                  className="absolute right-1 top-1 rounded bg-surface/90 px-2 py-0.5 text-xs text-gray-700 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+                  className="absolute right-1 top-1 rounded-sm bg-surface/90 px-2 py-0.5 text-xs text-gray-700 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
                   onClick={() =>
                     void run(() => api.delete(`/media/albums/${open.id}/items/${it.id}`), [
                       ['album-items', open.id],

@@ -55,9 +55,9 @@ export default function ProviderConsole() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">My Business</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           Your shop window: who you are, what you sell and what it costs. Your calendar and the
-          work coming in have their own pages — this one is only about the business.
+          work coming in have their own pages. This one is only about the business.
         </p>
       </div>
 
@@ -69,12 +69,12 @@ export default function ProviderConsole() {
 
       {vendorId && (
         <div className="card">
-          <h2 className="font-semibold text-gray-900">Verification</h2>
+          <h2 className="section-title">Verification</h2>
           <p className="mt-1 text-sm text-gray-600">
             {approved
               ? 'Approved. Your listing appears in search and can take bookings.'
               : 'A verification officer visits before your listing appears in search. You can keep ' +
-                'setting it up in the meantime — nothing is lost while you wait.'}
+                'setting it up in the meantime, nothing is lost while you wait.'}
           </p>
           <p className="mt-2">
             <span
@@ -98,7 +98,7 @@ export default function ProviderConsole() {
             a competitor can look up.
           */}
           {current?.decisionReason && (
-            <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+            <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
                 What needs fixing
               </p>
@@ -126,14 +126,14 @@ export default function ProviderConsole() {
           <p>
             <Link className="text-brand underline" to="/availability">
               Availability
-            </Link>{' '}
-            — publish the windows you can take work in, and set how many bookings each one holds.
+            </Link>:{' '}
+          publish the windows you can take work in, and set how many bookings each one holds.
           </p>
           <p>
             <Link className="text-brand underline" to="/bookings">
               Bookings
-            </Link>{' '}
-            — new requests, quotations, confirmations, payments and disputes.
+            </Link>:{' '}
+          new requests, quotations, confirmations, payments and disputes.
           </p>
         </div>
       )}
@@ -296,7 +296,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       <div className="card space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h2 className="font-semibold text-gray-900">{current.name}</h2>
+            <h2 className="section-title">{current.name}</h2>
             <p className="text-sm text-gray-600">
               {current.category === 'other'
                 ? (current.otherCategory ?? 'Other')
@@ -320,7 +320,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
           </div>
         </div>
 
-        {msg && <p className="rounded bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
+        {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
         {current.description && <p className="text-sm text-gray-700">{current.description}</p>}
 
         <dl className="grid gap-x-6 gap-y-2 border-t pt-3 text-sm sm:grid-cols-2">
@@ -351,7 +351,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
                   key={url}
                   src={url}
                   alt=""
-                  className="h-20 w-28 rounded object-cover"
+                  className="h-20 w-28 rounded-sm object-cover"
                   loading="lazy"
                 />
               ))}
@@ -364,10 +364,10 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
 
   return (
     <form onSubmit={submit} className="card space-y-3" noValidate>
-      <h2 className="font-semibold text-gray-900">
+      <h2 className="section-title">
         {current ? 'Edit your listing' : 'Create your listing'}
       </h2>
-      {msg && <p className="rounded bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
+      {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Business name" error={fieldErrors.name}>
@@ -408,10 +408,10 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       </Field>
 
       <div className="border-t pt-3">
-        <h3 className="font-medium text-gray-900">Pricing</h3>
+        <h3 className="section-title">Pricing</h3>
         <p className="mb-2 text-sm text-gray-600">
           A starting price, not a quote. It is what a client uses to decide whether to ask you at
-          all — the real number comes from the quotation.
+          all. The real number comes from the quotation.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Starting at (₹)">
@@ -438,19 +438,19 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       </div>
 
       <div className="border-t pt-3">
-        <h3 className="font-medium text-gray-900">Portfolio</h3>
+        <h3 className="section-title">Portfolio</h3>
         <p className="mb-2 text-sm text-gray-600">
-          Optional — a listing saves perfectly well without photographs, though very few clients
+          Optional. A listing saves perfectly well without photographs, though very few clients
           book from one that has none.
         </p>
         {portfolio.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {portfolio.map((url) => (
               <div key={url} className="relative">
-                <img src={url} alt="" className="h-20 w-28 rounded object-cover" loading="lazy" />
+                <img src={url} alt="" className="h-20 w-28 rounded-sm object-cover" loading="lazy" />
                 <button
                   type="button"
-                  className="absolute right-1 top-1 rounded bg-surface/90 px-1.5 text-xs text-gray-700"
+                  className="absolute right-1 top-1 rounded-sm bg-surface/90 px-1.5 text-xs text-gray-700"
                   onClick={() => setPortfolio((p) => p.filter((u) => u !== url))}
                 >
                   Remove
@@ -481,7 +481,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       </div>
 
       <div className="border-t pt-3">
-        <h3 className="font-medium text-gray-900">Registration</h3>
+        <h3 className="section-title">Registration</h3>
         <p className="mb-2 text-sm text-gray-600">
           You invoice real money against real events, so we hold the details that answer for that.
           The registered address is where the verification officer visits.
@@ -595,8 +595,8 @@ function PlannerListingForm({ existing }: { existing?: { agencyName: string } })
 
   return (
     <form onSubmit={submit} className="card space-y-3">
-      <h2 className="font-semibold text-gray-900">Your planning agency</h2>
-      {msg && <p className="rounded bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
+      <h2 className="section-title">Your planning agency</h2>
+      {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
           <label className="label">Agency name</label>
@@ -670,7 +670,7 @@ function PayoutAccount({ vendorId, current }: { vendorId: string; current: strin
     <div className="card space-y-2">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-gray-900">Payouts</h2>
+          <h2 className="section-title">Payouts</h2>
           <p className="text-sm text-gray-600">
             Where money leaves escrow to. Until this is set, what you have earned is held as owed
             rather than paid.
@@ -685,8 +685,8 @@ function PayoutAccount({ vendorId, current }: { vendorId: string; current: strin
         </span>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-2 text-sm text-emerald-700">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="rounded-sm bg-emerald-50 p-2 text-sm text-emerald-700">{notice}</p>}
 
       {!editing ? (
         <div className="flex flex-wrap items-center gap-3">

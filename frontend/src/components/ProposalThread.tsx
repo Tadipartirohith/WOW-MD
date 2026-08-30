@@ -55,7 +55,7 @@ export default function ProposalThread({ interestId }: { interestId: string }) {
   if (isError || !thread) return null;
 
   return (
-    <div className="mt-2 rounded bg-gray-50 p-3">
+    <div className="mt-2 rounded-sm bg-gray-50 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
         With the other side
       </p>
@@ -64,7 +64,7 @@ export default function ProposalThread({ interestId }: { interestId: string }) {
         {thread.sides.map((side) => (
           <div
             key={side.profile.id}
-            className={`rounded border p-2 text-sm ${
+            className={`rounded-sm border p-2 text-sm ${
               side.isMine ? 'border-brand bg-brand-light' : 'border-gray-200 bg-surface'
             }`}
           >
@@ -83,8 +83,8 @@ export default function ProposalThread({ interestId }: { interestId: string }) {
         {thread.notes.map((n) => (
           <div
             key={n.id}
-            className={`max-w-[85%] rounded p-2 text-sm ${
-              n.mine ? 'ml-auto bg-brand text-brand-fg' : 'bg-surface text-gray-800 shadow-sm'
+            className={`max-w-[85%] rounded-sm p-2 text-sm ${
+              n.mine ? 'ml-auto bg-brand text-brand-fg' : 'bg-surface text-gray-800 shadow-card'
             }`}
           >
             <p>{n.body}</p>

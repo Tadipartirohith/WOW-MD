@@ -57,7 +57,7 @@ export default function BiodataCard({
     <article className={print ? 'bg-white p-6' : 'card'}>
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-brand-dark">{profile.displayName}</h2>
+          <h2 className="section-title">{profile.displayName}</h2>
           <p className="text-sm text-gray-500">
             {[years ? `${years} yrs` : profile.ageRange, profile.city].filter(Boolean).join(' · ')}
           </p>
@@ -76,7 +76,7 @@ export default function BiodataCard({
               key={src}
               src={src}
               alt=""
-              className="h-32 w-28 flex-none rounded object-cover"
+              className="h-32 w-28 flex-none rounded-sm object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
               }}

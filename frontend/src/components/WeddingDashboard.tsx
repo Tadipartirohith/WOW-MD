@@ -151,10 +151,10 @@ export default function WeddingDashboard() {
       <div className="grid gap-4 lg:grid-cols-2">
         {budget.categories.length > 0 && (
           <div className="card">
-            <h2 className="font-semibold text-gray-900">Where the money is going</h2>
+            <h2 className="section-title">Where the money is going</h2>
             <p className="mb-2 text-xs text-gray-500">
               Budgeted is what you put on each event. Committed is what your bookings actually came
-              to — a caterer lands under catering whether or not you budgeted for one.
+              to. A caterer lands under catering whether or not you budgeted for one.
             </p>
             <div className="divide-y">
               {budget.categories.map((c) => {
@@ -176,9 +176,9 @@ export default function WeddingDashboard() {
                         )}
                       </span>
                     </div>
-                    <div className="mt-1 h-1.5 w-full rounded bg-gray-100">
+                    <div className="mt-1 h-1.5 w-full rounded-sm bg-gray-100">
                       <div
-                        className={`h-1.5 rounded ${over ? 'bg-red-500' : 'bg-brand'}`}
+                        className={`h-1.5 rounded-sm ${over ? 'bg-red-500' : 'bg-brand'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -190,7 +190,7 @@ export default function WeddingDashboard() {
         )}
 
         <div className="card">
-          <h2 className="font-semibold text-gray-900">What is next</h2>
+          <h2 className="section-title">What is next</h2>
           {upcoming.length === 0 && (
             <p className="mt-2 text-sm text-gray-500">
               Nothing on the calendar.{' '}

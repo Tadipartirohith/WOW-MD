@@ -228,12 +228,12 @@ export default function Events() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Events</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Each day of the wedding, with its guests and the vendors booked for it.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {summary && summary.total > 0 && (
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -288,13 +288,13 @@ export default function Events() {
         <div className="space-y-4">
           <div className="card">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="font-semibold text-gray-900">Your days</h2>
+              <h2 className="section-title">Your days</h2>
               <div className="flex gap-1">
                 {(['list', 'cards'] as const).map((v) => (
                   <button
                     key={v}
                     onClick={() => setView(v)}
-                    className={`rounded px-2 py-0.5 text-xs ${
+                    className={`rounded-sm px-2 py-0.5 text-xs ${
                       view === v ? 'bg-brand-light text-brand-dark' : 'text-gray-500 hover:bg-gray-100'
                     }`}
                   >
@@ -319,12 +319,12 @@ export default function Events() {
                     <div
                       className={
                         view === 'cards'
-                          ? `flex flex-col gap-1 rounded border p-3 ${
+                          ? `flex flex-col gap-1 rounded-sm border p-3 ${
                               selected === ev.id
                                 ? 'border-brand bg-brand-light'
                                 : 'border-gray-200 hover:bg-gray-50'
                             }`
-                          : `flex items-center justify-between rounded px-3 py-2 ${
+                          : `flex items-center justify-between rounded-sm px-3 py-2 ${
                               selected === ev.id ? 'bg-brand-light' : 'hover:bg-gray-50'
                             }`
                       }
@@ -386,20 +386,20 @@ export default function Events() {
                           button to redirect to the Vendors page".
                         */}
                         <Link
-                          className="rounded px-2 py-1 text-xs text-brand-dark hover:bg-gray-100"
+                          className="rounded-sm px-2 py-1 text-xs text-brand-dark hover:bg-gray-100"
                           to={`/vendors?eventId=${ev.id}`}
                           title={`Book vendors for ${ev.name}`}
                         >
                           Vendors
                         </Link>
                         <button
-                          className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                          className="rounded-sm px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
                           onClick={() => setEditing(ev.id)}
                         >
                           Edit
                         </button>
                         <button
-                          className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                          className="rounded-sm px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
                           onClick={() =>
                             act(() => api.delete(`/events/${ev.id}`), ['events'])
                           }
@@ -418,7 +418,7 @@ export default function Events() {
           </div>
 
           <form onSubmit={createEvent} className="card space-y-2">
-            <h2 className="font-semibold text-gray-900">Add a day</h2>
+            <h2 className="section-title">Add a day</h2>
             <input
               className="input"
               placeholder="Mehendi"
@@ -441,10 +441,10 @@ export default function Events() {
 
             <button
               type="button"
-              className="text-left text-xs text-brand underline"
+              className="block text-left text-xs text-brand-strong underline underline-offset-2"
               onClick={() => setMore(!more)}
             >
-              {more ? 'Fewer details' : 'More details — times, guests, budget'}
+              {more ? 'Fewer details' : 'More details: times, guests, budget'}
             </button>
 
             {more && (
@@ -513,7 +513,7 @@ export default function Events() {
                 <textarea
                   className="input"
                   rows={2}
-                  placeholder="Notes — decoration, food, anything the vendors need"
+                  placeholder="Notes: decoration, food, anything the vendors need"
                   value={draft.description ?? ''}
                   onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                 />
@@ -559,7 +559,7 @@ export default function Events() {
 
               <div className="card">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="font-semibold text-gray-900">Vendors for {current.name}</h2>
+                  <h2 className="section-title">Vendors for {current.name}</h2>
                   {/*
                     The event travels with the link. It used to drop it, so an
                     organiser who pressed this landed on a vendor list with
@@ -581,7 +581,7 @@ export default function Events() {
                       </div>
                       <div className="text-right">
                         <p className="text-gray-700">
-                          {Number(v.amount) > 0 ? `₹${Number(v.amount).toLocaleString('en-IN')}` : '—'}
+                          {Number(v.amount) > 0 ? `₹${Number(v.amount).toLocaleString('en-IN')}` : '-'}
                         </p>
                         <p className="text-xs text-gray-500">
                           {BOOKING_STATUS_LABEL[v.status] ?? v.status}
@@ -601,7 +601,7 @@ export default function Events() {
 
               <div className="card">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="font-semibold text-gray-900">Guests for {current.name}</h2>
+                  <h2 className="section-title">Guests for {current.name}</h2>
                   {guestList && (
                     <p className="text-sm text-gray-600">
                       {guestList.summary.attending} of {guestList.summary.total} attending
@@ -703,7 +703,7 @@ function EditEvent({
 
   return (
     <form
-      className="space-y-2 rounded border border-brand/40 p-3"
+      className="space-y-2 rounded-sm border border-brand/40 p-3"
       onSubmit={(e) => {
         e.preventDefault();
         onSave({ name, eventDate: date || undefined, venue: venue || undefined });
@@ -753,7 +753,7 @@ function Stat({
   // Only the ones that filter are clickable. A card that looks pressable and
   // does nothing is worse than one that plainly does not.
   return onClick ? (
-    <button className="card text-left transition hover:shadow-md" onClick={onClick}>
+    <button className="card text-left transition hover:shadow-lifted" onClick={onClick}>
       {body}
     </button>
   ) : (

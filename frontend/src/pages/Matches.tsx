@@ -15,6 +15,7 @@ import {
 import ProfileSelector from '../components/ProfileSelector';
 import { MARITAL_LABEL, OCCUPATION_LABEL } from '../lib/permissions';
 import { formatDate } from '../lib/dates';
+import { Loading } from '../components/ui/Feedback';
 
 interface AcceptedMatch {
   id: string;
@@ -232,7 +233,7 @@ export default function Matches() {
   const gate = !status
     ? undefined
     : !status.profileCompleted
-      ? 'Fill in the profile first — basic details, preferences and a photo.'
+      ? 'Fill in the profile first: basic details, preferences and a photo.'
       : !status.identityVerified
         ? status.identitySubmitted
           ? 'Identity verification is still pending. An officer confirms the document in person.'
@@ -248,7 +249,7 @@ export default function Matches() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">Matches</h1>
-          <p className="text-sm text-gray-600">
+          <p className="page-subtitle">
             Finding and judging profiles. Who has asked about you lives on{' '}
             <Link className="text-brand-dark underline" to="/interests">
               Interests
@@ -267,12 +268,12 @@ export default function Matches() {
 
       {isAgent && !profileId && (
         <p className="card text-sm text-gray-600">
-          Matchmaking always runs under a client identity. Pick one of your profiles above —
+          Matchmaking always runs under a client identity. Pick one of your profiles above,
           including people you have built a profile for but not yet invited.
         </p>
       )}
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {/*
         The verification gate, stated where the buttons it disables are.
@@ -319,7 +320,7 @@ export default function Matches() {
             <div className="card space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-3">
-                  <h2 className="font-semibold text-gray-900">Narrow the list</h2>
+                  <h2 className="section-title">Narrow the list</h2>
                   {activeFilterCount > 0 && (
                     <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark">
                       {activeFilterCount} applied
@@ -505,7 +506,7 @@ export default function Matches() {
                   ))}
                   {shortlistRows.length === 0 && (
                     <p className="text-sm text-gray-400">
-                      Nothing kept yet. Shortlisting is private — the other family is never told.
+                      Nothing kept yet. Shortlisting is private. The other family is never told.
                     </p>
                   )}
                 </div>
@@ -515,7 +516,7 @@ export default function Matches() {
 
           <div className="card space-y-3">
             <div>
-              <h2 className="font-semibold text-gray-900">
+              <h2 className="section-title">
                 {SORTS.find((s) => s.value === filters.sort)?.label ?? 'Browse'}
               </h2>
               <p className="text-sm text-gray-600">
@@ -535,7 +536,7 @@ export default function Matches() {
                   disabledReason={gate}
                 />
               ))}
-              {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+              {isLoading && <Loading rows={3} />}
               {!isLoading && suggestions.length === 0 && (
                 <EmptyState hasFilters={activeFilterCount > 0} onClear={() => setFilters(NO_FILTERS)} />
               )}
@@ -549,7 +550,7 @@ export default function Matches() {
 
           <div className="card space-y-3">
             <div>
-              <h2 className="font-semibold text-gray-900">Recommended for you</h2>
+              <h2 className="section-title">Recommended for you</h2>
               <p className="text-sm text-gray-600">
                 Rated 50% or better by the matching engine, best first. Unaffected by the filters.
               </p>
@@ -584,10 +585,10 @@ export default function Matches() {
               <p className="font-semibold text-gray-900">{ONBOARDING_LABEL[status.stage]}</p>
               <p className="text-sm text-gray-600">
                 {status.stage === 'profile_incomplete' &&
-                  'Fill in the basics — name, gender, date of birth and city — before browsing.'}
+                  'Fill in the basics: name, gender, date of birth and city: before browsing.'}
                 {status.stage === 'matchmaking_active' &&
                   (status.servicesUnlocked
-                    ? 'Browsing and sending interests. The wedding marketplace is open to you now — you do not have to wait for a match.'
+                    ? 'Browsing and sending interests. The wedding marketplace is open to you now. You do not have to wait for a match.'
                     : 'Browsing and sending interests. Wedding services open once a match is fixed.')}
                 {status.stage === 'match_fixed' &&
                   'The match is fixed. Matchmaking is closed and the wedding marketplace is open.'}
@@ -597,7 +598,7 @@ export default function Matches() {
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
                 {status.awaitingOtherSide
                   ? 'Waiting on the other side to confirm'
-                  : 'They have confirmed — your turn'}
+                  : 'They have confirmed, your turn'}
               </span>
             )}
           </div>
@@ -615,10 +616,10 @@ export default function Matches() {
       {ready && acceptedMatches.length > 0 && (
         <div className="card space-y-3">
           <div>
-            <h2 className="font-semibold text-gray-900">Confirmed matches</h2>
+            <h2 className="section-title">Confirmed matches</h2>
             <p className="text-sm text-gray-600">
-              Both sides accepted the interest. Fixing the match takes a confirmation from each —
-              the second one closes matchmaking, opens the wedding services, and creates accounts
+              Both sides accepted the interest. Fixing the match takes a confirmation from each.
+              The second one closes matchmaking, opens the wedding services, and creates accounts
               for anyone who did not have one.
             </p>
           </div>
@@ -630,7 +631,7 @@ export default function Matches() {
                     <img
                       src={m.counterpart.photos[0]}
                       alt=""
-                      className="h-14 w-14 shrink-0 rounded object-cover"
+                      className="h-14 w-14 shrink-0 rounded-sm object-cover"
                     />
                   )}
                   <div className="min-w-0">
@@ -776,11 +777,11 @@ function FixedBadge({ match }: { match: AcceptedMatch }) {
 function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
   if (hasFilters) {
     return (
-      <div className="rounded border border-dashed border-gray-300 p-4 text-sm">
+      <div className="rounded-sm border border-dashed border-gray-300 p-4 text-sm">
         <p className="font-medium text-gray-700">Nothing matches those filters.</p>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-gray-600">
           <li>Widen the age or height range</li>
-          <li>Clear the city — good matches are often one town over</li>
+          <li>Clear the city, good matches are often one town over</li>
           <li>Drop the caste or mother-tongue filter and see what is there</li>
         </ul>
         <button className="btn-outline mt-3 text-xs" onClick={onClear}>
@@ -790,14 +791,14 @@ function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
     );
   }
   return (
-    <div className="rounded border border-dashed border-gray-300 p-4 text-sm">
+    <div className="rounded-sm border border-dashed border-gray-300 p-4 text-sm">
       <p className="font-medium text-gray-700">No suitable profiles yet.</p>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-gray-600">
         <li>
           <Link className="text-brand-dark underline" to="/biodata">
             Complete the biodata
-          </Link>{' '}
-          — a profile with photographs and details is shown far more often
+          </Link>.{' '}
+          A profile with photographs and details is shown far more often
         </li>
         <li>Update the partner preferences, or broaden the age and location you will consider</li>
         <li>Check back in a few days; new profiles arrive every week</li>

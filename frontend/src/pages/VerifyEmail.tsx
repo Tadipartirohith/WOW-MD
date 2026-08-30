@@ -39,7 +39,7 @@ export default function VerifyEmail() {
               &#9989;
             </p>
             <h1 className="page-title mt-2">Email confirmed</h1>
-            <p className="mt-2 text-sm text-gray-600">Thank you, your account is fully set up.</p>
+            <p className="page-subtitle">Thank you, your account is fully set up.</p>
           </>
         )}
         {state === 'failed' && (
@@ -48,7 +48,7 @@ export default function VerifyEmail() {
               &#9888;
             </p>
             <h1 className="page-title mt-2">We could not confirm that</h1>
-            <p className="mt-2 text-sm text-gray-600">{message}</p>
+            <p className="page-subtitle">{message}</p>
           </>
         )}
         <Link to="/" className="btn mt-4">

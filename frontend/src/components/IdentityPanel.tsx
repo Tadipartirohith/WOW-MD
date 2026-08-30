@@ -56,7 +56,7 @@ export default function IdentityPanel({ profileId }: { profileId: string }) {
   if (data?.submittedAt) {
     return (
       <div className="card space-y-1">
-        <h2 className="font-semibold text-gray-900">Identity</h2>
+        <h2 className="section-title">Identity</h2>
         <p className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
           {/*
             Said as a badge rather than buried in a sentence: whether a document
@@ -87,15 +87,15 @@ export default function IdentityPanel({ profileId }: { profileId: string }) {
   return (
     <form onSubmit={submit} className="card space-y-3">
       <div>
-        <h2 className="font-semibold text-gray-900">Identity</h2>
+        <h2 className="section-title">Identity</h2>
         <p className="text-sm text-gray-600">
-          One document, one profile — this is what keeps duplicates off the platform. The number
+          One document, one profile. This is what keeps duplicates off the platform. The number
           itself is never stored: it is checked, turned into a fingerprint, and discarded. Only the
           last four digits are kept.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>

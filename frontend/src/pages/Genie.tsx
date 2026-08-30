@@ -28,7 +28,7 @@ export default function Genie() {
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div className="card space-y-4">
-        <h2 className="font-bold text-brand-dark">Budget Insights</h2>
+        <h2 className="section-title">Budget Insights</h2>
         <form onSubmit={getBudget} className="flex items-end gap-3">
           <div className="flex-1">
             <label className="label">Total budget in Rs</label>
@@ -49,12 +49,12 @@ export default function Genie() {
       </div>
 
       <div className="card space-y-4">
-        <h2 className="font-bold text-brand-dark">Ask WOW Genie</h2>
+        <h2 className="section-title">Ask WOW Genie</h2>
         <form onSubmit={ask} className="space-y-2">
           <textarea className="input" rows={3} placeholder="e.g. How do I plan a 300-guest wedding in 6 months?" value={question} onChange={(e) => setQuestion(e.target.value)} />
           <button className="btn">Ask</button>
         </form>
-        {answer && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{answer}</p>}
+        {answer && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{answer}</p>}
       </div>
     </div>
   );

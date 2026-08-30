@@ -73,7 +73,7 @@ export default function AcceptInvite() {
             ⌛
           </p>
           <h1 className="page-title mt-2">This invitation is not usable</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="page-subtitle">
             {apiMessage(previewError, 'The link may have expired or already been used.')} Ask
             whoever invited you to send a new one.
           </p>
@@ -92,7 +92,7 @@ export default function AcceptInvite() {
       <form onSubmit={submit} className="card w-full max-w-md space-y-5">
         <div>
           <h1 className="page-title">Welcome, {data.displayName}</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="page-subtitle">
             <strong>{data.invitedBy}</strong> has prepared a profile for you
             {data.city ? ` in ${data.city}` : ''}
             {data.photoCount > 0
@@ -107,7 +107,7 @@ export default function AcceptInvite() {
           <strong>{data.invitedBy}</strong> can no longer change it. This link expires on {expires}.
         </div>
 
-        {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="alert-critical">{error}</p>}
 
         <div>
           <label className="label">Your email</label>

@@ -11,7 +11,7 @@ export default function Forbidden() {
         🔒
       </p>
       <h1 className="page-title mt-2">Not available for your account</h1>
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="page-subtitle">
         {user ? `${ROLE_LABEL[user.role] ?? user.role} accounts` : 'Your account'} do not have
         access to this area. If you think this is wrong, contact support.
       </p>

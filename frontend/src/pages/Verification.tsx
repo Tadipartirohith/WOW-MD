@@ -2,6 +2,7 @@ import { ReactNode, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
+import { Loading } from '../components/ui/Feedback';
 import {
   CaseStatus,
   MILESTONE_LABEL,
@@ -239,14 +240,14 @@ export default function Verification() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Verification</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Agents and vendors are visited before they are activated. Nothing on this platform is
           approved from a form alone.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       {metrics && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -306,7 +307,7 @@ export default function Verification() {
             return (
               <div key={section.key} className="space-y-3">
                 <div>
-                  <h2 className="font-semibold text-gray-900">
+                  <h2 className="section-title">
                     {section.label}{' '}
                     <span className="text-sm font-normal text-gray-400">
                       ({sectionRows.length})
@@ -378,7 +379,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded px-3 py-1.5 text-sm ${
+      className={`rounded-sm px-3 py-1.5 text-sm ${
         active ? 'bg-brand-light text-brand-dark' : 'text-gray-600 hover:bg-gray-100'
       }`}
     >
@@ -422,7 +423,7 @@ function RequestRow({
           */}
           {request.allocationBasis === 'workload_only' && request.applicantCity && (
             <p className="mt-0.5 text-xs text-amber-700">
-              Nobody covers {request.applicantCity} — allocated on workload alone
+              Nobody covers {request.applicantCity}, allocated on workload alone
             </p>
           )}
         </div>
@@ -430,7 +431,7 @@ function RequestRow({
       </div>
 
       {request.remarks && (
-        <p className="rounded bg-gray-50 p-2 text-sm text-gray-700">{request.remarks}</p>
+        <p className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">{request.remarks}</p>
       )}
 
       <SubjectDetails requestId={request.id} />
@@ -448,7 +449,7 @@ function RequestRow({
               {officers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
-                  {typeof o.openCount === 'number' ? ` — ${o.openCount} open` : ''}
+                  {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
                 </option>
               ))}
             </select>
@@ -477,7 +478,7 @@ function RequestRow({
 
       {/* What the officer wrote up, once they have. */}
       {request.findings && (
-        <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+        <div className="rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm">
           <p className="font-medium text-gray-900">
             {request.findings.visited ? 'Visited' : 'Could not attend'}
             <span className="ml-2 font-normal text-gray-500">
@@ -656,7 +657,7 @@ function FindingsForm({
       return;
     }
     if (recommendation !== 'approve' && issueList.length === 0) {
-      setProblem('List what did not check out — one per line.');
+      setProblem('List what did not check out, one per line.');
       return;
     }
     setProblem('');
@@ -673,7 +674,7 @@ function FindingsForm({
   }
 
   return (
-    <div className="space-y-2 rounded bg-gray-50 p-3">
+    <div className="space-y-2 rounded-sm bg-gray-50 p-3">
       <p className="text-sm font-medium text-gray-800">
         {revisit ? 'Write up the return visit' : 'Write up the visit'}
       </p>
@@ -767,8 +768,8 @@ function CaseRow({
       )}
 
       {item.requiresPhysicalVerification && (
-        <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">
-          Escalated — this one needs somebody on the ground.
+        <p className="rounded-sm bg-amber-50 p-2 text-sm text-amber-900">
+          Escalated. This one needs somebody on the ground.
         </p>
       )}
 
@@ -811,7 +812,7 @@ function CaseRow({
               {officers.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
-                  {typeof o.openCount === 'number' ? ` — ${o.openCount} open` : ''}
+                  {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
                 </option>
               ))}
             </select>
@@ -889,7 +890,7 @@ function CaseRow({
             Record findings
           </button>
 
-          <div className="rounded bg-gray-50 p-3">
+          <div className="rounded-sm bg-gray-50 p-3">
             <p className="text-sm font-medium text-gray-800">Settlement</p>
             <p className="mb-2 text-xs text-gray-600">
               Money on the disputed booking is frozen until one of these is recorded.
@@ -965,7 +966,7 @@ function OfficersPanel({
     <div className="space-y-4">
       <div className="card space-y-3">
         <div>
-          <h2 className="font-semibold text-gray-900">Add a verification officer</h2>
+          <h2 className="section-title">Add a verification officer</h2>
           <p className="text-sm text-gray-600">
             There is no sign-up for this role. The account is created here and the credentials are
             emailed; the officer replaces the password on first sign-in.
@@ -1013,7 +1014,7 @@ function OfficersPanel({
       </div>
 
       <div className="card">
-        <h2 className="mb-2 font-semibold text-gray-900">Officers</h2>
+        <h2 className="section-title mb-2">Officers</h2>
         {officers.length === 0 && <p className="text-sm text-gray-500">None yet.</p>}
         {officers.map((o) => (
           <div
@@ -1079,10 +1080,10 @@ function SubjectDetails({ requestId }: { requestId: string }) {
   }[];
 
   const text = (value: unknown) =>
-    value === null || value === undefined || value === '' ? '—' : String(value);
+    value === null || value === undefined || value === '' ? '-' : String(value);
 
   return (
-    <div className="space-y-3 rounded border border-gray-200 p-3">
+    <div className="space-y-3 rounded-sm border border-gray-200 p-3">
       <div className="flex items-center justify-between">
         <h4 className="font-medium text-gray-900">The record being verified</h4>
         <button className="text-sm text-gray-500 underline" onClick={() => setOpen(false)}>
@@ -1090,7 +1091,7 @@ function SubjectDetails({ requestId }: { requestId: string }) {
         </button>
       </div>
 
-      {!data && <p className="text-sm text-gray-400">Loading…</p>}
+      {!data && <Loading rows={3} />}
 
       {subject && (
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -1135,7 +1136,7 @@ function SubjectDetails({ requestId }: { requestId: string }) {
                   {new Date(entry.at).toLocaleString()} ·{' '}
                 </span>
                 <span className="capitalize">{entry.action.replace(/_/g, ' ')}</span>
-                {entry.note ? ` — ${entry.note}` : ''}
+                {entry.note ? `: ${entry.note}` : ''}
               </li>
             ))}
           </ol>
@@ -1214,7 +1215,7 @@ function ServiceAreas({
         ))}
         {areas.length === 0 && (
           <span className="text-xs text-amber-700">
-            Covers nowhere — only allocated when nobody else fits
+            Covers nowhere, only allocated when nobody else fits
           </span>
         )}
         <button

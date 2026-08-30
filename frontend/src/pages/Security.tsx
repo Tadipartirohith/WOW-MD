@@ -58,13 +58,13 @@ export default function Security() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Security</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           Your password, two-factor authentication, and the devices signed in to this account.
         </p>
       </div>
 
-      {notice && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {notice && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {user && !user.isVerified && <VerifyBanner />}
 
@@ -83,7 +83,7 @@ export default function Security() {
       <ChangePasswordCard onDone={() => setNotice('Password changed. Sign in again to continue.')} />
 
       <div className="card space-y-3">
-        <h2 className="font-semibold text-gray-900">Signed-in devices</h2>
+        <h2 className="section-title">Signed-in devices</h2>
         <p className="text-sm text-gray-500">
           Each device gets its own session, so signing in somewhere new never signs you out here.
         </p>
@@ -203,7 +203,7 @@ function TwoFactorCard({
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900">Two-factor authentication</h2>
+        <h2 className="section-title">Two-factor authentication</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-xs ${
             enabled ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -212,14 +212,14 @@ function TwoFactorCard({
           {enabled ? 'On' : 'Off'}
         </span>
       </div>
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {recoveryCodes && (
-        <div className="rounded border border-amber-300 bg-amber-50 p-3">
+        <div className="rounded-sm border border-amber-300 bg-amber-50 p-3">
           <p className="font-medium text-amber-900">Write these down now</p>
           <p className="text-sm text-amber-900">
             Each one signs you in once if you lose your authenticator. This is the only time they
-            are shown — we keep them hashed, so we cannot show them to you again.
+            are shown. We keep them hashed, so we cannot show them to you again.
           </p>
           <ul className="mt-2 grid grid-cols-2 gap-1 font-mono text-sm text-amber-900">
             {recoveryCodes.map((rc) => (
@@ -265,7 +265,7 @@ function TwoFactorCard({
           <p className="text-sm text-gray-600">
             Add this secret to your authenticator app, then enter the code it shows.
           </p>
-          <code className="block break-all rounded bg-gray-50 p-3 text-sm">{setup.secret}</code>
+          <code className="block break-all rounded-sm bg-gray-50 p-3 text-sm">{setup.secret}</code>
           <p className="break-all text-xs text-gray-500">{setup.otpauthUrl}</p>
           <input
             className="input max-w-[12rem]"
@@ -313,8 +313,8 @@ function ChangePasswordCard({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="card space-y-3">
-      <h2 className="font-semibold text-gray-900">Change password</h2>
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      <h2 className="section-title">Change password</h2>
+      {error && <p className="alert-critical">{error}</p>}
       <p className="text-sm text-gray-500">
         Changing your password signs out every device, including this one.
       </p>
@@ -379,7 +379,7 @@ function RecoveryCodeStatus({ onIssued }: { onIssued: (codes: string[]) => void 
   if (remaining === null) return null;
 
   return (
-    <div className="rounded bg-gray-50 p-3">
+    <div className="rounded-sm bg-gray-50 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-700">
           {remaining === 0
@@ -413,7 +413,7 @@ function RecoveryCodeStatus({ onIssued }: { onIssued: (codes: string[]) => void 
       )}
       {asking && (
         <p className="mt-1 text-xs text-gray-500">
-          This replaces any codes you already have. Only your password is needed — asking for an
+          This replaces any codes you already have. Only your password is needed, asking for an
           authenticator code would be useless to somebody who has lost theirs.
         </p>
       )}
@@ -475,7 +475,7 @@ function PhoneVerificationCard() {
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900">Mobile number</h2>
+        <h2 className="section-title">Mobile number</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-xs ${
             verifiedAt ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -485,11 +485,11 @@ function PhoneVerificationCard() {
         </span>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {!phone && (
         <p className="text-sm text-gray-600">
-          There is no mobile number on your account. Add one on your profile first — it is how most
+          There is no mobile number on your account. Add one on your profile first. It is how most
           families here are actually reached.
         </p>
       )}
@@ -525,7 +525,7 @@ function PhoneVerificationCard() {
             />
             {devCode && (
               <span className="mt-1 block text-xs text-gray-500">
-                Development mode — the code is {devCode}
+                Development mode: the code is {devCode}
               </span>
             )}
           </label>
@@ -592,13 +592,13 @@ function DataRightsCard() {
 
   return (
     <div className="card space-y-3">
-      <h2 className="font-semibold text-gray-900">Your data</h2>
+      <h2 className="section-title">Your data</h2>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-600">
-          Download everything held about you — your profile, biodata, consent record, who your
+          Download everything held about you: your profile, biodata, consent record, who your
           details were shared with, and your bookings.
         </p>
         <button className="btn-outline" onClick={exportData} disabled={busy}>
@@ -620,7 +620,7 @@ function DataRightsCard() {
           <form onSubmit={erase} className="space-y-2">
             <p className="text-sm text-gray-700">
               Your profile, biodata and photographs are deleted. Your consent record and the
-              financial record of any bookings are kept — they are what the platform answers for
+              financial record of any bookings are kept. They are what the platform answers for
               its own conduct with, and they no longer identify you.
             </p>
             <p className="text-sm text-gray-600">

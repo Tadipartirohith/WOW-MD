@@ -59,7 +59,7 @@ export default function PhotoUploader({
       setError(
         kind === 'attachment'
           ? 'Choose an image or a PDF.'
-          : 'Choose an image file — JPEG, PNG, WebP, HEIC and the rest are all fine.',
+          : 'Choose an image file: JPEG, PNG, WebP, HEIC and the rest are all fine.',
       );
       return;
     }

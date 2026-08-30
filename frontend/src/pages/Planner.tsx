@@ -93,7 +93,7 @@ export default function Planner() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">My Wedding Plan</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Your own timeline, worked backwards from the wedding date. Looking to{' '}
           <Link className="text-brand underline" to="/wedding-planners">
             hire a wedding planner
@@ -102,7 +102,7 @@ export default function Planner() {
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {/*
         Above the form on purpose. Somebody who already has a plan opens this

@@ -221,7 +221,7 @@ export default function SavedBiodata({
             <Row key={a.id} label={a.type.replace(/_/g, ' ')}>
               {[a.location, a.area, a.estimatedValue ? rupees(a.estimatedValue) : null]
                 .filter(Boolean)
-                .join(' · ') || '—'}
+                .join(' · ') || '-'}
               {/* Family assets are private unless individually published. */}
               {!a.visible && <span className="ml-2 text-xs text-gray-400">(private)</span>}
             </Row>

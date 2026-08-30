@@ -151,7 +151,7 @@ export default function CatalogAdmin() {
     <div className="card space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-gray-900">Service catalog</h2>
+          <h2 className="section-title">Service catalog</h2>
           <p className="text-sm text-gray-600">
             What vendors are able to sell, and what buyers are asked when they book it. Adding a
             trade here needs no deployment.
@@ -168,8 +168,8 @@ export default function CatalogAdmin() {
         </label>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       {/* ------------------------------------------------------- categories */}
       <div className="space-y-2">
@@ -219,7 +219,7 @@ export default function CatalogAdmin() {
         )}
 
         {category && (
-          <div className="flex flex-wrap items-center gap-2 rounded bg-gray-50 p-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 rounded-sm bg-gray-50 p-2 text-sm">
             <span className="text-gray-600">
               <strong>{category.name}</strong> · <code className="text-xs">{category.slug}</code>
             </span>
@@ -346,7 +346,7 @@ export default function CatalogAdmin() {
                           {a.label}
                           {a.required && <span className="text-red-500"> *</span>}
                           {a.filterable && (
-                            <span className="ml-2 rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
+                            <span className="ml-2 rounded-sm bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
                               filterable
                             </span>
                           )}
@@ -420,7 +420,7 @@ function SlugForm({
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded bg-gray-50 p-3">
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-2 rounded-sm bg-gray-50 p-3">
       <label className="text-sm">
         <span className="text-gray-700">Name</span>
         <input
@@ -494,7 +494,7 @@ function DefinitionForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded bg-gray-50 p-3">
+    <form onSubmit={submit} className="space-y-3 rounded-sm bg-gray-50 p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="font-medium text-gray-700">Name</span>
@@ -577,7 +577,7 @@ function DefinitionForm({
           })}
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Withdrawing one that vendors are already selling on is refused — they would be left with a
+          Withdrawing one that vendors are already selling on is refused. They would be left with a
           listing they cannot edit.
         </p>
       </div>
@@ -592,7 +592,7 @@ function DefinitionForm({
         <span className="text-gray-700">
           Can be sold as a package
           <span className="ml-1 text-xs text-gray-500">
-            — leave off for a service that is one thing, like a priest conducting a ceremony.
+           . Leave off for a service that is one thing, like a priest conducting a ceremony.
           </span>
         </span>
       </label>
@@ -669,7 +669,7 @@ function AttributeForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded bg-gray-50 p-3">
+    <form onSubmit={submit} className="space-y-3 rounded-sm bg-gray-50 p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="font-medium text-gray-700">Who is asked</span>
@@ -782,7 +782,7 @@ function AttributeForm({
             />
             <span className="text-gray-700">
               Buyers can filter on it
-              <span className="ml-1 text-xs text-gray-500">— worth it for two or three, not all.</span>
+              <span className="ml-1 text-xs text-gray-500">: worth it for two or three, not all.</span>
             </span>
           </label>
         )}

@@ -52,14 +52,14 @@ export default function SetPassword() {
       <form onSubmit={submit} className="card w-full max-w-md space-y-4">
         <div>
           <h1 className="page-title">Choose your password</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="page-subtitle">
             Your account was created for you when your match was confirmed. Replace the temporary
             password we emailed {user?.email ? <strong>{user.email}</strong> : 'you'} with one of
-            your own — the temporary one stops working the moment you do.
+            your own. The temporary one stops working the moment you do.
           </p>
         </div>
 
-        {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="alert-critical">{error}</p>}
 
         <label className="block text-sm">
           <span className="text-gray-700">Temporary password</span>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { MILESTONE_LABEL } from '../lib/permissions';
+import { Loading } from '../components/ui/Feedback';
 
 interface LedgerRow {
   paymentId: string;
@@ -30,7 +31,7 @@ interface Earnings {
 const STATUS_LABEL: Record<string, string> = {
   initiated: 'Starting',
   held_in_escrow: 'In escrow',
-  disputed: 'Frozen — case open',
+  disputed: 'Frozen: case open',
   released: 'Paid out',
   pending_payout: 'Owed to you',
   refunded: 'Refunded',
@@ -69,12 +70,12 @@ export default function Accounts() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Accounts</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Every rupee that has moved through your bookings, and where it currently sits.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
 
       {data && (
         <>
@@ -210,7 +211,7 @@ function SettleMyPayment({ bookingId }: { bookingId: string }) {
 
   if (state) {
     return (
-      <div className="mt-1 max-w-xs rounded bg-amber-50 p-2 text-xs text-amber-900">
+      <div className="mt-1 max-w-xs rounded-sm bg-amber-50 p-2 text-xs text-amber-900">
         <p>{state.reason}</p>
         <p className="mt-1 text-amber-700">
           {state.open

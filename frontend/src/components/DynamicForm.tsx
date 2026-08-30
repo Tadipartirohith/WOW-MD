@@ -394,7 +394,7 @@ function Control({
 
 /** Renders a stored answer back as something a person can read. */
 export function formatAnswer(field: FieldSpec, value: unknown): string {
-  if (value === undefined || value === null || value === '') return '—';
+  if (value === undefined || value === null || value === '') return '-';
 
   switch (field.type) {
     case 'boolean':
@@ -403,7 +403,7 @@ export function formatAnswer(field: FieldSpec, value: unknown): string {
       return field.constraints?.options?.find((o) => o.value === value)?.label ?? String(value);
     case 'multi_select': {
       const chosen = Array.isArray(value) ? (value as string[]) : [];
-      if (chosen.length === 0) return '—';
+      if (chosen.length === 0) return '-';
       return chosen
         .map((v) => field.constraints?.options?.find((o) => o.value === v)?.label ?? v)
         .join(', ');
@@ -412,7 +412,7 @@ export function formatAnswer(field: FieldSpec, value: unknown): string {
       return `${value} ${field.constraints?.unit ?? 'hours'}`;
     case 'location': {
       const v = value as { label?: string; city?: string };
-      return v.label && v.label !== v.city ? `${v.label}, ${v.city}` : (v.city ?? '—');
+      return v.label && v.label !== v.city ? `${v.label}, ${v.city}` : (v.city ?? '-');
     }
     case 'range': {
       const v = value as { from?: number; to?: number };

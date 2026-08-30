@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/dates';
+import { EmptyState, Loading } from '../components/ui/Feedback';
+import { BellSlash } from '@phosphor-icons/react';
 
 interface Notification {
   id: string;
@@ -122,7 +124,7 @@ export default function Notifications() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="page-title">Notifications</h1>
-          <p className="text-sm text-gray-600">
+          <p className="page-subtitle">
             {unread > 0 ? `${unread} unread` : 'Nothing waiting on you.'}
           </p>
         </div>
@@ -149,7 +151,7 @@ export default function Notifications() {
 
       <Channels />
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
 
       {groups.map((group) => {
         const inGroup = rows.filter((n) => (TYPE_GROUP[n.type] ?? 'other') === group);
@@ -184,9 +186,9 @@ export default function Notifications() {
                   <div className="flex items-center gap-2">
                     {linkFor(n) && (
                       <Link
-                        className={
+                        className={`btn-sm ${
                           n.targetAction && n.targetAction !== 'view' ? 'btn' : 'btn-outline'
-                        }
+                        }`}
                         to={linkFor(n)!}
                         onClick={() => markRead(n.id)}
                       >
@@ -194,7 +196,7 @@ export default function Notifications() {
                       </Link>
                     )}
                     {!n.isRead && (
-                      <button className="btn-outline" onClick={() => markRead(n.id)}>
+                      <button className="btn-outline btn-sm" onClick={() => markRead(n.id)}>
                         Mark read
                       </button>
                     )}
@@ -207,9 +209,11 @@ export default function Notifications() {
       })}
 
       {!isLoading && rows.length === 0 && (
-        <p className="card p-6 text-center text-sm text-gray-400">
-          {filter === 'unread' ? 'Nothing unread.' : 'Nothing here yet.'}
-        </p>
+        <div className="card">
+          <EmptyState icon={BellSlash} title="Nothing to catch up on">
+            Interests, bookings and verification decisions all land here.
+          </EmptyState>
+        </div>
       )}
     </div>
   );
@@ -259,7 +263,7 @@ function Channels() {
 
   return (
     <div className="card space-y-2">
-      <h2 className="font-semibold text-gray-900">How we reach you</h2>
+      <h2 className="section-title">How we reach you</h2>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -276,12 +280,12 @@ function Channels() {
         <div>
           <p className="text-sm font-medium text-gray-800">WhatsApp</p>
           <p className="text-xs text-gray-500">
-            Bookings and payments only — a new request, a quotation, money held, a balance due,
+            Bookings and payments only. A new request, a quotation, money held, a balance due,
             and a verification decision. Never matches or messages.
           </p>
           {data.whatsappOptIn && !data.whatsappReachable && (
             <p className="text-xs text-amber-700">
-              Add a phone number to your profile — there is nowhere to send these yet.
+              Add a phone number to your profile. There is nowhere to send these yet.
             </p>
           )}
         </div>
@@ -364,7 +368,7 @@ function describe(n: Notification): string {
     case 'booking_request':
       return `${client} has asked about ${job || 'your services'}.`;
     case 'booking_quotation':
-      return money ? `${money} — ${job || 'the job'}.` : `A quotation on ${job || 'the job'}.`;
+      return money ? `${money}: ${job || 'the job'}.` : `A quotation on ${job || 'the job'}.`;
     case 'booking_confirmed':
       return `The provider has accepted ${job || 'the job'}. The date is held.`;
     case 'booking_payment':

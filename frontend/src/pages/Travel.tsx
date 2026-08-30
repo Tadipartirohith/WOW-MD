@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { Loading } from '../components/ui/Feedback';
 
 interface Destination {
   id: string;
@@ -83,7 +84,7 @@ export default function Travel() {
     setError('');
     try {
       await api.post('/travel/itineraries', {
-        title: `${pkg.destinationName} — ${pkg.title}`,
+        title: `${pkg.destinationName}: ${pkg.title}`,
         packageId: pkg.id,
         items: Array.from({ length: pkg.nights }, (_, i) => ({
           day: i + 1,
@@ -112,13 +113,13 @@ export default function Travel() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Honeymoon</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Start from your budget and the time you have. Picking a package opens an itinerary with a
           day for every night.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <div className="card space-y-3">
         <div className="flex flex-wrap gap-2">
@@ -168,10 +169,10 @@ export default function Travel() {
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
       {!isLoading && packages.length === 0 && (
         <p className="card text-sm text-gray-500">
-          Nothing matches that. Widen the budget or the dates — or clear the filters to see the
+          Nothing matches that. Widen the budget or the dates, or clear the filters to see the
           whole catalogue.
         </p>
       )}
@@ -187,7 +188,7 @@ export default function Travel() {
                 {p.destinationName}
                 {p.country ? `, ${p.country}` : ''}
               </p>
-              <h2 className="font-semibold text-gray-900">{p.title}</h2>
+              <h2 className="section-title">{p.title}</h2>
               <p className="text-sm text-gray-600">
                 {p.nights} night{p.nights === 1 ? '' : 's'}
               </p>
@@ -216,7 +217,7 @@ export default function Travel() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card">
-          <h2 className="mb-2 font-semibold text-gray-900">Your itineraries</h2>
+          <h2 className="section-title mb-2">Your itineraries</h2>
           <div className="divide-y">
             {itineraries.map((it) => (
               <div key={it.id} className="py-2">
@@ -233,7 +234,7 @@ export default function Travel() {
         </div>
 
         <form onSubmit={createBlank} className="card space-y-2">
-          <h2 className="font-semibold text-gray-900">Plan something of your own</h2>
+          <h2 className="section-title">Plan something of your own</h2>
           <p className="text-sm text-gray-600">
             Somewhere that is not in the catalogue? Start a blank itinerary.
           </p>

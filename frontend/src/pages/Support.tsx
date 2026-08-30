@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import PhotoUploader from '../components/PhotoUploader';
 import { formatDateTime } from '../lib/dates';
+import { Loading } from '../components/ui/Feedback';
 
 interface SupportCase {
   id: string;
@@ -22,7 +23,7 @@ const STATUS_LABEL: Record<string, string> = {
   in_progress: 'Being looked into',
   waiting_for_information: 'Waiting on you',
   resolved: 'Resolved',
-  rejected: 'Closed — no action',
+  rejected: 'Closed, no action',
   escalated: 'Escalated for a visit',
   closed: 'Closed',
 };
@@ -72,8 +73,8 @@ export default function Support() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="page-title">Support</h1>
-          <p className="text-sm text-gray-600">
-            Anything that has gone wrong — a booking, a payment, a listing that will not verify.
+          <p className="page-subtitle">
+            Anything that has gone wrong. A booking, a payment, a listing that will not verify.
             Somebody reads every one of these.
           </p>
         </div>
@@ -82,8 +83,8 @@ export default function Support() {
         </button>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       {raising && (
         <RaiseCase
@@ -100,7 +101,7 @@ export default function Support() {
         />
       )}
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
 
       {!isLoading && rows.length === 0 && !raising && (
         <p className="card text-sm text-gray-400">
@@ -182,7 +183,7 @@ function Section({
                           {STATUS_LABEL[h.status] ?? h.status.replace(/_/g, ' ')}
                         </span>{' '}
                         · {formatDateTime(h.at)}
-                        {h.remarks ? ` — ${h.remarks}` : ''}
+                        {h.remarks ? `: ${h.remarks}` : ''}
                       </li>
                     ))}
                   </ol>
@@ -320,7 +321,7 @@ function RaiseCase({
         <span className="font-medium text-gray-700">Anything you can show us</span>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {evidence.map((url, i) => (
-            <span key={url} className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs">
+            <span key={url} className="flex items-center gap-1 rounded-sm bg-gray-100 px-2 py-1 text-xs">
               Attachment {i + 1}
               <button
                 type="button"

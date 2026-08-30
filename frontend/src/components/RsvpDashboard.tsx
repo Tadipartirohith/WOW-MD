@@ -104,15 +104,15 @@ export default function RsvpDashboard({ eventId }: { eventId: string }) {
   return (
     <div className="card space-y-4">
       <div>
-        <h3 className="font-medium text-gray-900">Who is coming</h3>
+        <h3 className="section-title">Who is coming</h3>
         <p className="text-sm text-gray-600">
           {data.totalInvited} invitation(s), covering {data.totalInvitedHeadcount} people. Click a
           number to see who.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {(Object.keys(CATEGORY_LABEL) as Category[]).map((key) => (
@@ -120,7 +120,7 @@ export default function RsvpDashboard({ eventId }: { eventId: string }) {
             key={key}
             type="button"
             onClick={() => setOpen(open === key ? null : key)}
-            className={`rounded border p-3 text-left transition hover:border-brand ${
+            className={`rounded-sm border p-3 text-left transition hover:border-brand ${
               open === key ? 'border-brand ring-2 ring-brand' : 'border-gray-200'
             }`}
           >
@@ -222,10 +222,10 @@ export default function RsvpDashboard({ eventId }: { eventId: string }) {
                           ? `${new Date(g.lastRemindedAt).toLocaleDateString()}${
                               g.reminderCount > 1 ? ` (${g.reminderCount}×)` : ''
                             }`
-                          : '—'
+                          : '-'
                         : g.respondedAt
                           ? new Date(g.respondedAt).toLocaleDateString()
-                          : '—'}
+                          : '-'}
                     </td>
                     {open === 'not_responded' && (
                       <td className="py-2 text-right">
@@ -253,7 +253,7 @@ export default function RsvpDashboard({ eventId }: { eventId: string }) {
             rather than three screens away.
           */}
           {open === 'coming' && guests.length > 0 && (
-            <div className="rounded bg-gray-50 p-3 text-sm">
+            <div className="rounded-sm bg-gray-50 p-3 text-sm">
               <p className="text-gray-700">
                 {c.coming.people} people confirmed for {data.event.name}
                 {data.event.eventDate ? ` on ${data.event.eventDate}` : ''}.
@@ -262,7 +262,7 @@ export default function RsvpDashboard({ eventId }: { eventId: string }) {
                 Book a vendor for this
               </Link>
               <span className="ml-2 text-xs text-gray-500">
-                Photography, catering, decoration — the numbers above are what they will quote
+                Photography, catering, decoration. The numbers above are what they will quote
                 against.
               </span>
             </div>

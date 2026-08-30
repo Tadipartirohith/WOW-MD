@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import PhotoUploader from './PhotoUploader';
+import { Loading } from './ui/Feedback';
 
 interface PhotoState {
   photos: string[];
@@ -68,8 +69,8 @@ export default function ProfilePhotos({
         add up to {data?.max ?? 20}.
       </p>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {isLoading && <Loading rows={3} />}
 
       <div className="flex flex-wrap gap-3">
         {photos.map((url) => (
@@ -78,7 +79,7 @@ export default function ProfilePhotos({
               src={url}
               alt=""
               loading="lazy"
-              className={`h-32 w-32 rounded object-cover ${
+              className={`h-32 w-32 rounded-sm object-cover ${
                 url === primary ? 'ring-2 ring-brand' : 'ring-1 ring-gray-200'
               }`}
             />

@@ -149,13 +149,13 @@ export default function Register() {
       <form onSubmit={submit} className="card w-full max-w-2xl space-y-6" noValidate>
         <div>
           <h1 className="page-title">Create your WOW account</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="page-subtitle">
             Pick the kind of account you need. This decides what you can do on the platform, and
             you cannot change it later without contacting support.
           </p>
         </div>
 
-        {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="alert-critical">{error}</p>}
 
         <fieldset>
           <legend className="label">I am joining as</legend>

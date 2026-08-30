@@ -128,9 +128,9 @@ export default function ChatMenu({
   });
 
   return (
-    <div className="absolute right-0 z-30 mt-1 w-72 rounded border border-gray-200 bg-surface p-2 shadow-lg">
-      {error && <p className="mb-2 rounded bg-red-50 p-2 text-xs text-red-600">{error}</p>}
-      {notice && <p className="mb-2 rounded bg-emerald-50 p-2 text-xs text-emerald-700">{notice}</p>}
+    <div className="absolute right-0 z-30 mt-1 w-72 rounded-sm border border-gray-200 bg-surface p-2 shadow-pop">
+      {error && <p className="mb-2 alert-critical text-xs">{error}</p>}
+      {notice && <p className="mb-2 alert-positive text-xs">{notice}</p>}
 
       {view === 'menu' && (
         <div className="space-y-1 text-sm">
@@ -211,7 +211,7 @@ export default function ChatMenu({
           )}
           <div className="max-h-56 space-y-1 overflow-y-auto">
             {(results ?? []).map((m) => (
-              <div key={m.id} className="rounded bg-gray-50 p-2 text-xs text-gray-700">
+              <div key={m.id} className="rounded-sm bg-gray-50 p-2 text-xs text-gray-700">
                 <p className="line-clamp-3">{m.body}</p>
                 <p className="mt-0.5 text-[10px] text-gray-400">
                   {new Date(m.createdAt).toLocaleString()}
@@ -285,7 +285,7 @@ function MenuItem({
   return (
     <button
       type="button"
-      className={`block w-full rounded px-2 py-1.5 text-left hover:bg-gray-50 ${
+      className={`block w-full rounded-sm px-2 py-1.5 text-left hover:bg-gray-50 ${
         danger ? 'text-red-600' : 'text-gray-700'
       }`}
       onClick={onClick}

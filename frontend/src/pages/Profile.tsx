@@ -6,6 +6,7 @@ import { useAuth } from '../store/auth';
 import { Permission, can } from '../lib/permissions';
 import IdentityPanel from '../components/IdentityPanel';
 import { formatDate } from '../lib/dates';
+import { Loading } from '../components/ui/Feedback';
 
 const empty = {
   displayName: '',
@@ -125,7 +126,7 @@ export default function Profile() {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h1 className="page-title">Your Profile</h1>
-            <p className="text-sm text-gray-600">
+            <p className="page-subtitle">
               Your account details. {hasBiodata && 'The biodata families see lives separately.'}
             </p>
           </div>
@@ -136,9 +137,9 @@ export default function Profile() {
           )}
         </div>
 
-        {notice && <p className="rounded bg-green-50 p-2 text-sm text-green-700">{notice}</p>}
-        {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
-        {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+        {notice && <p className="alert-positive">{notice}</p>}
+        {error && <p className="alert-critical">{error}</p>}
+        {isLoading && <Loading rows={3} />}
 
         {/*
           Read back from the server's own response, not from the form state, so
@@ -187,7 +188,7 @@ export default function Profile() {
               between labels that described neither of them.
             */}
             {isSteward && (
-              <div className="grid gap-3 rounded border border-gray-200 p-3 sm:grid-cols-2">
+              <div className="grid gap-3 rounded-sm border border-gray-200 p-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="text-gray-700">Managing profile for</span>
                   <select
@@ -317,8 +318,8 @@ export default function Profile() {
           Ready to be seen by other families?{' '}
           <Link className="text-brand underline" to="/biodata">
             Fill in your biodata
-          </Link>{' '}
-          — that is what gets circulated.
+          </Link>.{' '}
+          That is what gets circulated.
         </p>
       )}
 

@@ -63,21 +63,21 @@ export default function BookingChat({ bookingId }: { bookingId: string }) {
 
   return (
     <div className="border-t pt-3">
-      <h3 className="text-sm font-semibold text-gray-900">Conversation</h3>
+      <h3 className="section-title text-sm">Conversation</h3>
       <p className="text-xs text-gray-500">{state?.note ?? 'Loading…'}</p>
 
       {state?.open && (
-        <div className="mt-2 max-h-64 space-y-2 overflow-y-auto rounded bg-gray-50 p-3">
+        <div className="mt-2 max-h-64 space-y-2 overflow-y-auto rounded-sm bg-gray-50 p-3">
           {messages.length === 0 && (
             <p className="text-sm text-gray-400">Nothing said yet.</p>
           )}
           {messages.map((m) => (
             <div
               key={m.id}
-              className={`max-w-[80%] rounded px-3 py-2 text-sm ${
+              className={`max-w-[80%] rounded-sm px-3 py-2 text-sm ${
                 m.senderId === me
                   ? 'ml-auto bg-brand text-brand-fg'
-                  : 'bg-surface text-gray-800 shadow-sm'
+                  : 'bg-surface text-gray-800 shadow-card'
               }`}
             >
               <p className="whitespace-pre-wrap">{m.body}</p>

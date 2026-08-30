@@ -23,7 +23,7 @@ export default function BusinessSwitcher() {
     <label className="flex items-center gap-2 text-sm">
       <span className="sr-only">Business</span>
       <select
-        className="rounded border border-gray-300 px-2 py-1 text-sm"
+        className="rounded-sm border border-gray-300 px-2 py-1 text-sm"
         value={activeId ?? ''}
         onChange={(e) => {
           setBusinessId(e.target.value);
@@ -36,7 +36,7 @@ export default function BusinessSwitcher() {
         {businesses.map((b) => (
           <option key={b.id} value={b.id}>
             {b.name}
-            {b.isApproved ? '' : ' — not live'}
+            {b.isApproved ? '' : ': not live'}
           </option>
         ))}
       </select>

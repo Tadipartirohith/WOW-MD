@@ -32,7 +32,7 @@ export default function ForgotPassword() {
 
         {sent ? (
           <>
-            <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">
+            <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">
               If an account exists for <strong>{email}</strong>, a reset link is on its way. It
               works once and expires shortly.
             </p>

@@ -33,7 +33,7 @@ const SECTIONS: { title: string; blurb: string; statuses: string[] }[] = [
   { title: 'Quoted', blurb: 'Waiting on the client to accept', statuses: ['quotation_sent'] },
   {
     title: 'To accept',
-    blurb: 'Priced and agreed — accepting is what takes the window off your calendar',
+    blurb: 'Priced and agreed, accepting is what takes the window off your calendar',
     statuses: ['quotation_accepted'],
   },
   {
@@ -122,7 +122,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
 
   return (
     <div className="space-y-4">
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
       {bookings.length === 0 && (
         <p className="card text-sm text-gray-400">No bookings against your listings yet.</p>
       )}
@@ -133,7 +133,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
         return (
           <div key={section.title} className="card space-y-2">
             <div>
-              <h3 className="font-medium text-gray-900">
+              <h3 className="section-title">
                 {section.title}{' '}
                 <span className="text-sm font-normal text-gray-400">({rows.length})</span>
               </h3>
@@ -147,7 +147,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
                       {Number(b.amount) > 0
                         ? `${b.currency} ${b.amount}`
                         : b.expectedBudget
-                          ? `Not priced — their budget is ${b.currency} ${b.expectedBudget}`
+                          ? `Not priced, their budget is ${b.currency} ${b.expectedBudget}`
                           : 'Not priced yet'}
                     </p>
                     <p className="text-sm text-gray-500">
@@ -277,8 +277,8 @@ function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () =>
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 w-full space-y-3 rounded bg-gray-50 p-3">
-      {msg && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{msg}</p>}
+    <form onSubmit={submit} className="mt-3 w-full space-y-3 rounded-sm bg-gray-50 p-3">
+      {msg && <p className="alert-critical">{msg}</p>}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-sm">
           <span className="text-gray-700">Total</span>

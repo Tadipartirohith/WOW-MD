@@ -262,6 +262,18 @@
       disabled:pointer-events-none disabled:opacity-45;
   }
 
+  /*
+   * A smaller button, for actions that live inside a row.
+   *
+   * The system had one button size, tuned for a page-level call to action, and
+   * a list of eight notifications therefore carried eight of them at that
+   * weight. A row action is not less important than a page action but it is
+   * repeated, and repetition is what decides how loud a control should be.
+   */
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
   .input {
     @apply w-full rounded-[--radius-sm] border border-gray-300 bg-surface px-3 py-2.5
       text-sm text-gray-900 transition-[border-color,box-shadow] duration-150
@@ -318,6 +330,51 @@
   }
   .pill-critical {
     @apply pill bg-critical-bg text-critical-fg;
+  }
+
+  /*
+   * Inline messages.
+   *
+   * There were fifty-eight of these written by hand across the app, in four
+   * spellings of the same idea: `rounded bg-red-50 p-3 text-sm text-red-600`
+   * and three near-misses. They are one class each now, which is the only way
+   * an error looks the same on the page that reports it and the page that
+   * reports it differently.
+   *
+   * `role="alert"` belongs on the element, not in here, because whether a
+   * message interrupts a screen reader depends on whether it arrived in
+   * response to something the person just did.
+   */
+  .alert {
+    @apply flex items-start gap-2 rounded-[--radius-sm] px-3 py-2.5 text-sm;
+  }
+  .alert-critical {
+    @apply alert bg-critical-bg text-critical-fg;
+  }
+  .alert-caution {
+    @apply alert bg-caution-bg text-caution-fg;
+  }
+  .alert-positive {
+    @apply alert bg-positive-bg text-positive-fg;
+  }
+  .alert-neutral {
+    @apply alert bg-surface-sunken text-gray-600;
+  }
+
+  /*
+   * A heading inside a page, below the masthead.
+   *
+   * Distinct from `.page-title` on purpose: a screen has one top and any number
+   * of sections, and giving them the same treatment is how a page stops having
+   * a shape. This is the quieter one.
+   */
+  .section-title {
+    @apply text-base font-semibold tracking-[-0.014em] text-gray-900;
+  }
+
+  /* The line under a section heading. Same relationship as the page subtitle. */
+  .section-subtitle {
+    @apply mt-0.5 max-w-[70ch] text-sm leading-relaxed text-gray-500;
   }
 
   /*

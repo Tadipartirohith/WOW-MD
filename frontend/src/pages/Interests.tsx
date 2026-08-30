@@ -5,6 +5,9 @@ import { useAuth } from '../store/auth';
 import { Permission, can } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
 import ProposalThread from '../components/ProposalThread';
+import { EmptyState } from '../components/ui/Feedback';
+import { HandHeart, UsersThree } from '@phosphor-icons/react';
+import { Loading } from '../components/ui/Feedback';
 
 interface Counterpart {
   id: string;
@@ -128,7 +131,7 @@ export default function Interests() {
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Interests</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Who has asked about this profile, who it has asked, and what came of each one.
         </p>
       </div>
@@ -137,12 +140,14 @@ export default function Interests() {
         <ProfileSelector value={profileId} onChange={setProfileId} label="For which client" />
       )}
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {!ready && (
-        <p className="card p-6 text-center text-sm text-gray-500">
-          Pick a client to see their interests.
-        </p>
+        <div className="card">
+          <EmptyState icon={UsersThree} title="Pick a client">
+            Interests belong to a profile, not to your account. Choose whose you want to see.
+          </EmptyState>
+        </div>
       )}
 
       {ready && (
@@ -168,12 +173,14 @@ export default function Interests() {
             ))}
           </nav>
 
-          {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+          {isLoading && <Loading rows={3} />}
 
           {!isLoading && rows.length === 0 && (
-            <p className="card p-6 text-center text-sm text-gray-500">
-              {TABS.find((t) => t.key === tab)?.empty}
-            </p>
+            <div className="card">
+              <EmptyState icon={HandHeart} title={`No ${(TABS.find((t) => t.key === tab)?.label ?? '').toLowerCase()} interests`}>
+                {TABS.find((t) => t.key === tab)?.empty}
+              </EmptyState>
+            </div>
           )}
 
           <div className="space-y-2">

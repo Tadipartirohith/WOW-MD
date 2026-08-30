@@ -63,7 +63,7 @@ export default function ConsentFields({
       <legend className="px-1 text-sm font-medium text-gray-700">Consent</legend>
       <p className="mb-3 text-xs text-gray-500">
         Record how this family gave permission. This is kept with the profile and cannot be edited
-        afterwards — a change of mind is recorded as a new entry.
+        afterwards. A change of mind is recorded as a new entry.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -151,7 +151,7 @@ export default function ConsentFields({
             onChange={(e) => set('allowsCirculation')(e.target.checked)}
           />
           <span className="text-sm text-brand-dark">
-            They are happy for this profile to be circulated — shared with other agents, put into
+            They are happy for this profile to be circulated: shared with other agents, put into
             the network, or sent out as a biodata.
             <span className="mt-1 block text-xs">
               Without this you can still hold the profile and match it yourself, but nothing leaves

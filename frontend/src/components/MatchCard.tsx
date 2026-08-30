@@ -247,7 +247,7 @@ export default function MatchCard({
               {facts.map((fact) => (
                 <li
                   key={fact}
-                  className="rounded bg-surface-sunken px-1.5 py-0.5 text-[0.75rem] text-gray-600"
+                  className="rounded-sm bg-surface-sunken px-1.5 py-0.5 text-[0.75rem] text-gray-600"
                 >
                   {fact}
                 </li>

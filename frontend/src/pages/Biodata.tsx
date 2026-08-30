@@ -167,8 +167,8 @@ export default function Biodata() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">Biodata</h1>
-          <p className="text-sm text-gray-600">
-            Saved section by section — you can stop and come back.
+          <p className="page-subtitle">
+            Saved section by section. You can stop and come back.
           </p>
         </div>
         {isSteward && <ProfileSelector value={profileId} onChange={setProfileId} label="Client" />}
@@ -186,9 +186,9 @@ export default function Biodata() {
               </p>
             )}
           </div>
-          <div className="h-2 w-full overflow-hidden rounded bg-gray-100">
+          <div className="h-2 w-full overflow-hidden rounded-sm bg-gray-100">
             <div
-              className="h-full rounded bg-brand transition-all"
+              className="h-full rounded-sm bg-brand transition-all"
               style={{ width: `${completion.percent}%` }}
             />
           </div>
@@ -208,8 +208,8 @@ export default function Biodata() {
         </div>
       )}
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       {/*
         The thing they made, before the forms that made it. A read-back list is
@@ -507,7 +507,7 @@ function PersonalForm({
             )}
           </div>
         </Field>
-        <Field label="Alternate mobile" hint="Optional — often the family's number">
+        <Field label="Alternate mobile" hint="Optional: often the family's number">
           <input
             className="input mt-1"
             inputMode="tel"
@@ -630,7 +630,7 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
         <span>A horoscope is available</span>
       </label>
       <p className="text-xs text-gray-500">
-        Answering &ldquo;no&rdquo; completes this section — plenty of families do not use one.
+        Answering &ldquo;no&rdquo; completes this section, plenty of families do not use one.
       </p>
 
       {available && (
@@ -937,7 +937,7 @@ function FamilyForm({
       </form>
 
       <div className="border-t pt-4">
-        <h3 className="font-medium text-gray-900">Siblings</h3>
+        <h3 className="section-title">Siblings</h3>
         <div className="mt-2 divide-y">
           {siblings.map((s) => (
             <div key={s.id} className="flex items-center justify-between py-2 text-sm">
@@ -1022,7 +1022,7 @@ function FamilyForm({
       </div>
 
       <div className="border-t pt-4">
-        <h3 className="font-medium text-gray-900">Family assets</h3>
+        <h3 className="section-title">Family assets</h3>
         <p className="text-xs text-gray-500">
           Hidden from everyone unless you mark one visible. Nothing here is part of the biodata you
           circulate by default.
@@ -1074,7 +1074,7 @@ function FamilyForm({
               onChange={(e) => setAsset((a) => ({ ...a, location: e.target.value || undefined }))}
             />
           </Field>
-          <Field label="Area" hint="Acres, square yards — whatever it is measured in">
+          <Field label="Area" hint="Acres, square yards, whatever it is measured in">
             <input
               className="input mt-1"
               value={String(asset.area ?? '')}
@@ -1409,12 +1409,12 @@ function PreferencesForm({
         </Field>
       </div>
 
-      <div className="space-y-3 rounded border border-gray-200 p-3">
+      <div className="space-y-3 rounded-sm border border-gray-200 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-gray-800">Your own horoscope</p>
             <p className="text-xs text-gray-500">
-              The same chart as on the Horoscope section — filled in here because this is where
+              The same chart as on the Horoscope section, filled in here because this is where
               families have it to hand. Saved separately from the preferences above.
             </p>
           </div>
@@ -1611,10 +1611,10 @@ function AadhaarPanel({ profileId }: { profileId: string }) {
       </p>
 
       <p className="text-sm text-gray-600">
-        One document, one profile — this is what keeps duplicates off the platform. The number is
+        One document, one profile. This is what keeps duplicates off the platform. The number is
         checked, turned into a fingerprint and discarded; only the last four digits are kept.
       </p>
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {!sessionId ? (
         <form onSubmit={send} className="flex flex-wrap items-end gap-2">
@@ -1634,7 +1634,7 @@ function AadhaarPanel({ profileId }: { profileId: string }) {
         <form onSubmit={verify} className="flex flex-wrap items-end gap-2">
           <Field
             label="Six-digit code"
-            hint={devCode ? `Development mode — the code is ${devCode}` : 'Sent to the registered mobile'}
+            hint={devCode ? `Development mode, the code is ${devCode}` : 'Sent to the registered mobile'}
           >
             <input
               className="input mt-1 w-40"

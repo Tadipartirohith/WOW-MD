@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { Loading } from './ui/Feedback';
 import DynamicForm, {
   Answers,
   FieldSpec,
@@ -125,7 +126,7 @@ export default function VendorServices({ vendorId }: { vendorId: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-gray-900">Services you offer</h2>
+          <h2 className="section-title">Services you offer</h2>
           <p className="text-sm text-gray-600">
             What you sell, what it costs, and how many you can run at once. Clients see these, and
             the questions they are asked come from the service they pick.
@@ -136,8 +137,8 @@ export default function VendorServices({ vendorId }: { vendorId: string }) {
         </button>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       {adding && (
         <AddService
@@ -152,7 +153,9 @@ export default function VendorServices({ vendorId }: { vendorId: string }) {
         />
       )}
 
-      {isLoading && <p className="card text-sm text-gray-400">Loading…</p>}
+      {isLoading && <div className="card">
+          <Loading rows={2} />
+        </div>}
       {!isLoading && services.length === 0 && !adding && (
         <p className="card text-sm text-gray-400">
           Nothing listed yet. Add a service to start taking requests.
@@ -163,7 +166,7 @@ export default function VendorServices({ vendorId }: { vendorId: string }) {
         <div key={service.id} className="card space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className="font-medium text-gray-900">
+              <h3 className="section-title">
                 {service.displayName ?? service.definition?.name ?? 'Service'}
               </h3>
               <p className="text-xs text-gray-500">
@@ -345,7 +348,7 @@ function AddService({ taken, onAdd }: { taken: string[]; onAdd: (b: unknown) => 
             {definitions.map((d) => (
               <option key={d.id} value={d.id} disabled={taken.includes(d.id)}>
                 {d.name}
-                {taken.includes(d.id) ? ' — already listed' : ''}
+                {taken.includes(d.id) ? ': already listed' : ''}
               </option>
             ))}
           </select>
@@ -500,7 +503,7 @@ function Offerings({
           {editing === 'new' ? 'Cancel' : 'Add a price'}
         </button>
       </div>
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {editing === 'new' && (
         <OfferingForm
@@ -551,7 +554,7 @@ function Offerings({
                 <p className="text-sm font-medium text-gray-900">
                   {o.name}
                   {o.isPackage && (
-                    <span className="ml-2 rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
+                    <span className="ml-2 rounded-sm bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
                       Package
                     </span>
                   )}
@@ -574,7 +577,7 @@ function Offerings({
         )}
         {service.offerings.length === 0 && editing !== 'new' && (
           <p className="py-2 text-sm text-gray-400">
-            No prices yet — clients cannot request this service until there is one.
+            No prices yet, clients cannot request this service until there is one.
           </p>
         )}
       </div>
@@ -641,7 +644,7 @@ function OfferingForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded bg-gray-50 p-3">
+    <form onSubmit={submit} className="space-y-3 rounded-sm bg-gray-50 p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">
           <span className="font-medium text-gray-700">Name</span>

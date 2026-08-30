@@ -13,6 +13,7 @@ import {
 import ConsentFields, { ConsentDraft, consentPayload, emptyConsent } from '../components/ConsentFields';
 import ShareProfileDialog from '../components/ShareProfileDialog';
 import PhotoUploader from '../components/PhotoUploader';
+import { Loading } from '../components/ui/Feedback';
 
 interface ManagedProfile {
   id: string;
@@ -142,7 +143,7 @@ export default function ManagedProfiles() {
       setNotice(
         inviteNow
           ? `Profile created and an invitation emailed to ${profile.contactEmail}.`
-          : 'Profile saved. It is matchable now — circulate it, or invite them to claim it later.',
+          : 'Profile saved. It is matchable now: circulate it, or invite them to claim it later.',
       );
       qc.invalidateQueries({ queryKey: ['managed-profiles'] });
     },
@@ -229,7 +230,7 @@ export default function ManagedProfiles() {
               : 'Before you can build client profiles, tell us who you are. An administrator reviews each agency.'}
           </p>
           {agency.rejectionReason && (
-            <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+            <p className="mt-2 alert-critical">
               Not approved: {agency.rejectionReason}
             </p>
           )}
@@ -245,17 +246,17 @@ export default function ManagedProfiles() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Client Profiles</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           Build a complete profile for someone who has not joined yet. It can be matched
           immediately; when you invite them, they set their own password and take ownership.
         </p>
       </div>
 
-      {notice && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {notice && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <form onSubmit={submit} className="card space-y-4">
-        <h2 className="font-semibold text-gray-900">New profile</h2>
+        <h2 className="section-title">New profile</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className="label">Full name</label>
@@ -391,8 +392,8 @@ export default function ManagedProfiles() {
       </form>
 
       <div className="card space-y-3">
-        <h2 className="font-semibold text-gray-900">Profiles you manage</h2>
-        {isLoading && <p className="text-sm text-gray-500">Loading...</p>}
+        <h2 className="section-title">Profiles you manage</h2>
+        {isLoading && <Loading rows={3} />}
         {!isLoading && profiles.length === 0 && (
           <p className="text-sm text-gray-400">You have not built any profiles yet.</p>
         )}
@@ -433,7 +434,7 @@ export default function ManagedProfiles() {
                   {p.lifecycle && p.lifecycle !== 'active' && (
                     <p className="mt-1 text-xs font-medium text-amber-700">
                       {LIFECYCLE_LABEL[p.lifecycle]}
-                      {p.lifecycleReason ? ` — ${p.lifecycleReason}` : ''}
+                      {p.lifecycleReason ? `: ${p.lifecycleReason}` : ''}
                     </p>
                   )}
                   {p.claimStatus === 'claimed' && (
@@ -652,13 +653,13 @@ function PhotoEditor({
             <img
               src={photo}
               alt=""
-              className="h-24 w-24 rounded object-cover"
+              className="h-24 w-24 rounded-sm object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.opacity = '0.3';
               }}
             />
             <button
-              className="absolute right-1 top-1 rounded bg-surface/90 px-1.5 text-xs"
+              className="absolute right-1 top-1 rounded-sm bg-surface/90 px-1.5 text-xs"
               onClick={() => drop(photo)}
               aria-label="Remove photo"
             >
@@ -695,7 +696,7 @@ function PhotoEditor({
         </form>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        Up to 20 photos. Uploading is usually easier — the file goes straight from this device to
+        Up to 20 photos. Uploading is usually easier. The file goes straight from this device to
         storage without passing through us.
       </p>
     </div>
@@ -718,11 +719,11 @@ function ReachPanel({ profileId }: { profileId: string }) {
     retry: false,
   });
 
-  if (isLoading) return <p className="py-2 text-sm text-gray-400">Loading…</p>;
+  if (isLoading) return <Loading rows={2} className="py-2" />;
   if (!data) return null;
 
   return (
-    <div className="mt-2 rounded bg-gray-50 p-3">
+    <div className="mt-2 rounded-sm bg-gray-50 p-3">
       <div className="grid gap-3 sm:grid-cols-4">
         <Metric label="Shared with" value={data.live} note={`${data.revoked} withdrawn`} />
         <Metric label="Opened" value={data.opened} note={`${data.totalViews} views`} />
@@ -804,7 +805,7 @@ function EnableCirculation({
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 space-y-3 rounded bg-amber-50/60 p-3">
+    <form onSubmit={submit} className="mt-3 space-y-3 rounded-sm bg-amber-50/60 p-3">
       <div>
         <p className="text-sm font-medium text-gray-900">
           {needsReconfirmation ? 'Re-confirm circulation' : 'Enable circulation'} for {profileName}
@@ -816,7 +817,7 @@ function EnableCirculation({
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <ConsentFields value={consent} onChange={setConsent} showCirculation={false} />
 

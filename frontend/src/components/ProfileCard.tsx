@@ -123,7 +123,7 @@ export default function ProfileCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">{name}</h2>
+              <h2 className="section-title">{name}</h2>
               <p className="text-sm text-gray-500">
                 {facts.length > 0 ? facts.join(' · ') : 'Nothing filled in yet'}
               </p>
@@ -145,7 +145,7 @@ export default function ProfileCard({
         </div>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <div className="flex flex-wrap gap-2">
         <button className="btn" onClick={onEdit}>
@@ -170,11 +170,11 @@ export default function ProfileCard({
         people do not think about until afterwards.
       */}
       {confirming && (
-        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm">
+        <div className="rounded-sm border border-red-200 bg-red-50 p-3 text-sm">
           <p className="font-medium text-red-800">Clear this biodata and start again?</p>
           <p className="mt-1 text-red-700">
             The details, the family information and every photograph are removed, and the profile
-            stops being matchable until you fill it in again. Your account stays — closing that is
+            stops being matchable until you fill it in again. Your account stays, closing that is
             under Security. Interests already exchanged and the consent record are kept.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">

@@ -4,6 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { VENDOR_CATEGORIES } from '../lib/permissions';
 import DynamicForm, { Answers, FieldSpec, cleanAnswers, validateAnswers } from '../components/DynamicForm';
+import { EmptyState, Loading } from '../components/ui/Feedback';
+import { Star, Storefront } from '@phosphor-icons/react';
 
 interface Vendor {
   id: string;
@@ -13,6 +15,13 @@ interface Vendor {
   description?: string;
   ratingAvg: number;
   ratingCount: number;
+  /**
+   * Already on the wire and never read.
+   *
+   * A directory of wedding vendors with no photographs in it is a directory
+   * nobody browses. The first portfolio image is the cover.
+   */
+  portfolio?: string[];
 }
 
 interface Slot {
@@ -76,7 +85,7 @@ export default function Vendors() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">Vendors</h1>
-          <p className="text-sm text-gray-600">
+          <p className="page-subtitle">
             Pick a window that suits you and tell them what you need. They come back with a price.
           </p>
         </div>
@@ -108,30 +117,86 @@ export default function Vendors() {
         </div>
       </div>
 
-      {isLoading && <p className="text-gray-500">Loading…</p>}
+      {isLoading && <Loading rows={3} />}
       {!isLoading && vendors.length === 0 && (
-        <p className="card text-sm text-gray-500">No vendors match that search.</p>
+        <div className="card">
+          <EmptyState icon={Storefront} title="No vendors match that search">
+            Try a different city, or clear the category and see everything that is available.
+          </EmptyState>
+        </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {vendors.map((v) => (
-          <div key={v.id} className="card flex flex-col">
-            <div className="flex items-start justify-between gap-2">
-              <h2 className="font-semibold">{v.name}</h2>
-              {v.ratingCount > 0 && (
-                <span className="whitespace-nowrap text-sm text-amber-600">
-                  ★ {v.ratingAvg} ({v.ratingCount})
+          <div
+            key={v.id}
+            className="group/vendor flex flex-col overflow-hidden rounded-lg border border-gray-200
+              bg-surface transition-[border-color,box-shadow] duration-200
+              hover:border-gray-300 hover:shadow-card"
+          >
+            {/*
+              The cover. Where a vendor has uploaded nothing, the space still
+              gets held: a grid where some cards have a picture and others start
+              with a headline has no rhythm at all, and the empty tile is also
+              honest about which vendors have bothered.
+            */}
+            <div className="relative aspect-[3/2] overflow-hidden bg-surface-sunken">
+              {v.portfolio?.[0] ? (
+                <img
+                  src={v.portfolio[0]}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out
+                    group-hover/vendor:scale-[1.03]"
+                />
+              ) : (
+                /*
+                  No photograph yet.
+
+                  A flat grey box repeated across a grid reads as a page that
+                  failed to load. One quiet jade wash and the trade's own glyph
+                  says the same thing — nothing uploaded here — while still
+                  giving the grid something to look at. Deliberately one tint
+                  rather than one per category: a directory that changes colour
+                  every tile has no accent, it has a palette.
+                */
+                <span className="grid h-full w-full place-items-center bg-gradient-to-br from-brand/[0.07] to-transparent text-gray-300">
+                  <Storefront size={24} weight="light" aria-hidden />
                 </span>
               )}
             </div>
-            <p className="text-xs uppercase tracking-wide text-gray-400">
-              {CATEGORY_LABEL[v.category] ?? v.category}
-            </p>
-            <p className="text-sm text-gray-500">{v.city}</p>
-            {v.description && <p className="mt-2 flex-1 text-sm text-gray-600">{v.description}</p>}
-            <button className="btn mt-3" onClick={() => setRequesting(v)}>
-              Check availability
-            </button>
+
+            <div className="flex flex-1 flex-col p-4">
+              <div className="flex items-start justify-between gap-2">
+                <h2 className="section-title truncate">{v.name}</h2>
+                {v.ratingCount > 0 && (
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-gray-600">
+                    <Star size={13} weight="fill" className="text-caution-fg" aria-hidden />
+                    <span className="font-mono">{v.ratingAvg}</span>
+                    <span className="text-gray-400">({v.ratingCount})</span>
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {[CATEGORY_LABEL[v.category] ?? v.category, v.city].filter(Boolean).join(' \u00b7 ')}
+              </p>
+              {v.description && (
+                <p className="mt-2 line-clamp-2 flex-1 text-sm text-gray-600">{v.description}</p>
+              )}
+              {/*
+                Quiet by default, accented on hover. Twelve filled buttons in a
+                grid is the accent shouting from every tile at once; the action
+                is still obvious, and the card that the pointer is actually on
+                is the one that looks pressable.
+              */}
+              <button
+                className="btn-outline btn-sm mt-4 w-full transition-colors
+                  group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
+                onClick={() => setRequesting(v)}
+              >
+                Check availability
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -289,7 +354,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-surface p-6">
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">{vendor.name}</h2>
+            <h2 className="section-title">{vendor.name}</h2>
             <p className="text-sm text-gray-600">
               {CATEGORY_LABEL[vendor.category] ?? vendor.category}
               {vendor.city ? ` · ${vendor.city}` : ''}
@@ -300,9 +365,9 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
           </button>
         </div>
 
-        {error && <p className="mb-3 rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mb-3 alert-critical">{error}</p>}
         {existing && (
-          <div className="mb-3 rounded bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="mb-3 alert-caution">
             You have already asked this vendor for that window.{' '}
             <button className="underline" onClick={() => nav(`/bookings?highlight=${existing}`)}>
               Open the request you already have
@@ -314,7 +379,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
         {isLoading && <p className="text-sm text-gray-400">Checking their calendar…</p>}
 
         {!isLoading && slots.length === 0 && (
-          <p className="rounded bg-gray-50 p-4 text-sm text-gray-600">
+          <p className="rounded-sm bg-gray-50 p-4 text-sm text-gray-600">
             They have nothing free in the next six months. Message them from Chat if your date is
             further out.
           </p>
@@ -324,7 +389,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
           <form onSubmit={submit} className="space-y-4">
             <div>
               <p className="label">Pick a window</p>
-              <div className="max-h-56 space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
+              <div className="max-h-56 space-y-3 overflow-y-auto rounded-sm border border-gray-200 p-3">
                 {[...byDate.entries()].map(([date, daySlots]) => (
                   <div key={date}>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
@@ -340,7 +405,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                           key={slot.id}
                           type="button"
                           onClick={() => setSlotId(slot.id)}
-                          className={`rounded border px-3 py-1.5 text-sm ${
+                          className={`rounded-sm border px-3 py-1.5 text-sm ${
                             slotId === slot.id
                               ? 'border-brand bg-brand-light text-brand-dark'
                               : 'border-gray-200 text-gray-700 hover:bg-gray-50'
@@ -401,7 +466,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                       key={o.id}
                       type="button"
                       onClick={() => setOfferingId(o.id)}
-                      className={`block w-full rounded border px-3 py-2 text-left text-sm ${
+                      className={`block w-full rounded-sm border px-3 py-2 text-left text-sm ${
                         offeringId === o.id
                           ? 'border-brand bg-brand-light'
                           : 'border-gray-200 hover:bg-gray-50'
@@ -411,7 +476,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                         <span className="font-medium text-gray-900">
                           {o.name}
                           {o.isPackage && (
-                            <span className="ml-2 rounded bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
+                            <span className="ml-2 rounded-sm bg-brand/10 px-1.5 py-0.5 text-xs text-brand">
                               Package
                             </span>
                           )}
@@ -485,7 +550,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                   {events.map((ev) => (
                     <option key={ev.id} value={ev.id}>
                       {ev.name}
-                      {ev.eventDate ? ` — ${ev.eventDate}` : ''}
+                      {ev.eventDate ? `: ${ev.eventDate}` : ''}
                     </option>
                   ))}
                 </select>
@@ -507,7 +572,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
               />
               <span className="mt-1 block text-xs text-gray-500">
                 {fields.length > 0
-                  ? 'Optional — the questions above cover the usual ground.'
+                  ? 'Optional. The questions above cover the usual ground.'
                   : 'The more specific this is, the closer their quote will be to the final price.'}
               </span>
             </label>

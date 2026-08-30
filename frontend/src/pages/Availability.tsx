@@ -185,8 +185,8 @@ export default function Availability() {
     return (
       <div className="card">
         <h1 className="page-title">Availability</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          Create your business listing first — availability hangs off it.
+        <p className="page-subtitle">
+          Create your business listing first, availability hangs off it.
         </p>
       </div>
     );
@@ -197,22 +197,22 @@ export default function Availability() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">Availability</h1>
-          <p className="text-sm text-gray-600">
+          <p className="page-subtitle">
             {window ? `Bookable from ${window.from} to ${window.to}.` : 'Rolling six-month window.'}{' '}
             Publish the windows you can actually take work in. A window stays open until you accept
-            a job — a request on its own takes nothing.
+            a job. A request on its own takes nothing.
           </p>
         </div>
         {listings.length > 1 && listing && (
-          <p className="rounded bg-gray-100 px-3 py-1 text-sm text-gray-700">
+          <p className="rounded-sm bg-gray-100 px-3 py-1 text-sm text-gray-700">
             {listing.name}
             <span className="ml-2 text-xs text-gray-500">switch in the header</span>
           </p>
         )}
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-      {notice && <p className="rounded bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
 
       {summary && (
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -265,7 +265,7 @@ export default function Availability() {
       {bucket && (
         <div className="card space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">
+            <h2 className="section-title">
               {BUCKET_TITLE[bucket]}
               <span className="ml-2 text-sm font-normal text-gray-500">
                 {bucketLoading ? 'loading…' : `${bucketSlots.length} window(s)`}
@@ -312,7 +312,7 @@ export default function Availability() {
       {selected && (
         <div className="card space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">{formatLongDate(selected)}</h2>
+            <h2 className="section-title">{formatLongDate(selected)}</h2>
             <span className="text-sm text-gray-500">
               {DAY_STATE_LABEL[byDate.get(selected)?.state ?? 'no_availability']}
             </span>
@@ -618,7 +618,7 @@ function NewSlot({
         <button className="btn">Publish window</button>
       </div>
       <p className="text-xs text-gray-500">
-        Capacity is how many bookings this window can take at once — five if you can run five teams,
+        Capacity is how many bookings this window can take at once: five if you can run five teams,
         one for a hall.
       </p>
       {problem && <p className="text-sm text-red-600">{problem}</p>}
@@ -722,7 +722,7 @@ function EditSlot({
       </div>
       {!slot.actions.canRetime && (
         <p className="text-xs text-gray-500">
-          The times are fixed now — somebody has already planned their day around this window.
+          The times are fixed now. Somebody has already planned their day around this window.
         </p>
       )}
       {problem && <p className="text-sm text-red-600">{problem}</p>}
@@ -773,7 +773,7 @@ function Calendar({
                   onClick={() => onSelect(cell)}
                   disabled={cell < from || cell > to}
                   title={dayTitle(byDate.get(cell))}
-                  className={`rounded border py-1 text-xs disabled:opacity-30 ${
+                  className={`rounded-sm border py-1 text-xs disabled:opacity-30 ${
                     STATE_STYLE[byDate.get(cell)?.state ?? 'no_availability']
                   } ${selected === cell ? 'ring-2 ring-brand' : ''}`}
                 >
@@ -791,7 +791,7 @@ function Calendar({
 function dayTitle(day?: Day): string {
   const label = DAY_STATE_LABEL[day?.state ?? 'no_availability'];
   if (!day || day.total === 0) return label;
-  return `${label} — ${day.confirmed} confirmed, ${day.pending} pending, ${day.remaining} left`;
+  return `${label}: ${day.confirmed} confirmed, ${day.pending} pending, ${day.remaining} left`;
 }
 
 function buildMonths(from?: string, to?: string) {

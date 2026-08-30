@@ -161,18 +161,18 @@ export default function ShareProfileDialog({
   return (
     <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900">Circulate {profileName}</h3>
+        <h3 className="section-title">Circulate {profileName}</h3>
         <button className="text-sm text-gray-500 hover:underline" onClick={onClose}>
           Close
         </button>
       </div>
 
-      {notice && <p className="mb-3 rounded bg-brand-light p-2 text-sm text-brand-dark">{notice}</p>}
-      {error && <p className="mb-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {notice && <p className="mb-3 rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{notice}</p>}
+      {error && <p className="mb-3 alert-critical">{error}</p>}
 
       {!mayCirculate ? (
         <form onSubmit={recordCirculationConsent} className="space-y-3">
-          <div className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="alert-caution">
             {consentState?.needsReconfirmation
               ? 'Permission to circulate this profile has lapsed. Ring the family, then record it again below.'
               : (consentState?.reason ??
@@ -254,7 +254,7 @@ export default function ShareProfileDialog({
                       {((agents?.data ?? []) as AgentEntry[]).map((a) => (
                         <option key={a.userId} value={a.userId}>
                           {a.agencyName}
-                          {a.city ? ` — ${a.city}` : ''}
+                          {a.city ? `: ${a.city}` : ''}
                         </option>
                       ))}
                     </select>
@@ -311,7 +311,7 @@ export default function ShareProfileDialog({
           )}
 
           {link && (
-            <div className="mt-3 rounded bg-surface p-3">
+            <div className="mt-3 rounded-sm bg-surface p-3">
               <p className="text-sm font-medium text-gray-700">Biodata link</p>
               <code className="mt-1 block break-all text-xs text-gray-600">{link}</code>
               <button

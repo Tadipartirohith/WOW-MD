@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { Loading } from '../components/ui/Feedback';
 
 interface Client {
   profileId: string;
@@ -78,7 +79,7 @@ export default function AgentClients() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">My Clients</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           Everyone you manage, invited or not. Build a new one under{' '}
           <Link className="text-brand" to="/client-profiles">
             Client Profiles
@@ -87,11 +88,11 @@ export default function AgentClients() {
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <div className="card space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold text-gray-900">Client accounts</h2>
+          <h2 className="section-title">Client accounts</h2>
           <div className="flex flex-wrap items-center gap-2">
             <select
               className="input max-w-[10rem]"
@@ -115,7 +116,7 @@ export default function AgentClients() {
           </div>
         </div>
 
-        {isLoading && <p className="text-sm text-gray-500">Loading...</p>}
+        {isLoading && <Loading rows={3} />}
         {!isLoading && clients.length === 0 && (
           <p className="text-sm text-gray-400">
             {search || status !== 'all'

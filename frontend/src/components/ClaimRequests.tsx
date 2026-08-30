@@ -51,16 +51,16 @@ export default function ClaimRequests() {
   return (
     <div className="card space-y-3 border-brand/40">
       <div>
-        <h2 className="font-semibold text-gray-900">
+        <h2 className="section-title">
           {data.length === 1 ? 'A profile is waiting for you' : 'Profiles are waiting for you'}
         </h2>
         <p className="text-sm text-gray-600">
           An agency built this from details your family gave them, before you signed up. Accepting
-          makes it yours — they lose the ability to edit it, and you can change anything on it.
+          makes it yours. They lose the ability to edit it, and you can change anything on it.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <div className="divide-y">
         {data.map((request) => (
@@ -79,7 +79,7 @@ export default function ClaimRequests() {
                   : ''}
               </p>
               {request.message && (
-                <p className="mt-1 rounded bg-gray-50 p-2 text-sm text-gray-700">
+                <p className="mt-1 rounded-sm bg-gray-50 p-2 text-sm text-gray-700">
                   “{request.message}”
                 </p>
               )}

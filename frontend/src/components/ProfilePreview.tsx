@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
+import { Loading } from './ui/Feedback';
 
 interface Viewable {
   profileId: string;
@@ -81,7 +82,7 @@ export default function ProfilePreview({
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
       <div className="my-8 w-full max-w-2xl rounded-lg bg-surface p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="section-title">
             {data?.profile.displayName ?? 'Profile'}
           </h2>
           <button className="text-2xl leading-none text-gray-400" onClick={onClose} aria-label="Close">
@@ -89,9 +90,9 @@ export default function ProfilePreview({
           </button>
         </div>
 
-        {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+        {isLoading && <Loading rows={3} />}
         {isError && (
-          <p className="rounded bg-amber-50 p-3 text-sm text-amber-800">
+          <p className="rounded-sm bg-amber-50 p-3 text-sm text-amber-800">
             {apiMessage(error, 'That profile cannot be opened.')}
           </p>
         )}
@@ -106,7 +107,7 @@ export default function ProfilePreview({
                     src={url}
                     alt=""
                     loading="lazy"
-                    className="h-32 w-32 rounded object-cover ring-1 ring-gray-200"
+                    className="h-32 w-32 rounded-sm object-cover ring-1 ring-gray-200"
                   />
                 ))}
               </div>
@@ -189,7 +190,7 @@ export default function ProfilePreview({
               claim about the person.
             */}
             {data.profile.stewardship && (
-              <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+              <div className="rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm">
                 <p className="font-medium text-gray-800">{data.profile.stewardship.label}</p>
                 {data.profile.stewardship.relation && (
                   <p className="text-gray-600">

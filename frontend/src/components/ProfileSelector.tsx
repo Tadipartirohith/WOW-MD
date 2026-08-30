@@ -46,8 +46,8 @@ export default function ProfileSelector({
           <option key={p.id} value={p.id}>
             {p.displayName}
             {p.claimStatus === 'self' ? ' (me)' : ''}
-            {p.claimStatus === 'unclaimed' ? ' — not yet invited' : ''}
-            {p.claimStatus === 'invited' ? ' — invite sent' : ''}
+            {p.claimStatus === 'unclaimed' ? ': not yet invited' : ''}
+            {p.claimStatus === 'invited' ? ': invite sent' : ''}
           </option>
         ))}
       </select>

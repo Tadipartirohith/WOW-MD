@@ -17,7 +17,7 @@ export default function SharedAlbum() {
       <h1 className="page-title mb-4">{data?.album?.title ?? 'Shared album'}</h1>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {(data?.items ?? []).map((it: { id: string; url: string; caption?: string }) => (
-          <div key={it.id} className="rounded border border-gray-200 p-2">
+          <div key={it.id} className="rounded-sm border border-gray-200 p-2">
             <p className="break-all text-xs text-gray-600">{it.url}</p>
             {it.caption && <p className="text-sm">{it.caption}</p>}
           </div>

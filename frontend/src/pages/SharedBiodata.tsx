@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import BiodataCard, { Biodata } from '../components/BiodataCard';
+import { Loading } from '../components/ui/Feedback';
 
 /**
  * A biodata opened from a shared link.
@@ -23,7 +24,7 @@ export default function SharedBiodata() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
-        <p className="text-gray-500">Loading...</p>
+        <Loading rows={3} />
       </div>
     );
   }
@@ -33,7 +34,7 @@ export default function SharedBiodata() {
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="card w-full max-w-md text-center">
           <h1 className="page-title">This biodata is not available</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="page-subtitle">
             {apiMessage(error, 'The link may have expired, or been withdrawn by the agent.')}
           </p>
         </div>

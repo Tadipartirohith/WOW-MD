@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Permission, can } from '../lib/permissions';
 import ClientSelector from '../components/ClientSelector';
+import { Loading } from '../components/ui/Feedback';
 
 interface Planner {
   id: string;
@@ -82,17 +83,17 @@ export default function WeddingPlanners() {
         </div>
       </div>
 
-      {message && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{message}</p>}
-      {isLoading && <p className="text-gray-500">Loading...</p>}
+      {message && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{message}</p>}
+      {isLoading && <Loading rows={3} />}
       {!isLoading && planners.length === 0 && (
         <p className="text-gray-500">No approved planners match that search.</p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {planners.map((p) => (
-          <div key={p.id} className="card flex flex-col">
+          <div key={p.id} className="group/tile card flex flex-col transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold">{p.agencyName}</h2>
+              <h2 className="section-title">{p.agencyName}</h2>
               <span className="text-sm text-amber-600">
                 {p.ratingAvg} ({p.ratingCount})
               </span>
@@ -103,7 +104,7 @@ export default function WeddingPlanners() {
             </p>
             {p.bio && <p className="mt-2 flex-1 text-sm text-gray-600">{p.bio}</p>}
             <button
-              className="btn mt-3"
+              className="btn-outline btn-sm mt-4 w-full transition-colors group-hover/tile:border-brand group-hover/tile:text-brand-strong"
               disabled={busy === p.id || !amount}
               onClick={() => book(p.id)}
             >

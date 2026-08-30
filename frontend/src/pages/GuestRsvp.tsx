@@ -84,7 +84,7 @@ export default function GuestRsvp() {
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="card w-full max-w-md text-center">
           <h1 className="page-title">This invitation link is not valid</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="page-subtitle">
             {apiMessage(loadError, 'It may have expired. Ask your host for a new link.')}
           </p>
         </div>
@@ -102,7 +102,7 @@ export default function GuestRsvp() {
         </p>
         <div>
           <h1 className="page-title">{data.eventName}</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="page-subtitle">
             {data.eventDate ? new Date(data.eventDate).toLocaleDateString() : 'Date to be confirmed'}
             {data.venue ? ` · ${data.venue}` : ''}
           </p>
@@ -112,9 +112,9 @@ export default function GuestRsvp() {
           Hello <strong>{data.guestName}</strong>, will you be joining us?
         </p>
 
-        {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="alert-critical">{error}</p>}
         {saved && (
-          <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">
+          <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">
             Thank you, your reply has been sent. You can change it any time using this link.
           </p>
         )}
@@ -152,7 +152,7 @@ export default function GuestRsvp() {
               />
               {data.invitedPartySize && (
                 <span className="mt-1 block text-xs text-gray-500">
-                  The invitation is for {data.invitedPartySize}. Fewer is absolutely fine — it just
+                  The invitation is for {data.invitedPartySize}. Fewer is absolutely fine. It just
                   helps us get the catering right.
                 </span>
               )}
@@ -179,7 +179,7 @@ export default function GuestRsvp() {
                 onChange={(e) => setReason(e.target.value)}
               />
               <span className="mt-1 block text-xs text-gray-500">
-                Entirely up to you — your reply is already recorded.
+                Entirely up to you. Your reply is already recorded.
               </span>
             </label>
             <button

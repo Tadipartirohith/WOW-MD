@@ -6,6 +6,7 @@ import { useCall } from '../lib/useCall';
 import CallPanel from '../components/CallPanel';
 import ChatMenu from '../components/ChatMenu';
 import ProfilePreview from '../components/ProfilePreview';
+import { Loading } from '../components/ui/Feedback';
 
 /**
  * A time a reader can scan.
@@ -174,20 +175,22 @@ export default function Chat() {
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Messages</h1>
-        <p className="text-sm text-gray-600">
+        <p className="page-subtitle">
           Every conversation you are part of: direct messages, and the proposal threads you are
           handling. Phone numbers and email addresses are removed from direct messages before they
-          are stored — keep the conversation here until you are both ready.
+          are stored. Keep the conversation here until you are both ready.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {previewId && <ProfilePreview profileId={previewId} onClose={() => setPreviewId('')} />}
 
       <div className="grid gap-4 md:grid-cols-[18rem,1fr]">
         <div className="card max-h-[32rem] overflow-y-auto p-0">
-          {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
+          {isLoading && <div className="p-4">
+          <Loading rows={2} />
+        </div>}
           {!isLoading && conversations.length === 0 && proposals.length === 0 && (
             <p className="p-4 text-sm text-gray-400">
               No conversations yet. They start when an interest is accepted, or when you message a
@@ -415,7 +418,7 @@ export default function Chat() {
                         disabled={!presence?.online}
                         title={
                           presence?.online
-                            ? 'Audio call, in the app — no number is exchanged'
+                            ? 'Audio call, in the app, no number is exchanged'
                             : 'They are offline. Calls connect only while both of you are here.'
                         }
                         onClick={() => call.call(withUserId, 'audio')}
@@ -444,7 +447,7 @@ export default function Chat() {
                   */}
                   <div className="relative">
                     <button
-                      className="rounded px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-100"
+                      className="rounded-sm px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-100"
                       aria-label="More options"
                       onClick={() => setMenuOpen(!menuOpen)}
                     >

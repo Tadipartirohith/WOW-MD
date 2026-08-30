@@ -37,7 +37,7 @@ export default function ResetPassword() {
 
         {done ? (
           <>
-            <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">
+            <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">
               Your password has been changed, and every device that was signed in has been signed
               out. Taking you to sign in...
             </p>
@@ -47,7 +47,7 @@ export default function ResetPassword() {
           </>
         ) : (
           <form onSubmit={submit} className="space-y-4">
-            {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+            {error && <p className="alert-critical">{error}</p>}
             <div>
               <label className="label" htmlFor="password">
                 New password

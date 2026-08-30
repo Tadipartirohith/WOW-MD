@@ -52,19 +52,19 @@ export default function CallPanel({
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-gray-200 bg-surface p-4 shadow-lg">
+    <div className="fixed bottom-4 right-4 z-50 w-72 rounded-lg border border-gray-200 bg-surface p-4 shadow-pop">
       <p className="font-medium text-gray-900">{label[state]}</p>
       {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
 
       {media === 'video' && state === 'active' && (
         <div className="relative mt-3">
-          <video ref={remoteRef} autoPlay playsInline className="w-full rounded bg-black" />
+          <video ref={remoteRef} autoPlay playsInline className="w-full rounded-sm bg-black" />
           <video
             ref={localRef}
             autoPlay
             playsInline
             muted
-            className="absolute bottom-2 right-2 w-20 rounded border border-white/60"
+            className="absolute bottom-2 right-2 w-20 rounded-sm border border-white/60"
           />
         </div>
       )}

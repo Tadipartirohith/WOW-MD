@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import ProfileSelector from '../components/ProfileSelector';
+import { Loading } from '../components/ui/Feedback';
 
 interface PoolProfile {
   id: string;
@@ -62,13 +63,13 @@ export default function NetworkPool() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Network Pool</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           Profiles other approved agencies have opened up to the network. Pick one of your own
           clients, then propose a pairing.
         </p>
       </div>
 
-      {message && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{message}</p>}
+      {message && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{message}</p>}
 
       <div className="card flex flex-wrap items-end gap-3">
         <ProfileSelector
@@ -99,7 +100,7 @@ export default function NetworkPool() {
         </div>
       </div>
 
-      {isLoading && <p className="text-gray-500">Loading...</p>}
+      {isLoading && <Loading rows={3} />}
       {!isLoading && profiles.length === 0 && (
         <p className="card text-sm text-gray-500">
           Nothing in the pool matches that search yet.
@@ -108,20 +109,23 @@ export default function NetworkPool() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {profiles.map((p) => (
-          <div key={p.id} className="card flex flex-col">
-            <h2 className="font-semibold">{p.displayName}</h2>
+          <div key={p.id} className="group/tile card flex flex-col transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card">
+            <h2 className="section-title">{p.displayName}</h2>
             <p className="text-sm text-gray-500">
               {[p.gender, p.city].filter(Boolean).join(' · ')}
             </p>
             {p.photos?.[0] ? (
-              <img src={p.photos[0]} alt="" className="mt-2 h-40 w-full rounded object-cover" />
+              <img src={p.photos[0]} alt="" className="mt-2 h-40 w-full rounded-sm object-cover" />
             ) : (
-              <div className="mt-2 flex h-40 items-center justify-center rounded bg-gray-50 text-xs text-gray-400">
-                No photo
+              <div className="mt-2 grid h-40 place-items-center rounded-sm bg-gradient-to-br from-brand/[0.07] to-surface-sunken text-xs text-gray-400">
+                No photograph yet
               </div>
             )}
             {p.bio && <p className="mt-2 flex-1 text-sm text-gray-600">{p.bio}</p>}
-            <button className="btn mt-3" onClick={() => propose(p.id)}>
+            <button
+              className="btn-outline btn-sm mt-4 w-full transition-colors group-hover/tile:border-brand group-hover/tile:text-brand-strong"
+              onClick={() => propose(p.id)}
+            >
               Propose a match
             </button>
           </div>

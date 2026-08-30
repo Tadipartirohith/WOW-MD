@@ -130,7 +130,7 @@ export default function Agency() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Your Agency</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           These details are reviewed before you can build client profiles or send invitations.
         </p>
       </div>
@@ -150,7 +150,7 @@ export default function Agency() {
               : 'You can sign in and browse, but onboarding clients is locked until an administrator approves you.'}
           </p>
           {agency.rejectionReason && (
-            <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-700">
+            <p className="mt-2 alert-critical">
               Not approved: {agency.rejectionReason}
             </p>
           )}
@@ -167,7 +167,7 @@ export default function Agency() {
             is their decision, not a formality on the form above.
           </p>
           {verification.remarks && (
-            <p className="rounded bg-surface p-2 text-sm text-blue-900">{verification.remarks}</p>
+            <p className="rounded-sm bg-surface p-2 text-sm text-blue-900">{verification.remarks}</p>
           )}
         </div>
       )}
@@ -175,9 +175,9 @@ export default function Agency() {
       {billing && (
         <div className="card space-y-2">
           <div>
-            <h2 className="font-semibold text-gray-900">Your ledger</h2>
+            <h2 className="section-title">Your ledger</h2>
             <p className="text-sm text-gray-600">
-              Fees are held in escrow and reach you when the match is fixed — you are paid for the
+              Fees are held in escrow and reach you when the match is fixed. You are paid for the
               outcome, not the effort.
             </p>
           </div>
@@ -207,8 +207,8 @@ export default function Agency() {
         </div>
       )}
 
-      {notice && <p className="rounded bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {notice && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       <form onSubmit={submit} className="card space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -287,12 +287,12 @@ export default function Agency() {
                   <img
                     src={url}
                     alt=""
-                    className="h-24 w-32 rounded object-cover"
+                    className="h-24 w-32 rounded-sm object-cover"
                     loading="lazy"
                   />
                   <button
                     type="button"
-                    className="absolute right-1 top-1 rounded bg-surface/90 px-1.5 text-xs text-gray-700"
+                    className="absolute right-1 top-1 rounded-sm bg-surface/90 px-1.5 text-xs text-gray-700"
                     onClick={() => setPictures((p) => p.filter((u) => u !== url))}
                   >
                     Remove
@@ -330,7 +330,7 @@ export default function Agency() {
 
 function Total({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="rounded bg-gray-50 p-3">
+    <div className="rounded-sm bg-gray-50 p-3">
       <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
       <p className="text-lg font-semibold tabular-nums text-gray-900">₹{value ?? '0.00'}</p>
     </div>

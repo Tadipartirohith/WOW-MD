@@ -138,7 +138,7 @@ export default function Admin() {
   return (
     <div className="space-y-6">
       <h1 className="page-title">Admin</h1>
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {/*
         Sections rather than one long page. The console had grown to approvals,
@@ -224,7 +224,7 @@ export default function Admin() {
 
       {analytics?.bookingsByStatus && (
         <div className="card">
-          <h2 className="mb-2 font-semibold">Bookings by stage</h2>
+          <h2 className="section-title mb-2">Bookings by stage</h2>
           <div className="flex flex-wrap gap-2">
             {Object.entries(analytics.bookingsByStatus)
               .filter(([, count]) => count > 0)
@@ -239,7 +239,7 @@ export default function Admin() {
 
       {analytics?.usersByRole && (
         <div className="card">
-          <h2 className="mb-2 font-semibold">Accounts by type</h2>
+          <h2 className="section-title mb-2">Accounts by type</h2>
           <div className="flex flex-wrap gap-2">
             {analytics.usersByRole.map((r) => (
               <span key={r.role} className="rounded-full bg-gray-100 px-3 py-1 text-sm">
@@ -253,7 +253,7 @@ export default function Admin() {
       {/* Agencies first: an agent can create real accounts for other people, so
           this is the highest-leverage approval on the platform. */}
       <div className="card">
-        <h2 className="mb-1 font-semibold">Agencies awaiting approval</h2>
+        <h2 className="section-title mb-1">Agencies awaiting approval</h2>
         <p className="mb-3 text-sm text-gray-500">
           An approved agent can build profiles for people who have not joined and invite them to
           create accounts. Check the registration details before approving.
@@ -313,7 +313,7 @@ export default function Admin() {
       </div>
 
       <div className="card">
-        <h2 className="mb-2 font-semibold">Vendors awaiting approval</h2>
+        <h2 className="section-title mb-2">Vendors awaiting approval</h2>
         {(pendingVendors ?? []).map((v) => (
           <div
             key={v.id}
@@ -334,7 +334,7 @@ export default function Admin() {
       </div>
 
       <div className="card">
-        <h2 className="mb-2 font-semibold">Wedding planners awaiting approval</h2>
+        <h2 className="section-title mb-2">Wedding planners awaiting approval</h2>
         {(pendingPlanners ?? []).map((p) => (
           <div
             key={p.id}
@@ -356,7 +356,7 @@ export default function Admin() {
       </div>
 
       <div className="card">
-        <h2 className="mb-1 font-semibold">Audit trail</h2>
+        <h2 className="section-title mb-1">Audit trail</h2>
         <p className="mb-3 text-sm text-gray-500">
           Append-only record of privileged and money-moving actions. Most recent 25.
         </p>
@@ -381,7 +381,7 @@ export default function Admin() {
                     {e.actorRole ?? 'system'}
                   </td>
                   <td className="py-2 text-gray-500">
-                    {Object.keys(e.metadata ?? {}).length > 0 ? JSON.stringify(e.metadata) : '—'}
+                    {Object.keys(e.metadata ?? {}).length > 0 ? JSON.stringify(e.metadata) : '-'}
                   </td>
                 </tr>
               ))}
@@ -407,7 +407,7 @@ function Panel({
 }) {
   return (
     <div className="card">
-      <h2 className="font-semibold text-gray-900">{title}</h2>
+      <h2 className="section-title">{title}</h2>
       <p className="mb-2 text-xs text-gray-500">{subtitle}</p>
       <div className="divide-y">
         {rows.map(([label, value]) => (

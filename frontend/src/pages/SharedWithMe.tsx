@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import BiodataCard, { Biodata } from '../components/BiodataCard';
 import ProfileSelector from '../components/ProfileSelector';
+import { Loading } from '../components/ui/Feedback';
 
 interface Sharer {
   agencyName: string | null;
@@ -83,13 +84,13 @@ export default function SharedWithMe() {
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Shared With Me</h1>
-        <p className="text-sm text-gray-500">
+        <p className="page-subtitle">
           Biodata other agencies have circulated to you. Pick the client you have in mind and you
           can act on any of these without leaving the page.
         </p>
       </div>
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="alert-critical">{error}</p>}
 
       {rows.length > 0 && (
         <div className="card">
@@ -106,7 +107,7 @@ export default function SharedWithMe() {
         </div>
       )}
 
-      {isLoading && <p className="text-gray-500">Loading...</p>}
+      {isLoading && <Loading rows={3} />}
       {!isLoading && rows.length === 0 && (
         <p className="card text-sm text-gray-500">
           Nothing has been shared with you yet. Other agencies will appear here when they send you a
@@ -124,7 +125,7 @@ export default function SharedWithMe() {
               agent whether this is somebody they know, and it was the one
               thing the card did not say.
             */}
-            <div className="rounded bg-gray-50 p-2 text-xs text-gray-600">
+            <div className="rounded-sm bg-gray-50 p-2 text-xs text-gray-600">
               <p>
                 <span className="text-gray-400">Shared by </span>
                 <span className="font-medium text-gray-800">
@@ -141,12 +142,12 @@ export default function SharedWithMe() {
             </div>
 
             {row.message && (
-              <p className="rounded bg-brand-light p-2 text-sm text-brand-dark">“{row.message}”</p>
+              <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">“{row.message}”</p>
             )}
 
             <div className="flex flex-wrap gap-2">
               {sentFor.includes(row.shareId) ? (
-                <span className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
+                <span className="rounded-sm bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
                   Interest sent
                 </span>
               ) : (
