@@ -183,6 +183,73 @@ describe('WOW API (e2e)', () => {
     expect(res.body.user.managedByAgentId).toBeNull();
   });
 
+  /**
+   * The mobile apps cannot hold a cookie, so they are handed the refresh token
+   * itself. The whole risk of that lives in how the two are told apart, which
+   * is why the third case here is the one worth having: a page script can set
+   * `X-Client-Platform` as easily as the app can, and if that were enough it
+   * would hand an XSS bug the 30-day credential the httpOnly cookie exists to
+   * keep away from it. The `Origin` header is what actually decides, because a
+   * browser always sends it on a POST and script may not touch it.
+   */
+  describe('native clients and the refresh token', () => {
+    const login = () => ({ email: solo.email, password: solo.password });
+
+    it('hands the token to a native client, and sets no cookie', async () => {
+      const res = await http()
+        .post('/api/auth/login')
+        .set('X-Client-Platform', 'ios')
+        .send(login())
+        .expect(200);
+
+      expect(typeof res.body.refreshToken).toBe('string');
+      expect(res.body.refreshToken.length).toBeGreaterThan(0);
+      expect(res.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('keeps the cookie, and the silence, for a browser', async () => {
+      const res = await http()
+        .post('/api/auth/login')
+        .set('Origin', 'http://localhost:8085')
+        .send(login())
+        .expect(200);
+
+      expect(res.body.refreshToken).toBeUndefined();
+      expect(String(res.headers['set-cookie'])).toContain('HttpOnly');
+    });
+
+    it('refuses a browser that claims to be an app', async () => {
+      const res = await http()
+        .post('/api/auth/login')
+        .set('Origin', 'http://localhost:8085')
+        .set('X-Client-Platform', 'ios')
+        .send(login())
+        .expect(200);
+
+      expect(res.body.refreshToken).toBeUndefined();
+      expect(String(res.headers['set-cookie'])).toContain('HttpOnly');
+    });
+
+    it('refreshes from the body, with no cookie anywhere in the exchange', async () => {
+      const first = await http()
+        .post('/api/auth/login')
+        .set('X-Client-Platform', 'android')
+        .send(login())
+        .expect(200);
+
+      const second = await http()
+        .post('/api/auth/refresh')
+        .set('X-Client-Platform', 'android')
+        .send({ refreshToken: first.body.refreshToken })
+        .expect(200);
+
+      expect(typeof second.body.accessToken).toBe('string');
+      // Rotated, not reissued: presenting the old one again is treated as reuse.
+      expect(second.body.refreshToken).not.toBe(first.body.refreshToken);
+      expect(second.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
   it('refuses to mint privileged roles through registration', async () => {
     await http()
       .post('/api/auth/register')

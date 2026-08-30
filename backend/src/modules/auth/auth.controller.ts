@@ -71,13 +71,42 @@ export class AuthController {
   }
 
   /**
+   * Whether this request came from a client that cannot hold a cookie.
+   *
+   * The mobile apps are not browsers. They have no cookie jar worth the name,
+   * and a WebView on iOS has its cookie treated as third-party and dropped by
+   * ITP — which fails in the worst way, working for the fifteen minutes an
+   * access token lives and then signing the user out for good. So a native
+   * client is given the refresh token in the body and puts it in the platform
+   * keystore, which is the same protection a keychain offers rather than a
+   * weaker one.
+   *
+   * Two signals, and the second is the one that matters. `X-Client-Platform`
+   * says what the client believes it is; page script can set that header too,
+   * so on its own it would hand an XSS bug the very 30-day credential the
+   * httpOnly cookie exists to keep away from it. `Origin` is the guard: every
+   * browser attaches it to a POST, same-origin included, and it is a forbidden
+   * header name, so script can neither remove nor spoof it. A real app sends
+   * no Origin because it has no browsing context. Anything with an Origin is a
+   * browser and gets the cookie, whatever it claims about itself.
+   */
+  private isNativeClient(req: Request): boolean {
+    if (req.headers.origin) return false;
+    const platform = req.headers['x-client-platform'];
+    return platform === 'ios' || platform === 'android';
+  }
+
+  /**
    * Puts the refresh token in an httpOnly cookie and strips it from the JSON.
    *
    * Page script can never read an httpOnly cookie, so an XSS bug can no longer
    * walk off with a 30-day credential. The short-lived access token stays in
    * the body and lives only in memory on the client.
    */
-  private respond(res: Response, result: AuthResult) {
+  private respond(req: Request, res: Response, result: AuthResult) {
+    // The app holds its own token: nothing to set, and nothing to strip.
+    if (this.isNativeClient(req)) return result;
+
     const a = this.cfg.auth;
     res.cookie(a.refreshCookieName, result.refreshToken, {
       httpOnly: true,
@@ -171,7 +200,7 @@ export class AuthController {
   @Throttle({ default: AUTH_THROTTLE })
   @Post('register')
   async register(@Body() dto: RegisterDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return this.respond(res, await this.auth.register(dto, this.ctx(req)));
+    return this.respond(req, res, await this.auth.register(dto, this.ctx(req)));
   }
 
   @Public()
@@ -179,7 +208,7 @@ export class AuthController {
   @HttpCode(200)
   @Post('login')
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return this.respond(res, await this.auth.login(dto, this.ctx(req)));
+    return this.respond(req, res, await this.auth.login(dto, this.ctx(req)));
   }
 
   // ---------------------------------------------------------- invitation flow
@@ -210,7 +239,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const user = await this.invitations.accept(dto.token, dto.password, dto.email);
-    return this.respond(res, await this.auth.issueTokens(user, this.ctx(req)));
+    return this.respond(req, res, await this.auth.issueTokens(user, this.ctx(req)));
   }
 
   @ApiOperation({
@@ -280,7 +309,7 @@ export class AuthController {
       this.clearCookie(res);
       throw new UnauthorizedException('No refresh token supplied');
     }
-    return this.respond(res, await this.auth.refresh(token, this.ctx(req)));
+    return this.respond(req, res, await this.auth.refresh(token, this.ctx(req)));
   }
 
   @Public()
