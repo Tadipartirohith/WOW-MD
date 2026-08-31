@@ -23,40 +23,41 @@
    * Primitives. Named for what they are, never for where they are used.
    *
    * The neutral ramp is biased a few degrees toward the accent's hue. A pure
-   * mid-grey beside a jade accent reads as an accident; a grey that leans very
-   * slightly green reads as chosen. The bias is small enough that nobody will
-   * name it and large enough that the page hangs together.
+   * mid-grey beside a magenta accent reads as an accident; a grey that leans
+   * very slightly mauve reads as chosen. The bias is small enough that nobody
+   * will name it and large enough that the page hangs together. It moved with
+   * the accent when the accent did: a green-biased grey under a pink brand
+   * would have been the same mistake pointing the other way.
    */
   :root {
-    --ink-50: 244 247 245;
-    --ink-100: 233 238 236;
-    --ink-200: 214 222 219;
-    --ink-300: 180 191 187;
-    --ink-400: 138 152 148;
-    --ink-500: 102 116 112;
-    --ink-600: 77 91 87;
-    --ink-700: 58 71 67;
-    --ink-800: 37 47 45;
-    --ink-900: 22 30 28;
-    --ink-950: 12 18 17;
+    --ink-50: 250 247 249;
+    --ink-100: 243 238 241;
+    --ink-200: 230 222 227;
+    --ink-300: 202 190 197;
+    --ink-400: 158 144 152;
+    --ink-500: 120 107 115;
+    --ink-600: 92 81 88;
+    --ink-700: 70 61 67;
+    --ink-800: 47 40 45;
+    --ink-900: 29 24 28;
+    --ink-950: 18 14 17;
 
     /*
-     * Jade. Chosen against the brief's instruction to pick a palette, and
-     * against the two obvious defaults: the rose this app shipped with, and
-     * the beige-and-brass every "premium" brief reaches for. Jade carries
-     * luxury in this market through jewellery rather than through stationery,
-     * it survives both grounds, and it is nobody's idea of an AI accent.
+     * Rose. Asked for by name, and the example given is a deep magenta rather
+     * than a pastel — which is the right instinct: pale pink cannot carry a
+     * button, and an interface built from it has nothing to point with. So the
+     * pale end does the surfaces and the deep end does the work.
      */
-    --jade-50: 232 244 240;
-    --jade-100: 200 231 221;
-    --jade-200: 148 210 192;
-    --jade-300: 94 185 161;
-    --jade-400: 47 155 128;
-    --jade-500: 30 122 100;
-    --jade-600: 23 95 79;
-    --jade-700: 18 76 63;
-    --jade-800: 14 61 51;
-    --jade-900: 11 48 40;
+    --rose-50: 253 242 246;
+    --rose-100: 251 228 237;
+    --rose-200: 246 194 214;
+    --rose-300: 238 151 184;
+    --rose-400: 226 96 145;
+    --rose-500: 196 30 99;
+    --rose-600: 163 22 79;
+    --rose-700: 134 18 64;
+    --rose-800: 108 15 52;
+    --rose-900: 84 12 41;
 
     /* Semantic hues, deliberately separate from the accent. A status colour
      * that doubles as the brand colour cannot signal anything. */
@@ -64,31 +65,33 @@
     --positive-bg: 226 243 237;
     --caution-fg: 124 74 12;
     --caution-bg: 250 240 222;
-    --critical-fg: 154 44 38;
-    --critical-bg: 251 232 230;
+    --critical-fg: 176 42 28;
+    --critical-bg: 253 232 228;
 
     /* ---------------------------------------------------------- tier 2 --
      * Semantic tokens. Components only ever read these.
      */
-    --canvas: var(--ink-50);
-    --surface: 253 254 253;
+    /* Pink and white, in that order: the ground carries a trace of the accent
+     * so white cards read as white rather than as the same surface again. */
+    --canvas: 253 247 250;
+    --surface: 255 253 254;
     --surface-raised: 255 255 255;
-    --surface-sunken: 238 243 241;
+    --surface-sunken: 250 240 245;
     --border: var(--ink-200);
     --border-strong: var(--ink-300);
 
-    --brand: var(--jade-500);
-    --brand-strong: var(--jade-600);
-    --brand-soft: var(--jade-50);
+    --brand: var(--rose-500);
+    --brand-strong: var(--rose-600);
+    --brand-soft: var(--rose-50);
     /* What sits ON the accent. White here, near-black in dark mode, because
      * the accent lifts in dark mode and white on it fails contrast. */
     --brand-fg: 255 255 255;
 
-    --focus: var(--jade-400);
+    --focus: var(--rose-400);
 
     /* Shadows tinted to the ground rather than pure black. A black shadow on a
-     * green-grey canvas reads as a hole punched in the page. */
-    --shadow-color: 22 30 28;
+     * pink-white canvas reads as a hole punched in the page. */
+    --shadow-color: 42 22 32;
 
     /*
      * The one colour that does not invert.
@@ -100,7 +103,7 @@
      * caption disappears into it. Declared once, outside the ramp, so it
      * cannot be reached by the swap below.
      */
-    --scrim: 8 12 11;
+    --scrim: 14 8 11;
 
     --radius-sm: 0.5rem; /* inputs, chips */
     --radius-md: 0.75rem; /* buttons */
@@ -118,49 +121,54 @@
    * mid-tones and a washed accent; these are hand-set so hierarchy survives.
    */
   .dark {
-    --ink-50: 18 26 24;
-    --ink-100: 27 37 34;
-    --ink-200: 38 51 47;
-    --ink-300: 58 74 69;
-    --ink-400: 92 111 105;
-    --ink-500: 132 150 144;
-    --ink-600: 165 180 175;
-    --ink-700: 196 208 204;
-    --ink-800: 220 229 226;
-    --ink-900: 238 244 242;
-    --ink-950: 247 250 249;
+    --ink-50: 28 22 26;
+    --ink-100: 38 30 35;
+    --ink-200: 52 43 49;
+    --ink-300: 76 64 72;
+    --ink-400: 112 98 107;
+    --ink-500: 150 136 145;
+    --ink-600: 180 168 175;
+    --ink-700: 208 198 204;
+    --ink-800: 228 221 225;
+    --ink-900: 243 238 241;
+    --ink-950: 250 247 249;
 
-    --jade-50: 15 41 35;
-    --jade-100: 18 56 47;
-    --jade-200: 22 82 68;
-    --jade-300: 34 116 96;
-    --jade-400: 58 155 130;
-    --jade-500: 92 194 165;
-    --jade-600: 130 214 190;
-    --jade-700: 168 230 212;
-    --jade-800: 200 240 228;
-    --jade-900: 224 248 241;
+    /*
+     * The accent lifts rather than inverting. A deep magenta on a near-black
+     * ground is a smear; the readable pink is several steps lighter, and the
+     * text that sits on it has to go dark to keep its contrast.
+     */
+    --rose-50: 46 16 29;
+    --rose-100: 61 20 37;
+    --rose-200: 84 26 50;
+    --rose-300: 116 35 68;
+    --rose-400: 168 55 102;
+    --rose-500: 232 105 158;
+    --rose-600: 242 141 184;
+    --rose-700: 247 175 205;
+    --rose-800: 250 205 224;
+    --rose-900: 252 228 238;
 
     --positive-fg: 126 214 186;
     --positive-bg: 17 48 40;
     --caution-fg: 226 186 116;
     --caution-bg: 54 41 18;
-    --critical-fg: 246 165 158;
-    --critical-bg: 60 26 24;
+    --critical-fg: 250 160 146;
+    --critical-bg: 64 26 22;
 
-    --canvas: 10 15 14;
-    --surface: 18 25 23;
-    --surface-raised: 24 34 31;
-    --surface-sunken: 13 19 18;
-    --border: 35 46 43;
-    --border-strong: 52 66 62;
+    --canvas: 18 12 16;
+    --surface: 28 20 25;
+    --surface-raised: 36 26 32;
+    --surface-sunken: 22 15 19;
+    --border: 48 37 44;
+    --border-strong: 68 54 62;
 
-    --brand: var(--jade-500);
-    --brand-strong: var(--jade-600);
-    --brand-soft: var(--jade-100);
-    --brand-fg: 8 14 12;
+    --brand: var(--rose-500);
+    --brand-strong: var(--rose-600);
+    --brand-soft: var(--rose-100);
+    --brand-fg: 24 8 15;
 
-    --focus: var(--jade-400);
+    --focus: var(--rose-400);
     --shadow-color: 0 0 0;
 
     color-scheme: dark;

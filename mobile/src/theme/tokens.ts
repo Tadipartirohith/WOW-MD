@@ -25,58 +25,64 @@ export const rgba = (c: Channels, alpha: number): string =>
 // Primitives. Named for what they are, never for where they are used.
 
 const lightInk = {
-  50: [244, 247, 245],
-  100: [233, 238, 236],
-  200: [214, 222, 219],
-  300: [180, 191, 187],
-  400: [138, 152, 148],
-  500: [102, 116, 112],
-  600: [77, 91, 87],
-  700: [58, 71, 67],
-  800: [37, 47, 45],
-  900: [22, 30, 28],
-  950: [12, 18, 17],
+  50: [250, 247, 249],
+  100: [243, 238, 241],
+  200: [230, 222, 227],
+  300: [202, 190, 197],
+  400: [158, 144, 152],
+  500: [120, 107, 115],
+  600: [92, 81, 88],
+  700: [70, 61, 67],
+  800: [47, 40, 45],
+  900: [29, 24, 28],
+  950: [18, 14, 17],
 } as const;
 
 /** Inverted, but hand-set rather than mirrored, so hierarchy survives. */
 const darkInk = {
-  50: [18, 26, 24],
-  100: [27, 37, 34],
-  200: [38, 51, 47],
-  300: [58, 74, 69],
-  400: [92, 111, 105],
-  500: [132, 150, 144],
-  600: [165, 180, 175],
-  700: [196, 208, 204],
-  800: [220, 229, 226],
-  900: [238, 244, 242],
-  950: [247, 250, 249],
+  50: [28, 22, 26],
+  100: [38, 30, 35],
+  200: [52, 43, 49],
+  300: [76, 64, 72],
+  400: [112, 98, 107],
+  500: [150, 136, 145],
+  600: [180, 168, 175],
+  700: [208, 198, 204],
+  800: [228, 221, 225],
+  900: [243, 238, 241],
+  950: [250, 247, 249],
 } as const;
 
-const lightJade = {
-  50: [232, 244, 240],
-  100: [200, 231, 221],
-  200: [148, 210, 192],
-  300: [94, 185, 161],
-  400: [47, 155, 128],
-  500: [30, 122, 100],
-  600: [23, 95, 79],
-  700: [18, 76, 63],
-  800: [14, 61, 51],
-  900: [11, 48, 40],
+/**
+ * Rose. Asked for by name in the brief, with an example that is a deep magenta
+ * rather than a pastel — the right instinct, because a pale pink cannot carry a
+ * button and an interface built from it has nothing to point with. The pale end
+ * does the surfaces; the deep end does the work.
+ */
+const lightRose = {
+  50: [253, 242, 246],
+  100: [251, 228, 237],
+  200: [246, 194, 214],
+  300: [238, 151, 184],
+  400: [226, 96, 145],
+  500: [196, 30, 99],
+  600: [163, 22, 79],
+  700: [134, 18, 64],
+  800: [108, 15, 52],
+  900: [84, 12, 41],
 } as const;
 
-const darkJade = {
-  50: [15, 41, 35],
-  100: [18, 56, 47],
-  200: [22, 82, 68],
-  300: [34, 116, 96],
-  400: [58, 155, 130],
-  500: [92, 194, 165],
-  600: [130, 214, 190],
-  700: [168, 230, 212],
-  800: [200, 240, 228],
-  900: [224, 248, 241],
+const darkRose = {
+  50: [46, 16, 29],
+  100: [61, 20, 37],
+  200: [84, 26, 50],
+  300: [116, 35, 68],
+  400: [168, 55, 102],
+  500: [232, 105, 158],
+  600: [242, 141, 184],
+  700: [247, 175, 205],
+  800: [250, 205, 224],
+  900: [252, 228, 238],
 } as const;
 
 // ---------------------------------------------------------------- tier 2 --
@@ -85,7 +91,7 @@ const darkJade = {
 export interface Theme {
   readonly dark: boolean;
   readonly ink: Record<keyof typeof lightInk, Channels>;
-  readonly jade: Record<keyof typeof lightJade, Channels>;
+  readonly rose: Record<keyof typeof lightRose, Channels>;
 
   readonly canvas: Channels;
   readonly surface: Channels;
@@ -124,61 +130,61 @@ export interface Theme {
 export const lightTheme: Theme = {
   dark: false,
   ink: lightInk,
-  jade: lightJade,
+  rose: lightRose,
 
-  canvas: lightInk[50],
-  surface: [253, 254, 253],
+  canvas: [253, 247, 250],
+  surface: [255, 253, 254],
   surfaceRaised: [255, 255, 255],
-  surfaceSunken: [238, 243, 241],
+  surfaceSunken: [250, 240, 245],
   border: lightInk[200],
   borderStrong: lightInk[300],
 
-  brand: lightJade[500],
-  brandStrong: lightJade[600],
-  brandSoft: lightJade[50],
+  brand: lightRose[500],
+  brandStrong: lightRose[600],
+  brandSoft: lightRose[50],
   brandFg: [255, 255, 255],
-  focus: lightJade[400],
+  focus: lightRose[400],
 
   positiveFg: [21, 94, 76],
   positiveBg: [226, 243, 237],
   cautionFg: [124, 74, 12],
   cautionBg: [250, 240, 222],
-  criticalFg: [154, 44, 38],
-  criticalBg: [251, 232, 230],
+  criticalFg: [176, 42, 28],
+  criticalBg: [253, 232, 228],
 
   // Tinted to the ground rather than pure black: a black shadow on a
-  // green-grey canvas reads as a hole punched in the page.
-  shadowColor: [22, 30, 28],
-  scrim: [8, 12, 11],
+  // pink-white canvas reads as a hole punched in the page.
+  shadowColor: [42, 22, 32],
+  scrim: [14, 8, 11],
 };
 
 export const darkTheme: Theme = {
   dark: true,
   ink: darkInk,
-  jade: darkJade,
+  rose: darkRose,
 
-  canvas: [10, 15, 14],
-  surface: [18, 25, 23],
-  surfaceRaised: [24, 34, 31],
-  surfaceSunken: [13, 19, 18],
-  border: [35, 46, 43],
-  borderStrong: [52, 66, 62],
+  canvas: [18, 12, 16],
+  surface: [28, 20, 25],
+  surfaceRaised: [36, 26, 32],
+  surfaceSunken: [22, 15, 19],
+  border: [48, 37, 44],
+  borderStrong: [68, 54, 62],
 
-  brand: darkJade[500],
-  brandStrong: darkJade[600],
-  brandSoft: darkJade[100],
-  brandFg: [8, 14, 12],
-  focus: darkJade[400],
+  brand: darkRose[500],
+  brandStrong: darkRose[600],
+  brandSoft: darkRose[100],
+  brandFg: [24, 8, 15],
+  focus: darkRose[400],
 
   positiveFg: [126, 214, 186],
   positiveBg: [17, 48, 40],
   cautionFg: [226, 186, 116],
   cautionBg: [54, 41, 18],
-  criticalFg: [246, 165, 158],
-  criticalBg: [60, 26, 24],
+  criticalFg: [250, 160, 146],
+  criticalBg: [64, 26, 22],
 
   shadowColor: [0, 0, 0],
-  scrim: [8, 12, 11],
+  scrim: [14, 8, 11],
 };
 
 /** Inputs and chips, buttons, cards. The same 8/12/16 scale the web app uses. */

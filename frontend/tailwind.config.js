@@ -36,13 +36,13 @@ export default {
         ink: ramp('ink'),
 
         brand: {
-          ...ramp('jade'),
+          ...ramp('rose'),
           DEFAULT: channel('brand'),
           strong: channel('brand-strong'),
           soft: channel('brand-soft'),
-          // What sits on top of the accent. White on light-mode jade, near
-          // black on the lifted dark-mode jade, because white would fail
-          // contrast there.
+          // What sits on top of the accent. White on the light-mode rose,
+          // near black on the lifted dark-mode rose, because white would
+          // fail contrast there.
           fg: channel('brand-fg'),
           // Retained so pre-existing markup keeps working while it is swept.
           dark: channel('brand-strong'),
