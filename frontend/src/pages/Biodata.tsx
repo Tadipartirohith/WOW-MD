@@ -1425,6 +1425,45 @@ function PreferencesForm({
           />
         </div>
 
+        {/*
+          The chart itself, which was uploaded and then never shown.
+          A family sending a horoscope wants to see that the right page went
+          up, and wants to be able to take the wrong one down. The button
+          changing its own label from "Attach" to "Replace" was the only
+          acknowledgement either of those ever got.
+        */}
+        {values.horoscopeDocumentUrl ? (
+          <div className="flex flex-wrap items-start gap-3 rounded-sm bg-surface-sunken p-3">
+            <a
+              href={String(values.horoscopeDocumentUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0"
+              title="Open the full chart"
+            >
+              <img
+                src={String(values.horoscopeDocumentUrl)}
+                alt="The horoscope chart you attached"
+                className="h-28 w-28 rounded-sm border border-gray-200 bg-surface object-cover"
+              />
+            </a>
+            <div className="min-w-[12rem] flex-1 space-y-1">
+              <p className="text-sm font-medium text-gray-800">Chart attached</p>
+              <p className="text-xs text-gray-500">
+                Shared only with families you have accepted an interest from. Tap it to see the
+                full page.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost btn-sm -ml-2 text-critical-fg"
+                onClick={() => setValues((v) => ({ ...v, horoscopeDocumentUrl: '' }))}
+              >
+                Remove chart
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

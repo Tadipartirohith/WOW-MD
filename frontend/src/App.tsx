@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './store/auth';
 import { api, bootstrapSession } from './lib/api';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from './lib/permissions';
+import { navDenied } from './lib/nav-access';
 import type { Icon } from '@phosphor-icons/react';
 import {
   AddressBook,
@@ -42,6 +43,7 @@ import {
   Warning,
 } from '@phosphor-icons/react';
 import Sidebar from './components/Sidebar';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useTheme } from './store/theme';
 import { motion, useReducedMotion } from 'motion/react';
 import Login from './pages/Login';
@@ -147,7 +149,15 @@ const NAV: NavEntry[] = [
     requires: [Permission.CHAT_INQUIRE, Permission.CHAT_MATCH],
     // Not for vendors: theirs is inside the booking, where it opens on the
     // advance and locks when the job is done.
-    hideFor: ['vendor'],
+    //
+    // Nor for a planner or a verification officer. Both hold CHAT_INQUIRE
+    // because both legitimately talk to people — a planner inside a booking,
+    // an officer inside a case — and a general-purpose message list is a
+    // second, unscoped channel into the same conversations. The officer's is
+    // the sharper version of the problem: their whole job is to be an
+    // independent visitor, and a private line to the applicant they are
+    // assessing is not something to leave lying about.
+    hideFor: ['vendor', 'planner', 'in_person'],
     group: 'matchmaking',
     icon: ChatCircle,
   },
@@ -214,6 +224,23 @@ const NAV: NavEntry[] = [
     to: '/planner',
     label: 'My Wedding Plan',
     requires: [Permission.PLAN_MANAGE_OWN, Permission.PLAN_MANAGE_ENGAGED],
+    /*
+     * Not the wedding planner's, despite the permission.
+     *
+     * `requires` is any-of, and a planner holds PLAN_MANAGE_ENGAGED because
+     * they genuinely co-manage the weddings they are hired for. So the entry
+     * matched and the screen appeared — but this screen is the couple's own
+     * timeline, it is written in the couple's voice ("Your own timeline",
+     * "Looking to hire a wedding planner?"), and generating a plan on it needs
+     * PLAN_MANAGE_OWN, which a planner does not hold. Pressing the button
+     * produced a permission error naming a capability the account was never
+     * meant to have.
+     *
+     * The screen a planner should reach from here — a client's wedding they
+     * are engaged on — does not exist yet. Offering them the couple's instead
+     * is worse than offering nothing, so the entry goes until that is built.
+     */
+    hideFor: ['planner'],
     group: 'wedding',
     icon: CalendarCheck,
   },
@@ -245,6 +272,9 @@ const NAV: NavEntry[] = [
   { to: '/security', label: 'Security', requires: [], group: 'account', icon: ShieldCheck },
   { to: '/admin', label: 'Admin', requires: [Permission.ADMIN_ANALYTICS_READ], group: 'operations', icon: Gauge },
 ];
+
+/** Path to the roles refused it, for the route guard. */
+const DENIED_BY_PATH: { to: string; hideFor?: UserRole[] }[] = NAV;
 
 /**
  * The unread count, shown on the Notifications tab.
@@ -415,10 +445,23 @@ function Layout({ children }: { children: ReactNode }) {
   const permissions = user?.permissions ?? [];
   const visible = NAV.filter(
     (n) =>
-      !(user && n.hideFor?.includes(user.role)) &&
+      !(user && navDenied(n, user.role)) &&
       (n.requires.length === 0 || canAny(permissions, n.requires)),
   );
   const unread = useUnreadCount();
+
+  /*
+   * An administrator gets no group headings.
+   *
+   * The headings are the consumer's vocabulary — "The wedding", "Your
+   * business" — which is right for the twenty-odd destinations a couple or a
+   * vendor sees and reads as nonsense over an operations console: Bookings
+   * filed under somebody's wedding, Accounts under a business the
+   * administrator does not have. Eight entries do not need banding anyway;
+   * grouping earns its place at about fifteen.
+   */
+  const groups =
+    user?.role === 'admin' ? NAV_GROUPS.map((g) => ({ ...g, title: null })) : NAV_GROUPS;
   const entries = visible.map((n) => ({
     to: n.to,
     label: n.label,
@@ -442,7 +485,7 @@ function Layout({ children }: { children: ReactNode }) {
         <aside className="sticky top-0 hidden h-[100dvh] w-[15.5rem] shrink-0 flex-col gap-5 py-5 lg:flex">
           <Wordmark />
           <div className="-mr-2 flex-1 overflow-y-auto pr-2">
-            <Sidebar entries={entries} groups={NAV_GROUPS} />
+            <Sidebar entries={entries} groups={groups} />
           </div>
         </aside>
 
@@ -499,7 +542,14 @@ function Layout({ children }: { children: ReactNode }) {
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             className="flex-1 py-6 pb-20"
           >
-            {children}
+            {/*
+              Keyed on the path, so leaving a screen that failed clears the
+              error rather than stranding somebody on it. Inside the main
+              element rather than around the layout, because the whole point is
+              that the rail and the account menu survive: a person whose page
+              broke needs a way off it.
+            */}
+            <ErrorBoundary key={loc.pathname}>{children}</ErrorBoundary>
           </motion.main>
         </div>
       </div>
@@ -522,7 +572,7 @@ function Layout({ children }: { children: ReactNode }) {
               border-r border-gray-200 bg-surface p-5"
           >
             <Wordmark />
-            <Sidebar entries={entries} groups={NAV_GROUPS} onNavigate={() => setDrawer(false)} />
+            <Sidebar entries={entries} groups={groups} onNavigate={() => setDrawer(false)} />
           </motion.div>
         </div>
       )}
@@ -565,8 +615,10 @@ function Protected({
 }) {
   const token = useAuth((s) => s.accessToken);
   const ready = useAuth((s) => s.ready);
+  const role = useAuth((s) => s.user?.role);
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const mustResetPassword = useAuth((s) => s.user?.mustResetPassword ?? false);
+  const path = useLocation().pathname;
 
   // Tokens are held in memory now, so a reload has nothing until the silent
   // refresh finishes. Waiting here stops a signed-in user being bounced to
@@ -584,6 +636,17 @@ function Protected({
   // one screen. The server enforces this; sending them there directly saves
   // them a wall of refusals on the way to the same place.
   if (mustResetPassword) return <Navigate to="/set-password" replace />;
+
+  /*
+   * A role refused the link is refused the address.
+   *
+   * Permission alone cannot express this. The officer holds CHAT_INQUIRE and
+   * the administrator holds everything, so both passed the check below and got
+   * a page neither should have — the officer a private line to the applicant
+   * they are assessing, the admin the couple's honeymoon planner.
+   */
+  const entry = role ? DENIED_BY_PATH.find((n) => n.to === path) : undefined;
+  if (role && entry && navDenied(entry, role)) return <Navigate to="/" replace />;
 
   if (requires.length > 0 && !canAny(permissions, requires)) {
     return (

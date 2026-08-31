@@ -49,7 +49,11 @@ export default function ProviderConsole() {
   const current = isVendor
     ? ((listing as VendorListing[] | undefined) ?? []).find((l) => l.id === vendorId)
     : undefined;
-  const approved: boolean | undefined = isVendor ? active?.isApproved : listing?.[0]?.isApproved;
+  // A vendor has many listings and a planner has exactly one, so the planner
+  // branch reads the object rather than indexing into it. `listing?.[0]` on an
+  // object is always undefined, which is why a planner's approval state never
+  // showed whatever the server said.
+  const approved: boolean | undefined = isVendor ? active?.isApproved : listing?.isApproved;
 
   return (
     <div className="space-y-6">
@@ -566,13 +570,45 @@ function Field({
   );
 }
 
-function PlannerListingForm({ existing }: { existing?: { agencyName: string } }) {
+interface PlannerListing {
+  agencyName?: string;
+  city?: string;
+  bio?: string;
+  yearsExperience?: number;
+  isApproved?: boolean;
+}
+
+/**
+ * The planning agency, which could not be saved at all.
+ *
+ * Two faults, and the second hid the first.
+ *
+ * `GET /wedding-planners/me` answers with the whole row — id, ownerUserId,
+ * isApproved, ratings, timestamps — and this form spread all of it into its
+ * state and posted it straight back. The API refuses unknown fields rather
+ * than quietly dropping them, so every save returned 400 and the planner was
+ * blocked at the first step of onboarding with nothing to act on. The form
+ * also never prefilled, for the same reason from the other direction.
+ *
+ * And the catch discarded the error. The server said exactly which property it
+ * would not accept; the screen replaced that with "Could not save the listing"
+ * and left the person to guess. Reading the four fields the form owns, and
+ * sending only those, fixes the save; showing what the server said is what
+ * makes the next failure diagnosable.
+ */
+function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ agencyName: '', city: '', bio: '', yearsExperience: 0 });
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    if (existing) setForm((f) => ({ ...f, ...existing }));
+    if (!existing) return;
+    setForm({
+      agencyName: existing.agencyName ?? '',
+      city: existing.city ?? '',
+      bio: existing.bio ?? '',
+      yearsExperience: existing.yearsExperience ?? 0,
+    });
   }, [existing]);
 
   async function submit(e: FormEvent) {
@@ -580,13 +616,17 @@ function PlannerListingForm({ existing }: { existing?: { agencyName: string } })
     setMsg('');
     try {
       await api.put('/wedding-planners/me', {
-        ...form,
+        agencyName: form.agencyName.trim(),
+        // Blanks are dropped rather than sent as empty strings, which fail the
+        // length checks on the optional fields.
+        ...(form.city.trim() ? { city: form.city.trim() } : {}),
+        ...(form.bio.trim() ? { bio: form.bio.trim() } : {}),
         yearsExperience: Number(form.yearsExperience) || 0,
       });
       setMsg('Saved. An administrator will review it before it appears in search.');
       qc.invalidateQueries({ queryKey: ['my-listing'] });
-    } catch {
-      setMsg('Could not save the listing.');
+    } catch (err) {
+      setMsg(apiMessage(err, 'Could not save the listing.'));
     }
   }
 

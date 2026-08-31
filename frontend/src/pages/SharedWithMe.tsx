@@ -67,9 +67,13 @@ export default function SharedWithMe() {
   async function sendInterest(row: SharedRow) {
     setError('');
     try {
+      // `profileId`, not `fromProfileId`: the API names the acting profile the
+      // same way on every matchmaking route, and validation refuses anything
+      // else outright rather than ignoring it. Matches and Network Pool always
+      // sent the right one; this page was the only caller that did not.
       await api.post('/matches/interest', {
         toProfileId: row.profile.id,
-        fromProfileId: actingAs,
+        profileId: actingAs,
       });
       setSentFor((list) => [...list, row.shareId]);
       qc.invalidateQueries({ queryKey: ['interest-board'] });

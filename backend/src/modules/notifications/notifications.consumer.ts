@@ -44,10 +44,15 @@ export class NotificationsConsumer implements OnModuleInit {
         'match.interest_sent',
       )
       .subscribe((e) => {
+        // Both parties, but only one of them is told: the counterpart's name is
+        // worked out by finding the other profile in this list, so passing the
+        // recipient alone left nobody to name and every incoming interest read
+        // "Someone would like to take your profile forward."
         void this.notifyProfiles(
-          [e.payload.toProfileId],
+          [e.payload.fromProfileId, e.payload.toProfileId],
           NotificationType.MATCH_INTEREST,
           e.payload,
+          [e.payload.toProfileId],
         ).catch((err) => this.logger.error('notify interest failed', err));
       });
 
@@ -182,12 +187,23 @@ export class NotificationsConsumer implements OnModuleInit {
    * it. Duplicates are collapsed: an agency that runs both sides of a match
    * should be told once, not twice.
    */
+  /**
+   * @param profileIds  everyone involved, which is what the counterpart is
+   *                    worked out from.
+   * @param notifyIds   who actually receives it. Defaults to everyone
+   *                    involved, which is right for a mutual event like an
+   *                    acceptance and wrong for a one-directional one: an
+   *                    interest names its sender but is only sent to its
+   *                    recipient.
+   */
   private async notifyProfiles(
     profileIds: string[],
     type: NotificationType,
     payload: Record<string, unknown>,
+    notifyIds: string[] = profileIds,
   ): Promise<void> {
     const profiles = await this.profiles.find({ where: { id: In(profileIds) } });
+    const recipients = new Set(notifyIds);
 
     // Each recipient is told about the *other* profile, not their own.
     //
@@ -198,6 +214,7 @@ export class NotificationsConsumer implements OnModuleInit {
     // would otherwise be told about their own client.
     const byUser = new Map<string, string>();
     for (const profile of profiles) {
+      if (!recipients.has(profile.id)) continue;
       const recipient = profile.userId ?? profile.managedByUserId;
       if (recipient) byUser.set(recipient, profile.id);
     }

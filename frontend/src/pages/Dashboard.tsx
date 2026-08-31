@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
+import { navDenied } from '../lib/nav-access';
 import { useBusinesses } from '../store/business';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from '../lib/permissions';
 import { ReactNode } from 'react';
@@ -85,7 +86,9 @@ const TILES: Tile[] = [
     title: 'Messages',
     desc: 'Talk to matches, providers and agents',
     requires: [Permission.CHAT_INQUIRE, Permission.CHAT_MATCH],
-    hideFor: ['vendor'],
+    // Kept in step with the nav table: a planner's and an officer's
+    // conversations belong to the job or the case they are about.
+    hideFor: ['vendor', 'planner', 'in_person'],
   },
   {
     to: '/vendors',
@@ -246,9 +249,12 @@ export default function Dashboard() {
   const reduce = useReducedMotion();
   const firstName = (profile?.displayName ?? '').trim().split(' ')[0];
 
+  // The same question the sidebar asks, from the same place. This list used to
+  // carry its own hideFor, which is how a planner ended up with no Chat in the
+  // rail and a Messages tile on their dashboard pointing at it.
   const tiles = TILES.filter(
     (t) =>
-      !(user && t.hideFor?.includes(user.role)) &&
+      !(user && navDenied(t, user.role)) &&
       (t.requires.length === 0 || canAny(permissions, t.requires)),
   );
 

@@ -446,12 +446,21 @@ export class EventsService {
         (n, i) => n + (guests.get(i.guestId)?.partySize ?? 1),
         0,
       ),
+      /*
+       * Keyed the way `GET :id/rsvp/:category` accepts, and it did not used to
+       * be: this returned `notComing` and `notResponded` while the route one
+       * method below demanded `not_coming` and `not_responded`. A client
+       * cannot satisfy both, and the one we have picked the route's spelling —
+       * so every read of the declined and unanswered buckets found undefined
+       * and took the events screen down. Two names for four categories, one
+       * method apart, is the defect; the client was right.
+       */
       categories: {
         coming: { invitations: coming.length, people: sum(coming) },
         // Nobody is coming from a refusal, whatever the family size.
-        notComing: { invitations: notComing.length, people: 0 },
+        not_coming: { invitations: notComing.length, people: 0 },
         maybe: { invitations: maybe.length, people: sum(maybe) },
-        notResponded: { invitations: notResponded.length, people: sum(notResponded) },
+        not_responded: { invitations: notResponded.length, people: sum(notResponded) },
       },
       /** Not chased yet, or not for a week. */
       awaitingReminder: notResponded.filter(

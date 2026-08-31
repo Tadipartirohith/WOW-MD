@@ -155,9 +155,23 @@ export default function Events() {
 
   // Two head counts, and they are different numbers: invitations are what was
   // sent, people are what turns up.
+  /**
+   * The shape here is the one the API actually returns.
+   *
+   * It used to declare `{ invitations, people }`, which the server has never
+   * sent — it answers `{ totalInvited, categories: {...} }` with each category
+   * carrying its own invitation and head counts. A type argument on useQuery is
+   * an assertion about a network response rather than a check of one, so
+   * nothing caught it until the panel rendered and took the application down
+   * with it. Twice: the second time on a category whose key the server spelled
+   * differently from the route that reads it.
+   */
   const { data: rsvp } = useQuery<{
-    invitations: { total: number; attending: number; declined: number; maybe: number; pending: number };
-    people: { attending: number };
+    totalInvited: number;
+    categories: Record<
+      'coming' | 'not_coming' | 'maybe' | 'not_responded',
+      { invitations: number; people: number }
+    >;
   }>({
     queryKey: ['event-rsvp', selected],
     queryFn: async () => (await api.get(`/events/${selected}/rsvp`)).data,
@@ -541,19 +555,21 @@ export default function Events() {
               */}
               {rsvp && (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <GuestStat label="Invited" value={rsvp.invitations.total} />
+                  <GuestStat label="Invited" value={rsvp.totalInvited} />
                   <GuestStat
                     label="Coming"
-                    value={rsvp.invitations.attending}
-                    note={`${rsvp.people.attending} people`}
+                    value={rsvp.categories.coming.invitations}
+                    note={`${rsvp.categories.coming.people} people`}
                     tone="text-emerald-700"
                   />
                   <GuestStat
                     label="Not answered"
-                    value={rsvp.invitations.pending}
-                    tone={rsvp.invitations.pending > 0 ? 'text-amber-700' : undefined}
+                    value={rsvp.categories.not_responded.invitations}
+                    tone={
+                      rsvp.categories.not_responded.invitations > 0 ? 'text-amber-700' : undefined
+                    }
                   />
-                  <GuestStat label="Declined" value={rsvp.invitations.declined} />
+                  <GuestStat label="Declined" value={rsvp.categories.not_coming.invitations} />
                 </div>
               )}
 
