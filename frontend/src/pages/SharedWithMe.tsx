@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { useMatchmakingGate } from '../lib/matchmaking-gate';
 import BiodataCard, { Biodata } from '../components/BiodataCard';
 import ProfileSelector from '../components/ProfileSelector';
 import { Loading } from '../components/ui/Feedback';
@@ -63,6 +64,8 @@ export default function SharedWithMe() {
       setError(apiMessage(err));
     }
   }
+
+  const { gate } = useMatchmakingGate(actingAs || undefined);
 
   async function sendInterest(row: SharedRow) {
     setError('');
@@ -157,8 +160,12 @@ export default function SharedWithMe() {
               ) : (
                 <button
                   className="btn"
-                  disabled={!actingAs}
-                  title={actingAs ? undefined : 'Pick a client first'}
+                  // The same gate Matches applies, from the same place. This
+                  // list offered the button whatever the acting profile's
+                  // standing, so a client whose match was already fixed was
+                  // still invited to send interests the server refuses.
+                  disabled={!actingAs || Boolean(gate)}
+                  title={actingAs ? gate : 'Pick a client first'}
                   onClick={() => void sendInterest(row)}
                 >
                   Send interest

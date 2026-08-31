@@ -545,4 +545,63 @@ describe('WOW API (e2e)', () => {
   it('serves health readiness', async () => {
     await http().get('/api/health').expect(200);
   });
+
+  /**
+   * Once a match is fixed, matchmaking is closed for that profile.
+   *
+   * Sending was already refused in both directions. Accepting was not — so a
+   * settled profile could still say yes to a request that had arrived before
+   * the match, collect a second accepted interest, and with it a second
+   * conversation, because that is exactly what opens chat. This runs the whole
+   * thing end to end rather than asserting on the flag: send, accept, fix from
+   * both sides, then try each door.
+   *
+   * Last in the file deliberately. Fixing a match closes matchmaking for that
+   * profile permanently, and every browsing test above runs as the same
+   * account — placed any earlier, this one passes and takes the suggestions
+   * tests down with it.
+   */
+  it('closes matchmaking once a match is fixed, accepting included', async () => {
+    // The pair from the flow above is already accepted. Fixing needs both.
+    const board = await http()
+      .get('/api/matches/interests')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .expect(200);
+    const accepted = board.body.accepted?.[0];
+    expect(accepted).toBeDefined();
+
+    for (const token of [soloToken, groomToken]) {
+      await http()
+        .put(`/api/matches/${accepted.id}/match-fixed`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(200);
+    }
+
+    const status = await http()
+      .get('/api/matches/status')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .expect(200);
+    expect(status.body.matchFixedState).toBe('confirmed');
+
+    // Sending is refused outright now, whoever it is aimed at: the check runs
+    // on the sender's own standing before the target is even looked at.
+    await http()
+      .post('/api/matches/interest')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .send({ toProfileId: groomProfileId })
+      .expect(403);
+
+    // And the board stops offering accept on anything still pending, which is
+    // what the refusal above would otherwise contradict.
+    const after = await http()
+      .get('/api/matches/interests')
+      .set('Authorization', `Bearer ${soloToken}`)
+      .expect(200);
+    for (const row of after.body.received ?? []) {
+      expect(row.actions.accept).toBe(false);
+      // Declining stays open: the queue still has to be clearable.
+      expect(row.actions.decline).toBe(true);
+    }
+  });
 });

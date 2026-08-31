@@ -920,7 +920,28 @@ export class MatchmakingService {
     // Declining is always available. Requiring a verified document before
     // somebody may say no would trap them in a conversation they have already
     // decided against, which is the opposite of what the gate is for.
-    if (accept) await this.assertIdentityVerified(recipient, 'accept an interest');
+    //
+    // The same reasoning is why a fixed match closes accepting but not
+    // declining: matchmaking is over for this profile, and the pending
+    // requests still sitting in the queue need clearing rather than freezing.
+    //
+    // Sending was already refused in both directions once a match is fixed.
+    // Accepting was not, so a settled profile could still say yes to a request
+    // that arrived before the match — collecting a second accepted interest,
+    // and with it a second conversation, because chat is opened by exactly
+    // that. Both ends are checked: the requests either side is holding are as
+    // closed as the ones nobody has sent yet.
+    if (accept) {
+      await this.assertIdentityVerified(recipient, 'accept an interest');
+      const settled =
+        (await this.isMatchFixed(interest.toProfileId)) ||
+        (await this.isMatchFixed(interest.fromProfileId));
+      if (settled) {
+        throw new ForbiddenException(
+          'This match has been fixed. Matchmaking is closed, so interests can no longer be accepted.',
+        );
+      }
+    }
 
     interest.status = accept ? InterestStatus.ACCEPTED : InterestStatus.REJECTED;
     interest.respondedByUserId = actor.userId;
@@ -1054,6 +1075,8 @@ export class MatchmakingService {
       ).map((pr) => [pr.id, pr]),
     );
 
+    const matchmakingClosed = await this.isMatchFixed(me.id);
+
     const withActions = [...acceptedViews, ...restViews].map((view) => {
       const st = status.get(view.id)!;
       const row = byId.get(view.id)!;
@@ -1085,7 +1108,11 @@ export class MatchmakingService {
         ...view,
         acceptedBy,
         actions: {
-          accept: incoming && pending,
+          // Accepting closes when the match is fixed, because respond() now
+          // refuses it. Declining stays open so the queue can still be
+          // cleared, and unsending stays open so a request this profile sent
+          // before settling can be taken back.
+          accept: incoming && pending && !matchmakingClosed,
           decline: incoming && pending,
           unsend: !incoming && pending,
           // Offered wherever there is somebody to block: a request you have not

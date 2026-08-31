@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { useMatchmakingGate } from '../lib/matchmaking-gate';
 import ProfileSelector from '../components/ProfileSelector';
 import { Loading } from '../components/ui/Feedback';
 
@@ -26,6 +27,7 @@ export default function NetworkPool() {
   const [gender, setGender] = useState('');
   const [q, setQ] = useState('');
   const [actingProfileId, setActingProfileId] = useState('');
+  const { gate } = useMatchmakingGate(actingProfileId || undefined);
   const [message, setMessage] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -47,6 +49,13 @@ export default function NetworkPool() {
     setMessage('');
     if (!actingProfileId) {
       setMessage('Pick which of your clients you are proposing first.');
+      return;
+    }
+    // Matches has always refused to offer this when the acting profile cannot
+    // act; this list did not, and the refusal arrived from the server after
+    // the click instead.
+    if (gate) {
+      setMessage(gate);
       return;
     }
     try {
