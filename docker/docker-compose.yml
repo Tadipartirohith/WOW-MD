@@ -74,7 +74,37 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       # Where the links inside emails point: the SPA, not the API.
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      # Payments. The gateway keys were missing here, so a deployment could put
+      # real Razorpay credentials in docker/.env and still run on the mock
+      # provider, because the container never received them — the escrow would
+      # look like it worked and no money would move.
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      PAYMENT_CURRENCY: ${PAYMENT_CURRENCY:-INR}
+      PAYMENT_COMMISSION_PERCENT: ${PAYMENT_COMMISSION_PERCENT:-10}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      # Which methods a buyer may choose. Cash is off by default and sits
+      # outside escrow entirely — see configuration.ts.
+      PAYMENT_METHODS: ${PAYMENT_METHODS:-card,upi,netbanking}
+      PAYMENT_CASH_ENABLED: ${PAYMENT_CASH_ENABLED:-false}
+      PAYMENT_CASH_MAX_AMOUNT: ${PAYMENT_CASH_MAX_AMOUNT:-25000}
+      PAYMENT_CASH_COMMISSION_OWED: ${PAYMENT_CASH_COMMISSION_OWED:-true}
+      # SMS. Missing here for the same reason and with the same effect: an OTP
+      # that silently goes to a log file instead of a phone.
+      SMS_PROVIDER: ${SMS_PROVIDER:-log}
+      SMS_URL: ${SMS_URL:-}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_SENDER_ID: ${SMS_SENDER_ID:-WOWMAT}
+      SMS_TEMPLATE_ID: ${SMS_TEMPLATE_ID:-}
+      # Customer support. Blank means the channel is not offered, rather than
+      # offered and unanswered.
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
+      SUPPORT_PHONE: ${SUPPORT_PHONE:-}
+      SUPPORT_WHATSAPP: ${SUPPORT_WHATSAPP:-}
+      SUPPORT_HOURS: ${SUPPORT_HOURS:-}
+      SUPPORT_URL: ${SUPPORT_URL:-}
+      SUPPORT_RESPONSE_TIME: ${SUPPORT_RESPONSE_TIME:-}
       # Business switches. With INDIVIDUAL_USER_ENABLED=false the platform runs
       # as an agent-only brokerage; SERVICES_REQUIRE_MATCH_FIXED=true makes
       # matchmaking the front door to the marketplace instead of a shop anyone
