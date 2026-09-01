@@ -29,6 +29,7 @@ import { AgentsModule } from './modules/agents/agents.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { CirculationModule } from './modules/circulation/circulation.module';
 import { VerificationModule } from './modules/verification/verification.module';
+import { SupportModule } from './modules/support/support.module';
 import { WeddingPlannersModule } from './modules/wedding-planners/wedding-planners.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProfileDetailsModule } from './modules/profile-details/profile-details.module';
@@ -92,6 +93,7 @@ import { AiModule } from './modules/ai/ai.module';
     InvitationsModule,
     CirculationModule,
     VerificationModule,
+    SupportModule,
     AgentsModule,
     WeddingPlannersModule,
     UsersModule,

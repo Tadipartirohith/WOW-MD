@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { PaymentMilestone, PaymentStatus } from '../../../common/enums';
+import { PaymentMethod, PaymentMilestone, PaymentStatus } from '../../../common/enums';
 
 @Entity('payments')
 export class Payment {
@@ -47,6 +47,19 @@ export class Payment {
   @Index()
   @Column({ type: 'enum', enum: PaymentMilestone, default: PaymentMilestone.ADVANCE })
   milestone: PaymentMilestone;
+
+  /**
+   * How it was paid.
+   *
+   * Defaulted to card so existing rows keep a truthful-enough value: everything
+   * taken before this column existed went through the gateway, and card is what
+   * the gateway was overwhelmingly used for. The one thing this must never say
+   * of an old row is `cash`, which would claim the platform never held money it
+   * did hold.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: PaymentMethod, default: PaymentMethod.CARD })
+  method: PaymentMethod;
 
   @Column()
   provider: string;

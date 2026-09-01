@@ -48,6 +48,9 @@ export class AppConfigService {
   get sms() {
     return this.section('sms');
   }
+  get support() {
+    return this.section('support');
+  }
   get push() {
     return this.section('push');
   }

@@ -140,6 +140,32 @@ export const configValidationSchema = Joi.object({
   RAZORPAY_KEY_ID: Joi.string().allow('').optional(),
   RAZORPAY_KEY_SECRET: Joi.string().allow('').optional(),
 
+  // Which methods a buyer may choose. Validated as a set rather than a free
+  // string so a typo — "netbank" — fails at boot instead of silently removing
+  // a payment method from every checkout on the platform.
+  PAYMENT_METHODS: Joi.string()
+    .custom((value: string, helpers) => {
+      const allowed = ['card', 'upi', 'netbanking', 'cash'];
+      const given = value.split(',').map((s) => s.trim()).filter(Boolean);
+      const bad = given.filter((m) => !allowed.includes(m));
+      if (bad.length) return helpers.error('any.invalid', { bad });
+      return value;
+    }, 'payment method list')
+    .optional(),
+  PAYMENT_CASH_ENABLED: Joi.string().optional(),
+  PAYMENT_CASH_MAX_AMOUNT: Joi.number().min(0).default(25000),
+  PAYMENT_CASH_COMMISSION_OWED: Joi.string().optional(),
+
+  // Customer support. Every one optional: an operator with no WhatsApp desk
+  // should leave it blank and have the platform stop offering one, rather than
+  // publish a number nobody answers.
+  SUPPORT_EMAIL: Joi.string().allow('').optional(),
+  SUPPORT_PHONE: Joi.string().allow('').optional(),
+  SUPPORT_WHATSAPP: Joi.string().allow('').optional(),
+  SUPPORT_HOURS: Joi.string().allow('').optional(),
+  SUPPORT_URL: Joi.string().allow('').optional(),
+  SUPPORT_RESPONSE_TIME: Joi.string().allow('').optional(),
+
   // AI
   AI_PROVIDER: Joi.string().valid('mock', 'openai').default('mock'),
   AI_API_KEY: Joi.string().allow('').optional(),

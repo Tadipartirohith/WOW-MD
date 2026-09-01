@@ -150,7 +150,11 @@ export class BookingsController {
     @Body() dto: PayDto,
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.bookings.pay(actor, id, { milestone: dto.milestone, idempotencyKey });
+    return this.bookings.pay(actor, id, {
+      milestone: dto.milestone,
+      method: dto.method,
+      idempotencyKey,
+    });
   }
 
   @RequirePermissions(Permission.BOOKING_READ_OWN)

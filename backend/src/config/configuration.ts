@@ -131,6 +131,32 @@ export default () => ({
   },
 
   /**
+   * How somebody reaches a human.
+   *
+   * The platform already has support *cases* — a queue an administrator works
+   * through — but no way for a person to start one outside a dispute on a
+   * booking they already have. Somebody whose payment failed, or who cannot
+   * sign in at all, has nowhere to go, and a matrimony platform holding money
+   * in escrow is not one where "email us, maybe" is good enough.
+   *
+   * Every value here is a filler. They are read by the client and shown to
+   * people, so a wrong number is worse than a missing one — the API omits any
+   * channel left at its default rather than publishing an address that bounces.
+   */
+  support: {
+    email: process.env.SUPPORT_EMAIL || '',
+    phone: process.env.SUPPORT_PHONE || '',
+    /** A WhatsApp number people may message, if the business runs one. */
+    whatsapp: process.env.SUPPORT_WHATSAPP || '',
+    /** Local time, in the operator's own words: shown, never parsed. */
+    hours: process.env.SUPPORT_HOURS || 'Monday to Saturday, 10am to 7pm IST',
+    /** A help centre or FAQ, if there is one. */
+    url: process.env.SUPPORT_URL || '',
+    /** What to tell somebody about how long a reply takes. */
+    responseTime: process.env.SUPPORT_RESPONSE_TIME || 'within one working day',
+  },
+
+  /**
    * SMS. Phone-first intake made this the channel that actually reaches a
    * family — an agent can take on a client with no email address at all.
    */
@@ -298,6 +324,42 @@ export default () => ({
     webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || '',
     razorpayKeyId: process.env.RAZORPAY_KEY_ID || '',
     razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || '',
+
+    /**
+     * Which methods a buyer may choose.
+     *
+     * Card, UPI and netbanking are the same journey as far as this platform is
+     * concerned — the gateway's checkout picks between them and reports which
+     * was used — so enabling one and not another is a commercial decision
+     * (netbanking costs more to accept than UPI), not a technical one.
+     *
+     * Cash is off by default and deliberately separate. See `cash` below: it
+     * leaves escrow behind entirely, and turning it on is a decision about how
+     * much protection the platform is willing to stop offering.
+     */
+    methods: toList(process.env.PAYMENT_METHODS, ['card', 'upi', 'netbanking']),
+
+    cash: {
+      /** Off unless deliberately turned on. */
+      enabled: toBool(process.env.PAYMENT_CASH_ENABLED, false),
+      /**
+       * The ceiling on a single cash settlement.
+       *
+       * Cash sits outside escrow, so this number is the most the platform is
+       * prepared to have a couple lose with no way to claw it back. A filler
+       * until somebody with a view on the risk sets it.
+       */
+      maxAmount: toNumber(process.env.PAYMENT_CASH_MAX_AMOUNT, 25000),
+      /**
+       * Whether the platform's commission is still owed on a cash booking.
+       *
+       * It is — the introduction happened here — but the money never passed
+       * through, so it has to be collected from the provider afterwards rather
+       * than withheld. Nothing in this codebase does that collection yet, which
+       * is why this is a flag and not a silent assumption.
+       */
+      commissionOwed: toBool(process.env.PAYMENT_CASH_COMMISSION_OWED, true),
+    },
 
     /**
      * How a booking's total is split across the three escrow milestones. Wedding

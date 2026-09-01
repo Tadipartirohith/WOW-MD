@@ -21,6 +21,7 @@ import { BookingSearchDto, CreateBookingDto } from './dto/booking.dto';
 import {
   BookingStatus,
   PaymentMilestone,
+  PaymentMethod,
   PaymentStatus,
   ProviderType,
   UserRole,
@@ -461,10 +462,26 @@ export class BookingsService {
   async pay(
     actor: AuthUser,
     bookingId: string,
-    opts: { milestone?: PaymentMilestone; idempotencyKey?: string } = {},
+    opts: {
+      milestone?: PaymentMilestone;
+      idempotencyKey?: string;
+      method?: PaymentMethod;
+    } = {},
   ): Promise<{ booking: Booking; payment: Payment }> {
     const milestone = opts.milestone ?? PaymentMilestone.ADVANCE;
     const idempotencyKey = opts.idempotencyKey;
+    const method = opts.method ?? PaymentMethod.CARD;
+
+    /*
+     * What the operator is willing to accept.
+     *
+     * Checked here rather than in the DTO because it is configuration, not
+     * shape: a deployment that has not enabled netbanking should refuse it with
+     * a sentence about this platform, not a validation error listing an enum.
+     */
+    if (!this.cfg.payments.methods.includes(method)) {
+      throw new BadRequestException(`${method} payments are not accepted here`);
+    }
 
     if (idempotencyKey) {
       const prior = await this.payments.findOne({ where: { idempotencyKey } });
@@ -505,7 +522,28 @@ export class BookingsService {
       // owed cannot drift if the commission rate changes later.
       const { commission, payout } = this.splitAmount(amount);
 
-      const intent = await this.gateway.createEscrowHold(amount, booking.currency);
+      /*
+       * Cash never reaches the gateway, and must not pretend to.
+       *
+       * Nothing moves through the platform, so there is no hold to make and
+       * nothing to release or refund later. Writing HELD_IN_ESCROW here would
+       * be a lie the dispute machinery then acts on — offering to refund from
+       * a balance that does not exist. It is recorded as RELEASED because that
+       * is what has happened: the provider has the money. The protection the
+       * rest of this file exists to provide is simply not on offer, and the
+       * cap is the most the operator is prepared to see somebody lose that way.
+       */
+      const isCash = method === PaymentMethod.CASH;
+      if (isCash) {
+        const cap = Number(this.cfg.payments.cash.maxAmount);
+        if (Number.isFinite(cap) && cap > 0 && parseFloat(amount) > cap) {
+          throw new BadRequestException(
+            `Cash is limited to ${booking.currency} ${cap} per instalment because it is not held in escrow. Pay this one online.`,
+          );
+        }
+      }
+
+      const intent = isCash ? null : await this.gateway.createEscrowHold(amount, booking.currency);
       const payment = await paymentRepo.save(
         paymentRepo.create({
           bookingId: booking.id,
@@ -514,10 +552,11 @@ export class BookingsService {
           commissionAmount: commission,
           payoutAmount: payout,
           currency: booking.currency,
-          status: PaymentStatus.HELD_IN_ESCROW,
+          status: isCash ? PaymentStatus.RELEASED : PaymentStatus.HELD_IN_ESCROW,
           milestone,
-          provider: this.cfg.payments.provider,
-          providerRef: intent.providerRef,
+          method,
+          provider: isCash ? 'cash' : this.cfg.payments.provider,
+          providerRef: intent?.providerRef ?? null,
           idempotencyKey: idempotencyKey ?? null,
         }),
       );

@@ -14,7 +14,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
-import { BookingStatus, PaymentMilestone, ProviderType } from '../../../common/enums';
+import { BookingStatus, PaymentMethod, PaymentMilestone, ProviderType } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class CreateBookingDto {
@@ -133,6 +133,24 @@ export class PayDto {
   @IsOptional()
   @IsEnum(PaymentMilestone)
   milestone?: PaymentMilestone;
+
+  /**
+   * How it is being paid.
+   *
+   * Whether a given method is *accepted* is configuration and is checked in the
+   * service, not here — a deployment that has not turned on netbanking should
+   * refuse it with a sentence about this platform rather than a validation
+   * error listing an enum.
+   */
+  @ApiPropertyOptional({
+    enum: PaymentMethod,
+    default: PaymentMethod.CARD,
+    description:
+      'card, upi and netbanking are held in escrow. cash is settled directly between the two parties and is not protected.',
+  })
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  method?: PaymentMethod;
 }
 
 export class CancelBookingDto {

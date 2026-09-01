@@ -351,6 +351,36 @@ export enum ProfileLifecycle {
   ARCHIVED = 'archived',
 }
 
+/**
+ * How the money moved.
+ *
+ * The first three are the gateway's business — Razorpay's checkout decides
+ * between them and tells us which was used — and they all land in escrow the
+ * same way. Recording which is still worth it: a UPI failure rate and a card
+ * failure rate are different problems with different fixes, and neither is
+ * visible if every payment is just "paid".
+ *
+ * CASH is not one of those and must never be treated as one. The platform does
+ * not receive the money, so it cannot hold it, release it, or refund it. A
+ * cash payment recorded as HELD_IN_ESCROW would be a lie the dispute system
+ * then acts on — offering to refund from an escrow balance that does not
+ * exist. It is recorded as what it is: an amount the two parties settled
+ * between themselves, outside the platform's protection.
+ */
+export enum PaymentMethod {
+  CARD = 'card',
+  UPI = 'upi',
+  NETBANKING = 'netbanking',
+  CASH = 'cash',
+}
+
+/** The methods the gateway handles, and which therefore reach escrow. */
+export const ONLINE_PAYMENT_METHODS: readonly PaymentMethod[] = [
+  PaymentMethod.CARD,
+  PaymentMethod.UPI,
+  PaymentMethod.NETBANKING,
+];
+
 export enum PaymentStatus {
   INITIATED = 'initiated',
   HELD_IN_ESCROW = 'held_in_escrow',
