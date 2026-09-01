@@ -148,6 +148,16 @@ export enum NotificationType {
   VERIFICATION_DECIDED = 'verification_decided',
   /** An officer submitted their findings; an administrator has to review them. */
   VERIFICATION_SUBMITTED = 'verification_submitted',
+  /**
+   * A business has applied and is waiting to be allocated.
+   *
+   * Distinct from VERIFICATION_SUBMITTED, which is an officer's findings
+   * coming back the other way. They land on the same desk and mean opposite
+   * things — one needs an officer sending out, the other needs a decision —
+   * and sharing a type made every new application announce itself as "an
+   * officer recommends a decision", which was simply untrue.
+   */
+  VERIFICATION_REQUESTED = 'verification_requested',
   DISPUTE_UPDATE = 'dispute_update',
 }
 

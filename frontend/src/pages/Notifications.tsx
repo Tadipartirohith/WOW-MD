@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -77,14 +77,67 @@ export default function Notifications() {
   const unread = data.filter((n) => !n.isRead).length;
   const rows = filter === 'unread' ? data.filter((n) => !n.isRead) : data;
 
-  async function markRead(id: string) {
-    await api.put(`/notifications/${id}/read`, {});
+  async function markAll() {
+    await api.put('/notifications/read-all', {});
     qc.invalidateQueries({ queryKey: ['notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-count'] });
   }
 
-  async function markAll() {
-    await api.put('/notifications/read-all', {});
+  /**
+   * One entry per thing, not per event.
+   *
+   * The feed listed every notification separately and grouped them by what
+   * kind they were, which read as noise the moment anybody had more than one
+   * booking: a vendor's eleven notifications were about four jobs, interleaved
+   * by time, so no single job's story was ever in one place. The grouping made
+   * it worse rather than better — a booking's payment landed under "Money"
+   * while the request that started it sat under "Waiting on you", so one
+   * booking was split across two headings.
+   *
+   * Now the thing itself is the row: the newest update is the headline and
+   * everything earlier about the same booking, case or application folds
+   * underneath it. A notification with no subject stands alone, because
+   * merging unrelated things is the problem this is fixing.
+   *
+   * The heading a subject sits under comes from its newest update, so a
+   * booking moves from "Waiting on you" to "Progress" as it advances instead
+   * of appearing in both at once.
+   */
+  const subjects = useMemo(() => {
+    const bySubject = new Map<string, Notification[]>();
+    for (const n of rows) {
+      /*
+       * The id alone, never the module with it.
+       *
+       * A quotation and a payment on the same booking both carry that
+       * booking's id, but the quotation declares module 'quotations' because
+       * that is where it navigates to. Keying on both split one booking into
+       * two subjects that then appeared under two different headings — the
+       * very thing this grouping exists to stop. The module says where to go;
+       * the id says what the thing is, and identity is the id.
+       */
+      const key = n.targetId ?? `one:${n.id}`;
+      bySubject.set(key, [...(bySubject.get(key) ?? []), n]);
+    }
+    const when = (n: Notification) => new Date(n.createdAt).getTime();
+    return [...bySubject.entries()]
+      .map(([key, all]) => {
+        const sorted = [...all].sort((a, b) => when(b) - when(a));
+        return {
+          key,
+          latest: sorted[0],
+          earlier: sorted.slice(1),
+          unread: sorted.filter((n) => !n.isRead).length,
+          ids: sorted.filter((n) => !n.isRead).map((n) => n.id),
+          group: (TYPE_GROUP[sorted[0].type] ?? 'other') as Group,
+        };
+      })
+      .sort((a, b) => when(b.latest) - when(a.latest));
+  }, [rows]);
+
+  /** Clearing a subject clears the whole story, not just its last line. */
+  async function markSubject(ids: string[]) {
+    await Promise.all(ids.map((id) => api.put(`/notifications/${id}/read`, {})));
     qc.invalidateQueries({ queryKey: ['notifications'] });
     qc.invalidateQueries({ queryKey: ['unread-count'] });
   }
@@ -126,7 +179,7 @@ export default function Notifications() {
       {isLoading && <Loading rows={3} />}
 
       {groups.map((group) => {
-        const inGroup = rows.filter((n) => (TYPE_GROUP[n.type] ?? 'other') === group);
+        const inGroup = subjects.filter((s) => s.group === group);
         if (inGroup.length === 0) return null;
         return (
           <div key={group} className="space-y-2">
@@ -134,46 +187,8 @@ export default function Notifications() {
               {GROUP_LABEL[group]}
             </h2>
             <div className="card divide-y p-0">
-              {inGroup.map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex flex-wrap items-start justify-between gap-3 p-4 ${
-                    n.isRead ? '' : 'bg-brand-light/30'
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900">
-                      {TYPE_LABEL[n.type] ?? n.type.replace(/_/g, ' ')}
-                      {typeof n.payload?.reference === 'string' && (
-                        <span className="ml-2 text-xs font-normal text-gray-400">
-                          #{n.payload.reference}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">{describe(n)}</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {new Date(n.createdAt).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {linkFor(n) && (
-                      <Link
-                        className={`btn-sm ${
-                          n.targetAction && n.targetAction !== 'view' ? 'btn' : 'btn-outline'
-                        }`}
-                        to={linkFor(n)!}
-                        onClick={() => markRead(n.id)}
-                      >
-                        {(n.targetAction && ACTION_LABEL[n.targetAction]) ?? 'Open'}
-                      </Link>
-                    )}
-                    {!n.isRead && (
-                      <button className="btn-outline btn-sm" onClick={() => markRead(n.id)}>
-                        Mark read
-                      </button>
-                    )}
-                  </div>
-                </div>
+              {inGroup.map((s) => (
+                <SubjectRow key={s.key} subject={s} onClear={markSubject} />
               ))}
             </div>
           </div>
@@ -290,6 +305,107 @@ function Channels() {
  * is the difference between telling somebody a request has arrived and showing
  * it to them.
  */
+interface Subject {
+  key: string;
+  latest: Notification;
+  earlier: Notification[];
+  unread: number;
+  ids: string[];
+  group: Group;
+}
+
+/**
+ * One booking, case or application, and what has happened to it.
+ *
+ * The headline is the newest update because that is the state the thing is
+ * actually in; everything before it is history, and history is the part that
+ * made this page unreadable when it was given equal weight. It is one click
+ * away rather than gone, since "what happened before this" is a real question
+ * — just not the one somebody opens the page with.
+ */
+function SubjectRow({
+  subject,
+  onClear,
+}: {
+  subject: Subject;
+  onClear: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { latest, earlier, unread } = subject;
+  const href = linkFor(latest);
+
+  return (
+    <div className={`p-4 ${unread > 0 ? 'bg-brand-light/30' : ''}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium text-gray-900">
+            {TYPE_LABEL[latest.type] ?? latest.type.replace(/_/g, ' ')}
+            {typeof latest.payload?.reference === 'string' && (
+              <span className="ml-2 text-xs font-normal text-gray-400">
+                #{latest.payload.reference}
+              </span>
+            )}
+            {unread > 1 && (
+              <span className="ml-2 rounded-full bg-brand px-1.5 py-0.5 text-xs font-normal text-white">
+                {unread}
+              </span>
+            )}
+          </p>
+          <p className="text-sm text-gray-600">{describe(latest)}</p>
+          <p className="mt-1 text-xs text-gray-400">
+            {new Date(latest.createdAt).toLocaleString()}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {href && (
+            <Link
+              className={`btn-sm ${
+                latest.targetAction && latest.targetAction !== 'view' ? 'btn' : 'btn-outline'
+              }`}
+              to={href}
+              onClick={() => onClear(subject.ids)}
+            >
+              {(latest.targetAction && ACTION_LABEL[latest.targetAction]) ?? 'Open'}
+            </Link>
+          )}
+          {unread > 0 && (
+            <button className="btn-outline btn-sm" onClick={() => onClear(subject.ids)}>
+              Mark read
+            </button>
+          )}
+        </div>
+      </div>
+
+      {earlier.length > 0 && (
+        <div className="mt-2">
+          <button
+            className="text-xs text-gray-500 underline-offset-2 hover:underline"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+          >
+            {open
+              ? 'Hide what came before'
+              : `${earlier.length} earlier update${earlier.length === 1 ? '' : 's'}`}
+          </button>
+          {open && (
+            <ul className="mt-2 space-y-1 border-l border-gray-200 pl-3">
+              {earlier.map((n) => (
+                <li key={n.id} className="text-xs text-gray-500">
+                  <span className="font-medium text-gray-700">
+                    {TYPE_LABEL[n.type] ?? n.type.replace(/_/g, ' ')}
+                  </span>{' '}
+                  — {describe(n)}{' '}
+                  <span className="text-gray-400">{new Date(n.createdAt).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function linkFor(n: Notification): string | null {
   // The server now says where each notification goes, so this maps a module to
   // a route rather than re-deciding from the type. The two used to disagree

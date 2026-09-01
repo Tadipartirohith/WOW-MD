@@ -146,7 +146,7 @@ export class VerificationService {
      * to look at it.
      */
     void this.notifications
-      .createForRole(UserRole.ADMIN, NotificationType.VERIFICATION_SUBMITTED, {
+      .createForRole(UserRole.ADMIN, NotificationType.VERIFICATION_REQUESTED, {
         requestId: request.id,
         applicantType,
         awaitingAllocation: true,

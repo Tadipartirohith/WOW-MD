@@ -140,6 +140,11 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
     body: (p) => `An officer recommends ${str(p, 'recommendation', 'a decision')}.`,
     whatsappTemplate: null,
   },
+  [NotificationType.VERIFICATION_REQUESTED]: {
+    title: 'A business has applied',
+    body: (p) => `A ${str(p, 'applicantType', 'business')} is waiting to be allocated.`,
+    whatsappTemplate: null,
+  },
   [NotificationType.DISPUTE_UPDATE]: {
     title: 'Dispute',
     body: () => 'There is an update on a dispute you are part of.',

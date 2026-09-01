@@ -48,6 +48,7 @@ export const TYPE_LABEL: Record<string, string> = {
 
   verification_assigned: 'Visit assigned to you',
   verification_submitted: 'Findings submitted',
+  verification_requested: 'New application',
   verification_decided: 'Verification decided',
   dispute_update: 'Dispute',
 };
@@ -82,6 +83,8 @@ export function describe(n: Notification): string {
       return `${job || 'A booking'} was cancelled.`;
     case 'verification_assigned':
       return `A ${str('applicantType') ?? 'business'} verification is on your queue.`;
+    case 'verification_requested':
+      return `A ${str('applicantType') ?? 'business'} has applied and is waiting to be allocated.`;
     case 'verification_submitted':
       return `An officer recommends ${str('recommendation') ?? 'a decision'}${
         typeof p.issues === 'number' && p.issues > 0 ? `, with ${p.issues} issue(s)` : ''

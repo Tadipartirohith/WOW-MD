@@ -92,5 +92,12 @@ export const NOTIFICATION_TARGET: Record<NotificationType, NotificationTarget> =
     action: 'review',
     idKey: 'requestId',
   },
+  [NotificationType.VERIFICATION_REQUESTED]: {
+    module: 'verification',
+    // Allocating is the next move on a new application; reviewing is what
+    // happens once somebody has been out to look.
+    action: 'respond',
+    idKey: 'requestId',
+  },
   [NotificationType.DISPUTE_UPDATE]: { module: 'disputes', action: 'view', idKey: 'bookingId' },
 };
