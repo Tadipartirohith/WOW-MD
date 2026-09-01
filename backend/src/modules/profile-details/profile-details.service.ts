@@ -177,8 +177,27 @@ export class ProfileDetailsService {
       familyType: dto.familyType,
       familyStatus: dto.familyStatus,
       ...(dto.nativePlace ? { nativePlace: dto.nativePlace } : {}),
+      ...(dto.nativeState ? { nativeState: dto.nativeState } : {}),
       brothers: dto.brothers,
       sisters: dto.sisters,
+      /*
+       * Settled abroad, and where.
+       *
+       * `isNri` is written whenever it is sent, including false — that is a
+       * real answer and has to be able to replace a yes. The city and country
+       * are cleared when the answer is no, so a pair left behind by somebody
+       * who changed their mind cannot sit on the record invisibly and
+       * reappear if the answer ever flips back.
+       */
+      ...(dto.isNri === undefined
+        ? {}
+        : dto.isNri
+          ? {
+              isNri: true,
+              nriCity: dto.nriCity ?? null,
+              nriCountry: dto.nriCountry ?? null,
+            }
+          : { isNri: false, nriCity: null, nriCountry: null }),
       // Sent as a number, stored as numeric, and only written when the family
       // actually answered — `undefined` here would blank a figure entered on a
       // previous save, which is the shape of bug this whole file exists to
