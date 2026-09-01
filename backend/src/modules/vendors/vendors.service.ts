@@ -1,14 +1,17 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
 import { BusinessLifecycleService } from './business-lifecycle.service';
 import { VendorReview } from './entities/vendor-review.entity';
+import { User } from '../auth/entities/user.entity';
+import { screenText } from '../../common/util/text-moderation';
 import {
   CreateReviewDto,
   CreateVendorDto,
@@ -16,7 +19,12 @@ import {
   VendorSearchDto,
 } from './dto/vendor.dto';
 import { RedisService } from '../../platform/redis/redis.service';
-import { BusinessStatus, UserRole, VendorCategory } from '../../common/enums';
+import {
+  BusinessStatus,
+  ReviewStatus,
+  UserRole,
+  VendorCategory,
+} from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
@@ -80,6 +88,9 @@ export class VendorsService {
   constructor(
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     @InjectRepository(VendorReview) private readonly reviews: Repository<VendorReview>,
+    // Only to put a name and an address on a review for the administrator
+    // moderating it: deciding in the dark is not deciding.
+    @InjectRepository(User) private readonly users: Repository<User>,
     private readonly redis: RedisService,
     private readonly dataSource: DataSource,
     private readonly lifecycle: BusinessLifecycleService,
@@ -229,7 +240,156 @@ export class VendorsService {
    * with this vendor (see VendorsController) — that check lives in the booking
    * module, which owns the booking history.
    */
-  async addReview(vendorId: string, userId: string, dto: CreateReviewDto): Promise<Vendor> {
+  /**
+   * Writes a review against a specific completed booking.
+   *
+   * Screened before it is published, not instead of being published. An
+   * automatic check that refuses is a check that will one day refuse a real
+   * complaint about a real vendor — the review with the most reason to exist
+   * and the most incentive to disappear — so anything the screen dislikes is
+   * held for an administrator with its words kept verbatim.
+   */
+  /**
+   * The reviews on a listing, with the reviewer removed.
+   *
+   * This is what a vendor and a buyer both see, and the omission is the point:
+   * a vendor who knows which customer left three stars is a vendor who can
+   * take it up with them, and the prospect of that conversation is what stops
+   * the next honest review being written. So no userId, no name, no booking
+   * reference — a booking reference identifies a customer perfectly well.
+   *
+   * Only published rows. A held review is not a secret, it is simply not
+   * published yet, and showing it to the vendor before an administrator has
+   * read it would defeat the holding.
+   */
+  async listReviews(vendorId: string): Promise<
+    { id: string; rating: number; comment: string; createdAt: Date }[]
+  > {
+    const rows = await this.reviews.find({
+      where: { vendorId, status: ReviewStatus.PUBLISHED },
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /** Which of this user's bookings already carry a review, for the eligibility check. */
+  async reviewedBookingIds(userId: string, vendorId: string): Promise<string[]> {
+    const rows = await this.reviews.find({
+      where: { userId, vendorId },
+      select: ['bookingId'],
+    });
+    return rows.map((r) => r.bookingId).filter(Boolean) as string[];
+  }
+
+  /**
+   * Every review, whoever wrote it, for the administrator.
+   *
+   * The opposite of the vendor's view on purpose: moderating a review without
+   * knowing who wrote it, what it was about and which booking it came from is
+   * moderating in the dark, and the decision is theirs to defend.
+   */
+  async listReviewsForAdmin(filter: { status?: ReviewStatus; vendorId?: string }) {
+    const where: Record<string, unknown> = {};
+    if (filter.status) where.status = filter.status;
+    if (filter.vendorId) where.vendorId = filter.vendorId;
+
+    const rows = await this.reviews.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: 200,
+    });
+    if (rows.length === 0) return [];
+
+    const [users, vendors] = await Promise.all([
+      this.users.find({
+        where: { id: In([...new Set(rows.map((r) => r.userId))]) },
+        select: ['id', 'email'],
+      }),
+      this.vendors.find({
+        where: { id: In([...new Set(rows.map((r) => r.vendorId))]) },
+        select: ['id', 'name'],
+      }),
+    ]);
+    const byUser = new Map(users.map((u) => [u.id, u.email]));
+    const byVendor = new Map(vendors.map((v) => [v.id, v.name]));
+
+    return rows.map((r) => ({
+      ...r,
+      reviewerEmail: byUser.get(r.userId) ?? null,
+      vendorName: byVendor.get(r.vendorId) ?? null,
+    }));
+  }
+
+  /**
+   * The administrator's decision on a review.
+   *
+   * A reason is required for anything but publishing, because the reason is
+   * the only thing that makes the decision reviewable later — by the next
+   * administrator, or by the vendor asking why their rating moved.
+   */
+  async moderateReview(
+    actorUserId: string,
+    reviewId: string,
+    status: ReviewStatus,
+    reason: string | null,
+  ): Promise<VendorReview> {
+    const review = await this.reviews.findOne({ where: { id: reviewId } });
+    if (!review) throw new NotFoundException('Review not found');
+
+    if (status !== ReviewStatus.PUBLISHED && !reason?.trim()) {
+      throw new BadRequestException('Say why. A decision with no reason cannot be reviewed later.');
+    }
+
+    review.status = status;
+    review.moderationReason = reason?.trim() || null;
+    review.moderatedByUserId = actorUserId;
+    review.moderatedAt = new Date();
+    const saved = await this.reviews.save(review);
+
+    // The rating follows the decision. Removing a review that leaves the
+    // average untouched has not removed anything.
+    await this.dataSource.transaction((m) => this.recountRatings(m, review.vendorId));
+    await this.invalidateSearchCache();
+    return saved;
+  }
+
+  /**
+   * The published reviews, and only those.
+   *
+   * A removed review has to move the average or removing it means nothing —
+   * the number is the whole reason anybody reads this page. Held and flagged
+   * reviews do not count either: neither has been decided yet.
+   */
+  private async recountRatings(manager: EntityManager, vendorId: string): Promise<void> {
+    const vendorRepo = manager.getRepository(Vendor);
+    const reviewRepo = manager.getRepository(VendorReview);
+
+    const { avg, count } = await reviewRepo
+      .createQueryBuilder('r')
+      .select('AVG(r.rating)', 'avg')
+      .addSelect('COUNT(r.id)', 'count')
+      .where('r.vendorId = :vendorId', { vendorId })
+      .andWhere('r.status = :status', { status: ReviewStatus.PUBLISHED })
+      .getRawOne();
+
+    await vendorRepo.update(vendorId, {
+      ratingAvg: Math.round(Number(avg ?? 0) * 100) / 100,
+      ratingCount: Number(count ?? 0),
+    });
+  }
+
+  async addReview(
+    vendorId: string,
+    userId: string,
+    bookingId: string | null,
+    dto: CreateReviewDto,
+  ): Promise<Vendor> {
     return this.dataSource.transaction(async (manager) => {
       const vendorRepo = manager.getRepository(Vendor);
       const reviewRepo = manager.getRepository(VendorReview);
@@ -240,21 +400,22 @@ export class VendorsService {
         throw new ForbiddenException('You cannot review your own listing');
       }
 
-      await reviewRepo.upsert(
-        { vendorId, userId, rating: dto.rating, comment: dto.comment ?? '' },
-        ['vendorId', 'userId'],
+      const verdict = screenText(dto.comment);
+      await reviewRepo.save(
+        reviewRepo.create({
+          vendorId,
+          userId,
+          bookingId,
+          rating: dto.rating,
+          comment: dto.comment ?? '',
+          status: verdict.hold ? ReviewStatus.UNDER_REVIEW : ReviewStatus.PUBLISHED,
+          moderationReason: verdict.reason,
+        }),
       );
 
-      const { avg, count } = await reviewRepo
-        .createQueryBuilder('r')
-        .select('AVG(r.rating)', 'avg')
-        .addSelect('COUNT(r.id)', 'count')
-        .where('r.vendorId = :vendorId', { vendorId })
-        .getRawOne();
-
-      vendor.ratingAvg = Math.round(Number(avg) * 100) / 100;
-      vendor.ratingCount = Number(count);
-      const saved = await vendorRepo.save(vendor);
+      await this.recountRatings(manager, vendorId);
+      // Re-read so the returned rating reflects the recount above.
+      const saved = (await vendorRepo.findOne({ where: { id: vendorId } })) ?? vendor;
       await this.invalidateSearchCache();
       return saved;
     });

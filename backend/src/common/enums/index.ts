@@ -408,6 +408,22 @@ export enum PaymentMilestone {
  * leaves a vendor either stuck with no route forward, or able to edit their way
  * around a refusal.
  */
+/**
+ * Where a review stands.
+ *
+ * `under_review` is the important one: it is what an automatic check produces
+ * rather than a refusal. Refusing at the point of writing means arguing with
+ * somebody about their own experience, and a false positive there loses
+ * exactly the review a platform has the most incentive to lose — a complaint.
+ * Holding costs a delay.
+ */
+export enum ReviewStatus {
+  PUBLISHED = 'published',
+  UNDER_REVIEW = 'under_review',
+  FLAGGED = 'flagged',
+  REMOVED = 'removed',
+}
+
 export enum BusinessStatus {
   DRAFT = 'draft',
   READY_FOR_REVIEW = 'ready_for_review',

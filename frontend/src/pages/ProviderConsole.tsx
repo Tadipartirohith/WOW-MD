@@ -2,9 +2,11 @@ import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
+import BusinessSetup, { useCompletion } from '../components/BusinessSetup';
 import { useAuth } from '../store/auth';
 import { useBusinesses } from '../store/business';
 import VendorServices from '../components/VendorServices';
+import ReviewsPanel from '../components/ReviewsPanel';
 import {
   GSTIN_PATTERN,
   PAN_PATTERN,
@@ -65,6 +67,15 @@ export default function ProviderConsole() {
         </p>
       </div>
 
+      {/*
+        The sequence first, the form under it.
+        
+        A vendor arriving here needs to know what this listing still needs and
+        what happens when it has it, before being handed a form. All of it was
+        already worked out on the server and none of it was on the screen.
+      */}
+      {vendorId && <BusinessSetup businessId={vendorId} />}
+
       {isVendor ? (
         <VendorListingForm existing={current ? [current] : []} />
       ) : (
@@ -119,6 +130,25 @@ export default function ProviderConsole() {
       )}
 
       {vendorId && <VendorServices vendorId={vendorId} />}
+
+      {/*
+        The vendor's own reviews, with the reviewers left out — the same view a
+        buyer gets, and deliberately so. A vendor who could work out which
+        customer left three stars could take it up with them, and the prospect
+        of that conversation is what stops the next honest review being written.
+      */}
+      {vendorId && (
+        <div className="card space-y-3">
+          <div>
+            <h2 className="section-title">What people said</h2>
+            <p className="text-sm text-gray-600">
+              Written after a completed booking. You cannot edit or remove these; if one breaks the
+              rules, raise it on Support and an administrator looks at it.
+            </p>
+          </div>
+          <ReviewsPanel vendorId={vendorId} />
+        </div>
+      )}
 
       {/*
         Availability and Bookings are their own modules. Duplicating them here
@@ -189,6 +219,17 @@ const emptyListing = {
 function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
   const qc = useQueryClient();
   const current = existing?.[0];
+  /*
+   * Whether this listing may still be edited, asked of the server.
+   *
+   * The API already refuses an edit once a listing is submitted — a vendor who
+   * changes their GST number after an officer has been sent to check it has
+   * verified nothing — but the button was still there, so the refusal arrived
+   * after the click. Read rather than re-derived: a second copy of the state
+   * rules here would be the copy that goes wrong.
+   */
+  const { data: completion } = useCompletion(current?.id);
+  const locked = completion ? !completion.rules.editIdentity : false;
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(emptyListing);
   const [portfolio, setPortfolio] = useState<string[]>([]);
@@ -201,6 +242,8 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       setEditing(true);
       return;
     }
+    // A submitted listing opens read-only, whatever was on screen before.
+    if (locked) setEditing(false);
     setForm({
       name: current.name ?? '',
       category: current.category ?? 'venue',
@@ -304,9 +347,18 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
             >
               {current.isApproved ? 'Live in search' : 'Awaiting verification'}
             </span>
-            <button className="btn-outline" onClick={() => setEditing(true)}>
-              Edit
-            </button>
+            {locked ? (
+              <span
+                className="text-xs text-gray-500"
+                title={completion?.rules.note}
+              >
+                Locked while it is verified
+              </span>
+            ) : (
+              <button className="btn-outline" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            )}
           </div>
         </div>
 

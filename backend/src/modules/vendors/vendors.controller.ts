@@ -2,9 +2,9 @@ import {
   Body,
   Controller,
   Delete,
-  HttpCode,
   ForbiddenException,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -17,11 +17,13 @@ import { AvailabilityService } from './availability.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { BusinessLifecycleService } from './business-lifecycle.service';
 import {
+  AdminReviewQueryDto,
   CreateReviewDto,
   CreateVendorDto,
+  ModerateReviewDto,
+  PayoutAccountDto,
   UpdateVendorDto,
   VendorSearchDto,
-  PayoutAccountDto,
 } from './dto/vendor.dto';
 import {
   AvailabilityQueryDto,
@@ -312,9 +314,31 @@ export class VendorsController {
   }
 
   /**
+   * What people said, with who said it left out.
+   *
+   * Public, and identical for a buyer and for the vendor being reviewed. That
+   * is the point: a vendor who can work out which customer left three stars
+   * can take it up with them, and the prospect of that conversation is what
+   * stops the next honest review being written. No name, no id, and no booking
+   * reference either — a booking reference identifies a customer perfectly
+   * well.
+   */
+  @ApiOperation({ summary: 'Published reviews for a listing, anonymised' })
+  @Get(':id/reviews')
+  reviews(@Param('id', ParseUUIDPipe) id: string) {
+    return this.vendors.listReviews(id);
+  }
+
+  /**
    * Reviews are gated on a completed booking so the rating signal reflects real
    * transactions. Agents review on behalf of the client whose booking it was,
    * which is why the check runs against the agent's own completed bookings too.
+   *
+   * Gated on a completed booking that has not already been reviewed, rather
+   * than on having ever bought from this vendor. Two completed jobs are two
+   * experiences and earn two reviews; one job cannot be reviewed twice. The
+   * old shape allowed unlimited rewrites of a single review, silently, because
+   * it upserted.
    */
   @ApiBearerAuth()
   @RequirePermissions(Permission.REVIEW_WRITE)
@@ -324,18 +348,66 @@ export class VendorsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateReviewDto,
   ) {
+    let bookingId: string | null = null;
     if (actor.role !== UserRole.ADMIN) {
-      const eligible = await this.bookings.hasCompletedBookingWith(
+      const used = await this.vendors.reviewedBookingIds(actor.userId, id);
+      const booking = await this.bookings.unreviewedCompletedBooking(
         actor.userId,
         ProviderType.VENDOR,
         id,
+        used,
       );
-      if (!eligible) {
+      if (!booking) {
         throw new ForbiddenException(
-          'You can only review a vendor after a booking with them is completed',
+          used.length > 0
+            ? 'You have already reviewed every completed booking with this vendor.'
+            : 'You can only review a vendor after a booking with them is completed',
         );
       }
+      bookingId = booking.id;
     }
-    return this.vendors.addReview(id, actor.userId, dto);
+    return this.vendors.addReview(id, actor.userId, bookingId, dto);
+  }
+}
+
+/**
+ * Review moderation, which is the administrator's and nobody else's.
+ *
+ * Its own controller because it is a different audience with a different view:
+ * everything above hides the reviewer, and everything here needs them. A
+ * vendor must never reach these routes — being able to hide a review about
+ * yourself is the one power that would make the whole rating meaningless — and
+ * ADMIN_USERS_READ is held by no provider role.
+ */
+@ApiTags('admin-reviews')
+@ApiBearerAuth()
+@Controller('admin/reviews')
+export class AdminReviewsController {
+  constructor(private readonly vendors: VendorsService) {}
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({ summary: 'Every review, with the reviewer, for moderation' })
+  @Get()
+  list(@Query() query: AdminReviewQueryDto) {
+    return this.vendors.listReviewsForAdmin({
+      status: query.status,
+      vendorId: query.vendorId,
+    });
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
+    summary: 'Publish, hold, flag or remove a review',
+    description:
+      'Anything but publishing needs a reason: the reason is what makes the decision reviewable ' +
+      'later, by the next administrator or by a vendor asking why their rating moved.',
+  })
+  @Put(':id/status')
+  moderate(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ModerateReviewDto,
+  ) {
+    return this.vendors.moderateReview(actor.userId, id, dto.status, dto.reason ?? null);
   }
 }

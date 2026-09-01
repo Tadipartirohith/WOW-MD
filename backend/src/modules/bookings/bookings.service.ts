@@ -1209,6 +1209,28 @@ export class BookingsService {
     return count > 0;
   }
 
+  /**
+   * A completed job with this provider that has not been reviewed yet.
+   *
+   * Returns the booking rather than a yes/no, because a review now belongs to
+   * a booking: two completed jobs with the same vendor are two experiences and
+   * earn two reviews, and one job cannot be reviewed twice. Asking "have they
+   * ever bought from this vendor" could only ever answer the first half.
+   */
+  async unreviewedCompletedBooking(
+    userId: string,
+    providerType: ProviderType,
+    providerId: string,
+    reviewedBookingIds: string[],
+  ): Promise<Booking | null> {
+    const completed = await this.bookings.find({
+      where: { userId, providerType, providerId, status: BookingStatus.COMPLETED },
+      order: { createdAt: 'DESC' },
+    });
+    const used = new Set(reviewedBookingIds);
+    return completed.find((b) => !used.has(b.id)) ?? null;
+  }
+
   private async transition(booking: Booking, to: BookingStatus): Promise<Booking> {
     this.assertTransition(booking.status, to);
     booking.status = to;

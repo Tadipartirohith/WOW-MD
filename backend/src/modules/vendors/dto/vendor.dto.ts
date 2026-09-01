@@ -8,17 +8,21 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
-  Matches,
   MinLength,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { Transform } from 'class-transformer';
-import { VendorCategory } from '../../../common/enums';
+import {
+  ReviewStatus,
+  VendorCategory,
+} from '../../../common/enums';
 import {
   GSTIN_MESSAGE,
   GSTIN_PATTERN,
@@ -220,6 +224,37 @@ export class VendorSearchDto extends PaginationDto {
   @Min(0)
   @Max(5)
   minRating?: number;
+}
+
+/** Which slice of the review queue an administrator is looking at. */
+export class AdminReviewQueryDto {
+  @ApiPropertyOptional({ enum: ReviewStatus })
+  @IsOptional()
+  @IsEnum(ReviewStatus)
+  status?: ReviewStatus;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  vendorId?: string;
+}
+
+export class ModerateReviewDto {
+  @ApiProperty({ enum: ReviewStatus })
+  @IsEnum(ReviewStatus)
+  status: ReviewStatus;
+
+  /**
+   * Required for anything but publishing, enforced in the service rather than
+   * here: whether a reason is needed depends on which status was chosen, and a
+   * DTO cannot see one field while validating another without a custom rule
+   * that would be harder to read than the check itself.
+   */
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }
 
 export class CreateReviewDto {

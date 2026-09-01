@@ -9,6 +9,7 @@ import {
   Reports,
   Staff,
 } from '../components/AdminConsole';
+import ReviewModeration from '../components/ReviewModeration';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import CatalogAdmin from '../components/CatalogAdmin';
 
@@ -183,6 +184,13 @@ export default function Admin() {
       </div>
 
       <CatalogAdmin />
+
+      {/*
+        Review moderation sits with the catalog rather than in a page of its
+        own: both are the administrator curating what buyers see, and a queue
+        with three items in it does not deserve a destination.
+      */}
+      <ReviewModeration />
 
       {analytics?.matchmaking && (
         <div className="grid gap-4 lg:grid-cols-3">
