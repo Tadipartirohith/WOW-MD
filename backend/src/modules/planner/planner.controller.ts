@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PlannerService } from './planner.service';
 import { WeddingDashboardService } from './wedding-dashboard.service';
+import { PlannerClientsService } from './planner-clients.service';
 import {
   AddTaskDto,
   CreatePlanDto,
@@ -19,7 +20,29 @@ export class PlannerController {
   constructor(
     private readonly planner: PlannerService,
     private readonly weddingDashboard: WeddingDashboardService,
+    private readonly clients: PlannerClientsService,
   ) {}
+
+  /*
+   * The planner's own book of work.
+   *
+   * PLAN_MANAGE_ENGAGED rather than PLANNER_LISTING_MANAGE: this is about the
+   * weddings somebody was hired to run, not about their shop window, and the
+   * two are held by different people the moment an agency employs a planner.
+   */
+  @RequirePermissions(Permission.PLAN_MANAGE_ENGAGED)
+  @ApiOperation({ summary: 'The couples this planner is engaged on, and any unanswered requests' })
+  @Get('clients')
+  listClients(@CurrentUser() actor: AuthUser) {
+    return this.clients.listClients(actor);
+  }
+
+  @RequirePermissions(Permission.PLAN_MANAGE_ENGAGED)
+  @ApiOperation({ summary: 'One client: their wedding, progress, events, tasks, vendors, budget' })
+  @Get('clients/:userId')
+  clientDetail(@CurrentUser() actor: AuthUser, @Param('userId', ParseUUIDPipe) userId: string) {
+    return this.clients.clientDetail(actor, userId);
+  }
 
   @RequirePermissions(Permission.PLAN_MANAGE_OWN)
   @Post('plan')

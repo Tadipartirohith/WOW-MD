@@ -9,9 +9,11 @@ import { WeddingEvent } from '../events/entities/event.entity';
 import { Guest } from '../events/entities/guest.entity';
 import { EventInvite } from '../events/entities/event-invite.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { Profile } from '../users/entities/profile.entity';
 import { AgentsModule } from '../agents/agents.module';
 import { PlannerService } from './planner.service';
 import { WeddingDashboardService } from './wedding-dashboard.service';
+import { PlannerClientsService } from './planner-clients.service';
 import { PlannerController } from './planner.controller';
 
 @Module({
@@ -31,11 +33,12 @@ import { PlannerController } from './planner.controller';
       Guest,
       EventInvite,
       Vendor,
+      Profile,
     ]),
     AgentsModule,
   ],
-  providers: [PlannerService, WeddingDashboardService],
+  providers: [PlannerService, WeddingDashboardService, PlannerClientsService],
   controllers: [PlannerController],
-  exports: [PlannerService, WeddingDashboardService],
+  exports: [PlannerService, WeddingDashboardService, PlannerClientsService],
 })
 export class PlannerModule {}

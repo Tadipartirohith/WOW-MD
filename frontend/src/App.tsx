@@ -59,6 +59,8 @@ import Profile from './pages/Profile';
 import Matches from './pages/Matches';
 import Vendors from './pages/Vendors';
 import Planner from './pages/Planner';
+import PlannerClients from './pages/PlannerClients';
+import PlannerClientDetail from './pages/PlannerClientDetail';
 import Chat from './pages/Chat';
 import Bookings from './pages/Bookings';
 import Genie from './pages/Genie';
@@ -206,6 +208,15 @@ const NAV: NavEntry[] = [
     icon: HandHeart,
   },
   { to: '/clients', label: 'My Clients', requires: [Permission.CLIENT_READ], group: 'clients', icon: AddressBook },
+  /*
+   * A planner's clients, which are not an agent's clients.
+   *
+   * Kept as its own address rather than sharing /clients: an agent's client is
+   * somebody whose profile they manage, a planner's is a wedding they were
+   * hired to run, and the two pages answer different questions. One route
+   * serving both would need a fork at the top of every screen below it.
+   */
+  { to: '/my-clients', label: 'My Clients', requires: [Permission.PLAN_MANAGE_ENGAGED], group: 'clients', icon: AddressBook },
   { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Buildings },
   { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE], group: 'wedding', icon: Storefront },
   // "Planners" and "Planner" next to each other were indistinguishable. One is
@@ -815,6 +826,22 @@ export default function App() {
             requires={[Permission.VENDOR_LISTING_MANAGE, Permission.PLANNER_LISTING_MANAGE]}
           >
             <ProviderConsole />
+          </Protected>
+        }
+      />
+      <Route
+        path="/my-clients"
+        element={
+          <Protected requires={[Permission.PLAN_MANAGE_ENGAGED]}>
+            <PlannerClients />
+          </Protected>
+        }
+      />
+      <Route
+        path="/my-clients/:userId"
+        element={
+          <Protected requires={[Permission.PLAN_MANAGE_ENGAGED]}>
+            <PlannerClientDetail />
           </Protected>
         }
       />
