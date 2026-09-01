@@ -114,3 +114,17 @@ export function describe(n: Notification): string {
       return '';
   }
 }
+
+/**
+ * How often the badge and the feed ask.
+ *
+ * Twenty seconds, not the sixty this started at. The original argument —
+ * nobody is worse off for a count being a minute stale — holds for a badge
+ * nobody is watching and breaks the moment somebody is waiting on an answer: a
+ * vendor who has just submitted for verification, a couple who have just sent
+ * an interest. A minute of nothing reads as nothing happened.
+ *
+ * Lives here rather than in App so the feed can share it without importing the
+ * router, which imports the feed.
+ */
+export const UNREAD_POLL_MS = 20_000;

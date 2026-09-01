@@ -5,6 +5,7 @@ import { useAuth } from './store/auth';
 import { api, bootstrapSession } from './lib/api';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from './lib/permissions';
 import { navDenied } from './lib/nav-access';
+import { UNREAD_POLL_MS } from './lib/notification-copy';
 import type { Icon } from '@phosphor-icons/react';
 import {
   AddressBook,
@@ -303,14 +304,16 @@ const DENIED_BY_PATH: { to: string; hideFor?: UserRole[] }[] = NAV;
  *
  * Polled rather than pushed: the count is a single indexed count query, and a
  * socket that has to survive sleeping laptops and flaky mobile networks is a
- * lot of machinery for a number that can be a minute stale without anybody
- * being worse off.
+ * lot of machinery for one number.
+ *
+ * The interval lives in lib/notification-copy alongside the wording, so the
+ * feed polls on the same clock without importing this file.
  */
 function useUnreadCount(): number {
   const { data } = useQuery({
     queryKey: ['unread-count'],
     queryFn: async () => (await api.get('/notifications/unread-count')).data,
-    refetchInterval: 60_000,
+    refetchInterval: UNREAD_POLL_MS,
     retry: false,
   });
   return data?.unread ?? 0;

@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { ACTION_LABEL, TYPE_LABEL, describe, type Notification } from '../lib/notification-copy';
+import {
+  ACTION_LABEL,
+  TYPE_LABEL,
+  UNREAD_POLL_MS,
+  describe,
+  type Notification,
+} from '../lib/notification-copy';
 import { EmptyState, Loading } from '../components/ui/Feedback';
 import { BellSlash } from '@phosphor-icons/react';
 
@@ -60,6 +66,11 @@ export default function Notifications() {
   const { data = [], isLoading } = useQuery<Notification[]>({
     queryKey: ['notifications'],
     queryFn: async () => (await api.get('/notifications')).data,
+    // On the same clock as the badge, and for a worse reason than the badge
+    // had: this page did not refresh at all. Somebody sitting on the feed
+    // waiting for a reply watched the count in the navigation tick up beside a
+    // list that never changed.
+    refetchInterval: UNREAD_POLL_MS,
   });
 
   const unread = data.filter((n) => !n.isRead).length;

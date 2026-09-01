@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import BusinessSetup, { useCompletion } from '../components/BusinessSetup';
+import GetStarted from '../components/GetStarted';
 import { useAuth } from '../store/auth';
 import { useBusinesses } from '../store/business';
 import VendorServices from '../components/VendorServices';
@@ -74,7 +75,15 @@ export default function ProviderConsole() {
         what happens when it has it, before being handed a form. All of it was
         already worked out on the server and none of it was on the screen.
       */}
-      {vendorId && <BusinessSetup businessId={vendorId} />}
+      {/*
+        What is still outstanding, for whoever is looking.
+
+        BusinessSetup needs a business to describe, so a vendor who has not
+        created one yet fell through it and got a bare form with no statement
+        of what the form was for. GetStarted covers that case, and the planner
+        case BusinessSetup never covered at all.
+      */}
+      {vendorId ? <BusinessSetup businessId={vendorId} /> : <GetStarted />}
 
       {isVendor ? (
         <VendorListingForm existing={current ? [current] : []} />

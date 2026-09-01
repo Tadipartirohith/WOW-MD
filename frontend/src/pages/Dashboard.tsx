@@ -7,6 +7,7 @@ import { useBusinesses } from '../store/business';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from '../lib/permissions';
 import { ReactNode } from 'react';
 import ClaimRequests from '../components/ClaimRequests';
+import GetStarted from '../components/GetStarted';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight } from '@phosphor-icons/react';
 
@@ -293,6 +294,17 @@ export default function Dashboard() {
           </div>
         )}
       </header>
+
+      {/*
+        The provider equivalent of the profile nudge above it.
+
+        Same reason, and a worse consequence: an unfinished profile is seen by
+        fewer families, while an unwritten listing cannot be found at all and
+        never reaches an administrator. It renders nothing once the business is
+        live.
+      */}
+      <GetStarted />
+
       <ClaimRequests />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
