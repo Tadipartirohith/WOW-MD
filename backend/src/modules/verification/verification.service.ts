@@ -163,9 +163,10 @@ export class VerificationService {
 
     const officer = await this.users.findOne({ where: { id: officerUserId } });
     if (!officer || !officer.isActive) throw new NotFoundException('Verification officer not found');
-    if (officer.role !== UserRole.IN_PERSON) {
-      throw new BadRequestException('That account is not a verification officer');
+    if (officer.role !== UserRole.IN_PERSON && officer.role !== UserRole.AGENT) {
+      throw new BadRequestException('That account cannot carry out verification');
     }
+    if (officer.role === UserRole.AGENT) await this.refuseIfConflicted(officer, request);
 
     request.assignedToUserId = officer.id;
     request.allocatedByUserId = actor.userId;
@@ -622,6 +623,36 @@ export class VerificationService {
    * two businesses and the request names which of them is being verified;
    * falling back to the owner is for the older rows that predate that column.
    */
+  /**
+   * Stops an agent being sent to inspect something they have a stake in.
+   *
+   * An agent earns fees from the accounts they introduce, so verifying one of
+   * their own is marking their own homework; and an agency inspecting another
+   * agency is a competitor deciding whether a rival gets to trade. Neither is
+   * a judgement call an administrator should have to remember to make at the
+   * moment they are clearing a queue, so it is refused here.
+   *
+   * An officer is subject to none of this, which is the difference between
+   * staff and a participant and the reason both appear in the roster labelled.
+   */
+  private async refuseIfConflicted(agent: User, request: VerificationRequest): Promise<void> {
+    if (request.applicantType === ApplicantType.AGENT) {
+      throw new BadRequestException(
+        'An agency cannot verify another agency. Allocate this one to an officer.',
+      );
+    }
+
+    const applicant = await this.users.findOne({
+      where: { id: request.applicantUserId },
+      select: ['id', 'managedByAgentId'],
+    });
+    if (applicant?.managedByAgentId === agent.id) {
+      throw new BadRequestException(
+        'That agent introduced this applicant, so cannot verify them. Allocate to somebody else.',
+      );
+    }
+  }
+
   private async subjectFor(request: VerificationRequest): Promise<object | null> {
     const byOwner = { ownerUserId: request.applicantUserId };
     switch (request.applicantType) {

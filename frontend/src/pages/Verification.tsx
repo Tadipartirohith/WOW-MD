@@ -69,6 +69,96 @@ interface Officer {
   isActive: boolean;
   /** Open cases already on their plate, so allocation is an informed choice. */
   openCount?: number;
+  /**
+   * Staff, or an agency doing fieldwork.
+   *
+   * Kept apart in the picker rather than merged into one list: sending a
+   * commercial participant to inspect a business is a different decision from
+   * sending an officer, and the person allocating should see which one they
+   * are making. The server refuses the conflicted combinations regardless.
+   */
+  kind?: 'officer' | 'agent';
+}
+
+/** Who the picker is offering. `all` is both, which is the usual case. */
+type AllocPool = 'all' | 'officer' | 'agent';
+
+const POOL_LABEL: Record<AllocPool, string> = {
+  all: 'Everyone',
+  officer: 'Officers',
+  agent: 'Agents',
+};
+
+/**
+ * Who to send this to.
+ *
+ * Two lists in one control, because the roster now holds officers and the
+ * agents who do fieldwork, and running them together would hide the only thing
+ * that distinguishes them. The pool filter defaults to Everyone: an
+ * administrator clearing a queue wants the whole bench, and narrowing to one
+ * kind is the exception rather than the first decision.
+ *
+ * The empty value is still "lightest workload", which only ever picks an
+ * officer — automatic allocation is not the place to hand work to a commercial
+ * participant.
+ */
+function AllocateePicker({
+  officers,
+  value,
+  onChange,
+}: {
+  officers: Officer[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [pool, setPool] = useState<AllocPool>('all');
+  const shown = officers.filter((o) => pool === 'all' || (o.kind ?? 'officer') === pool);
+  const group = (kind: 'officer' | 'agent') =>
+    shown.filter((o) => (o.kind ?? 'officer') === kind);
+
+  const option = (o: Officer) => (
+    <option key={o.id} value={o.id}>
+      {o.name}
+      {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
+    </option>
+  );
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="text-sm">
+        <span className="text-gray-700">Show</span>
+        <select
+          className="input mt-1 w-32"
+          value={pool}
+          onChange={(e) => setPool(e.target.value as AllocPool)}
+        >
+          {(Object.keys(POOL_LABEL) as AllocPool[]).map((k) => (
+            <option key={k} value={k}>
+              {POOL_LABEL[k]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="text-sm">
+        <span className="text-gray-700">Allocate to</span>
+        <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Lightest workload (recommended)</option>
+          {group('officer').length > 0 && (
+            <optgroup label="Officers">{group('officer').map(option)}</optgroup>
+          )}
+          {/*
+            Labelled as what it is. An agent is a commercial participant, and an
+            administrator picking one should know that without cross-referencing
+            the staff list. The server refuses an agent who introduced the
+            applicant, or any agent against another agency.
+          */}
+          {group('agent').length > 0 && (
+            <optgroup label="Agents (commercial)">{group('agent').map(option)}</optgroup>
+          )}
+        </select>
+      </label>
+    </div>
+  );
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -477,22 +567,11 @@ function RequestRow({
 
       {canAllocate && !decided && (
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm">
-            <span className="text-gray-700">Allocate to</span>
-            <select
-              className="input mt-1"
-              value={officerUserId}
-              onChange={(e) => setOfficerUserId(e.target.value)}
-            >
-              <option value="">Lightest workload (recommended)</option>
-              {officers.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                  {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+          <AllocateePicker
+            officers={officers}
+            value={officerUserId}
+            onChange={setOfficerUserId}
+          />
           <button
             className="btn"
             onClick={() =>
@@ -840,22 +919,11 @@ function CaseRow({
 
       {canAllocate && !settled && (
         <div className="flex flex-wrap items-end gap-2">
-          <label className="text-sm">
-            <span className="text-gray-700">Allocate to</span>
-            <select
-              className="input mt-1"
-              value={officerUserId}
-              onChange={(e) => setOfficerUserId(e.target.value)}
-            >
-              <option value="">Lightest workload (recommended)</option>
-              {officers.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                  {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+          <AllocateePicker
+            officers={officers}
+            value={officerUserId}
+            onChange={setOfficerUserId}
+          />
           <button
             className="btn"
             onClick={() =>

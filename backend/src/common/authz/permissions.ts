@@ -241,6 +241,22 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
     Permission.AI_ASSIST,
+
+    /*
+     * An agent may be sent out to verify a business, like an officer.
+     *
+     * Agents are already on the ground in the cities the platform is short of
+     * officers in, which is what makes them worth allocating to. What they do
+     * NOT get is IDENTITY_CONFIRM: confirming that a person is who they claim
+     * decides who may be matched with whom, and that stays with staff.
+     *
+     * The conflict this obviously invites is refused at allocation rather than
+     * here — VerificationService.allocate will not send an agent to a business
+     * whose owner they introduced, nor to another agency. A permission cannot
+     * express "anyone except the ones you earn from"; the allocator can.
+     */
+    Permission.VERIFICATION_PROCESS,
+    Permission.VERIFICATION_FIELDWORK,
   ],
 
   // Vendors sell services. They cannot browse or book matchmaking.

@@ -19,6 +19,15 @@ export interface OfficerView {
   phone: string | null;
   isActive: boolean;
   createdAt: Date;
+  /**
+   * Staff, or an agency being used as one.
+   *
+   * The allocator shows the two apart rather than in one undifferentiated
+   * list, because sending a commercial participant to inspect a business is a
+   * different decision from sending an officer, and an administrator should
+   * be able to see which one they are making.
+   */
+  kind: 'officer' | 'agent';
 }
 
 /**
@@ -101,20 +110,29 @@ export class OfficersService {
     return { ...this.view(officer, dto.name), temporaryPasswordSent: true, ...dev };
   }
 
+  /**
+   * Everybody an administrator may allocate fieldwork to.
+   *
+   * Officers and agents, because an agent holds VERIFICATION_FIELDWORK too and
+   * a list that omitted them would offer half the people who can do the job.
+   * Whether a particular agent may take a particular request is not a question
+   * this list can answer — it depends on who introduced the applicant — so the
+   * allocator decides that and this stays a roster.
+   */
   async list(): Promise<OfficerView[]> {
-    const officers = await this.users.find({
-      where: { role: UserRole.IN_PERSON },
-      select: ['id', 'email', 'phone', 'isActive', 'createdAt'],
+    const people = await this.users.find({
+      where: [{ role: UserRole.IN_PERSON }, { role: UserRole.AGENT }],
+      select: ['id', 'email', 'phone', 'isActive', 'createdAt', 'role'],
       order: { createdAt: 'ASC' },
     });
-    if (officers.length === 0) return [];
+    if (people.length === 0) return [];
 
     const names = await this.profiles.find({
-      where: officers.map((o) => ({ userId: o.id })),
+      where: people.map((o) => ({ userId: o.id })),
       select: ['userId', 'displayName'],
     });
     const byUser = new Map(names.map((p) => [p.userId as string, p.displayName]));
-    return officers.map((o) => this.view(o, byUser.get(o.id) ?? o.email));
+    return people.map((o) => this.view(o, byUser.get(o.id) ?? o.email));
   }
 
   /**
@@ -150,6 +168,7 @@ export class OfficersService {
       phone: user.phone ?? null,
       isActive: user.isActive,
       createdAt: user.createdAt,
+      kind: user.role === UserRole.AGENT ? 'agent' : 'officer',
     };
   }
 }
