@@ -129,6 +129,30 @@ export class VerificationService {
       resourceId: request.id,
       metadata: { applicantType },
     });
+
+    /*
+     * Tell the administrators something is waiting.
+     *
+     * Until now this wrote a row and an audit entry and told nobody, so the
+     * only way anyone learned a business had applied was by opening the queue
+     * on the off-chance. That is fine on the day somebody is watching it and
+     * indistinguishable from the platform being broken on every other day —
+     * an applicant sits unallocated and concludes their submission never
+     * arrived.
+     *
+     * Not awaited: an applicant's submission must not fail because a
+     * notification could not be written. The request is saved either way, and
+     * the queue remains the record — this only means nobody has to guess when
+     * to look at it.
+     */
+    void this.notifications
+      .createForRole(UserRole.ADMIN, NotificationType.VERIFICATION_SUBMITTED, {
+        requestId: request.id,
+        applicantType,
+        awaitingAllocation: true,
+      })
+      .catch(() => undefined);
+
     return request;
   }
 

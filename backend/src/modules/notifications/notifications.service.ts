@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
-import { NotificationType } from '../../common/enums';
+import { NotificationType, UserRole } from '../../common/enums';
 import { NOTIFICATION_TARGET } from './notification-targets';
 import { DELIVERY } from './notification-delivery';
 import { User } from '../auth/entities/user.entity';
@@ -57,6 +57,26 @@ export class NotificationsService {
       this.logger.warn(`Delivering notification ${saved.id} failed: ${(err as Error).message}`),
     );
     return saved;
+  }
+
+  /**
+   * The same notification to everybody holding a role.
+   *
+   * For work that arrives for a desk rather than for a person. A verification
+   * request has no allocated officer yet and no named administrator — it is
+   * addressed to whoever is on, and before this it was addressed to nobody:
+   * the row was written, an audit entry recorded, and the only way anyone
+   * learned of it was by opening the queue and looking.
+   *
+   * Written one at a time rather than in a single insert because `create`
+   * stamps the deep link and fans out to each recipient's own channels, and a
+   * bulk insert would skip both. These desks have tens of people, not
+   * thousands; if that changes this wants a queue, not a bigger loop.
+   */
+  async createForRole(role: UserRole, type: NotificationType, payload: Record<string, unknown>) {
+    const staff = await this.users.find({ where: { role, isActive: true }, select: ['id'] });
+    await Promise.all(staff.map((u) => this.create(u.id, type, payload)));
+    return staff.length;
   }
 
   /**
