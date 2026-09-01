@@ -240,6 +240,19 @@ export enum MaritalStatus {
   ANNULLED = 'annulled',
 }
 
+/**
+ * Whether a parent is living.
+ *
+ * Two values, deliberately. It was accepted as free text and never asked for,
+ * so every profile carried an empty one — and the moment it is asked for as
+ * text, "Late", "late", "expired" and "no more" arrive as four spellings of
+ * one fact that a family reads at a glance beside a name.
+ */
+export enum LifeStatus {
+  ALIVE = 'alive',
+  DECEASED = 'deceased',
+}
+
 export enum FamilyType {
   JOINT = 'joint',
   NUCLEAR = 'nuclear',

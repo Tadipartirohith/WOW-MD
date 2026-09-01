@@ -34,6 +34,7 @@ import {
 import { ProfileShortlist } from './entities/shortlist.entity';
 import { ProfileShare } from '../circulation/entities/profile-share.entity';
 import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
+import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { SuggestionsQueryDto } from './dto/matchmaking.dto';
 
 /**
@@ -103,6 +104,7 @@ export class MatchmakingService {
     private readonly shortlists: Repository<ProfileShortlist>,
     @InjectRepository(ProfileShare) private readonly shares: Repository<ProfileShare>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     private readonly engine: CompatibilityEngine,
     private readonly cfg: AppConfigService,
     private readonly redis: RedisService,
@@ -408,15 +410,17 @@ export class MatchmakingService {
       // profile — both fetched for the page rather than the pool, because a
       // biodata row per candidate over a fifty-profile pool is fifty rows read
       // to render ten.
-      const [facts, interactions] = await Promise.all([
+      const [facts, interactions, agencies] = await Promise.all([
         this.cardFactsFor(window.map((w) => w.profile.id)),
         this.interactionsFor(me.id, window.map((w) => w.profile.id)),
+        this.agencyNamesFor(window.map((w) => w.profile)),
       ]);
 
       const pageItems = window.map((s) => ({
         profile: toPublicProfile(s.profile, {
           matched: acceptedWith.has(s.profile.id),
           card: facts.get(s.profile.id),
+          sourceAgency: agencies.get(s.profile.id) ?? null,
         }),
         score: s.score,
         breakdown: s.breakdown,
@@ -437,6 +441,30 @@ export class MatchmakingService {
     if (profileIds.length === 0) return new Map();
     const rows = await this.details.find({ where: { profileId: In(profileIds) } });
     return new Map(rows.map((d) => [d.profileId, d]));
+  }
+
+  /**
+   * Which agency each of these profiles came from, in one query.
+   *
+   * A family looking at a card wants to know whose profile it is: it decides
+   * who they ring, and where a complaint goes if the details are wrong. The
+   * card carried `managed`, which only said that somebody had built it.
+   */
+  private async agencyNamesFor(profiles: Profile[]): Promise<Map<string, string>> {
+    const owners = [...new Set(profiles.map((p) => p.managedByUserId).filter(Boolean))] as string[];
+    if (owners.length === 0) return new Map();
+    const rows = await this.agencies.find({
+      where: { ownerUserId: In(owners) },
+      select: ['ownerUserId', 'agencyName'],
+    });
+    const byOwner = new Map(rows.map((r) => [r.ownerUserId, r.agencyName]));
+
+    const byProfile = new Map<string, string>();
+    for (const profile of profiles) {
+      const name = profile.managedByUserId ? byOwner.get(profile.managedByUserId) : undefined;
+      if (name) byProfile.set(profile.id, name);
+    }
+    return byProfile;
   }
 
   /** Biodata facts for a page of cards, in one query. */
@@ -567,7 +595,8 @@ export class MatchmakingService {
     const profiles = await this.profiles.find({ where: { id: In(rows.map((r) => r.profileId)) } });
     const byId = new Map(profiles.map((p) => [p.id, p]));
     const acceptedWith = await this.acceptedCounterpartIds(me.id);
-    const [facts, interactions, pool] = await Promise.all([
+    const [agencies, facts, interactions, pool] = await Promise.all([
+      this.agencyNamesFor(profiles),
       this.cardFactsFor(profiles.map((p) => p.id)),
       this.interactionsFor(me.id, profiles.map((p) => p.id)),
       this.detailsFor([me.id, ...profiles.map((p) => p.id)]),
@@ -586,6 +615,7 @@ export class MatchmakingService {
           profile: toPublicProfile(profile, {
             matched: acceptedWith.has(profile.id),
             card: facts.get(profile.id),
+            sourceAgency: agencies.get(profile.id) ?? null,
           }),
           score,
           breakdown,
@@ -635,7 +665,8 @@ export class MatchmakingService {
 
     const byId = new Map(profiles.map((p) => [p.id, p]));
     const acceptedWith = await this.acceptedCounterpartIds(me.id);
-    const [facts, interactions, pool, shortlisted] = await Promise.all([
+    const [agencies, facts, interactions, pool, shortlisted] = await Promise.all([
+      this.agencyNamesFor(profiles),
       this.cardFactsFor(profiles.map((p) => p.id)),
       this.interactionsFor(me.id, profiles.map((p) => p.id)),
       this.detailsFor([me.id, ...profiles.map((p) => p.id)]),
@@ -656,6 +687,7 @@ export class MatchmakingService {
           profile: toPublicProfile(profile, {
             matched: acceptedWith.has(profile.id),
             card: facts.get(profile.id),
+            sourceAgency: agencies.get(profile.id) ?? null,
           }),
           score,
           breakdown,

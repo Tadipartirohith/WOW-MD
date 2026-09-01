@@ -26,7 +26,21 @@ export interface PublicProfile {
     highestQualification: string | null;
     occupationStatus: string | null;
     profession: string | null;
+    /**
+     * The chart, which the engine has always scored against and the card has
+     * never shown. For a great many families here, rashi and gothram decide
+     * whether the rest of the card is worth reading at all — so putting them
+     * behind a click had the ordering backwards. All null for a family that
+     * does not use horoscopes, and the row simply does not appear.
+     */
+    rashi: string | null;
+    star: string | null;
+    padam: string | null;
+    gothram: string | null;
+    kujaDosham: string | null;
   };
+  /** Which agency put this profile up. Null when the person registered themselves. */
+  sourceAgency?: string | null;
 }
 
 export type InteractionState =
@@ -155,6 +169,22 @@ export default function MatchCard({
     card?.motherTongue,
   ].filter(Boolean) as string[];
 
+  /*
+   * The chart is its own row rather than more chips in the run above.
+   *
+   * Mixing "167 cm" and "Bharani" into one wrapping list makes both harder to
+   * find: a family checking compatibility is looking for exactly these five
+   * and reads them as a set, and a family that does not use horoscopes should
+   * see no trace of them at all.
+   */
+  const chart = [
+    card?.rashi ? { label: 'Rashi', value: card.rashi } : null,
+    card?.star ? { label: 'Star', value: card.star } : null,
+    card?.padam ? { label: 'Padam', value: card.padam } : null,
+    card?.gothram ? { label: 'Gothram', value: card.gothram } : null,
+    card?.kujaDosham ? { label: 'Kuja dosham', value: card.kujaDosham } : null,
+  ].filter(Boolean) as { label: string; value: string }[];
+
   const active = activity(p.lastActiveAt);
 
   return (
@@ -238,6 +268,20 @@ export default function MatchCard({
           </div>
 
           {/*
+            Who this profile came from.
+
+            Set quietly under the facts rather than as another chip: it is not
+            a quality of the person, it is who to ring. A family comparing
+            three profiles from three agencies could not tell them apart, and
+            an agent browsing the pool could not see their own.
+          */}
+          {p.sourceAgency ? (
+            <p className="mt-2 text-[0.75rem] text-gray-500">
+              Added by <span className="text-gray-700">{p.sourceAgency}</span>
+            </p>
+          ) : null}
+
+          {/*
             Facts as separate chips rather than one dot-joined sentence. A
             reader scanning for "what do they do" finds it in a chip and cannot
             find it in the middle of a run-on line.
@@ -256,6 +300,23 @@ export default function MatchCard({
           ) : (
             <p className="mt-2 text-sm text-gray-400">Biodata not filled in yet.</p>
           )}
+
+          {/*
+            The chart, as labelled pairs rather than bare values. "Bharani" on
+            its own is meaningless to half the people who will read this card
+            and decisive to the other half; the label is what lets the first
+            group skip it and the second read it.
+          */}
+          {chart.length > 0 ? (
+            <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-gray-200 pt-2 text-[0.75rem]">
+              {chart.map((entry) => (
+                <div key={entry.label} className="flex items-baseline gap-1">
+                  <dt className="text-gray-400">{entry.label}</dt>
+                  <dd className="text-gray-700">{entry.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
 
           {reasons.length > 0 && showScore && (
             <p className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">

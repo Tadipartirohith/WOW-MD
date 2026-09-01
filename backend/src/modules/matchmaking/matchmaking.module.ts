@@ -6,6 +6,7 @@ import { ProfileDetails } from '../profile-details/entities/profile-details.enti
 import { User } from '../auth/entities/user.entity';
 import { MatchmakingService } from './matchmaking.service';
 import { ProfileShortlist } from './entities/shortlist.entity';
+import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { ProfileShare } from '../circulation/entities/profile-share.entity';
 import { MatchmakingController } from './matchmaking.controller';
 import { InvitationsModule } from '../invitations/invitations.module';
@@ -23,6 +24,8 @@ import { AgentsModule } from '../agents/agents.module';
       ProfileDetails,
       ProfileShortlist,
       ProfileShare,
+      // Only to read agency names for the source line on a card.
+      AgentProfile,
     ]),
     VerificationModule,
     InvitationsModule,

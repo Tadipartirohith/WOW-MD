@@ -68,6 +68,32 @@ export class ProfileDetails {
   @Column({ type: 'varchar', length: 120, nullable: true })
   nativePlace: string | null;
 
+  /**
+   * The state the native place is in.
+   *
+   * A town on its own is ambiguous across India — there are Rampurs in six
+   * states — and the question the other side is really asking has two halves.
+   */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  nativeState: string | null;
+
+  /**
+   * Settled abroad, and where.
+   *
+   * A yes/no rather than a country field left blank for most people: a blank
+   * country cannot be told apart from "lives in India" or "did not answer",
+   * and families treat those as different answers.
+   */
+  @Index()
+  @Column({ type: 'boolean', nullable: true })
+  isNri: boolean | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  nriCity: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  nriCountry: string | null;
+
   @Column({ type: 'varchar', length: 120, nullable: true })
   placeOfBirth: string | null;
 

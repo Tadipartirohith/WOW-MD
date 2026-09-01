@@ -820,11 +820,19 @@ function FamilyForm({
     setValues({
       fatherName: father.name ?? '',
       fatherProfession: father.profession ?? '',
+      // Accepted by the API from the beginning and never asked for here, so
+      // every profile on the platform carries an empty one.
+      fatherLifeStatus: father.lifeStatus ?? '',
       motherName: mother.name ?? '',
       motherProfession: mother.profession ?? '',
+      motherLifeStatus: mother.lifeStatus ?? '',
       familyType: initial?.familyType ?? 'nuclear',
       familyStatus: initial?.familyStatus ?? '',
       nativePlace: initial?.nativePlace ?? '',
+      nativeState: initial?.nativeState ?? '',
+      isNri: Boolean(initial?.isNri),
+      nriCity: initial?.nriCity ?? '',
+      nriCountry: initial?.nriCountry ?? '',
       brothers: initial?.brothers ?? 0,
       sisters: initial?.sisters ?? 0,
       // `numeric` comes back from the API as a string, so it is kept as one
@@ -844,11 +852,26 @@ function FamilyForm({
         onSubmit={(e) => {
           e.preventDefault();
           onSave({
-            father: { name: values.fatherName, profession: values.fatherProfession || undefined },
-            mother: { name: values.motherName, profession: values.motherProfession || undefined },
+            father: {
+              name: values.fatherName,
+              profession: values.fatherProfession || undefined,
+              lifeStatus: values.fatherLifeStatus || undefined,
+            },
+            mother: {
+              name: values.motherName,
+              profession: values.motherProfession || undefined,
+              lifeStatus: values.motherLifeStatus || undefined,
+            },
             familyType: values.familyType,
             familyStatus: values.familyStatus,
             nativePlace: values.nativePlace || undefined,
+            nativeState: values.nativeState || undefined,
+            isNri: Boolean(values.isNri),
+            // Only sent when the answer is yes. A city and country left behind
+            // by somebody who changed their mind would otherwise stay on the
+            // record, invisible, and reappear if the answer ever flipped back.
+            nriCity: values.isNri ? values.nriCity || undefined : undefined,
+            nriCountry: values.isNri ? values.nriCountry || undefined : undefined,
             brothers: Number(values.brothers) || 0,
             sisters: Number(values.sisters) || 0,
             // Omitted rather than sent as zero when it is blank. Zero is a
@@ -869,11 +892,38 @@ function FamilyForm({
           <Field label="Father's profession">
             <input className="input mt-1" value={String(values.fatherProfession ?? '')} onChange={set('fatherProfession')} />
           </Field>
+          {/*
+            Living status sits directly under each parent rather than as a pair
+            of fields further down, so it reads as a fact about that person and
+            not as a separate question about the family.
+          */}
+          <Field label="Father's living status">
+            <select
+              className="input mt-1"
+              value={String(values.fatherLifeStatus ?? '')}
+              onChange={set('fatherLifeStatus')}
+            >
+              <option value="">Not said</option>
+              <option value="alive">Alive</option>
+              <option value="deceased">Deceased</option>
+            </select>
+          </Field>
           <Field label="Mother's name">
             <input className="input mt-1" value={String(values.motherName ?? '')} onChange={set('motherName')} required />
           </Field>
           <Field label="Mother's profession">
             <input className="input mt-1" value={String(values.motherProfession ?? '')} onChange={set('motherProfession')} />
+          </Field>
+          <Field label="Mother's living status">
+            <select
+              className="input mt-1"
+              value={String(values.motherLifeStatus ?? '')}
+              onChange={set('motherLifeStatus')}
+            >
+              <option value="">Not said</option>
+              <option value="alive">Alive</option>
+              <option value="deceased">Deceased</option>
+            </select>
           </Field>
           <Field label="Family type">
             <select className="input mt-1" value={String(values.familyType ?? '')} onChange={set('familyType')}>
@@ -902,12 +952,63 @@ function FamilyForm({
           <Field label="Native place" hint="Where the family is from">
             <input className="input mt-1" value={String(values.nativePlace ?? '')} onChange={set('nativePlace')} />
           </Field>
+          {/*
+            The state, beside the town rather than instead of it. A town on its
+            own is ambiguous across India — there are Rampurs in six states —
+            and the question being asked has two halves.
+          */}
+          <Field label="Native state">
+            <input
+              className="input mt-1"
+              value={String(values.nativeState ?? '')}
+              onChange={set('nativeState')}
+              placeholder="Telangana"
+            />
+          </Field>
           <Field label="Brothers">
             <input className="input mt-1" type="number" min={0} value={String(values.brothers ?? 0)} onChange={set('brothers')} />
           </Field>
           <Field label="Sisters">
             <input className="input mt-1" type="number" min={0} value={String(values.sisters ?? 0)} onChange={set('sisters')} />
           </Field>
+          {/*
+            Asked as yes/no with the detail hanging off the yes, rather than as
+            a country box that is blank for most people. A blank country cannot
+            be told apart from "lives in India" or "did not answer", and
+            families treat those as different answers.
+          */}
+          <Field label="Settled abroad">
+            <select
+              className="input mt-1"
+              value={values.isNri ? 'yes' : 'no'}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, isNri: e.target.value === 'yes' }))
+              }
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes, an NRI</option>
+            </select>
+          </Field>
+          {values.isNri ? (
+            <>
+              <Field label="City abroad">
+                <input
+                  className="input mt-1"
+                  value={String(values.nriCity ?? '')}
+                  onChange={set('nriCity')}
+                  placeholder="Dubai"
+                />
+              </Field>
+              <Field label="Country">
+                <input
+                  className="input mt-1"
+                  value={String(values.nriCountry ?? '')}
+                  onChange={set('nriCountry')}
+                  placeholder="United Arab Emirates"
+                />
+              </Field>
+            </>
+          ) : null}
           {/*
             One figure for the family, alongside the itemised assets rather
             than instead of them. Optional, and private unless the family says

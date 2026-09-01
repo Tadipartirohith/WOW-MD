@@ -126,6 +126,20 @@ export class VerificationRequest {
   applicantCity: string | null;
 
   /**
+   * Who and what, filled in when a queue is listed.
+   *
+   * Deliberately not columns, unlike applicantCity above — that one is stored
+   * because it records where the applicant *was* when the request was
+   * allocated, which is a fact about the allocation. These three are read from
+   * the applicant's own records at display time, so a stored copy would go
+   * stale the first time somebody renamed their business, and the queue would
+   * then disagree with the record it is about.
+   */
+  applicantEmail?: string | null;
+  applicantPhone?: string | null;
+  subjectName?: string | null;
+
+  /**
    * How many times this has been sent back for another look.
    *
    * Worth counting: a third visit usually means the request is unanswerable

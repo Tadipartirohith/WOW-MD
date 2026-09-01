@@ -50,6 +50,18 @@ export class PublicProfileView {
   @ApiProperty()
   managed: boolean;
 
+  /**
+   * Which agency put this profile on the platform.
+   *
+   * `managed` already said that somebody did, which answers a question nobody
+   * was asking. Whose profile this is decides whether an agent picks up the
+   * phone, and where a family takes a complaint if the details turn out to be
+   * wrong — and until now it could only be found by opening the profile, if at
+   * all. Null for a self-registered person, who is their own source.
+   */
+  @ApiPropertyOptional({ example: 'ABC Marriage Agency' })
+  sourceAgency?: string | null;
+
   /** The short code a family can read out. */
   @ApiProperty({ example: 'WOW10231' })
   profileCode: string;
@@ -85,6 +97,22 @@ export interface ProfileCardFacts {
   occupationStatus: string | null;
   /** Job title, or the business name when self-employed. */
   profession: string | null;
+
+  /**
+   * The horoscope, on the card.
+   *
+   * The engine has scored against these from the beginning and the biodata has
+   * carried them, and a family could not see any of it without opening the
+   * profile — which is the wrong way round in this market: for a great many
+   * families rashi and gothram decide whether the rest of the card is worth
+   * reading at all. Null throughout for a family that does not use horoscopes,
+   * and the card simply shows nothing rather than a row of blanks.
+   */
+  rashi: string | null;
+  star: string | null;
+  padam: string | null;
+  gothram: string | null;
+  kujaDosham: string | null;
 }
 
 /**
@@ -103,11 +131,23 @@ export function toCardFacts(details: {
   occupationStatus: string | null;
   employment: Record<string, unknown>;
   business: Record<string, unknown>;
+  horoscope?: Record<string, unknown>;
+  horoscopeAvailable?: boolean | null;
 }): ProfileCardFacts {
   const text = (value: unknown): string | null =>
     typeof value === 'string' && value.trim() ? value.trim() : null;
 
+  // Only when the family says a chart exists. A profile that left the
+  // horoscope section alone has an empty object here, and reading fields out
+  // of it would print an empty row on every card that has nothing to say.
+  const chart = details.horoscopeAvailable ? (details.horoscope ?? {}) : {};
+
   return {
+    rashi: text(chart.rashi),
+    star: text(chart.star),
+    padam: text(chart.padam),
+    gothram: text(chart.gothram),
+    kujaDosham: text(chart.kujaDosham),
     heightCm: details.heightCm,
     religion: details.religion,
     caste: details.caste,
@@ -215,7 +255,7 @@ export function ageBand(dateOfBirth: string | null): string | null {
  */
 export function toPublicProfile(
   profile: Profile,
-  opts: { matched?: boolean; card?: ProfileCardFacts } = {},
+  opts: { matched?: boolean; card?: ProfileCardFacts; sourceAgency?: string | null } = {},
 ): PublicProfileView {
   const matched = Boolean(opts.matched);
   const allPhotos = profile.photos ?? [];
@@ -228,6 +268,7 @@ export function toPublicProfile(
   else if (profile.visibility === ProfileVisibility.PUBLIC) photos = allPhotos.slice(0, 1);
 
   return {
+    sourceAgency: opts.sourceAgency ?? null,
     id: profile.id,
     displayName: profile.displayName,
     gender: profile.gender,

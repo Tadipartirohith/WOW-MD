@@ -58,7 +58,7 @@ export class VerificationController {
 
   // ------------------------------------------------------ identity documents
 
-  @RequirePermissions(Permission.VERIFICATION_DECIDE)
+  @RequirePermissions(Permission.IDENTITY_CONFIRM)
   @ApiOperation({
     summary: 'Confirm a profile-holder’s identity document',
     description:
@@ -133,7 +133,7 @@ export class VerificationController {
     return this.verification.findOne(actor, id);
   }
 
-  @RequirePermissions(Permission.VERIFICATION_PROCESS)
+  @RequirePermissions(Permission.VERIFICATION_FIELDWORK)
   @ApiOperation({ summary: 'Pick up an allocated request' })
   @Put('requests/:id/start')
   start(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
@@ -171,7 +171,7 @@ export class VerificationController {
     return this.verification.removeArea(actor, id);
   }
 
-  @RequirePermissions(Permission.VERIFICATION_PROCESS)
+  @RequirePermissions(Permission.VERIFICATION_FIELDWORK)
   @ApiOperation({
     summary: 'Write up what the visit found',
     description:

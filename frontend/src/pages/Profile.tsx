@@ -55,6 +55,22 @@ export default function Profile() {
    */
   const isSteward = can(permissions, Permission.ACT_ON_BEHALF);
 
+  /*
+   * An agency's own profile is not a biodata.
+   *
+   * ACT_ON_BEHALF is held by a family member and by an agent alike — that is
+   * how a father runs his daughter's profile — so it cannot tell the two
+   * apart, and this page was asking a marriage agency which of Bride or Groom
+   * it was and what its relationship to itself was. Their date of birth and
+   * gender were asked for the same reason and are equally beside the point:
+   * nobody is matched against the agency.
+   *
+   * A family member is a client as well as a steward, so all of it stays for
+   * them. AGENCY_MANAGE is the capability that separates the two.
+   */
+  const isAgency = can(permissions, Permission.AGENCY_MANAGE);
+  const stewardFields = isSteward && !isAgency;
+
   const { data, isLoading } = useQuery({
     queryKey: ['me'],
     queryFn: async () => (await api.get('/users/me')).data,
@@ -96,16 +112,22 @@ export default function Profile() {
       // Blank optional fields are omitted rather than sent as empty strings,
       // which the validators would reject as malformed rather than absent.
       const payload: Record<string, string> = { displayName: form.displayName };
-      for (const key of [
-        'gender',
-        'dateOfBirth',
-        'city',
-        'address',
-        'contactPhone',
-        'bio',
-        'managingFor',
-        'stewardRelation',
-      ] as const) {
+      // An agency is not asked for these, so it does not send them either.
+      // Leaving them in the payload would keep resubmitting whatever stale
+      // value the form was seeded with, from fields nobody can see.
+      const fields = isAgency
+        ? (['city', 'address', 'contactPhone', 'bio'] as const)
+        : ([
+            'gender',
+            'dateOfBirth',
+            'city',
+            'address',
+            'contactPhone',
+            'bio',
+            'managingFor',
+            'stewardRelation',
+          ] as const);
+      for (const key of fields) {
         if (form[key]) payload[key] = form[key];
       }
       await api.put('/users/me/profile', payload);
@@ -148,12 +170,16 @@ export default function Profile() {
         {!editing && data && (
           <dl className="divide-y text-sm">
             <Saved label="Name">{data.displayName}</Saved>
-            <Saved label="Gender">{data.gender}</Saved>
-            <Saved label="Date of birth">
-              {data.dateOfBirth ? formatDate(data.dateOfBirth) : null}
-            </Saved>
+            {!isAgency && (
+              <>
+                <Saved label="Gender">{data.gender}</Saved>
+                <Saved label="Date of birth">
+                  {data.dateOfBirth ? formatDate(data.dateOfBirth) : null}
+                </Saved>
+              </>
+            )}
             <Saved label="City">{data.city}</Saved>
-            {isSteward && (
+            {stewardFields && (
               <>
                 <Saved label="Managing profile for">
                   {data.managingFor ? MANAGING_FOR_LABEL[data.managingFor] : null}
@@ -165,6 +191,21 @@ export default function Profile() {
             <Saved label="Address">{data.address}</Saved>
             <Saved label="About you">{data.bio}</Saved>
           </dl>
+        )}
+
+        {/*
+          The agency's own details — registration, address, approval — live on
+          My Agency and are a different record from this one. Saying so is what
+          keeps somebody from looking for them here.
+        */}
+        {isAgency && !editing && (
+          <p className="text-sm text-gray-500">
+            Your agency name, registration and address are on{' '}
+            <Link className="text-brand-strong underline" to="/agency">
+              My Agency
+            </Link>
+            . This page is you.
+          </p>
         )}
 
         {editing && (
@@ -187,7 +228,7 @@ export default function Profile() {
               single dropdown made a father managing his daughter's profile pick
               between labels that described neither of them.
             */}
-            {isSteward && (
+            {stewardFields && (
               <div className="grid gap-3 rounded-sm border border-gray-200 p-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="text-gray-700">Managing profile for</span>

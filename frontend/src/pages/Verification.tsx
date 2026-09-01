@@ -35,6 +35,10 @@ interface VerificationRequest {
   /** What the automatic allocation went on. Absent on an older request. */
   allocationBasis?: string | null;
   applicantCity?: string | null;
+  /** Filled in by the queue so a card can say who it is about. */
+  applicantEmail?: string | null;
+  applicantPhone?: string | null;
+  subjectName?: string | null;
 }
 
 interface SupportCase {
@@ -161,6 +165,16 @@ export default function Verification() {
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canAllocate = can(permissions, Permission.VERIFICATION_ALLOCATE);
   const canDecide = can(permissions, Permission.VERIFICATION_DECIDE);
+  /*
+   * Going out, and deciding on what came back, are two different people.
+   *
+   * Both used to hang off canDecide, which is how the officer ended up with
+   * Approve, Reject and Needs another look under their own findings — the
+   * field visit and the review of the field visit performed by the same hand.
+   * The permissions are now separate on the server, so these are too, and an
+   * administrator no longer gets a write-up form for a visit they did not make.
+   */
+  const canFieldwork = can(permissions, Permission.VERIFICATION_FIELDWORK);
   const canManageOfficers = can(permissions, Permission.ADMIN_OFFICER_MANAGE);
 
   const [tab, setTab] = useState<'requests' | 'cases' | 'officers'>('requests');
@@ -322,6 +336,7 @@ export default function Verification() {
                     officers={activeOfficers}
                     canAllocate={canAllocate}
                     canDecide={canDecide}
+                    canFieldwork={canFieldwork}
                     onRun={run}
                   />
                 ))}
@@ -393,12 +408,14 @@ function RequestRow({
   officers,
   canAllocate,
   canDecide,
+  canFieldwork,
   onRun,
 }: {
   request: VerificationRequest;
   officers: Officer[];
   canAllocate: boolean;
   canDecide: boolean;
+  canFieldwork: boolean;
   onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
 }) {
   const [officerUserId, setOfficerUserId] = useState('');
@@ -411,11 +428,27 @@ function RequestRow({
     <div className="card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="font-medium capitalize">{request.applicantType} verification</p>
+          {/*
+            The name, in the title. Every card in this queue used to read
+            "planner verification", so telling two apart meant opening both —
+            and an administrator working through a morning's approvals is
+            mostly asking "which one is this".
+          */}
+          <p className="font-medium capitalize">
+            {request.applicantType} verification
+            {request.subjectName ? (
+              <span className="text-gray-500"> — {request.subjectName}</span>
+            ) : null}
+          </p>
           <p className="text-xs text-gray-500">
             Raised {new Date(request.createdAt).toLocaleDateString()}
             {request.applicantCity ? ` · ${request.applicantCity}` : ''}
           </p>
+          {(request.applicantEmail || request.applicantPhone) && (
+            <p className="text-xs text-gray-500">
+              {[request.applicantEmail, request.applicantPhone].filter(Boolean).join(' · ')}
+            </p>
+          )}
           {/*
             An allocation made on workload alone because nobody covers that city
             is a staffing gap, and it is invisible once the allocation has
@@ -523,7 +556,7 @@ function RequestRow({
         the strength of it is a separate step, below — an approval that rests
         on nothing is what makes a verification a checkbox.
       */}
-      {canDecide && !decided && !awaitingDecision && (
+      {canFieldwork && !decided && !awaitingDecision && (
         <div className="space-y-2 border-t pt-3">
           {(request.status === 'assigned' || request.status === 'additional_review') && (
             <button

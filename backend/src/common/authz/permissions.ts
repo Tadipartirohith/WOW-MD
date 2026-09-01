@@ -82,6 +82,26 @@ export enum Permission {
   VERIFICATION_PROCESS = 'verification:process',
   /** Record the approve/reject/issue decision on a request. */
   VERIFICATION_DECIDE = 'verification:decide',
+  /**
+   * Going out and writing it up: starting a visit and submitting findings.
+   *
+   * Split from `verification:process`, which now means only reading the queue.
+   * An administrator needs to read every request to review one, and must not
+   * be able to file the findings — an administrator writing up a visit nobody
+   * made is the independent check silently not happening, and it is invisible
+   * afterwards because the record looks the same either way.
+   */
+  VERIFICATION_FIELDWORK = 'verification:fieldwork',
+  /**
+   * Confirming an identity document, having seen it and the person together.
+   *
+   * Split from `verification:decide` for the opposite reason. This is the
+   * officer's job and nobody else's — it is what the visit is for — while the
+   * approve/reject decision on the resulting report is the administrator's.
+   * One permission covering both made the officer the reviewer of their own
+   * fieldwork.
+   */
+  IDENTITY_CONFIRM = 'identity:confirm',
   /** Assign a request or case to an officer. Admin only. */
   VERIFICATION_ALLOCATE = 'verification:allocate',
   CASE_RAISE = 'case:raise',
@@ -140,6 +160,25 @@ const INDIVIDUAL_PERMISSIONS: Permission[] = [
   Permission.AI_ASSIST,
   Permission.SESSION_MANAGE_OWN,
   Permission.MFA_MANAGE_OWN,
+];
+
+/**
+ * What an administrator is deliberately not given.
+ *
+ * Everything else is computed, so a new permission is never accidentally
+ * withheld from support staff. These two are withheld on purpose, and the
+ * reason is the same for both: they are done by somebody who was physically
+ * present. An administrator who can submit findings can complete a
+ * verification without anybody having visited, and an administrator who can
+ * confirm an identity document can do it without having seen it — and neither
+ * leaves any trace, because the record reads identically either way.
+ *
+ * This is the one place the admin's set is narrowed, so it is the one place to
+ * look when asking why an administrator cannot do something.
+ */
+const NOT_THE_ADMINS_JOB: readonly Permission[] = [
+  Permission.VERIFICATION_FIELDWORK,
+  Permission.IDENTITY_CONFIRM,
 ];
 
 /**
@@ -255,7 +294,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   [UserRole.IN_PERSON]: [
     Permission.PROFILE_MANAGE_OWN,
     Permission.VERIFICATION_PROCESS,
-    Permission.VERIFICATION_DECIDE,
+    Permission.VERIFICATION_FIELDWORK,
+    Permission.IDENTITY_CONFIRM,
     Permission.CASE_RAISE,
     Permission.CASE_INVESTIGATE,
     Permission.CASE_SETTLE,
@@ -264,9 +304,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MFA_MANAGE_OWN,
   ],
 
-  // Admin gets every permission, computed rather than listed so new
-  // permissions are never accidentally withheld from support staff.
-  [UserRole.ADMIN]: Object.values(Permission),
+  // Admin gets every permission bar the ones above, computed rather than
+  // listed so new permissions are never accidentally withheld.
+  [UserRole.ADMIN]: Object.values(Permission).filter(
+    (p) => !NOT_THE_ADMINS_JOB.includes(p),
+  ),
 };
 
 export function permissionsFor(role: UserRole | string): readonly Permission[] {

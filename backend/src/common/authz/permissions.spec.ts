@@ -18,10 +18,37 @@ describe('permission matrix', () => {
     }
   });
 
-  it('gives admin every permission', () => {
+  /**
+   * The admin's set is computed, so this is really a test that nothing is
+   * withheld by accident.
+   *
+   * Two things are withheld on purpose, and they are named here rather than
+   * derived, so that adding a third is a deliberate edit to a test that says
+   * why. Both are done by somebody who was physically present: an
+   * administrator who can submit findings can close a verification with
+   * nobody having visited, and one who can confirm an identity document can do
+   * it without having seen it — and neither leaves a trace, because the record
+   * reads the same either way.
+   */
+  it('gives admin every permission except the ones that need a person on site', () => {
+    const fieldOnly = [Permission.VERIFICATION_FIELDWORK, Permission.IDENTITY_CONFIRM];
+
     for (const permission of Object.values(Permission)) {
-      expect(roleHasPermission(UserRole.ADMIN, permission)).toBe(true);
+      expect(roleHasPermission(UserRole.ADMIN, permission)).toBe(
+        !fieldOnly.includes(permission),
+      );
     }
+
+    // The officer holds exactly those two, which is what makes the split mean
+    // anything: withheld from the admin and granted to nobody would just be
+    // dead capability.
+    for (const permission of fieldOnly) {
+      expect(roleHasPermission(UserRole.IN_PERSON, permission)).toBe(true);
+    }
+
+    // And the officer does not get the decision on their own fieldwork.
+    expect(roleHasPermission(UserRole.IN_PERSON, Permission.VERIFICATION_DECIDE)).toBe(false);
+    expect(roleHasPermission(UserRole.ADMIN, Permission.VERIFICATION_DECIDE)).toBe(true);
   });
 
   it('grants no permissions to an unknown role', () => {

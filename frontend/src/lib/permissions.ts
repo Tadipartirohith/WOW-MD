@@ -60,6 +60,8 @@ export const Permission = {
   MFA_MANAGE_OWN: 'mfa:manage:own',
   VERIFICATION_PROCESS: 'verification:process',
   VERIFICATION_DECIDE: 'verification:decide',
+  VERIFICATION_FIELDWORK: 'verification:fieldwork',
+  IDENTITY_CONFIRM: 'identity:confirm',
   VERIFICATION_ALLOCATE: 'verification:allocate',
   CASE_RAISE: 'case:raise',
   CASE_ALLOCATE: 'case:allocate',

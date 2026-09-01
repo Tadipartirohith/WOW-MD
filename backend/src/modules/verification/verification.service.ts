@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThan, Repository } from 'typeorm';
+import { In, IsNull, LessThan, Repository } from 'typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { OfficerServiceArea } from './entities/officer-service-area.entity';
 import { canonicalCity, normalisePlace, stateOf } from './service-area';
@@ -537,7 +537,46 @@ export class VerificationService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    return paginate(await this.withIdentity(data), total, q.page, q.limit);
+  }
+
+  /**
+   * Puts a name on each row.
+   *
+   * Without this the queue is a column of identical cards — "planner
+   * verification", "planner verification", "planner verification" — and the
+   * only way to tell them apart is to open each one. Which planner it is
+   * decides whether an administrator has already dealt with this applicant
+   * this week, and it is the first thing they look for.
+   */
+  private async withIdentity(rows: VerificationRequest[]): Promise<VerificationRequest[]> {
+    if (rows.length === 0) return rows;
+    const userIds = [...new Set(rows.map((r) => r.applicantUserId))];
+
+    const [users, agencies, planners, vendors] = await Promise.all([
+      this.users.find({ where: { id: In(userIds) }, select: ['id', 'email', 'phone'] }),
+      this.agencies.find({ where: { ownerUserId: In(userIds) } }),
+      this.planners.find({ where: { ownerUserId: In(userIds) } }),
+      this.vendors.find({ where: { ownerUserId: In(userIds) } }),
+    ]);
+
+    const byUser = new Map(users.map((u) => [u.id, u]));
+    const agencyBy = new Map(agencies.map((a) => [a.ownerUserId, a.agencyName]));
+    const plannerBy = new Map(planners.map((a) => [a.ownerUserId, a.agencyName]));
+    const vendorBy = new Map(vendors.map((v) => [v.ownerUserId, v.name]));
+
+    for (const row of rows) {
+      const user = byUser.get(row.applicantUserId);
+      row.applicantEmail = user?.email ?? null;
+      row.applicantPhone = user?.phone ?? null;
+      row.subjectName =
+        (row.applicantType === ApplicantType.AGENT
+          ? agencyBy.get(row.applicantUserId)
+          : row.applicantType === ApplicantType.PLANNER
+            ? plannerBy.get(row.applicantUserId)
+            : vendorBy.get(row.applicantUserId)) ?? null;
+    }
+    return rows;
   }
 
   /**
@@ -561,16 +600,42 @@ export class VerificationService {
       select: ['id', 'email', 'phone', 'role', 'isActive', 'createdAt'],
     });
 
-    const subject =
-      request.applicantType === ApplicantType.AGENT
-        ? await this.agencies.findOne({ where: { ownerUserId: request.applicantUserId } })
-        : await this.vendors.findOne({
-            where: request.subjectId
-              ? { id: request.subjectId }
-              : { ownerUserId: request.applicantUserId },
-          });
+    /*
+     * The record being verified, resolved by what kind of applicant this is.
+     *
+     * It used to be "agency if AGENT, otherwise vendors" — so a planner's
+     * subject was looked for in the vendors table, found nothing, and came
+     * back null. The officer opened "Show the business details" and got a
+     * panel of dashes; the administrator got a queue of planner cards that
+     * were identical because none of them had a name to show. Two reports, one
+     * missing branch. The planners repository was already injected here.
+     */
+    const subject = await this.subjectFor(request);
 
     return { ...request, applicant: applicant ?? null, subject: subject ?? null };
+  }
+
+  /**
+   * The business, agency or planning practice a request is about.
+   *
+   * `subjectId` is preferred wherever it is set, because one account may hold
+   * two businesses and the request names which of them is being verified;
+   * falling back to the owner is for the older rows that predate that column.
+   */
+  private async subjectFor(request: VerificationRequest): Promise<object | null> {
+    const byOwner = { ownerUserId: request.applicantUserId };
+    switch (request.applicantType) {
+      case ApplicantType.AGENT:
+        return (await this.agencies.findOne({ where: byOwner })) ?? null;
+      case ApplicantType.PLANNER:
+        return (await this.planners.findOne({ where: byOwner })) ?? null;
+      default:
+        return (
+          (await this.vendors.findOne({
+            where: request.subjectId ? { id: request.subjectId } : byOwner,
+          })) ?? null
+        );
+    }
   }
 
   /** The applicant's own view: status and reason, nothing about the officer. */

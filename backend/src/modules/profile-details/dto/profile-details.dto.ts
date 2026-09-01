@@ -24,6 +24,7 @@ import {
   FamilyAssetType,
   FamilyStatus,
   FamilyType,
+  LifeStatus,
   MaritalStatus,
   OccupationStatus,
 } from '../../../common/enums';
@@ -298,11 +299,18 @@ class ParentDto {
   @MaxLength(120)
   name: string;
 
-  @ApiPropertyOptional({ description: 'Alive / Late' })
+  /**
+   * Alive or deceased, and only those two.
+   *
+   * It was already accepted here as free text and simply never asked for on
+   * the form, so every profile carried an empty one. Two options rather than a
+   * text box because this is read at a glance beside a name, and "Late",
+   * "late", "expired" and "no more" are the same fact written four ways.
+   */
+  @ApiPropertyOptional({ enum: LifeStatus })
   @IsOptional()
-  @IsString()
-  @MaxLength(40)
-  lifeStatus?: string;
+  @IsEnum(LifeStatus)
+  lifeStatus?: LifeStatus;
 
   @ApiPropertyOptional({ minimum: 18, maximum: 120 })
   @IsOptional()
@@ -327,6 +335,30 @@ export class FamilyDetailsDto {
   @IsString()
   @MaxLength(120)
   nativePlace?: string;
+
+  @ApiPropertyOptional({ maxLength: 80, description: 'The state the native place is in' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  nativeState?: string;
+
+  /** Settled abroad. The city and country below are only meaningful when true. */
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @StrictBoolean()
+  isNri?: boolean;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  nriCity?: string;
+
+  @ApiPropertyOptional({ maxLength: 80 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  nriCountry?: string;
 
   @ApiProperty({ type: ParentDto })
   @ValidateNested()
