@@ -10,6 +10,7 @@ import {
   Staff,
 } from '../components/AdminConsole';
 import ReviewModeration from '../components/ReviewModeration';
+import Admin360 from '../components/Admin360';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import CatalogAdmin from '../components/CatalogAdmin';
 
@@ -182,6 +183,13 @@ export default function Admin() {
           </div>
         ))}
       </div>
+
+      {/*
+        The lookup goes first. It is the thing an administrator opens this page
+        holding — a support ticket with a uuid in it — and everything below is
+        the platform in aggregate, which is a different question.
+      */}
+      <Admin360 />
 
       <CatalogAdmin />
 

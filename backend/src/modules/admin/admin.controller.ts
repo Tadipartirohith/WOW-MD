@@ -94,6 +94,19 @@ export class AdminController {
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
   @ApiOperation({
+    summary: 'One booking, with everybody attached to it',
+    description:
+      'Client, the agency behind them, provider, every payment and any dispute, in one read. ' +
+      'A dispute is argued over exactly this set of facts, and gathering them by filtering six ' +
+      'lists on a uuid is how the wrong booking gets refunded.',
+  })
+  @Get('bookings/:id')
+  bookingDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.console.bookingDetail(id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
     summary: 'Administrators and field officers, listed apart',
     description:
       'They are not variants of one thing. One decides who gets access; the other goes to an ' +

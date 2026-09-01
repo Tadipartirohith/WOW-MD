@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Interest } from '../matchmaking/entities/interest.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, IsNull, Not, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
@@ -19,9 +20,12 @@ import {
   BookingStatus,
   BusinessStatus,
   CaseStatus,
+  InterestStatus,
+  MatchFixedState,
   NetworkVisibility,
   PaymentStatus,
   ProfileLifecycle,
+  ProviderType,
   UserRole,
   VerificationStatus,
 } from '../../common/enums';
@@ -51,6 +55,8 @@ export class AdminConsoleService {
     @InjectRepository(VerificationRequest)
     private readonly verifications: Repository<VerificationRequest>,
     @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
+    // Read-only, for the matchmaking half of an individual's history.
+    @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     private readonly cfg: AppConfigService,
   ) {}
 
@@ -209,6 +215,54 @@ export class AdminConsoleService {
       this.verifications.find({ where: { applicantUserId: userId } }),
     ]);
 
+    const profileIds = profiles.map((p) => p.id);
+
+    /*
+     * The parts that only make sense for some accounts.
+     *
+     * Asked conditionally rather than always, because the honest answer for an
+     * officer's matchmaking history is not an empty array — it is that the
+     * question does not apply, and a screen showing four empty sections
+     * teaches an administrator to stop reading it.
+     */
+    const [interests, money, agencyClients, officerLoad] = await Promise.all([
+      profileIds.length
+        ? this.interests.find({
+            where: [{ fromProfileId: In(profileIds) }, { toProfileId: In(profileIds) }],
+            order: { createdAt: 'DESC' },
+            take: 50,
+          })
+        : Promise.resolve([]),
+      this.payments.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 50 }),
+      user.role === UserRole.AGENT
+        ? this.users.find({
+            where: { managedByAgentId: userId },
+            select: ['id', 'email', 'role', 'isActive', 'createdAt'],
+          })
+        : Promise.resolve([]),
+      user.role === UserRole.IN_PERSON
+        ? this.verifications.find({
+            where: { assignedToUserId: userId },
+            order: { createdAt: 'DESC' },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // The matchmaking story as counts, because fifty interest rows is not an
+    // answer to "where is this person up to".
+    const matchmaking = profileIds.length
+      ? {
+          sent: interests.filter((i) => profileIds.includes(i.fromProfileId)).length,
+          received: interests.filter((i) => profileIds.includes(i.toProfileId)).length,
+          accepted: interests.filter((i) => i.status === InterestStatus.ACCEPTED).length,
+          fixed: interests.filter((i) => i.matchFixedState === MatchFixedState.CONFIRMED).length,
+          history: interests.slice(0, 20),
+        }
+      : null;
+
+    const sum = (rows: { amount: string }[]) =>
+      rows.reduce((n, r) => n + Number(r.amount ?? 0), 0).toFixed(2);
+
     return {
       user,
       profiles: profiles.map((p) => ({
@@ -228,6 +282,93 @@ export class AdminConsoleService {
       casesRaised: raised,
       casesAssigned: against,
       verifications,
+
+      matchmaking,
+
+      /** What this account has paid, and what state it is in. */
+      payments: {
+        total: sum(money),
+        inEscrow: sum(money.filter((p) => p.status === PaymentStatus.HELD_IN_ESCROW)),
+        released: sum(money.filter((p) => p.status === PaymentStatus.RELEASED)),
+        refunded: sum(money.filter((p) => p.status === PaymentStatus.REFUNDED)),
+        history: money.slice(0, 20),
+      },
+
+      /** Only for an agency: the accounts they brought on. */
+      agency:
+        user.role === UserRole.AGENT
+          ? {
+              clients: agencyClients,
+              charges: await this.charges.find({
+                where: { agentUserId: userId },
+                order: { createdAt: 'DESC' },
+                take: 20,
+              }),
+            }
+          : null,
+
+      /**
+       * Only for an officer: the workload, which is the thing an administrator
+       * reallocating work needs and cannot get from anywhere else.
+       */
+      officer:
+        user.role === UserRole.IN_PERSON
+          ? {
+              assigned: officerLoad.length,
+              open: officerLoad.filter(
+                (v) => !['approved', 'rejected'].includes(String(v.status)),
+              ).length,
+              overdue: officerLoad.filter(
+                (v) => v.slaBreachedAt || (v.slaDeadline && new Date(v.slaDeadline) < new Date()),
+              ).length,
+              queue: officerLoad.slice(0, 20),
+            }
+          : null,
+    };
+  }
+
+  /**
+   * One booking, with everybody and everything attached to it.
+   *
+   * A dispute is argued over exactly this: who booked, from whom, for which
+   * day, at what price, what was quoted, what was paid and where that money is
+   * now. It was six lookups by uuid, which is slow and is how the wrong
+   * booking gets refunded.
+   */
+  async bookingDetail(bookingId: string) {
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const [client, payments, cases, vendor] = await Promise.all([
+      this.users.findOne({
+        where: { id: booking.userId },
+        select: ['id', 'email', 'phone', 'role', 'managedByAgentId'],
+      }),
+      this.payments.find({ where: { bookingId }, order: { createdAt: 'ASC' } }),
+      this.cases.find({ where: { subjectId: bookingId }, order: { createdAt: 'DESC' } }),
+      booking.providerType === ProviderType.VENDOR
+        ? this.vendors.findOne({ where: { id: booking.providerId } })
+        : Promise.resolve(null),
+    ]);
+
+    const agent = client?.managedByAgentId
+      ? await this.users.findOne({
+          where: { id: client.managedByAgentId },
+          select: ['id', 'email'],
+        })
+      : null;
+
+    return {
+      booking,
+      client,
+      // The agency behind the client, when there is one: an administrator
+      // asking why a booking was made often has to ask who made it.
+      agent,
+      provider: vendor
+        ? { id: vendor.id, name: vendor.name, category: vendor.category, status: vendor.status }
+        : { id: booking.providerId, type: booking.providerType },
+      payments,
+      disputes: cases,
     };
   }
 
