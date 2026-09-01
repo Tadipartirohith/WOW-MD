@@ -116,7 +116,23 @@ export class AgentBillingService {
     return charge;
   }
 
-  /** The client pays a charge; the money goes into escrow, not to the agency. */
+  /**
+   * The client pays a charge.
+   *
+   * Where it goes depends on what the charge is for, and the two are genuinely
+   * different transactions rather than one with a flag.
+   *
+   * A match settlement is held. The agency is being paid for an outcome, the
+   * outcome has not happened yet, and if it never does the money goes back —
+   * which is what escrow is for and why refundHeldFor exists.
+   *
+   * A profile creation fee is not held, and used to be. The work is finished
+   * by the time the fee is raised: the profile exists, the biodata is filled
+   * in, the document has been checked. Holding it made an agency wait on
+   * somebody else's wedding to be paid for a job they had already done, and
+   * the ledger read "in escrow", which was accurate and misleading at the same
+   * time. It settles on payment instead.
+   */
   async pay(actor: AuthUser, chargeId: string): Promise<AgentCharge> {
     const charge = await this.loadOrFail(chargeId);
     await this.assertPayer(actor, charge);
@@ -126,22 +142,44 @@ export class AgentBillingService {
     }
 
     const { commission, payout } = this.split(charge.amount);
+    // The intent is still created: the client has to pay something, whichever
+    // way it is then settled. What differs is whether the hold is kept.
     const intent = await this.gateway.createEscrowHold(charge.amount, charge.currency);
 
-    charge.status = PaymentStatus.HELD_IN_ESCROW;
     charge.providerRef = intent.providerRef;
     charge.commissionAmount = commission;
     charge.payoutAmount = payout;
     charge.paidAt = new Date();
     charge.payerUserId = charge.payerUserId ?? actor.userId;
+
+    const settlesNow = charge.type === AgentChargeType.PROFILE_CREATION;
+    if (settlesNow) {
+      // Released against the same reference, immediately. There is no linked
+      // account per agency, so this releases rather than transfers and the
+      // platform settles out of band — the same thing releaseForFixedMatch
+      // does, at a different moment.
+      const result = await this.gateway.release(
+        intent.providerRef,
+        payout,
+        charge.currency,
+        { accountId: null, label: 'agency fee' },
+      );
+      charge.payoutRef = result.transferRef;
+      charge.payoutNote = result.reason;
+      charge.status = PaymentStatus.RELEASED;
+      charge.releasedAt = new Date();
+    } else {
+      charge.status = PaymentStatus.HELD_IN_ESCROW;
+    }
+
     const saved = await this.charges.save(charge);
 
     await this.audit.record({
-      action: AuditAction.AGENT_CHARGE_HELD,
+      action: settlesNow ? AuditAction.AGENT_CHARGE_RELEASED : AuditAction.AGENT_CHARGE_HELD,
       actor,
       resourceType: 'agent_charge',
       resourceId: charge.id,
-      metadata: { amount: charge.amount, type: charge.type },
+      metadata: { amount: charge.amount, type: charge.type, escrowed: !settlesNow },
     });
     return saved;
   }
@@ -149,8 +187,10 @@ export class AgentBillingService {
   /**
    * Releases everything held for a profile once its match is fixed.
    *
-   * This is the moment the agency has earned it, so the profile fee and the
-   * settlement fee are released together. Anything still unpaid stays owed.
+   * The settlement fee only. The profile creation fee is settled when it is
+   * paid, because that work is already done by then — it is not waiting on the
+   * match and never appears in escrow to be released. Anything still unpaid
+   * stays owed.
    */
   async releaseForFixedMatch(profileId: string, interestId: string): Promise<AgentCharge[]> {
     const held = await this.charges.find({

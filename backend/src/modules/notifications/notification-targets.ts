@@ -25,6 +25,7 @@ export type TargetModule =
   | 'disputes'
   | 'chat'
   | 'planner'
+  | 'clients'
   | 'matches';
 
 export type TargetAction = 'view' | 'respond' | 'pay' | 'review' | 'reply';
@@ -48,6 +49,13 @@ export const NOTIFICATION_TARGET: Record<NotificationType, NotificationTarget> =
   },
   [NotificationType.MATCH_ACCEPTED]: {
     module: 'matches',
+    action: 'view',
+    idKey: 'counterpartProfileId',
+  },
+  // Opens the client's own record, not the conversation: the agent is being
+  // told this happened, and reading the thread is not theirs to do.
+  [NotificationType.MATCH_CONVERSATION]: {
+    module: 'clients',
     action: 'view',
     idKey: 'counterpartProfileId',
   },

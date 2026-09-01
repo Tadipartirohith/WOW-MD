@@ -118,6 +118,14 @@ export enum NotificationType {
   MATCH_INTEREST = 'match_interest',
   MATCH_ACCEPTED = 'match_accepted',
   NEW_MESSAGE = 'new_message',
+  /**
+   * Two of an agency's clients have started talking, or have started a call.
+   *
+   * For the agent, not the couple. Raised once when the conversation opens
+   * rather than on every message — an agency running forty introductions does
+   * not want the day narrated — and it carries nothing that was said.
+   */
+  MATCH_CONVERSATION = 'match_conversation',
   TASK_REMINDER = 'task_reminder',
   /** Kept for rows written before the booking types below existed. */
   BOOKING_UPDATE = 'booking_update',

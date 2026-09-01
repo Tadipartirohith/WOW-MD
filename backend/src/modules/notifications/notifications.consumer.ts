@@ -76,6 +76,28 @@ export class NotificationsConsumer implements OnModuleInit {
         ).catch((err) => this.logger.error('notify match fixed failed', err));
       });
 
+    /*
+     * An agency's two clients have started talking, or started a call.
+     *
+     * Sent to the steward rather than to either side of the couple: they are
+     * the only person who cannot otherwise tell, and until now an agency heard
+     * nothing between making an introduction and somebody ringing them about
+     * it. Created directly rather than through notifyProfiles, because the
+     * recipient here is not one of the parties.
+     */
+    this.bus
+      .on<{
+        stewardUserId: string;
+        kind: 'message' | 'call';
+        coupleNames: string;
+        counterpartProfileId: string;
+      }>('match.conversation_started')
+      .subscribe((e) => {
+        void this.notifications
+          .create(e.payload.stewardUserId, NotificationType.MATCH_CONVERSATION, e.payload)
+          .catch((err) => this.logger.error('notify conversation failed', err));
+      });
+
     // ------------------------------------------------------------- bookings
     //
     // Every one of these existed as an outbox event and reached nobody. A

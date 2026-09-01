@@ -157,7 +157,6 @@ interface VendorListing {
   registrationNumber: string | null;
   registeredAddress: string | null;
   contactPhone: string | null;
-  pricing: { startingAt?: number; unit?: string; notes?: string };
   portfolio: string[];
   isApproved: boolean;
   payoutAccountId: string | null;
@@ -177,9 +176,6 @@ const emptyListing = {
   registrationNumber: '',
   registeredAddress: '',
   contactPhone: '',
-  startingAt: '',
-  unit: '',
-  pricingNotes: '',
 };
 
 /**
@@ -216,9 +212,6 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       registrationNumber: current.registrationNumber ?? '',
       registeredAddress: current.registeredAddress ?? '',
       contactPhone: current.contactPhone ?? '',
-      startingAt: current.pricing?.startingAt ? String(current.pricing.startingAt) : '',
-      unit: current.pricing?.unit ?? '',
-      pricingNotes: current.pricing?.notes ?? '',
     });
     setPortfolio(current.portfolio ?? []);
   }, [current]);
@@ -271,13 +264,6 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
         // checks on GST and PAN, so blanks are dropped instead.
         if (form[key]) payload[key] = form[key];
       }
-      if (form.startingAt || form.unit || form.pricingNotes) {
-        payload.pricing = {
-          ...(form.startingAt ? { startingAt: Number(form.startingAt) } : {}),
-          ...(form.unit ? { unit: form.unit } : {}),
-          ...(form.pricingNotes ? { notes: form.pricingNotes } : {}),
-        };
-      }
 
       if (current) await api.put(`/vendors/${current.id}`, payload);
       else await api.post('/vendors', payload);
@@ -328,13 +314,6 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
         {current.description && <p className="text-sm text-gray-700">{current.description}</p>}
 
         <dl className="grid gap-x-6 gap-y-2 border-t pt-3 text-sm sm:grid-cols-2">
-          <Detail label="Starting price">
-            {current.pricing?.startingAt
-              ? `\u20b9${Number(current.pricing.startingAt).toLocaleString('en-IN')}${
-                  current.pricing.unit ? ` per ${current.pricing.unit}` : ''
-                }`
-              : 'Not published'}
-          </Detail>
           <Detail label="GST number">{current.gstNumber ?? 'Not provided'}</Detail>
           <Detail label="PAN">{current.panNumber ?? 'Not provided'}</Detail>
           <Detail label="Registration number">
@@ -411,36 +390,13 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
         />
       </Field>
 
-      <div className="border-t pt-3">
-        <h3 className="section-title">Pricing</h3>
-        <p className="mb-2 text-sm text-gray-600">
-          A starting price, not a quote. It is what a client uses to decide whether to ask you at
-          all. The real number comes from the quotation.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Starting at (₹)">
-            <input
-              className="input"
-              type="number"
-              min={0}
-              value={form.startingAt}
-              onChange={set('startingAt')}
-            />
-          </Field>
-          <Field label="Per">
-            <input
-              className="input"
-              placeholder="plate, day, event"
-              value={form.unit}
-              onChange={set('unit')}
-            />
-          </Field>
-          <Field label="Pricing notes">
-            <input className="input" value={form.pricingNotes} onChange={set('pricingNotes')} />
-          </Field>
-        </div>
-      </div>
-
+      {/*
+        Pricing used to be asked for here as a free-text "starting at", and it
+        is asked for properly under Services: an Offering carries a pricing
+        model, is what the marketplace reads, and is what a quotation is built
+        from. Two answers to one question meant a vendor could not tell which
+        one a buyer saw.
+      */}
       <div className="border-t pt-3">
         <h3 className="section-title">Portfolio</h3>
         <p className="mb-2 text-sm text-gray-600">

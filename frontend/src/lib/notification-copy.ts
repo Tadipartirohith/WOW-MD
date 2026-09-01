@@ -34,6 +34,7 @@ export const TYPE_LABEL: Record<string, string> = {
   match_interest: 'Interest shown',
   match_accepted: 'Interest accepted',
   new_message: 'New message',
+  match_conversation: 'Your clients are talking',
   task_reminder: 'Reminder',
   booking_update: 'Booking update',
 
@@ -101,6 +102,12 @@ export function describe(n: Notification): string {
       return str('counterpartName')
         ? `${str('counterpartName')} accepted your interest.`
         : 'Your interest was accepted.';
+    case 'match_conversation': {
+      const who = str('coupleNames') ?? 'Two of your clients';
+      return str('kind') === 'call'
+        ? `${who} have started a call.`
+        : `${who} have started a conversation.`;
+    }
     case 'task_reminder':
       return str('title') ?? 'A planning task is due.';
     default:

@@ -275,7 +275,17 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CHAT_INQUIRE,
     Permission.PLAN_MANAGE_ENGAGED,
     Permission.EVENT_MANAGE_OWN,
-    Permission.MEDIA_MANAGE_OWN,
+    /*
+     * MEDIA_MANAGE_OWN is deliberately absent.
+     *
+     * A planner had a "Media and Memories" module of their own, which is the
+     * couple's module under another roof: the wedding photographs belong to
+     * the people getting married, they already have a Media screen for them,
+     * and two places to put the same album is how a family ends up asking
+     * which one is the real one. A planner needing to add photographs to a
+     * wedding they are engaged on should be doing it in that wedding's album,
+     * which is a different feature from owning a second one.
+     */
     Permission.DISPUTE_RAISE,
     Permission.CASE_RAISE,
     Permission.AI_ASSIST,

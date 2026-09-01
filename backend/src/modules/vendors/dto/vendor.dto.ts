@@ -171,11 +171,19 @@ export class CreateVendorDto extends VendorComplianceDto {
   @MaxLength(80)
   city?: string;
 
-  @ApiPropertyOptional({ type: VendorPricingDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => VendorPricingDto)
-  pricing?: VendorPricingDto;
+  /*
+   * Pricing is not part of the business record.
+   *
+   * It belongs to an Offering, under a Service, under the Catalog — which is
+   * where a price has a model behind it, is what the marketplace reads, and is
+   * what a quotation is built from. This field was a second, free-text answer
+   * to the same question, editable only on My Business and visible only there,
+   * so a vendor who filled in both had no way to tell which one a buyer saw.
+   *
+   * Removed from the payload rather than ignored: the API refuses unknown
+   * fields, so a client still sending it is told, instead of having it
+   * silently dropped and believing the price was saved.
+   */
 
   @ApiPropertyOptional({ type: [String], maxItems: 30, description: 'Absolute media URLs' })
   @IsOptional()

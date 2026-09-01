@@ -28,6 +28,7 @@ import { ProfileDetails } from '../profile-details/entities/profile-details.enti
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { AppConfigService } from '../../config/app-config.service';
 import { PresenceService } from './presence.service';
+import { OutboxService } from '../../platform/events/outbox.service';
 import { redactContacts } from '../../common/util/redaction';
 
 /**
@@ -92,6 +93,7 @@ export class ChatService {
     private readonly engine: CompatibilityEngine,
     @InjectRepository(ProfileDetails)
     private readonly details: Repository<ProfileDetails>,
+    private readonly outbox: OutboxService,
   ) {}
 
   private async loadPair(a: string, b: string): Promise<[User, User]> {
@@ -291,7 +293,7 @@ export class ChatService {
     body: string,
     mediaUrl?: string,
   ): Promise<Message> {
-    await this.assertCanChat(senderId, toUserId);
+    const kind = await this.assertCanChat(senderId, toUserId);
     await this.assertNotBlocked(senderId, toUserId);
     const convo = await this.getOrCreateConversation(senderId, toUserId);
 
@@ -299,7 +301,7 @@ export class ChatService {
       ? redactContacts(body)
       : { text: body, redactions: 0 };
 
-    return this.messages.save(
+    const saved = await this.messages.save(
       this.messages.create({
         conversationId: convo.id,
         senderId,
@@ -308,6 +310,62 @@ export class ChatService {
         mediaUrl: mediaUrl ?? null,
       }),
     );
+
+    /*
+     * The agency finds out their introduction has started moving.
+     *
+     * Only on the first message, and only between two matched individuals: an
+     * agency running forty introductions does not want the day narrated, and
+     * the count is what makes "started" mean started. It is cheap because it
+     * is skipped entirely for every other kind of thread — a vendor enquiry
+     * has no agent to tell.
+     *
+     * The conversation row cannot stand in for this. Opening a chat creates
+     * one, so an agent would be told about a conversation nobody had spoken in.
+     */
+    if (kind === ThreadKind.MATCH) {
+      const isFirst = (await this.messages.count({ where: { conversationId: convo.id } })) === 1;
+      if (isFirst) await this.announceToStewards(senderId, toUserId, 'message');
+    }
+
+    return saved;
+  }
+
+  /**
+   * Tells whoever manages either side that their clients have started talking.
+   *
+   * Nothing that was said travels with it — the agent is told that something
+   * began, not what is in it, which is the line drawn everywhere else here.
+   * Raised through the outbox so chat stays unaware of notifications.
+   */
+  async announceToStewards(
+    userA: string,
+    userB: string,
+    kind: 'message' | 'call',
+  ): Promise<void> {
+    const profiles = await this.profiles.find({ where: [{ userId: userA }, { userId: userB }] });
+    if (profiles.length === 0) return;
+
+    const stewards = [...new Set(profiles.map((p) => p.managedByUserId).filter(Boolean))];
+    if (stewards.length === 0) return;
+
+    const coupleNames = profiles.map((p) => p.displayName).filter(Boolean).join(' and ');
+
+    for (const stewardUserId of stewards) {
+      await this.outbox.record({
+        eventType: 'match.conversation_started',
+        aggregateType: 'conversation',
+        payload: {
+          stewardUserId,
+          kind,
+          coupleNames,
+          // Whichever of the two this steward does not manage is the one their
+          // client is talking to, and the one worth opening.
+          counterpartProfileId:
+            profiles.find((p) => p.managedByUserId !== stewardUserId)?.id ?? profiles[0].id,
+        },
+      });
+    }
   }
 
   async history(

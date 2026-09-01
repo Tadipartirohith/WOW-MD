@@ -314,7 +314,12 @@ body_has '"profile_creation"' "taking a client on raises the profile fee"
 CHARGE=$(jq -r '.[0].id' /tmp/body)
 c=$(req PUT "/agents/charges/$CHARGE/pay" "" "$AGENT")
 check "the agency records the client's payment" "$c" 200
-body_has '"status":"held_in_escrow"' "the fee is held in escrow, not paid straight out"
+# The profile fee is not escrowed. The work it pays for — the profile, the
+# biodata, the checked document — is finished by the time the fee is raised, so
+# holding it made the agency wait on somebody else's wedding to be paid for a
+# job already done. Escrow is kept for the match settlement, where there is an
+# outcome still to arrive and something to refund if it does not.
+body_has '"status":"released"' "the profile fee settles on payment rather than being held"
 
 c=$(req GET /agents/billing "" "$AGENT")
 check "the agency ledger is readable" "$c" 200

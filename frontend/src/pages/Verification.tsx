@@ -39,6 +39,10 @@ interface VerificationRequest {
   applicantEmail?: string | null;
   applicantPhone?: string | null;
   subjectName?: string | null;
+  /** The 72-hour clock. Computed and stored on the server since the schema was written. */
+  slaDeadline?: string | null;
+  slaBreachedAt?: string | null;
+  verificationStartedAt?: string | null;
 }
 
 interface SupportCase {
@@ -462,6 +466,8 @@ function RequestRow({
         </div>
         <Pill status={request.status} />
       </div>
+
+      <Sla request={request} />
 
       {request.remarks && (
         <p className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">{request.remarks}</p>
@@ -1073,6 +1079,56 @@ function OfficersPanel({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * The 72-hour clock.
+ *
+ * The server has computed and stored slaDeadline since the verification schema
+ * was written, and returned it on every request; nothing ever displayed it. A
+ * deadline nobody can see is not a deadline — it is a column — and the whole
+ * point of the SLA is that the officer holding the request and the
+ * administrator watching the queue both know how long is left before anybody
+ * has to ask.
+ *
+ * Three states rather than a countdown to the second. A ticking timer implies
+ * a precision this does not have and makes a queue of twenty cards restless;
+ * what somebody needs is whether this one is fine, tight, or already late.
+ */
+function Sla({ request }: { request: VerificationRequest }) {
+  const decided = request.status === 'approved' || request.status === 'rejected';
+  if (!request.slaDeadline || decided) return null;
+
+  const deadline = new Date(request.slaDeadline);
+  const hours = Math.round((deadline.getTime() - Date.now()) / 3_600_000);
+  const breached = Boolean(request.slaBreachedAt) || hours < 0;
+  // Six hours is roughly the point at which a visit can no longer be arranged
+  // for today, which is what makes it the moment to say something.
+  const urgent = !breached && hours <= 6;
+
+  const tone = breached
+    ? 'bg-critical-bg text-critical-fg'
+    : urgent
+      ? 'bg-caution-bg text-caution-fg'
+      : 'bg-gray-50 text-gray-600';
+
+  const label = breached
+    ? `Overdue by ${Math.abs(hours)}h`
+    : urgent
+      ? `Due in ${hours}h`
+      : `${hours}h left`;
+
+  return (
+    <p className={`flex flex-wrap items-center gap-x-2 rounded-sm px-2 py-1 text-xs ${tone}`}>
+      <span className="font-medium">{label}</span>
+      <span className="opacity-80">
+        72-hour deadline {deadline.toLocaleString()}
+        {request.verificationStartedAt
+          ? ` · visit started ${new Date(request.verificationStartedAt).toLocaleDateString()}`
+          : ''}
+      </span>
+    </p>
   );
 }
 

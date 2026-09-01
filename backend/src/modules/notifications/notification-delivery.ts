@@ -53,6 +53,14 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
     body: (p) => `${str(p, 'counterpartName', 'They')} have accepted. You can talk now.`,
     whatsappTemplate: null,
   },
+  [NotificationType.MATCH_CONVERSATION]: {
+    title: 'Your clients have started talking',
+    body: (p) =>
+      `${str(p, 'coupleNames', 'Two of your clients')} have ${
+        str(p, 'kind', 'message') === 'call' ? 'started a call' : 'started a conversation'
+      }.`,
+    whatsappTemplate: null,
+  },
   [NotificationType.NEW_MESSAGE]: {
     title: 'New message',
     // The preview is deliberately not put on the lock screen. A matrimony

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Vendor, VendorPricing } from './entities/vendor.entity';
+import { Vendor } from './entities/vendor.entity';
 import { BusinessLifecycleService } from './business-lifecycle.service';
 import { VendorReview } from './entities/vendor-review.entity';
 import {
@@ -44,7 +44,6 @@ export interface PublicVendor {
   otherCategory: string | null;
   description: string;
   city: string;
-  pricing: VendorPricing;
   portfolio: string[];
   ratingAvg: number;
   ratingCount: number;
@@ -65,7 +64,6 @@ export function publicVendor(v: Vendor): PublicVendor {
     otherCategory: v.otherCategory,
     description: v.description,
     city: v.city,
-    pricing: v.pricing,
     portfolio: v.portfolio,
     ratingAvg: v.ratingAvg,
     ratingCount: v.ratingCount,

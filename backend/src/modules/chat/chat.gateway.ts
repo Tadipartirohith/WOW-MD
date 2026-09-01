@@ -14,6 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppConfigService } from '../../config/app-config.service';
 import { ChatService } from './chat.service';
+import { ThreadKind } from '../../common/enums';
 import { SendMessageDto } from './dto/chat.dto';
 import { User } from '../auth/entities/user.entity';
 import { Permission, roleHasPermission } from '../../common/authz/permissions';
@@ -120,8 +121,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return { error: 'A call offer needs a recipient and an SDP' };
     }
 
+    let kind: ThreadKind;
     try {
-      await this.chat.assertCanChat(callerId, payload.toUserId);
+      kind = await this.chat.assertCanChat(callerId, payload.toUserId);
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Call rejected' };
     }
@@ -138,6 +140,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       sdp: payload.sdp,
       media: payload.media === 'video' ? 'video' : 'audio',
     });
+
+    // Raised once the call is actually ringing, not on the attempt: an offer
+    // to somebody who is not there is a missed call and already returned
+    // above, and telling an agency about it would be telling them nothing.
+    if (kind === ThreadKind.MATCH) {
+      void this.chat
+        .announceToStewards(callerId, payload.toUserId, 'call')
+        .catch(() => undefined);
+    }
+
     return { ringing: true, iceServers: buildIceServers(process.env) };
   }
 

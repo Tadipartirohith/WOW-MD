@@ -440,6 +440,22 @@ export default function Chat() {
                     </>
                   )}
                   {/*
+                    The reason, on screen rather than in a title attribute.
+
+                    Both buttons were reported as simply disabled, and they are
+                    — correctly, because calls run between two people who are
+                    both here. But the explanation lived in a tooltip, which
+                    does not exist on a phone and is easy to miss on a laptop,
+                    so what a person actually sees is two dead controls. Saying
+                    it in the open turns a broken-looking screen into a
+                    working one that is waiting for somebody.
+                  */}
+                  {call.state === 'idle' && !presence?.online && (
+                    <span className="text-xs text-gray-500">
+                      Calls need you both here. They will light up when they are back.
+                    </span>
+                  )}
+                  {/*
                     Blocking and reporting live here. Not buried: they are what
                     somebody looks for when something has gone wrong, and a
                     control you have to hunt for at that moment is one you do
