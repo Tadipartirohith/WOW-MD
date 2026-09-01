@@ -61,7 +61,11 @@ export class VendorsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateSlotDto,
   ) {
-    return this.availability.create(actor, id, dto);
+    return this.availability.create(
+      actor,
+      ProviderType.VENDOR,
+      id, dto,
+    );
   }
 
   @ApiBearerAuth()
@@ -77,7 +81,11 @@ export class VendorsController {
     @Param('slotId', ParseUUIDPipe) slotId: string,
     @Body() dto: UpdateSlotDto,
   ) {
-    return this.availability.update(actor, id, slotId, dto);
+    return this.availability.update(
+      actor,
+      ProviderType.VENDOR,
+      id, slotId, dto,
+    );
   }
 
   @ApiBearerAuth()
@@ -92,7 +100,11 @@ export class VendorsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('slotId', ParseUUIDPipe) slotId: string,
   ) {
-    return this.availability.remove(actor, id, slotId);
+    return this.availability.remove(
+      actor,
+      ProviderType.VENDOR,
+      id, slotId,
+    );
   }
 
   @ApiBearerAuth()
@@ -106,7 +118,11 @@ export class VendorsController {
     @Param('slotId', ParseUUIDPipe) slotId: string,
     @Body() dto: BlockSlotDto,
   ) {
-    return this.availability.block(actor, id, slotId, dto);
+    return this.availability.block(
+      actor,
+      ProviderType.VENDOR,
+      id, slotId, dto,
+    );
   }
 
   @ApiBearerAuth()
@@ -118,7 +134,11 @@ export class VendorsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('slotId', ParseUUIDPipe) slotId: string,
   ) {
-    return this.availability.unblock(actor, id, slotId);
+    return this.availability.unblock(
+      actor,
+      ProviderType.VENDOR,
+      id, slotId,
+    );
   }
 
   @ApiBearerAuth()
@@ -126,7 +146,10 @@ export class VendorsController {
   @ApiOperation({ summary: 'Every slot in the window, whatever its status' })
   @Get(':id/availability/slots')
   listSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.list(id, q.from, q.to);
+    return this.availability.list(
+      ProviderType.VENDOR,
+      id, q.from, q.to,
+    );
   }
 
   @ApiBearerAuth()
@@ -134,7 +157,10 @@ export class VendorsController {
   @ApiOperation({ summary: 'Counters for the availability dashboard' })
   @Get(':id/availability/summary')
   availabilitySummary(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.summary(id, q.from, q.to);
+    return this.availability.summary(
+      ProviderType.VENDOR,
+      id, q.from, q.to,
+    );
   }
 
   @ApiBearerAuth()
@@ -151,7 +177,10 @@ export class VendorsController {
     @Param('bucket') bucket: 'published' | 'open' | 'requested' | 'booked' | 'full' | 'blocked',
     @Query() q: AvailabilityQueryDto,
   ) {
-    return this.availability.filtered(id, bucket, q.from, q.to);
+    return this.availability.filtered(
+      ProviderType.VENDOR,
+      id, bucket, q.from, q.to,
+    );
   }
 
   @ApiBearerAuth()
@@ -159,7 +188,10 @@ export class VendorsController {
   @ApiOperation({ summary: 'Per-date rollup, for painting the calendar' })
   @Get(':id/availability/calendar')
   availabilityCalendar(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.calendar(id, q.from, q.to);
+    return this.availability.calendar(
+      ProviderType.VENDOR,
+      id, q.from, q.to,
+    );
   }
 
   @Public()
@@ -172,7 +204,10 @@ export class VendorsController {
   })
   @Get(':id/availability')
   bookableSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.listBookable(id, q.from, q.to);
+    return this.availability.listBookable(
+      ProviderType.VENDOR,
+      id, q.from, q.to,
+    );
   }
 
   @Public()

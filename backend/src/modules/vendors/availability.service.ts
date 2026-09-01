@@ -9,10 +9,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, EntityManager, Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorAvailabilitySlot } from './entities/vendor-availability-slot.entity';
 import { BlockSlotDto, CreateSlotDto, UpdateSlotDto } from './dto/availability.dto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
-import { SlotStatus, UserRole } from '../../common/enums';
+import { ProviderType, SlotStatus, UserRole } from '../../common/enums';
 import { VendorServicesService } from '../catalog/vendor-services.service';
 
 export interface AvailabilitySummary {
@@ -45,7 +46,7 @@ export type SlotState = 'open' | 'booked' | 'full' | 'blocked' | 'cancelled';
 
 export interface SlotView {
   id: string;
-  vendorId: string;
+  providerId: string;
   vendorServiceId: string | null;
   date: string;
   startTime: string;
@@ -98,6 +99,8 @@ export class AvailabilityService {
     @InjectRepository(VendorAvailabilitySlot)
     private readonly slots: Repository<VendorAvailabilitySlot>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    // Only to answer "is this listing yours" for a planner.
+    @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @Inject(forwardRef(() => VendorServicesService))
     private readonly services: VendorServicesService,
   ) {}
@@ -138,7 +141,7 @@ export class AvailabilityService {
 
     return {
       id: slot.id,
-      vendorId: slot.vendorId,
+      providerId: slot.providerId,
       vendorServiceId: slot.vendorServiceId,
       date: slot.date,
       startTime: slot.startTime,
@@ -164,8 +167,13 @@ export class AvailabilityService {
 
   // ----------------------------------------------------------- vendor side
 
-  async create(actor: AuthUser, vendorId: string, dto: CreateSlotDto): Promise<SlotView> {
-    await this.assertOwner(actor, vendorId);
+  async create(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+    dto: CreateSlotDto,
+  ): Promise<SlotView> {
+    await this.assertOwner(actor, providerType, providerId);
     this.assertWithinWindow(dto.date);
     this.assertTimeOrder(dto.startTime, dto.endTime);
 
@@ -175,14 +183,15 @@ export class AvailabilityService {
     let capacity = dto.capacity ?? 1;
     if (dto.vendorServiceId) {
       const service = await this.services.findService(dto.vendorServiceId);
-      if (!service || service.vendorId !== vendorId) {
+      if (!service || service.vendorId !== providerId) {
         throw new BadRequestException('That service is not on this business');
       }
       capacity = dto.capacity ?? service.concurrentCapacity;
     }
 
     await this.assertNoIdenticalWindow(
-      vendorId,
+      providerType,
+      providerId,
       dto.date,
       dto.startTime,
       dto.endTime,
@@ -191,7 +200,8 @@ export class AvailabilityService {
 
     const saved = await this.slots.save(
       this.slots.create({
-        vendorId,
+        providerType,
+      providerId,
         vendorServiceId: dto.vendorServiceId ?? null,
         date: dto.date,
         startTime: dto.startTime,
@@ -208,12 +218,13 @@ export class AvailabilityService {
 
   async update(
     actor: AuthUser,
-    vendorId: string,
+    providerType: ProviderType,
+    providerId: string,
     slotId: string,
     dto: UpdateSlotDto,
   ): Promise<SlotView> {
-    await this.assertOwner(actor, vendorId);
-    const slot = await this.loadOrFail(vendorId, slotId);
+    await this.assertOwner(actor, providerType, providerId);
+    const slot = await this.loadOrFail(providerType, providerId, slotId);
 
     if (slot.status === SlotStatus.CANCELLED) {
       throw new BadRequestException('That slot has been cancelled and cannot be edited');
@@ -237,7 +248,8 @@ export class AvailabilityService {
     if (retiming) {
       this.assertTimeOrder(startTime, endTime);
       await this.assertNoIdenticalWindow(
-        vendorId,
+        providerType,
+        providerId,
         slot.date,
         startTime,
         endTime,
@@ -266,9 +278,14 @@ export class AvailabilityService {
    * a confirmed booking means cancellation or support, an open request means
    * answering it first.
    */
-  async remove(actor: AuthUser, vendorId: string, slotId: string): Promise<{ success: true }> {
-    await this.assertOwner(actor, vendorId);
-    const slot = await this.loadOrFail(vendorId, slotId);
+  async remove(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+    slotId: string,
+  ): Promise<{ success: true }> {
+    await this.assertOwner(actor, providerType, providerId);
+    const slot = await this.loadOrFail(providerType, providerId, slotId);
 
     if (slot.confirmed > 0) {
       throw new BadRequestException(
@@ -295,12 +312,13 @@ export class AvailabilityService {
    */
   async block(
     actor: AuthUser,
-    vendorId: string,
+    providerType: ProviderType,
+    providerId: string,
     slotId: string,
     dto: BlockSlotDto,
   ): Promise<SlotView> {
-    await this.assertOwner(actor, vendorId);
-    const slot = await this.loadOrFail(vendorId, slotId);
+    await this.assertOwner(actor, providerType, providerId);
+    const slot = await this.loadOrFail(providerType, providerId, slotId);
 
     if (slot.confirmed > 0) {
       throw new BadRequestException(
@@ -316,9 +334,14 @@ export class AvailabilityService {
     return this.view(await this.slots.save(slot));
   }
 
-  async unblock(actor: AuthUser, vendorId: string, slotId: string): Promise<SlotView> {
-    await this.assertOwner(actor, vendorId);
-    const slot = await this.loadOrFail(vendorId, slotId);
+  async unblock(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+    slotId: string,
+  ): Promise<SlotView> {
+    await this.assertOwner(actor, providerType, providerId);
+    const slot = await this.loadOrFail(providerType, providerId, slotId);
 
     if (slot.status !== SlotStatus.BLOCKED) {
       throw new BadRequestException('That slot is not blocked');
@@ -331,7 +354,8 @@ export class AvailabilityService {
   // ------------------------------------------------------------- reading
 
   private async rows(
-    vendorId: string,
+    providerType: ProviderType,
+    providerId: string,
     from?: string,
     to?: string,
   ): Promise<VendorAvailabilitySlot[]> {
@@ -340,14 +364,14 @@ export class AvailabilityService {
     const end = to && to < window.to ? to : window.to;
 
     return this.slots.find({
-      where: { vendorId, date: Between(start, end) },
+      where: { providerType, providerId, date: Between(start, end) },
       order: { date: 'ASC', startTime: 'ASC' },
     });
   }
 
   /** The vendor's own view: every window in the range, whatever its state. */
-  async list(vendorId: string, from?: string, to?: string): Promise<SlotView[]> {
-    return (await this.rows(vendorId, from, to)).map((s) => this.view(s));
+  async list(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<SlotView[]> {
+    return (await this.rows(providerType, providerId, from, to)).map((s) => this.view(s));
   }
 
   /**
@@ -358,15 +382,15 @@ export class AvailabilityService {
    * with confirmed bookings but capacity left **are** included, with their
    * counts, so the buyer sees "3 of 5 taken, 2 left" rather than nothing.
    */
-  async listBookable(vendorId: string, from?: string, to?: string): Promise<SlotView[]> {
-    return (await this.list(vendorId, from, to)).filter((s) => s.bookable);
+  async listBookable(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<SlotView[]> {
+    return (await this.list(providerType, providerId, from, to)).filter((s) => s.bookable);
   }
 
-  async summary(vendorId: string, from?: string, to?: string): Promise<AvailabilitySummary> {
+  async summary(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<AvailabilitySummary> {
     const window = this.window();
     const start = from ?? window.from;
     const end = to ?? window.to;
-    const views = await this.list(vendorId, start, end);
+    const views = await this.list(providerType, providerId, start, end);
 
     return {
       from: start,
@@ -390,12 +414,13 @@ export class AvailabilityService {
    * specification calls out as "cards that appear clickable but do nothing".
    */
   async filtered(
-    vendorId: string,
+    providerType: ProviderType,
+    providerId: string,
     bucket: 'published' | 'open' | 'requested' | 'booked' | 'full' | 'blocked',
     from?: string,
     to?: string,
   ): Promise<SlotView[]> {
-    const views = await this.list(vendorId, from, to);
+    const views = await this.list(providerType, providerId, from, to);
     switch (bucket) {
       case 'open':
         return views.filter((s) => s.bookable);
@@ -414,8 +439,8 @@ export class AvailabilityService {
   }
 
   /** Per-date rollup, for painting the calendar. */
-  async calendar(vendorId: string, from?: string, to?: string) {
-    const views = await this.list(vendorId, from, to);
+  async calendar(providerType: ProviderType, providerId: string, from?: string, to?: string) {
+    const views = await this.list(providerType, providerId, from, to);
     const byDate = new Map<string, SlotView[]>();
     for (const slot of views) {
       const list = byDate.get(slot.date) ?? [];
@@ -530,8 +555,8 @@ export class AvailabilityService {
    * Called when a request is submitted, so a buyer working from a stale page
    * is refused by the server rather than by the vendor a week later.
    */
-  async isBookable(vendorId: string, slotId: string): Promise<boolean> {
-    const slot = await this.slots.findOne({ where: { id: slotId, vendorId } });
+  async isBookable(providerId: string, slotId: string): Promise<boolean> {
+    const slot = await this.slots.findOne({ where: { id: slotId, providerId } });
     if (!slot) return false;
     return slot.status === SlotStatus.AVAILABLE && slot.confirmed < slot.capacity;
   }
@@ -567,14 +592,15 @@ export class AvailabilityService {
    * splits one capacity across two rows.
    */
   private async assertNoIdenticalWindow(
-    vendorId: string,
+    providerType: ProviderType,
+    providerId: string,
     date: string,
     startTime: string,
     endTime: string,
     vendorServiceId: string | null,
     excludeSlotId?: string,
   ): Promise<void> {
-    const sameDay = await this.slots.find({ where: { vendorId, date } });
+    const sameDay = await this.slots.find({ where: { providerType, providerId, date } });
     const clash = sameDay.find(
       (slot) =>
         slot.id !== excludeSlotId &&
@@ -591,16 +617,32 @@ export class AvailabilityService {
     }
   }
 
-  private async loadOrFail(vendorId: string, slotId: string): Promise<VendorAvailabilitySlot> {
-    const slot = await this.slots.findOne({ where: { id: slotId, vendorId } });
+  private async loadOrFail(providerType: ProviderType, providerId: string, slotId: string): Promise<VendorAvailabilitySlot> {
+    const slot = await this.slots.findOne({ where: { id: slotId, providerId } });
     if (!slot) throw new NotFoundException('Slot not found');
     return slot;
   }
 
-  private async assertOwner(actor: AuthUser, vendorId: string): Promise<void> {
-    const vendor = await this.vendors.findOne({ where: { id: vendorId } });
-    if (!vendor) throw new NotFoundException('Business not found');
-    if (actor.role !== UserRole.ADMIN && vendor.ownerUserId !== actor.userId) {
+  /**
+   * Whose listing this is, asked of the right table.
+   *
+   * The only part of availability that cares which kind of provider it is
+   * dealing with. Everything else — slots, capacity, blocking, the calendar —
+   * is the same question for a caterer and for a planner, which is why they
+   * share one table rather than two that would drift.
+   */
+  private async assertOwner(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+  ): Promise<void> {
+    const owner =
+      providerType === ProviderType.PLANNER
+        ? (await this.planners.findOne({ where: { id: providerId } }))?.ownerUserId
+        : (await this.vendors.findOne({ where: { id: providerId } }))?.ownerUserId;
+
+    if (!owner) throw new NotFoundException('Business not found');
+    if (actor.role !== UserRole.ADMIN && owner !== actor.userId) {
       throw new ForbiddenException('That business is not yours');
     }
   }

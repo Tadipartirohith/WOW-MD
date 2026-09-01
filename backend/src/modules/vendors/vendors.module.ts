@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Vendor } from './entities/vendor.entity';
 import { User } from '../auth/entities/user.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { BusinessLifecycleService } from './business-lifecycle.service';
@@ -27,6 +28,8 @@ import { CatalogModule } from '../catalog/catalog.module';
       ServiceOffering,
       // Read-only, to name the reviewer for an administrator.
       User,
+      // Read-only, so availability can ask whether a planner listing is yours.
+      PlannerProfile,
     ]),
     forwardRef(() => BookingsModule),
     forwardRef(() => CatalogModule),

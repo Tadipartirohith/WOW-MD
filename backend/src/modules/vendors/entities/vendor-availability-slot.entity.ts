@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { ProviderType } from '../../../common/enums';
 import { SlotStatus } from '../../../common/enums';
 
 /**
@@ -30,14 +31,34 @@ import { SlotStatus } from '../../../common/enums';
  * impossible to get out of step with reality.
  */
 @Entity('vendor_availability_slots')
-@Index(['vendorId', 'date'])
+@Index(['providerType', 'providerId', 'date'])
 export class VendorAvailabilitySlot {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  /**
+   * Which kind of provider this belongs to.
+   *
+   * A planner takes bookings against dates exactly as a vendor does, and
+   * bookings have carried providerType since they were written; availability
+   * was the one part of that story that did not, so a planner had no way to
+   * publish the weeks they could work.
+   */
+  @Index()
+  @Column({ type: 'enum', enum: ProviderType, default: ProviderType.VENDOR })
+  providerType: ProviderType;
+
+  /**
+   * The listing this belongs to: a Vendor id or a PlannerProfile id.
+   *
+   * Renamed from `vendorId` rather than joined by one. Storing a planner's id
+   * in a column called vendorId is a lie that outlives everybody who knows
+   * about it, and every read below pairs it with providerType so two providers
+   * holding the same uuid could never share a slot.
+   */
   @Index()
   @Column('uuid')
-  vendorId: string;
+  providerId: string;
 
   @Index()
   @Column({ type: 'date' })

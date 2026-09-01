@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useBusinesses } from '../store/business';
+import { useAuth } from '../store/auth';
+import { Permission, can } from '../lib/permissions';
 import { DAY_STATE_LABEL, SLOT_STATE_LABEL, SlotState } from '../lib/permissions';
 
 /**
@@ -103,7 +105,32 @@ export default function Availability() {
   // one this page is about is the header's switcher, not a second dropdown
   // here: the two used to disagree, so switching business on this page left
   // Bookings and the money showing the other one.
-  const { businesses: listings, activeId: vendorId, active: listing } = useBusinesses();
+  /*
+   * Which listing's calendar this is, and where it lives.
+   *
+   * A vendor may hold several businesses and picks one in the header; a
+   * planner has exactly one and never chooses. Both end up as an id and a base
+   * path, and everything below this line is identical for the two — because a
+   * planner's week and a caterer's Saturday are the same object, published the
+   * same way, blocked for the same reasons.
+   */
+  const permissions = useAuth((state) => state.user?.permissions ?? []);
+  const isPlanner =
+    can(permissions, Permission.PLANNER_LISTING_MANAGE) &&
+    !can(permissions, Permission.VENDOR_LISTING_MANAGE);
+
+  const { businesses: listings, activeId, active: vendorListing } = useBusinesses();
+
+  const { data: plannerListing } = useQuery({
+    queryKey: ['my-planner-listing'],
+    queryFn: async () => (await api.get('/wedding-planners/me')).data,
+    enabled: isPlanner,
+    retry: false,
+  });
+
+  const vendorId: string | undefined = isPlanner ? plannerListing?.id : (activeId ?? undefined);
+  const listing = isPlanner ? plannerListing : vendorListing;
+  const base = isPlanner ? '/wedding-planners' : '/vendors';
 
   const { data: window } = useQuery({
     queryKey: ['availability-window'],
@@ -112,19 +139,19 @@ export default function Availability() {
 
   const { data: summary } = useQuery<Summary>({
     queryKey: ['availability-summary', vendorId],
-    queryFn: async () => (await api.get(`/vendors/${vendorId}/availability/summary`)).data,
+    queryFn: async () => (await api.get(`${base}/${vendorId}/availability/summary`)).data,
     enabled: Boolean(vendorId),
   });
 
   const { data: calendar = [] } = useQuery<Day[]>({
     queryKey: ['availability-calendar', vendorId],
-    queryFn: async () => (await api.get(`/vendors/${vendorId}/availability/calendar`)).data,
+    queryFn: async () => (await api.get(`${base}/${vendorId}/availability/calendar`)).data,
     enabled: Boolean(vendorId),
   });
 
   const { data: slots = [] } = useQuery<Slot[]>({
     queryKey: ['availability-slots', vendorId],
-    queryFn: async () => (await api.get(`/vendors/${vendorId}/availability/slots`)).data,
+    queryFn: async () => (await api.get(`${base}/${vendorId}/availability/slots`)).data,
     enabled: Boolean(vendorId),
   });
 
@@ -133,7 +160,7 @@ export default function Availability() {
   const { data: bucketSlots = [], isFetching: bucketLoading } = useQuery<Slot[]>({
     queryKey: ['availability-bucket', vendorId, bucket],
     queryFn: async () =>
-      (await api.get(`/vendors/${vendorId}/availability/slots/by/${bucket}`)).data,
+      (await api.get(`${base}/${vendorId}/availability/slots/by/${bucket}`)).data,
     enabled: Boolean(vendorId && bucket),
   });
 
@@ -327,7 +354,7 @@ export default function Availability() {
                   onCancel={() => setEditing(null)}
                   onSave={async (body) => {
                     const ok = await act(
-                      () => api.put(`/vendors/${vendorId}/availability/slots/${slot.id}`, body),
+                      () => api.put(`${base}/${vendorId}/availability/slots/${slot.id}`, body),
                       'Slot updated.',
                     );
                     if (ok) setEditing(null);
@@ -377,7 +404,7 @@ export default function Availability() {
                           act(
                             () =>
                               api.post(
-                                `/vendors/${vendorId}/availability/slots/${slot.id}/unblock`,
+                                `${base}/${vendorId}/availability/slots/${slot.id}/unblock`,
                                 {},
                               ),
                             'Back on sale.',
@@ -396,7 +423,7 @@ export default function Availability() {
                               void act(
                                 () =>
                                   api.post(
-                                    `/vendors/${vendorId}/availability/slots/${slot.id}/block`,
+                                    `${base}/${vendorId}/availability/slots/${slot.id}/block`,
                                     { reason },
                                   ),
                                 'Blocked.',
@@ -414,7 +441,7 @@ export default function Availability() {
                         onClick={() =>
                           act(
                             () =>
-                              api.delete(`/vendors/${vendorId}/availability/slots/${slot.id}`),
+                              api.delete(`${base}/${vendorId}/availability/slots/${slot.id}`),
                             'Window withdrawn.',
                           )
                         }
@@ -436,7 +463,7 @@ export default function Availability() {
             services={services}
             onCreate={(body) =>
               act(
-                () => api.post(`/vendors/${vendorId}/availability/slots`, body),
+                () => api.post(`${base}/${vendorId}/availability/slots`, body),
                 'Window published.',
               )
             }

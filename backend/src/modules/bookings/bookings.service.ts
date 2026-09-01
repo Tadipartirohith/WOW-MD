@@ -280,7 +280,10 @@ export class BookingsService {
 
     if (dto.slotId) {
       const slot = await this.availability.findSlot(dto.slotId);
-      if (!slot || slot.vendorId !== dto.providerId) {
+      // Both halves. A slot is identified by the provider it belongs to and
+      // the kind of provider that is, so a planner's slot id can never be
+      // presented against a vendor booking.
+      if (!slot || slot.providerId !== dto.providerId || slot.providerType !== dto.providerType) {
         throw new BadRequestException('That time slot does not belong to this provider');
       }
       if (dto.eventDate && dto.eventDate !== slot.date) {

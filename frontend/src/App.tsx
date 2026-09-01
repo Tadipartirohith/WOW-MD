@@ -218,7 +218,15 @@ const NAV: NavEntry[] = [
     group: 'business',
     icon: Briefcase,
   },
-  { to: '/availability', label: 'Availability', requires: [Permission.VENDOR_LISTING_MANAGE], group: 'business', icon: CalendarBlank },
+  {
+    to: '/availability',
+    label: 'Availability',
+    // Both kinds of provider now. A planner takes bookings against dates
+    // exactly as a vendor does; availability was simply keyed to vendors.
+    requires: [Permission.VENDOR_LISTING_MANAGE, Permission.PLANNER_LISTING_MANAGE],
+    group: 'business',
+    icon: CalendarBlank,
+  },
   { to: '/accounts', label: 'Accounts', requires: [Permission.BOOKING_READ_INCOMING], group: 'business', icon: Coins },
   {
     to: '/planner',
@@ -873,7 +881,7 @@ export default function App() {
       <Route
         path="/availability"
         element={
-          <Protected requires={[Permission.VENDOR_LISTING_MANAGE]}>
+          <Protected requires={[Permission.VENDOR_LISTING_MANAGE, Permission.PLANNER_LISTING_MANAGE]}>
             <Availability />
           </Protected>
         }
