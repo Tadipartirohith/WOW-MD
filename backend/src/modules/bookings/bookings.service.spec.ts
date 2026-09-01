@@ -1,4 +1,6 @@
 import { Test } from '@nestjs/testing';
+import { WeddingEvent } from '../events/entities/event.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
@@ -148,6 +150,10 @@ describe('BookingsService', () => {
         { provide: getRepositoryToken(PlannerProfile), useValue: plannersRepo },
         { provide: getRepositoryToken(Profile), useValue: profilesRepo },
         { provide: getRepositoryToken(User), useValue: usersRepo },
+        // Read-only in the service: they put a client and a venue on a
+        // provider's booking row, and nothing in these tests reads them.
+        { provide: getRepositoryToken(WeddingEvent), useValue: { find: jest.fn().mockResolvedValue([]) } },
+        { provide: getRepositoryToken(VendorService), useValue: { find: jest.fn().mockResolvedValue([]) } },
         { provide: AppConfigService, useValue: cfg },
         { provide: OutboxService, useValue: outbox },
         { provide: DataSource, useValue: dataSource },

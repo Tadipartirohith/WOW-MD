@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WeddingEvent } from './entities/event.entity';
 import { Guest } from './entities/guest.entity';
@@ -10,7 +11,15 @@ import { EventsService } from './events.service';
 import { EventsController } from './events.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WeddingEvent, Guest, EventInvite, Profile, Booking, Vendor])],
+  imports: [TypeOrmModule.forFeature([
+      WeddingEvent,
+      Guest,
+      EventInvite,
+      Profile,
+      Booking,
+      Vendor,
+      WeddingPlan,
+    ])],
   providers: [EventsService],
   controllers: [EventsController],
   exports: [EventsService],

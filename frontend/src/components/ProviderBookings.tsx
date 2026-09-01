@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { api, apiMessage } from '../lib/api';
 import BookingChat from './BookingChat';
+import BookingConsole from './BookingConsole';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import { FieldSpec, formatAnswer } from './DynamicForm';
 
@@ -28,27 +29,7 @@ interface IncomingBooking {
  * waiting on me to turn up". Each section is a question the provider has, in
  * the order the work actually moves.
  */
-const SECTIONS: { title: string; blurb: string; statuses: string[] }[] = [
-  { title: 'New requests', blurb: 'Waiting on a price from you', statuses: ['requested'] },
-  { title: 'Quoted', blurb: 'Waiting on the client to accept', statuses: ['quotation_sent'] },
-  {
-    title: 'To accept',
-    blurb: 'Priced and agreed, accepting is what takes the window off your calendar',
-    statuses: ['quotation_accepted'],
-  },
-  {
-    title: 'Awaiting the advance',
-    blurb: 'You have accepted; the job is secured once the money is in escrow',
-    statuses: ['payment_pending', 'pending'],
-  },
-  { title: 'Upcoming', blurb: 'Confirmed and not yet started', statuses: ['confirmed'] },
-  { title: 'In progress', blurb: 'Under way', statuses: ['in_progress'] },
-  {
-    title: 'Closed',
-    blurb: 'Delivered, cancelled or under investigation',
-    statuses: ['completed_pending_final_payment', 'completed', 'cancelled', 'disputed'],
-  },
-];
+
 
 /**
  * Actions the seller side may take, by current status.
@@ -94,10 +75,6 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
   const [error, setError] = useState('');
   const [quoting, setQuoting] = useState<string | null>(null);
 
-  const { data: incoming } = useQuery({
-    queryKey: ['incoming-bookings'],
-    queryFn: async () => (await api.get('/bookings/incoming')).data,
-  });
 
   const act = useMutation({
     mutationFn: async ({ id, path }: { id: string; path: string }) =>
@@ -118,92 +95,66 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
     },
   });
 
-  const bookings: IncomingBooking[] = incoming?.data ?? [];
-
   return (
     <div className="space-y-4">
       {error && <p className="alert-critical">{error}</p>}
-      {bookings.length === 0 && (
-        <p className="card text-sm text-gray-400">No bookings against your listings yet.</p>
-      )}
 
-      {SECTIONS.map((section) => {
-        const rows = bookings.filter((b) => section.statuses.includes(b.status));
-        if (rows.length === 0) return null;
-        return (
-          <div key={section.title} className="card space-y-2">
-            <div>
-              <h3 className="section-title">
-                {section.title}{' '}
-                <span className="text-sm font-normal text-gray-400">({rows.length})</span>
-              </h3>
-              <p className="text-sm text-gray-600">{section.blurb}</p>
+      {/*
+        One list with tabs, replacing six sections.
+
+        The sections were a reasonable shape when a provider had four bookings
+        and stop working at forty: the one being looked for is under a heading
+        that has scrolled off, the counts only described what was on screen,
+        and there was no way to search. The tabs count the whole queue, the
+        filtering is client-side because a provider's queue is tens of rows and
+        a round trip per keystroke would be slower and worse, and every row now
+        carries what the decision is actually made on.
+      */}
+      <BookingConsole
+        statusLabels={BOOKING_STATUS_LABEL}
+        renderDetail={(b) => <ServiceAnswers booking={b as never} />}
+        renderActions={(b) => (
+          <>
+            {(ACTIONS[b.status] ?? []).map((a) => (
+              <button
+                key={a.path}
+                className={a.path === 'confirm' ? 'btn btn-sm' : 'btn-outline btn-sm'}
+                disabled={act.isPending}
+                onClick={() => act.mutate({ id: b.id, path: a.path })}
+              >
+                {a.label}
+              </button>
+            ))}
+            {canQuote && QUOTABLE.includes(b.status) && (
+              <button
+                className="btn btn-sm"
+                onClick={() => setQuoting(quoting === b.id ? null : b.id)}
+              >
+                {b.status === 'quotation_sent' ? 'Re-quote' : 'Send quotation'}
+              </button>
+            )}
+            {canQuote && quoting === b.id && (
+              <QuotationForm
+                bookingId={b.id}
+                onDone={() => {
+                  setQuoting(null);
+                  qc.invalidateQueries({ queryKey: ['incoming-bookings'] });
+                  qc.invalidateQueries({ queryKey: ['incoming-counts'] });
+                }}
+              />
+            )}
+            {/*
+              Messaging the client, on the job it is about. This is the
+              "Message Client" the report asks for, and it has always been
+              here — inside the booking, where a conversation about a wedding
+              belongs, rather than in a general-purpose Chat menu.
+            */}
+            <div className="w-full">
+              <BookingChat bookingId={b.id} />
             </div>
-            <div className="divide-y">
-              {rows.map((b) => (
-                <div key={b.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-900">
-                      {Number(b.amount) > 0
-                        ? `${b.currency} ${b.amount}`
-                        : b.expectedBudget
-                          ? `Not priced, their budget is ${b.currency} ${b.expectedBudget}`
-                          : 'Not priced yet'}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {b.eventDate ? `${b.eventDate} · ` : ''}
-                      {BOOKING_STATUS_LABEL[b.status] ?? b.status}
-                      {b.quantity ? ` · ${b.quantity} unit(s)` : ''}
-                      {' · '}
-                      <span className="text-gray-400">#{b.id.slice(0, 8)}</span>
-                    </p>
-                    <ServiceAnswers booking={b} />
-                    {b.requirements && (
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">
-                        {b.requirements}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(ACTIONS[b.status] ?? []).map((a) => (
-                      <button
-                        key={a.path}
-                        className={a.path === 'confirm' ? 'btn' : 'btn-outline'}
-                        disabled={act.isPending}
-                        onClick={() => act.mutate({ id: b.id, path: a.path })}
-                      >
-                        {a.label}
-                      </button>
-                    ))}
-                    {canQuote && QUOTABLE.includes(b.status) && (
-                      <button
-                        className="btn"
-                        onClick={() => setQuoting(quoting === b.id ? null : b.id)}
-                      >
-                        {b.status === 'quotation_sent' ? 'Re-quote' : 'Send quotation'}
-                      </button>
-                    )}
-                  </div>
-                  {canQuote && quoting === b.id && (
-                    <QuotationForm
-                      bookingId={b.id}
-                      onDone={() => {
-                        setQuoting(null);
-                        qc.invalidateQueries({ queryKey: ['incoming-bookings'] });
-                      }}
-                    />
-                  )}
-                  {/* The vendor's conversations live here rather than in a Chat
-                      menu, because every one of them is about a job. */}
-                  <div className="w-full">
-                    <BookingChat bookingId={b.id} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+          </>
+        )}
+      />
     </div>
   );
 }

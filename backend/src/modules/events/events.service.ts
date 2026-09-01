@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { In, Not, Repository } from 'typeorm';
 import { WeddingEvent } from './entities/event.entity';
 import { Guest } from './entities/guest.entity';
@@ -21,7 +23,7 @@ import {
 } from './dto/event.dto';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
-import { BookingStatus, EventStatus, RsvpStatus } from '../../common/enums';
+import { BookingStatus, EventStatus, RsvpStatus, UserRole } from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { ModerationService } from '../../platform/moderation/moderation.service';
@@ -46,6 +48,7 @@ export interface GuestRsvpView {
 @Injectable()
 export class EventsService {
   constructor(
+    @InjectRepository(WeddingPlan) private readonly plans: Repository<WeddingPlan>,
     @InjectRepository(WeddingEvent) private readonly events: Repository<WeddingEvent>,
     @InjectRepository(Guest) private readonly guests: Repository<Guest>,
     @InjectRepository(EventInvite) private readonly invites: Repository<EventInvite>,
@@ -249,10 +252,66 @@ export class EventsService {
   }
 
   /** Loads an event only if the caller is the host. */
+  /**
+   * The couples this planner was hired by.
+   *
+   * Read from the wedding plans they are engaged on rather than from bookings
+   * directly, because engagement is already a decision the platform makes —
+   * engagePlanner only sets plannerUserId against a confirmed or completed
+   * booking — and a second definition of "my clients" would eventually
+   * disagree with the first.
+   */
+  async engagedHosts(plannerUserId: string): Promise<{ userId: string; name: string }[]> {
+    const plans = await this.plans.find({ where: { plannerUserId } });
+    if (plans.length === 0) return [];
+
+    const hostIds = [...new Set(plans.map((p) => p.userId))];
+    const profiles = await this.profiles.find({ where: { userId: In(hostIds) } });
+    const nameByUser = new Map(profiles.map((p) => [p.userId as string, p.displayName]));
+
+    return hostIds.map((userId) => ({
+      userId,
+      name: nameByUser.get(userId) ?? 'A client',
+    }));
+  }
+
+  /**
+   * Whose events these are, allowing for somebody working on them.
+   *
+   * Returns the user whose events should be read. A host is always themselves;
+   * a planner may name a host they are engaged on, and is refused otherwise.
+   * Everything downstream stays keyed to one userId, which is what keeps this
+   * from becoming a second permission system.
+   */
+  async resolveHost(actor: AuthUser, requestedHostId?: string): Promise<string> {
+    if (!requestedHostId || requestedHostId === actor.userId) return actor.userId;
+
+    const engaged = await this.plans.findOne({
+      where: { userId: requestedHostId, plannerUserId: actor.userId },
+    });
+    if (!engaged && actor.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('You are not engaged on that wedding');
+    }
+    return requestedHostId;
+  }
+
+  /**
+   * Loads an event the caller may work on.
+   *
+   * The host, and the planner they hired. A planner who has been engaged is
+   * running these days — booking the vendors, chasing the guest list — and
+   * asking them to do it through somebody else's login was the reason the
+   * Events page was empty for them.
+   */
   private async ownedEvent(userId: string, eventId: string): Promise<WeddingEvent> {
     const event = await this.events.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
-    if (event.userId !== userId) throw new ForbiddenException('This is not your event');
+    if (event.userId === userId) return event;
+
+    const engaged = await this.plans.findOne({
+      where: { userId: event.userId, plannerUserId: userId },
+    });
+    if (!engaged) throw new ForbiddenException('This is not your event');
     return event;
   }
 

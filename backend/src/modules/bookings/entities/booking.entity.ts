@@ -137,4 +137,23 @@ export class Booking {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
+
+  /*
+   * Filled in when a provider's queue is listed, and never stored.
+   *
+   * All of it lives on the client, the event and the payments already; a
+   * stored copy would be stale the moment a couple renamed their reception.
+   * They are here so a booking row can be answered without opening three
+   * other screens.
+   */
+  clientName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  eventName?: string | null;
+  eventVenue?: string | null;
+  eventCity?: string | null;
+  expectedGuests?: number | null;
+  serviceName?: string | null;
+  /** The furthest this booking's money has got, not a list of transactions. */
+  paymentStatus?: string | null;
 }

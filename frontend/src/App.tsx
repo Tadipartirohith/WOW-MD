@@ -259,7 +259,16 @@ const NAV: NavEntry[] = [
     group: 'wedding',
     icon: Receipt,
   },
-  { to: '/events', label: 'Events', requires: [Permission.EVENT_MANAGE_OWN], group: 'wedding', icon: Confetti },
+  {
+    to: '/events',
+    label: 'Events',
+    // A planner keeps this: the page now lets them pick a wedding they were
+    // engaged for, where before it listed their own days — of which there are
+    // none, because a planner is not the one getting married.
+    requires: [Permission.EVENT_MANAGE_OWN, Permission.PLAN_MANAGE_ENGAGED],
+    group: 'wedding',
+    icon: Confetti,
+  },
   { to: '/travel', label: 'Honeymoon', requires: [Permission.TRAVEL_BOOK], group: 'wedding', icon: AirplaneTilt },
   { to: '/media', label: 'Media', requires: [Permission.MEDIA_MANAGE_OWN], group: 'wedding', icon: Images },
   { to: '/genie', label: 'WOW Genie', requires: [Permission.AI_ASSIST], group: 'account', icon: MagicWand },

@@ -90,6 +90,25 @@ interface EventVendor {
 export default function Events() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
+
+  /*
+   * Whose wedding this is.
+   *
+   * Empty for a couple, which is what makes the picker below appear only for a
+   * planner without asking the client about roles: the endpoint answers with
+   * the weddings this account was engaged for, and a couple is engaged on
+   * none. A planner working three weddings at once could not previously reach
+   * any of them — Events listed the planner's own days, of which there are
+   * none, because a planner is not the one getting married.
+   */
+  const [host, setHost] = useState('');
+  const { data: engaged } = useQuery({
+    queryKey: ['engaged-hosts'],
+    queryFn: async () =>
+      (await api.get('/events/engaged')).data as { userId: string; name: string }[],
+    retry: false,
+  });
+  const clients = engaged ?? [];
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<EventStatus | ''>('');
@@ -118,13 +137,16 @@ export default function Events() {
   const [guestParty, setGuestParty] = useState('');
 
   const { data: events = [] } = useQuery({
-    queryKey: ['events', statusFilter, search],
+    queryKey: ['events', statusFilter, search, host],
     queryFn: async () =>
       (
         await api.get('/events', {
           params: {
             ...(statusFilter ? { status: statusFilter } : {}),
             ...(search ? { q: search } : {}),
+            // Only sent when a planner has chosen a wedding. A couple never
+            // sends it and the server would refuse it anyway.
+            ...(host ? { hostUserId: host } : {}),
           },
         })
       ).data as WEvent[],
@@ -240,6 +262,37 @@ export default function Events() {
 
   return (
     <div className="space-y-6">
+      {/*
+        Which wedding, for somebody running several.
+
+        Shown only when the account is engaged on at least one, so a couple
+        never sees it and nothing here asks about roles.
+      */}
+      {clients.length > 0 && (
+        <div className="card flex flex-wrap items-center gap-3">
+          <label className="text-sm text-gray-700" htmlFor="wedding">
+            Working on
+          </label>
+          <select
+            id="wedding"
+            className="input w-auto py-1.5 text-sm"
+            value={host}
+            onChange={(e) => {
+              setHost(e.target.value);
+              // The day selected belonged to the previous wedding.
+              setSelected(null);
+            }}
+          >
+            <option value="">Your own</option>
+            {clients.map((client) => (
+              <option key={client.userId} value={client.userId}>
+                {client.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div>
         <h1 className="page-title">Events</h1>
         <p className="page-subtitle">

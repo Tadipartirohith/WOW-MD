@@ -22,7 +22,7 @@ import {
   UpdateGuestDto,
   UpdateRsvpDto,
 } from './dto/event.dto';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
@@ -39,9 +39,32 @@ export class EventsController {
     return this.events.createEvent(userId, dto);
   }
 
+  /**
+   * The couples whose weddings this planner is running.
+   *
+   * Empty for everybody else, which is what makes the picker on the Events
+   * page appear only for a planner without a role check in the client.
+   */
+  @ApiOperation({ summary: 'Clients whose events you may work on' })
+  @Get('engaged')
+  engaged(@CurrentUser() actor: AuthUser) {
+    return this.events.engagedHosts(actor.userId);
+  }
+
+  @ApiOperation({
+    summary: 'The days of a wedding',
+    description:
+      'A planner may pass hostUserId to work on a wedding they were engaged for; anybody else ' +
+      'sees their own. Refused if the engagement does not exist.',
+  })
   @Get()
-  list(@CurrentUser('userId') userId: string, @Query() q: EventQueryDto) {
-    return this.events.listEvents(userId, q);
+  async list(
+    @CurrentUser() actor: AuthUser,
+    @Query() q: EventQueryDto,
+    @Query('hostUserId') hostUserId?: string,
+  ) {
+    const host = await this.events.resolveHost(actor, hostUserId);
+    return this.events.listEvents(host, q);
   }
 
   @ApiOperation({

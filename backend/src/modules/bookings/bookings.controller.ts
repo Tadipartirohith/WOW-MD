@@ -112,6 +112,18 @@ export class BookingsController {
 
   @RequirePermissions(Permission.BOOKING_READ_INCOMING)
   @ApiOperation({
+    summary: 'How many bookings sit in each status',
+    description:
+      'For the tabs above the queue. Counted across everything rather than the current page: a ' +
+      'tab that counts only what is already on screen is worse than one with no number at all.',
+  })
+  @Get('incoming/counts')
+  incomingCounts(@CurrentUser() actor: AuthUser) {
+    return this.bookings.incomingCounts(actor);
+  }
+
+  @RequirePermissions(Permission.BOOKING_READ_INCOMING)
+  @ApiOperation({
     summary: 'Your account: earnings, money still in escrow, and the ledger behind both',
   })
   @Get('earnings')

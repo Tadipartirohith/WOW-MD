@@ -11,6 +11,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
+import { WeddingEvent } from '../events/entities/event.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
@@ -130,6 +132,9 @@ export class BookingsService {
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    // Read-only, so a provider's booking row can say who and where it is for.
+    @InjectRepository(WeddingEvent) private readonly events: Repository<WeddingEvent>,
+    @InjectRepository(VendorService) private readonly serviceRows: Repository<VendorService>,
     private readonly cfg: AppConfigService,
     private readonly outbox: OutboxService,
     private readonly dataSource: DataSource,
@@ -936,7 +941,103 @@ export class BookingsService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(await this.withProviderNames(data), total, q.page, q.limit);
+    const named = await this.withProviderNames(data);
+    return paginate(await this.withClientContext(named), total, q.page, q.limit);
+  }
+
+  /**
+   * How many of each status are waiting, for the tabs above the list.
+   *
+   * Counted rather than derived from the current page: a tab reading
+   * "Requests" with no number beside it tells a provider nothing, and one
+   * counting only what happens to be on screen is worse than none.
+   */
+  async incomingCounts(actor: AuthUser): Promise<Record<string, number>> {
+    const providerIds = await this.ownedProviderIds(actor);
+    if (providerIds.length === 0) return {};
+
+    const rows = await this.bookings
+      .createQueryBuilder('b')
+      .select('b.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('b."providerId" IN (:...ids)', { ids: providerIds })
+      .groupBy('b.status')
+      .getRawMany<{ status: string; count: string }>();
+
+    const counts: Record<string, number> = { all: 0 };
+    for (const row of rows) {
+      counts[row.status] = Number(row.count);
+      counts.all += Number(row.count);
+    }
+    return counts;
+  }
+
+  /**
+   * Who the job is for, what it is, and whether money has moved.
+   *
+   * All of it existed and none of it was on the row. A provider deciding
+   * whether to take a Saturday needs the couple, the date, the venue, the head
+   * count and the service in front of them — and the payment state, because
+   * "confirmed" and "confirmed and paid for" are different amounts of
+   * commitment.
+   */
+  private async withClientContext(rows: Booking[]): Promise<Booking[]> {
+    if (rows.length === 0) return rows;
+
+    const userIds = [...new Set(rows.map((b) => b.userId))];
+    const eventIds = [...new Set(rows.map((b) => b.eventId).filter(Boolean))] as string[];
+    const serviceIds = [...new Set(rows.map((b) => b.vendorServiceId).filter(Boolean))] as string[];
+
+    const [users, profiles, events, payments, services] = await Promise.all([
+      this.users.find({ where: { id: In(userIds) }, select: ['id', 'email', 'phone'] }),
+      this.profiles.find({ where: { userId: In(userIds) } }),
+      eventIds.length ? this.events.find({ where: { id: In(eventIds) } }) : Promise.resolve([]),
+      this.payments.find({ where: { bookingId: In(rows.map((b) => b.id)) } }),
+      serviceIds.length
+        ? this.serviceRows.find({ where: { id: In(serviceIds) } })
+        : Promise.resolve([]),
+    ]);
+
+    const byUser = new Map(users.map((u) => [u.id, u]));
+    const nameByUser = new Map(profiles.map((p) => [p.userId as string, p.displayName]));
+    const byEvent = new Map(events.map((e) => [e.id, e]));
+    const byService = new Map(services.map((v) => [v.id, v]));
+
+    // The furthest a booking's money has got. Several payments can exist for
+    // one booking — an advance and a balance — and what a provider wants is
+    // the state of the job, not a list of transactions.
+    const RANK: Record<string, number> = {
+      initiated: 1,
+      held_in_escrow: 2,
+      disputed: 3,
+      pending_payout: 4,
+      released: 5,
+      refunded: 6,
+    };
+    const paymentByBooking = new Map<string, string>();
+    for (const payment of payments) {
+      const seen = paymentByBooking.get(payment.bookingId);
+      if (!seen || (RANK[payment.status] ?? 0) > (RANK[seen] ?? 0)) {
+        paymentByBooking.set(payment.bookingId, payment.status);
+      }
+    }
+
+    for (const booking of rows) {
+      const user = byUser.get(booking.userId);
+      const event = booking.eventId ? byEvent.get(booking.eventId) : undefined;
+      booking.clientName = nameByUser.get(booking.userId) ?? null;
+      booking.clientEmail = user?.email ?? null;
+      booking.clientPhone = user?.phone ?? null;
+      booking.eventName = event?.name ?? null;
+      booking.eventVenue = event?.venue ?? null;
+      booking.eventCity = event?.city ?? null;
+      booking.expectedGuests = event?.expectedGuests ?? null;
+      booking.serviceName = booking.vendorServiceId
+        ? (byService.get(booking.vendorServiceId)?.displayName ?? null)
+        : null;
+      booking.paymentStatus = paymentByBooking.get(booking.id) ?? null;
+    }
+    return rows;
   }
 
   /**
