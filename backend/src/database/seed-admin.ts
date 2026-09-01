@@ -19,10 +19,14 @@ loadEnv();
  * reachable by more than the person who checked the code out wants
  * ADMIN_EMAIL / ADMIN_PASSWORD set instead.
  *
- * The guard here is a warning rather than a refusal on NODE_ENV, because
- * NODE_ENV is not a usable signal in this project: the local Docker backend
- * runs with NODE_ENV=production, so refusing on it would block the default in
- * the one place it exists to serve and permit it nowhere useful.
+ * Refusing on NODE_ENV would not work: the local Docker backend runs with
+ * NODE_ENV=production, so it would block the default in the one place it
+ * exists to serve and permit it nowhere useful. SEED_ADMIN_REQUIRE_EXPLICIT
+ * is the signal instead — a deployment says for itself that a default is not
+ * acceptable, and k8s/seed-admin-job.yaml sets it. That matters because the
+ * Job takes its environment from a Secret: without this, an incomplete Secret
+ * would quietly put a password published in this repository into a cluster,
+ * where before it failed and said so.
  */
 const DEFAULT_ADMIN = { email: 'admin@wow.com', password: 'admin123' } as const;
 
@@ -49,6 +53,15 @@ async function main(): Promise<void> {
   const givenEmail = set(process.env.ADMIN_EMAIL);
   const givenPassword = set(process.env.ADMIN_PASSWORD);
   const supplied = Boolean(givenEmail && givenPassword);
+
+  if (!supplied && process.env.SEED_ADMIN_REQUIRE_EXPLICIT === 'true') {
+    console.error(
+      'SEED_ADMIN_REQUIRE_EXPLICIT is set, so ADMIN_EMAIL and ADMIN_PASSWORD must be too. ' +
+        'The built-in default is a development convenience and its password is public.',
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   const email = (givenEmail ?? DEFAULT_ADMIN.email).toLowerCase();
   const password = givenPassword ?? DEFAULT_ADMIN.password;

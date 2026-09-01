@@ -6,6 +6,11 @@
 # the existing account rather than failing.
 #
 # ADMIN_EMAIL / ADMIN_PASSWORD must exist in the wow-backend-secrets Secret.
+# SEED_ADMIN_REQUIRE_EXPLICIT below makes that a hard requirement rather than a
+# hope: the seeder falls back to a development default whose password is
+# published in this repository, and an envFrom that quietly resolves to nothing
+# would otherwise put that account in the cluster.
+#
 # Delete the Job (and rotate the password) once the admin has signed in.
 apiVersion: batch/v1
 kind: Job
@@ -23,6 +28,9 @@ spec:
         - name: seed-admin
           image: <REGISTRY>/wow-backend:latest
           command: ["node", "dist/database/seed-admin.js"]
+          env:
+            - name: SEED_ADMIN_REQUIRE_EXPLICIT
+              value: "true"
           envFrom:
             - configMapRef: { name: wow-backend-config }
             - secretRef: { name: wow-backend-secrets }

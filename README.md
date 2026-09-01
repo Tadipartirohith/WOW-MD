@@ -88,7 +88,11 @@ There is also `deploy-local.sh`, which wraps the same steps and waits for health
 docker compose -f docker/docker-compose.yml --profile seed run --rm seed-admin
 ```
 
-It reads `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `docker/.env` and is idempotent — running it again promotes and reactivates the existing account instead of failing. On Kubernetes the equivalent is `k8s/seed-admin-job.yaml`, run once per environment.
+With nothing configured this creates **`admin@wow.com` / `admin123`**, so a fresh checkout has a way in. That password is published here, which means it is only ever as private as the database is — set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `docker/.env` for anything reachable by more than the person who cloned the repository. Both must be set together, and a password you choose has to be at least twelve characters.
+
+The seeder is idempotent: running it again promotes and reactivates the existing account instead of failing.
+
+On Kubernetes the equivalent is `k8s/seed-admin-job.yaml`, run once per environment. That Job sets `SEED_ADMIN_REQUIRE_EXPLICIT=true`, which turns the fallback off and makes the Job fail if the Secret does not carry both values — an `envFrom` that silently resolves to nothing would otherwise put the public default into a cluster.
 
 ## Configuration
 
