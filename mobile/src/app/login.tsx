@@ -1,9 +1,19 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { Link } from 'expo-router';
 import type { AxiosError } from 'axios';
 
 import { acceptAuth, api, apiMessage } from '@/lib/api';
-import { Alert, Body, Button, Field, PageSubtitle, PageTitle, Screen } from '@/components/ui';
+import {
+  Alert,
+  Body,
+  Button,
+  Caption,
+  Field,
+  PageSubtitle,
+  PageTitle,
+  Screen,
+} from '@/components/ui';
 import { rgb, space, useTheme } from '@/theme';
 
 /**
@@ -118,6 +128,28 @@ export default function Login() {
           busy={busy}
           disabled={!email.trim() || !password || (needsMfa && mfaCode.length < 6)}
         />
+
+        {/*
+          Hidden mid-MFA: the account already exists and is half signed in, so
+          offering to make another one there is noise at the worst moment.
+        */}
+        {needsMfa ? null : (
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: space(1),
+            }}
+          >
+            <Caption>No account?</Caption>
+            <Link href="/register" asChild>
+              <Pressable accessibilityRole="link" hitSlop={8}>
+                <Caption tone="brand">Create one</Caption>
+              </Pressable>
+            </Link>
+          </View>
+        )}
       </Screen>
     </KeyboardAvoidingView>
   );

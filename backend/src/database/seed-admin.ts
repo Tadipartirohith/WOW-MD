@@ -7,36 +7,70 @@ import { UserRole } from '../common/enums';
 loadEnv();
 
 /**
- * Bootstraps the first administrator.
+ * The account a fresh checkout can sign in with.
  *
- * ADMIN is deliberately absent from the self-registration allow-list, so it
- * cannot be created through the API at all. This script is the supported way in:
- * run it once per environment with ADMIN_EMAIL / ADMIN_PASSWORD set.
+ * There is no other way in: ADMIN is deliberately absent from the
+ * self-registration allow-list, so it cannot be minted through the API, and
+ * before this default existed a new environment had no administrator at all
+ * until somebody thought to set two environment variables.
+ *
+ * It is weak on purpose — eight characters, no uppercase, and published in
+ * this repository, so it is only ever as private as the database is. Anything
+ * reachable by more than the person who checked the code out wants
+ * ADMIN_EMAIL / ADMIN_PASSWORD set instead.
+ *
+ * The guard here is a warning rather than a refusal on NODE_ENV, because
+ * NODE_ENV is not a usable signal in this project: the local Docker backend
+ * runs with NODE_ENV=production, so refusing on it would block the default in
+ * the one place it exists to serve and permit it nowhere useful.
+ */
+const DEFAULT_ADMIN = { email: 'admin@wow.com', password: 'admin123' } as const;
+
+/**
+ * Bootstraps the first administrator.
  *
  *   npm run seed:admin          (source, needs ts-node)
  *   npm run seed:admin:prod     (compiled, inside the container)
  *
- * Idempotent: re-running promotes and re-activates the existing account rather
- * than failing on the unique email index.
+ * ADMIN_EMAIL / ADMIN_PASSWORD override the default. Idempotent: re-running
+ * promotes and re-activates the existing account rather than failing on the
+ * unique email index.
  */
 async function main(): Promise<void> {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
+  /*
+   * Empty counts as unset, and `??` is not enough to say so.
+   *
+   * docker-compose passes `ADMIN_EMAIL: ${ADMIN_EMAIL:-}`, so inside the
+   * container the variable is always *defined* and usually empty. Falling back
+   * with `??` would keep that empty string and make the default below
+   * unreachable in the one environment it exists for.
+   */
+  const set = (value: string | undefined) => (value?.trim() ? value.trim() : undefined);
+  const givenEmail = set(process.env.ADMIN_EMAIL);
+  const givenPassword = set(process.env.ADMIN_PASSWORD);
+  const supplied = Boolean(givenEmail && givenPassword);
 
-  if (!email || !password) {
-    console.error('Set ADMIN_EMAIL and ADMIN_PASSWORD before running the admin seed.');
-    process.exitCode = 1;
-    return;
-  }
+  const email = (givenEmail ?? DEFAULT_ADMIN.email).toLowerCase();
+  const password = givenPassword ?? DEFAULT_ADMIN.password;
+
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     console.error(`ADMIN_EMAIL is not a valid email address: ${email}`);
     process.exitCode = 1;
     return;
   }
-  if (password.length < 12) {
+  // Applied to a password somebody chose, not to the default: the default is
+  // already known to be weak, and rejecting it here would only mean the
+  // fallback never works.
+  if (supplied && password.length < 12) {
     console.error('ADMIN_PASSWORD must be at least 12 characters.');
     process.exitCode = 1;
     return;
+  }
+  if (!supplied) {
+    console.warn(
+      `No ADMIN_EMAIL/ADMIN_PASSWORD set — seeding the development default ${email}. ` +
+        'Change it before this database is reachable by anyone else.',
+    );
   }
 
   await dataSource.initialize();
