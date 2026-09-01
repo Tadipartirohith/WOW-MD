@@ -6,6 +6,7 @@ import { useAuth } from '../store/auth';
 import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/permissions';
 import ProviderBookings from '../components/ProviderBookings';
 import BookingChat from '../components/BookingChat';
+import PaymentMethodPicker from '../components/PaymentMethodPicker';
 import PhotoUploader from '../components/PhotoUploader';
 import { Loading } from '../components/ui/Feedback';
 
@@ -293,6 +294,16 @@ function BookingDetail({
     retry: false,
   });
 
+  /*
+   * Which method the next instalment uses.
+   *
+   * Card unless the person says otherwise, and per booking rather than
+   * remembered across the page: somebody may reasonably settle a small
+   * balance in cash and put the deposit on a card, and carrying the last
+   * choice over would quietly pick the wrong one.
+   */
+  const [method, setMethod] = useState('card');
+
   const live = (quotations ?? []).find((q) => q.status === 'sent');
   const paid = new Set(
     (milestones?.milestones ?? [])
@@ -402,16 +413,22 @@ function BookingDetail({
                     {m.status.replace(/_/g, ' ')}
                   </span>
                 ) : canPay && dueNow === m.milestone ? (
-                  <button
-                    className="btn"
-                    onClick={() =>
-                      onRun(() =>
-                        api.put(`/bookings/${booking.id}/pay`, { milestone: m.milestone }),
-                      )
-                    }
-                  >
-                    Pay
-                  </button>
+                  <div className="flex flex-col items-end gap-2">
+                    <PaymentMethodPicker value={method} onChange={setMethod} amount={m.amount} />
+                    <button
+                      className="btn"
+                      onClick={() =>
+                        onRun(() =>
+                          api.put(`/bookings/${booking.id}/pay`, {
+                            milestone: m.milestone,
+                            method,
+                          }),
+                        )
+                      }
+                    >
+                      Pay
+                    </button>
+                  </div>
                 ) : (
                   <span className="text-xs text-gray-400">
                     {nextDue?.milestone === m.milestone

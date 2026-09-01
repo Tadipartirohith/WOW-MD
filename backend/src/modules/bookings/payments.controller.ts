@@ -1,13 +1,14 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   Headers,
   HttpCode,
   Inject,
   Post,
   Req,
 } from '@nestjs/common';
-import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeEndpoint, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Request } from 'express';
@@ -17,6 +18,7 @@ import { PAYMENT_PROVIDER, PaymentProvider } from './payment.provider';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { RedisService } from '../../platform/redis/redis.service';
+import { AppConfigService } from '../../config/app-config.service';
 
 /**
  * Inbound gateway webhooks.
@@ -39,7 +41,34 @@ export class PaymentsController {
     @Inject(PAYMENT_PROVIDER) private readonly gateway: PaymentProvider,
     private readonly audit: AuditService,
     private readonly redis: RedisService,
+    private readonly cfg: AppConfigService,
   ) {}
+
+  /**
+   * Which ways of paying this deployment accepts.
+   *
+   * Asked rather than assumed. A hard-coded list in the client is a second
+   * copy of a decision the server already owns, and the two disagree the first
+   * time an operator turns netbanking off — leaving a button that produces
+   * nothing but a refusal, which is how a working platform starts looking
+   * broken.
+   *
+   * The cash terms come with it because they change what the buyer is
+   * agreeing to, not just what they can click: no escrow, and a ceiling.
+   */
+  @ApiOperation({ summary: 'The payment methods this deployment accepts, and the cash terms' })
+  @Get('methods')
+  methods() {
+    const p = this.cfg.payments;
+    return {
+      methods: p.methods,
+      currency: p.currency,
+      cash: {
+        enabled: p.cash.enabled && p.methods.includes('cash'),
+        maxAmount: p.cash.maxAmount,
+      },
+    };
+  }
 
   @Public()
   @ApiExcludeEndpoint()

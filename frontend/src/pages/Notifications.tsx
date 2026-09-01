@@ -10,6 +10,7 @@ import {
   type Notification,
 } from '../lib/notification-copy';
 import { EmptyState, Loading } from '../components/ui/Feedback';
+import SupportContact from '../components/SupportContact';
 import { BellSlash } from '@phosphor-icons/react';
 
 
@@ -186,6 +187,14 @@ export default function Notifications() {
           </EmptyState>
         </div>
       )}
+
+      {/*
+        The bottom of this page is where somebody ends up when the thing they
+        were waiting for has not arrived. That is the moment to offer a person
+        rather than another screen. It renders nothing when no channel is
+        configured.
+      */}
+      <SupportContact />
     </div>
   );
 }

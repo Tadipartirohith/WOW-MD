@@ -5,6 +5,7 @@ import { api, apiMessage } from '../lib/api';
 import { motion, useReducedMotion } from 'motion/react';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { useAuth } from '../store/auth';
+import SupportContact from '../components/SupportContact';
 
 export default function Login() {
   const nav = useNavigate();
@@ -163,6 +164,18 @@ export default function Login() {
               Register
             </Link>
           </p>
+
+          {/*
+            Here rather than only inside the app.
+
+            Somebody who cannot get past this screen is exactly the person who
+            needs a phone number, and a contact address visible only after
+            signing in is no use to them. Renders nothing when no channel is
+            configured, so it never leaves a dead heading behind.
+          */}
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <SupportContact compact />
+          </div>
         </motion.form>
       </div>
 
