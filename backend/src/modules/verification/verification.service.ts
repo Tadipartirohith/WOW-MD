@@ -27,6 +27,7 @@ import { MailService } from '../../platform/mail/mail.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { BusinessLifecycleService } from '../vendors/business-lifecycle.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { Permission, roleHasPermission } from '../../common/authz/permissions';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
   ApplicantType,
@@ -547,11 +548,26 @@ export class VerificationService {
   ): Promise<PaginatedResult<VerificationRequest>> {
     const qb = this.requests.createQueryBuilder('r');
 
-    // An officer sees their own queue; an admin sees everything.
-    if (actor.role === UserRole.IN_PERSON) {
-      qb.where('r."assignedToUserId" = :me', { me: actor.userId });
-    } else {
+    /*
+     * You see the whole queue only if you are the one who hands it out.
+     *
+     * This used to read `role === IN_PERSON`, which was right while officers
+     * were the only people doing fieldwork. Agents now hold
+     * VERIFICATION_FIELDWORK too, and a role test put them in the other branch
+     * — so an agent could read every open application on the platform,
+     * including their competitors' and their own clients'. That is a
+     * commercial participant reading the regulator's inbox.
+     *
+     * Keyed on VERIFICATION_ALLOCATE rather than on a list of roles, because
+     * the rule being expressed is "if you cannot allocate work, you only see
+     * what was allocated to you" — which stays true for whatever role is added
+     * next, and would not have needed changing here in the first place.
+     */
+    const allocatesWork = roleHasPermission(actor.role, Permission.VERIFICATION_ALLOCATE);
+    if (allocatesWork) {
       qb.where('1 = 1');
+    } else {
+      qb.where('r."assignedToUserId" = :me', { me: actor.userId });
     }
     if (q.status) qb.andWhere('r.status = :status', { status: q.status });
     if (q.applicantType) qb.andWhere('r."applicantType" = :t', { t: q.applicantType });
@@ -616,7 +632,14 @@ export class VerificationService {
     id: string,
   ): Promise<VerificationRequest & { applicant: unknown; subject: unknown }> {
     const request = await this.loadOrFail(id);
-    if (actor.role === UserRole.IN_PERSON && request.assignedToUserId !== actor.userId) {
+    // The same rule the queue uses, and for the same reason: a role test let an
+    // agent open any request by id even once the list stopped offering them.
+    // Filtering a list without guarding the record it links to is not a
+    // restriction, it is a longer path to the same data.
+    if (
+      !roleHasPermission(actor.role, Permission.VERIFICATION_ALLOCATE) &&
+      request.assignedToUserId !== actor.userId
+    ) {
       throw new ForbiddenException('That request is not allocated to you');
     }
 
