@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
+import PasswordField from '../components/PasswordField';
 import type { AccountType } from '../lib/permissions';
 import { EMAIL_PATTERN, MOBILE_10_PATTERN, NAME_PATTERN } from '../lib/permissions';
 
@@ -63,6 +64,7 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -100,6 +102,9 @@ export default function Register() {
     else if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
       errors.password = 'Needs an uppercase letter, a lowercase letter and a digit';
     }
+
+    if (!confirm) errors.confirm = 'Type the password again';
+    else if (confirm !== password) errors.confirm = 'Passwords do not match';
 
     return errors;
   }
@@ -264,26 +269,35 @@ export default function Register() {
           )}
         </div>
 
-        <div>
-          <label className="label" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            className="input"
-            type="password"
-            minLength={8}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <PasswordField
+            label="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={Boolean(fieldErrors.password)}
+            onChange={setPassword}
+            autoComplete="new-password"
+            minLength={8}
+            error={fieldErrors.password}
+            hint="At least 8 characters, with an uppercase letter, a lowercase letter and a digit."
           />
-          {fieldErrors.password ? (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>
-          ) : (
-            <p className="mt-1 text-xs text-gray-500">
-              At least 8 characters, with an uppercase letter, a lowercase letter and a digit.
-            </p>
-          )}
+          {/*
+            Typed twice, because it is typed blind and used once.
+            
+            An account is created from a password nobody can read back, and the
+            first time anybody discovers a typo is when they try to sign in and
+            cannot — by which point the only way back is a reset email. The
+            check is here and not on the server on purpose: the server never
+            sees the second field, and it should not, because what is being
+            checked is that the person typed what they meant, not anything
+            about the account.
+          */}
+          <PasswordField
+            label="Confirm password"
+            value={confirm}
+            onChange={setConfirm}
+            autoComplete="new-password"
+            error={fieldErrors.confirm}
+            hint="Type it again so a slip does not lock you out."
+          />
         </div>
 
         <button className="btn w-full" disabled={loading}>

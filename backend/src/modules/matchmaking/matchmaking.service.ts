@@ -935,6 +935,21 @@ export class MatchmakingService {
       },
     });
     await this.neo4j.recordInterest(from.id, toProfileId, 'INTERESTED');
+
+    /*
+     * The suggestion pages both sides see are now wrong.
+     *
+     * Responding and withdrawing already did this; sending did not, and the
+     * consequence was reported three separate ways. Suggestions are cached for
+     * two minutes, and each card carries an `interaction` telling the client
+     * whether an interest already exists — so for those two minutes the list
+     * kept saying "none". The button stayed as "Show interest" and could be
+     * pressed again, and the profile did not move out of the pending view.
+     *
+     * It read as the click doing nothing. It had done everything except tell
+     * anybody.
+     */
+    await this.invalidateSuggestions(from.id, toProfileId);
     return interest;
   }
 

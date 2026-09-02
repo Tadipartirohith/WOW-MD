@@ -95,16 +95,25 @@ export default function ConsentFields({
             ))}
           </select>
         </div>
-        <div>
-          <label className="label">Their name</label>
-          <input
-            className="input"
-            value={value.givenByName}
-            onChange={(e) => set('givenByName')(e.target.value)}
-            minLength={2}
-            required
-          />
-        </div>
+        {/*
+          Not asked when there is nobody else to name.
+          
+          "Who gave it?" answered as the person themselves already names them —
+          the profile is theirs. Asking again, and refusing to save without it,
+          made the obvious answer the one that could not be recorded.
+        */}
+        {value.givenByRelation !== 'self' && (
+          <div>
+            <label className="label">Their name</label>
+            <input
+              className="input"
+              value={value.givenByName}
+              onChange={(e) => set('givenByName')(e.target.value)}
+              minLength={2}
+              required
+            />
+          </div>
+        )}
         <div>
           <label className="label">
             Their number <span className="font-normal text-gray-400">(optional)</span>

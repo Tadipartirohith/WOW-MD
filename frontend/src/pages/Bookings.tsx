@@ -8,6 +8,7 @@ import ProviderBookings from '../components/ProviderBookings';
 import BookingChat from '../components/BookingChat';
 import PaymentMethodPicker from '../components/PaymentMethodPicker';
 import PhotoUploader from '../components/PhotoUploader';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Loading } from '../components/ui/Feedback';
 
 interface Booking {
@@ -102,6 +103,13 @@ export default function Bookings() {
   // person is looking at the thing they just did rather than hunting for it.
   const [expanded, setExpanded] = useState<string | null>(highlight);
   const [disputing, setDisputing] = useState<string | null>(null);
+  /*
+   * Which booking is being cancelled, if any.
+   *
+   * This used to go through on the first click: a provider's held date
+   * released and escrow unwound before anybody could think better of it.
+   */
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['bookings', status],
@@ -209,7 +217,7 @@ export default function Bookings() {
                   {expanded === b.id ? 'Hide' : 'Details'}
                 </button>
                 {OPEN_STATUSES.includes(b.status) && (
-                  <button className="btn-outline" onClick={() => run(() => api.put(`/bookings/${b.id}/cancel`, {}))}>
+                  <button className="btn-outline" onClick={() => setCancelling(b.id)}>
                     Cancel
                   </button>
                 )}
@@ -240,6 +248,32 @@ export default function Bookings() {
 
             {expanded === b.id && (
               <BookingDetail booking={b} canPay={canPay} onRun={run} />
+            )}
+
+            {/*
+              Asked before the date is released.
+
+              A cancellation unwinds escrow and hands the provider's held window
+              back, and neither is something the platform can put right
+              afterwards — so the sentence names what is lost rather than
+              asking a generic "are you sure".
+            */}
+            {cancelling === b.id && (
+              <ConfirmDialog
+                title="Cancel this booking?"
+                body={
+                  Number(b.amount) > 0
+                    ? `${b.providerName ?? 'The provider'} will lose the date, and anything held in escrow is returned. This cannot be undone.`
+                    : `${b.providerName ?? 'The provider'} will be told you no longer need them. This cannot be undone.`
+                }
+                confirmLabel="Confirm cancellation"
+                cancelLabel="Keep booking"
+                onDismiss={() => setCancelling(null)}
+                onConfirm={async () => {
+                  await run(() => api.put(`/bookings/${b.id}/cancel`, {}));
+                  setCancelling(null);
+                }}
+              />
             )}
           </div>
         ))}

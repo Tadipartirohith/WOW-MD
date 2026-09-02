@@ -12,6 +12,7 @@ import {
   NetworkVisibility,
   ProfileClaimStatus,
   UserRole,
+  ConsentRelation,
 } from '../../common/enums';
 
 export interface ConsentState {
@@ -164,7 +165,7 @@ export class ConsentService {
     profileId: string,
     dto: RecordConsentDto,
   ): Promise<ConsentState> {
-    await this.stewardedProfile(actor, profileId);
+    const profile = await this.stewardedProfile(actor, profileId);
 
     // Circulation consent expires so that "still happy for this to go around?"
     // is asked again periodically rather than assumed forever.
@@ -179,7 +180,12 @@ export class ConsentService {
         scope: dto.scope,
         method: dto.method,
         givenByRelation: dto.givenByRelation,
-        givenByName: dto.givenByName,
+        // For `self` the client no longer sends a name, because the profile is
+        // already the answer. Recorded from the profile rather than left blank
+        // so the consent row still reads as a statement about a person.
+        givenByName:
+          dto.givenByName ??
+          (dto.givenByRelation === ConsentRelation.SELF ? (profile.displayName ?? 'The profile owner') : ''),
         givenByPhone: dto.givenByPhone ?? null,
         givenAt: dto.givenAt,
         capturedByUserId: actor.userId,

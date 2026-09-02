@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { useAuth } from '../store/auth';
 import SupportContact from '../components/SupportContact';
+import PasswordField from '../components/PasswordField';
 
 export default function Login() {
   const nav = useNavigate();
@@ -102,28 +103,20 @@ export default function Login() {
               />
             </div>
 
-            <div>
-              <div className="mb-1.5 flex items-baseline justify-between gap-3">
-                <label className="label mb-0" htmlFor="password">
-                  Password
-                </label>
+            <PasswordField
+              label="Password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+              labelAside={
                 <Link
                   className="text-[0.8125rem] text-gray-500 underline-offset-2 transition-colors hover:text-brand-strong hover:underline"
                   to="/forgot-password"
                 >
                   Forgot?
                 </Link>
-              </div>
-              <input
-                id="password"
-                className="input"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
+              }
+            />
 
             {needsMfa && (
               <div>

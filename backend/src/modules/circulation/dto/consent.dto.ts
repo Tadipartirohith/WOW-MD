@@ -9,6 +9,7 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { ConsentMethod, ConsentRelation, ConsentScope } from '../../../common/enums';
 import {
@@ -37,11 +38,20 @@ export class RecordConsentDto {
   @IsEnum(ConsentRelation)
   givenByRelation: ConsentRelation;
 
-  @ApiProperty({ example: 'Ramesh Sharma', minLength: 2, maxLength: 120 })
+  /**
+   * Who spoke, when that is somebody other than the person on the profile.
+   *
+   * Not asked for `self`: the profile already names them, so requiring it
+   * again made the most ordinary answer the one that could not be saved. The
+   * service fills the record in from the profile so the row still reads as a
+   * sentence rather than carrying a blank.
+   */
+  @ApiPropertyOptional({ example: 'Ramesh Sharma', minLength: 2, maxLength: 120 })
+  @ValidateIf((o: RecordConsentDto) => o.givenByRelation !== ConsentRelation.SELF)
   @IsString()
   @MinLength(2)
   @MaxLength(120)
-  givenByName: string;
+  givenByName?: string;
 
   @ApiPropertyOptional({
     example: '+919876543210',
