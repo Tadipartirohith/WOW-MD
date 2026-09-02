@@ -256,7 +256,32 @@ export enum MaritalStatus {
   WIDOWED = 'widowed',
   SEPARATED = 'separated',
   ANNULLED = 'annulled',
+  /**
+   * For a sibling, not for the person the profile is about.
+   *
+   * Somebody seeking a match is not currently married, and the four states
+   * above are how they came to be looking. A brother or sister usually is
+   * married, and until this existed the commonest answer about them could not
+   * be given — while the siblings table carried a `spouseName` column all
+   * along. SELF_MARITAL_STATUSES below keeps it out of the owner's own field.
+   */
+  MARRIED = 'married',
 }
+
+/**
+ * What the person the profile is about may say about themselves.
+ *
+ * Everything except MARRIED. Expressed as a list here rather than as a second
+ * enum so that siblings and profile owners keep sharing one vocabulary, and
+ * the one difference between them is stated in one place.
+ */
+export const SELF_MARITAL_STATUSES: readonly MaritalStatus[] = [
+  MaritalStatus.NEVER_MARRIED,
+  MaritalStatus.DIVORCED,
+  MaritalStatus.WIDOWED,
+  MaritalStatus.SEPARATED,
+  MaritalStatus.ANNULLED,
+] as const;
 
 /**
  * Whether a parent is living.

@@ -234,15 +234,35 @@ export type MaritalStatus =
   | 'divorced'
   | 'widowed'
   | 'separated'
-  | 'annulled';
+  | 'annulled'
+  | 'married';
 
 export const MARITAL_LABEL: Record<MaritalStatus, string> = {
   never_married: 'Never married',
+  /* For a sibling. The profile owner's own field never offers it — see
+     SELF_MARITAL_STATUSES on the server. */
+  married: 'Married',
   divorced: 'Divorced',
   widowed: 'Widowed',
   separated: 'Separated',
   annulled: 'Annulled',
 };
+
+/**
+ * What the person the profile is about may say about themselves.
+ *
+ * Everything except `married`: somebody seeking a match is not currently
+ * married, and the rest describe how they came to be looking. The server
+ * refuses the difference (SELF_MARITAL_STATUSES there), so offering it here
+ * would only produce a rejection after the fact.
+ */
+export const SELF_MARITAL_STATUSES: MaritalStatus[] = [
+  'never_married',
+  'divorced',
+  'widowed',
+  'separated',
+  'annulled',
+];
 
 export type FamilyType = 'joint' | 'nuclear' | 'extended' | 'single_parent';
 

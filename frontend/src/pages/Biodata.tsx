@@ -7,6 +7,7 @@ import {
   ASSET_TYPE_LABEL,
   FAMILY_TYPE_LABEL,
   MARITAL_LABEL,
+  SELF_MARITAL_STATUSES,
   MaritalStatus,
   OCCUPATION_LABEL,
   OccupationStatus,
@@ -715,9 +716,9 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
           value={status}
           onChange={(e) => setStatus(e.target.value as MaritalStatus)}
         >
-          {Object.entries(MARITAL_LABEL).map(([value, label]) => (
+          {SELF_MARITAL_STATUSES.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {MARITAL_LABEL[value]}
             </option>
           ))}
         </select>

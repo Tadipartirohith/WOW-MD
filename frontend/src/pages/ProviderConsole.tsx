@@ -640,7 +640,20 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         ...(form.bio.trim() ? { bio: form.bio.trim() } : {}),
         yearsExperience: Number(form.yearsExperience) || 0,
       });
-      setMsg('Saved. An administrator will review it before it appears in search.');
+      /*
+       * What actually happens next, which depends on where the listing stands.
+       *
+       * This said "an administrator will review it" unconditionally, including
+       * to planners who had been approved weeks earlier — so the one screen
+       * that should have told them they were live was the screen insisting
+       * they were not. The server has always returned isApproved; nothing read
+       * it.
+       */
+      setMsg(
+        existing?.isApproved
+          ? 'Saved. Your listing is approved, so the change is live for couples now.'
+          : 'Saved. An administrator will review it before it appears in search.',
+      );
       qc.invalidateQueries({ queryKey: ['my-listing'] });
     } catch (err) {
       setMsg(apiMessage(err, 'Could not save the listing.'));
@@ -652,7 +665,28 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
 
   return (
     <form onSubmit={submit} className="card space-y-3">
-      <h2 className="section-title">Your planning agency</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-title">Your planning agency</h2>
+        {/*
+          Where the listing stands, always on screen.
+
+          A save message is transient and was the only thing ever saying
+          anything about approval, so a planner who reloaded the page had no
+          way to tell whether they were live. This reads the server's own
+          answer, so the page and the search results cannot disagree.
+        */}
+        {existing && (
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs ${
+              existing.isApproved
+                ? 'bg-emerald-50 text-emerald-800'
+                : 'bg-amber-50 text-amber-800'
+            }`}
+          >
+            {existing.isApproved ? 'Approved — visible to couples' : 'Awaiting approval'}
+          </span>
+        )}
+      </div>
       {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
       <div className="grid gap-3 sm:grid-cols-3">
         <div>

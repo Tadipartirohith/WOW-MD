@@ -26,6 +26,7 @@ import {
   FamilyType,
   LifeStatus,
   MaritalStatus,
+  SELF_MARITAL_STATUSES,
   OccupationStatus,
 } from '../../../common/enums';
 import {
@@ -222,8 +223,12 @@ export class HoroscopeDetailsDto {
 }
 
 export class MaritalDetailsDto {
-  @ApiProperty({ enum: MaritalStatus })
-  @IsEnum(MaritalStatus)
+  // Not IsEnum: `married` belongs to the shared vocabulary for siblings' sake
+  // and is not an answer the person seeking a match can give about themselves.
+  @ApiProperty({ enum: SELF_MARITAL_STATUSES })
+  @IsIn(SELF_MARITAL_STATUSES as MaritalStatus[], {
+    message: 'A profile being matched cannot be currently married',
+  })
   maritalStatus: MaritalStatus;
 
   @ApiPropertyOptional({ format: 'date' })
