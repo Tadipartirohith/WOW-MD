@@ -19,6 +19,20 @@ import {
 import ProfileSelector from '../components/ProfileSelector';
 import ProfilePhotos from '../components/ProfilePhotos';
 import PhotoUploader from '../components/PhotoUploader';
+import ChoiceField from '../components/ChoiceField';
+import {
+  CASTES_BY_RELIGION,
+  CITIES,
+  COUNTRIES,
+  MOTHER_TONGUES,
+  NAKSHATRAS,
+  PADAMS,
+  PROFESSIONS,
+  QUALIFICATIONS,
+  RASHIS,
+  RELIGIONS,
+  STATES,
+} from '../lib/reference';
 import SavedBiodata from '../components/SavedBiodata';
 import ProfileCard from '../components/ProfileCard';
 import { formatDate } from '../lib/dates';
@@ -288,7 +302,6 @@ export default function Biodata() {
         <PreferencesForm
           initial={details}
           onSave={(b) => save('preferences', b)}
-          onSaveHoroscope={(b) => save('horoscope', b)}
         />
       </Accordion>
 
@@ -406,7 +419,10 @@ function useDraft(initial: Draft, keys: string[]) {
 
   const set = (key: string) => (e: { target: { value: string } }) =>
     setDraft((d) => ({ ...d, [key]: e.target.value }));
-  return { draft, setDraft, set };
+  /** For controls that hand back a value rather than an event. */
+  const put = (key: string) => (value: string) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+  return { draft, setDraft, set, put };
 }
 
 function PersonalForm({
@@ -532,37 +548,69 @@ function PersonalForm({
 }
 
 function ReligionForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
-  const { draft, set } = useDraft(initial, [
+  const { draft, put } = useDraft(initial, [
     'religion',
     'caste',
     'subCaste',
     'motherTongue',
-    'denomination',
   ]);
+
+  const religion = String(draft.religion ?? '');
+  /*
+   * Castes follow the religion, not one list for everybody.
+   *
+   * Offering a Hindu caste list to a Christian family is not a neutral
+   * mistake. Religions with no caste structure get an empty list, and the
+   * field then offers only the free-text box.
+   */
+  const casteOptions = CASTES_BY_RELIGION[religion] ?? [];
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSave({ ...draft, denomination: draft.denomination || undefined });
+        // Denomination is deliberately not sent: the field is gone, and the
+        // server treats it as optional, so an old value simply stops being
+        // rewritten. Nothing is deleted from rows that already have one.
+        onSave(draft);
       }}
       className="space-y-3"
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Religion">
-          <input className="input mt-1" value={String(draft.religion ?? '')} onChange={set('religion')} required />
-        </Field>
-        <Field label="Caste">
-          <input className="input mt-1" value={String(draft.caste ?? '')} onChange={set('caste')} required />
-        </Field>
-        <Field label="Sub-caste">
-          <input className="input mt-1" value={String(draft.subCaste ?? '')} onChange={set('subCaste')} required />
-        </Field>
-        <Field label="Mother tongue">
-          <input className="input mt-1" value={String(draft.motherTongue ?? '')} onChange={set('motherTongue')} required />
-        </Field>
-        <Field label="Denomination / sect" hint="Only where the community uses one">
-          <input className="input mt-1" value={String(draft.denomination ?? '')} onChange={set('denomination')} />
-        </Field>
+        <ChoiceField
+          label="Religion"
+          value={religion}
+          onChange={put('religion')}
+          options={RELIGIONS}
+          required
+        />
+        <ChoiceField
+          label="Caste"
+          value={String(draft.caste ?? '')}
+          onChange={put('caste')}
+          options={casteOptions}
+          hint={religion ? undefined : 'Pick a religion first, or type the caste.'}
+          required
+        />
+        {/*
+          Sub-caste and gothram have no finite list — there are thousands, and
+          they vary by district. The control is a dropdown of nothing plus the
+          free-text escape, which is the honest shape for them.
+        */}
+        <ChoiceField
+          label="Sub-caste"
+          value={String(draft.subCaste ?? '')}
+          onChange={put('subCaste')}
+          options={[]}
+          required
+        />
+        <ChoiceField
+          label="Mother tongue"
+          value={String(draft.motherTongue ?? '')}
+          onChange={put('motherTongue')}
+          options={MOTHER_TONGUES}
+          required
+        />
       </div>
       <button className="btn">Save religion details</button>
     </form>
@@ -593,6 +641,7 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
 
   useEffect(() => {
     setAvailable(Boolean(initial?.horoscopeAvailable));
+    const place = (chart.birthPlace ?? {}) as Draft;
     setValues({
       rashi: chart.rashi ?? '',
       star: chart.star ?? '',
@@ -600,24 +649,53 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
       gothram: chart.gothram ?? '',
       kujaDosham: chart.kujaDosham ?? '',
       timeOfBirth: chart.timeOfBirth ?? '',
+      birthCity: place.city ?? '',
+      birthState: place.state ?? '',
+      birthCountry: place.country ?? '',
+      horoscopeDocumentUrl: initial?.horoscopeDocumentUrl ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
+  const put = (k: string) => (value: string) => setValues((v) => ({ ...v, [k]: value }));
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        /*
+         * Where and when somebody was born is true either way.
+         *
+         * These used to live inside the "a horoscope is available" branch, so
+         * a family that does not keep one could not record a birthplace they
+         * plainly know. The requirement is explicit that all three of place,
+         * time and document are optional and none of them gates a save.
+         */
+        const place = {
+          ...(values.birthCity ? { city: String(values.birthCity) } : {}),
+          ...(values.birthState ? { state: String(values.birthState) } : {}),
+          ...(values.birthCountry ? { country: String(values.birthCountry) } : {}),
+        };
+        const always = {
+          ...(values.timeOfBirth ? { timeOfBirth: String(values.timeOfBirth) } : {}),
+          ...(Object.keys(place).length ? { birthPlace: place } : {}),
+          ...(values.horoscopeDocumentUrl
+            ? { horoscopeDocumentUrl: String(values.horoscopeDocumentUrl) }
+            : {}),
+        };
+        const chartOnly = ['rashi', 'star', 'padam', 'gothram', 'kujaDosham'];
         onSave(
           available
             ? {
                 horoscopeAvailable: true,
-                ...Object.fromEntries(Object.entries(values).filter(([, v]) => v !== '')),
+                ...Object.fromEntries(
+                  Object.entries(values).filter(([k, v]) => chartOnly.includes(k) && v !== ''),
+                ),
+                ...always,
               }
-            : { horoscopeAvailable: false },
+            : { horoscopeAvailable: false, ...always },
         );
       }}
       className="space-y-3"
@@ -636,18 +714,35 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
 
       {available && (
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Rashi">
-            <input className="input mt-1" value={String(values.rashi ?? '')} onChange={set('rashi')} required />
-          </Field>
-          <Field label="Star / Nakshatra">
-            <input className="input mt-1" value={String(values.star ?? '')} onChange={set('star')} />
-          </Field>
-          <Field label="Padam">
-            <input className="input mt-1" value={String(values.padam ?? '')} onChange={set('padam')} />
-          </Field>
-          <Field label="Gothram">
-            <input className="input mt-1" value={String(values.gothram ?? '')} onChange={set('gothram')} />
-          </Field>
+          <ChoiceField
+            label="Rashi"
+            value={String(values.rashi ?? '')}
+            onChange={put('rashi')}
+            options={RASHIS}
+            allowOther={false}
+            required
+          />
+          <ChoiceField
+            label="Star / Nakshatra"
+            value={String(values.star ?? '')}
+            onChange={put('star')}
+            options={NAKSHATRAS}
+            allowOther={false}
+          />
+          <ChoiceField
+            label="Padam"
+            value={String(values.padam ?? '')}
+            onChange={put('padam')}
+            options={PADAMS}
+            allowOther={false}
+          />
+          {/* Gothrams run to thousands; the list is empty and the box is the point. */}
+          <ChoiceField
+            label="Gothram"
+            value={String(values.gothram ?? '')}
+            onChange={put('gothram')}
+            options={[]}
+          />
           <Field label="Kuja Dosham">
             <select className="input mt-1" value={String(values.kujaDosham ?? '')} onChange={set('kujaDosham')}>
               <option value="">Not stated</option>
@@ -656,11 +751,91 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
               <option value="unknown">Unknown</option>
             </select>
           </Field>
-          <Field label="Time of birth">
-            <input className="input mt-1" type="time" value={String(values.timeOfBirth ?? '')} onChange={set('timeOfBirth')} />
-          </Field>
         </div>
       )}
+
+      {/*
+        Outside the checkbox on purpose.
+
+        Where and when somebody was born is true whether or not the family
+        keeps a chart, and the requirement is explicit that none of these three
+        may block a save.
+      */}
+      <div className="grid gap-3 border-t pt-3 sm:grid-cols-4">
+        <ChoiceField
+          label="Birth city"
+          value={String(values.birthCity ?? '')}
+          onChange={put('birthCity')}
+          options={CITIES}
+        />
+        <ChoiceField
+          label="Birth state"
+          value={String(values.birthState ?? '')}
+          onChange={put('birthState')}
+          options={STATES}
+        />
+        <ChoiceField
+          label="Birth country"
+          value={String(values.birthCountry ?? '')}
+          onChange={put('birthCountry')}
+          options={COUNTRIES}
+        />
+        <Field label="Time of birth" hint="Optional">
+          <input className="input mt-1" type="time" value={String(values.timeOfBirth ?? '')} onChange={set('timeOfBirth')} />
+        </Field>
+      </div>
+
+      {/*
+        The chart itself, back where it belongs.
+
+        This lived on Partner Preferences — the screen for what you want of
+        somebody else — so the section describing your own horoscope had no way
+        to attach one. Optional: ticking "a horoscope is available" says a
+        chart exists, not that it has been scanned.
+      */}
+      <div className="space-y-3 rounded-sm border border-gray-200 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-gray-800">Horoscope document</p>
+            <p className="text-xs text-gray-500">
+              Optional. Shared only with families you have accepted an interest from.
+            </p>
+          </div>
+          <PhotoUploader
+            kind="attachment"
+            label={values.horoscopeDocumentUrl ? 'Replace chart' : 'Attach chart'}
+            onUploaded={(url: string) => setValues((v) => ({ ...v, horoscopeDocumentUrl: url }))}
+          />
+        </div>
+        {values.horoscopeDocumentUrl ? (
+          <div className="flex flex-wrap items-start gap-3 rounded-sm bg-surface-sunken p-3">
+            <a
+              href={String(values.horoscopeDocumentUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0"
+              title="Open the full chart"
+            >
+              <img
+                src={String(values.horoscopeDocumentUrl)}
+                alt="The horoscope chart you attached"
+                className="h-28 w-28 rounded-sm border border-gray-200 bg-surface object-cover"
+              />
+            </a>
+            <div className="min-w-[12rem] flex-1 space-y-1">
+              <p className="text-sm font-medium text-gray-800">Chart attached</p>
+              <button
+                type="button"
+                className="btn-ghost btn-sm -ml-2 text-critical-fg"
+                onClick={() => setValues((v) => ({ ...v, horoscopeDocumentUrl: '' }))}
+              >
+                Remove chart
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       <button className="btn">Save horoscope</button>
     </form>
   );
@@ -846,6 +1021,7 @@ function FamilyForm({
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
+  const put = (k: string) => (value: string) => setValues((v) => ({ ...v, [k]: value }));
 
   return (
     <div className="space-y-6">
@@ -891,7 +1067,12 @@ function FamilyForm({
             <input className="input mt-1" value={String(values.fatherName ?? '')} onChange={set('fatherName')} required />
           </Field>
           <Field label="Father's profession">
-            <input className="input mt-1" value={String(values.fatherProfession ?? '')} onChange={set('fatherProfession')} />
+            <ChoiceField
+              label=""
+              value={String(values.fatherProfession ?? '')}
+              onChange={put('fatherProfession')}
+              options={PROFESSIONS}
+            />
           </Field>
           {/*
             Living status sits directly under each parent rather than as a pair
@@ -913,7 +1094,12 @@ function FamilyForm({
             <input className="input mt-1" value={String(values.motherName ?? '')} onChange={set('motherName')} required />
           </Field>
           <Field label="Mother's profession">
-            <input className="input mt-1" value={String(values.motherProfession ?? '')} onChange={set('motherProfession')} />
+            <ChoiceField
+              label=""
+              value={String(values.motherProfession ?? '')}
+              onChange={put('motherProfession')}
+              options={PROFESSIONS}
+            />
           </Field>
           <Field label="Mother's living status">
             <select
@@ -951,7 +1137,12 @@ function FamilyForm({
             </select>
           </Field>
           <Field label="Native place" hint="Where the family is from">
-            <input className="input mt-1" value={String(values.nativePlace ?? '')} onChange={set('nativePlace')} />
+            <ChoiceField
+              label=""
+              value={String(values.nativePlace ?? '')}
+              onChange={put('nativePlace')}
+              options={CITIES}
+            />
           </Field>
           {/*
             The state, beside the town rather than instead of it. A town on its
@@ -1248,6 +1439,7 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
+  const put = (k: string) => (value: string) => setValues((v) => ({ ...v, [k]: value }));
 
   return (
     <form
@@ -1282,7 +1474,13 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Highest qualification">
-          <input className="input mt-1" value={String(values.highestQualification ?? '')} onChange={set('highestQualification')} required />
+          <ChoiceField
+            label=""
+            value={String(values.highestQualification ?? '')}
+            onChange={put('highestQualification')}
+            options={QUALIFICATIONS}
+            required
+          />
         </Field>
         <Field label="Course">
           <input className="input mt-1" value={String(values.course ?? '')} onChange={set('course')} required />
@@ -1370,17 +1568,12 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
 function PreferencesForm({
   initial,
   onSave,
-  onSaveHoroscope,
 }: {
   initial: Draft;
   onSave: (b: Draft) => void;
-  onSaveHoroscope: (b: Draft) => void;
 }) {
   const prefs = (initial?.partnerPreferences ?? {}) as Draft;
-  const chart = (initial?.horoscope ?? {}) as Draft;
   const [values, setValues] = useState<Draft>({});
-  const [mine, setMine] = useState<Draft>({});
-  const [chartAvailable, setChartAvailable] = useState(false);
 
   useEffect(() => {
     setValues({
@@ -1397,22 +1590,13 @@ function PreferencesForm({
       horoscopeExpectation: prefs.horoscopeExpectation ?? '',
       kujaDosham: prefs.kujaDosham ?? '',
       preferredStars: prefs.preferredStars ?? '',
-      horoscopeDocumentUrl: initial?.horoscopeDocumentUrl ?? '',
-    });
-    setChartAvailable(Boolean(initial?.horoscopeAvailable));
-    setMine({
-      rashi: chart.rashi ?? '',
-      star: chart.star ?? '',
-      padam: chart.padam ?? '',
-      gothram: chart.gothram ?? '',
-      kujaDosham: chart.kujaDosham ?? '',
-      timeOfBirth: chart.timeOfBirth ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
+  const put = (k: string) => (value: string) => setValues((v) => ({ ...v, [k]: value }));
 
   return (
     <form
@@ -1434,7 +1618,6 @@ function PreferencesForm({
           horoscopeExpectation: values.horoscopeExpectation || undefined,
           kujaDosham: values.kujaDosham || undefined,
           preferredStars: values.preferredStars || undefined,
-          horoscopeDocumentUrl: values.horoscopeDocumentUrl || undefined,
         });
       }}
       className="space-y-3"
@@ -1454,21 +1637,49 @@ function PreferencesForm({
         </Field>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Religion">
-          <input className="input mt-1" value={String(values.religion ?? '')} onChange={set('religion')} />
-        </Field>
-        <Field label="Caste">
-          <input className="input mt-1" value={String(values.caste ?? '')} onChange={set('caste')} />
-        </Field>
-        <Field label="Education">
-          <input className="input mt-1" value={String(values.education ?? '')} onChange={set('education')} />
-        </Field>
-        <Field label="Profession">
-          <input className="input mt-1" value={String(values.profession ?? '')} onChange={set('profession')} />
-        </Field>
-        <Field label="Preferred locations">
-          <input className="input mt-1" value={String(values.locations ?? '')} onChange={set('locations')} />
-        </Field>
+        {/*
+          The same vocabulary the profile uses.
+
+          A preference typed as "s/w engineer" against a profile that says
+          "IT / Software Professional" is a preference that can never match.
+          Blank stays a real answer throughout — it means no preference, not an
+          unanswered question.
+        */}
+        <ChoiceField
+          label="Religion"
+          value={String(values.religion ?? '')}
+          onChange={put('religion')}
+          options={RELIGIONS}
+          placeholder="No preference"
+        />
+        <ChoiceField
+          label="Caste"
+          value={String(values.caste ?? '')}
+          onChange={put('caste')}
+          options={CASTES_BY_RELIGION[String(values.religion ?? '')] ?? []}
+          placeholder="No preference"
+        />
+        <ChoiceField
+          label="Education"
+          value={String(values.education ?? '')}
+          onChange={put('education')}
+          options={QUALIFICATIONS}
+          placeholder="No preference"
+        />
+        <ChoiceField
+          label="Profession"
+          value={String(values.profession ?? '')}
+          onChange={put('profession')}
+          options={PROFESSIONS}
+          placeholder="No preference"
+        />
+        <ChoiceField
+          label="Preferred location"
+          value={String(values.locations ?? '')}
+          onChange={put('locations')}
+          options={CITIES}
+          placeholder="No preference"
+        />
       </div>
 
       {/*
@@ -1511,149 +1722,6 @@ function PreferencesForm({
         </Field>
       </div>
 
-      <div className="space-y-3 rounded-sm border border-gray-200 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-gray-800">Your own horoscope</p>
-            <p className="text-xs text-gray-500">
-              The same chart as on the Horoscope section, filled in here because this is where
-              families have it to hand. Saved separately from the preferences above.
-            </p>
-          </div>
-          <PhotoUploader
-            kind="attachment"
-            label={values.horoscopeDocumentUrl ? 'Replace chart' : 'Attach chart'}
-            onUploaded={(url: string) => setValues((v) => ({ ...v, horoscopeDocumentUrl: url }))}
-          />
-        </div>
-
-        {/*
-          The chart itself, which was uploaded and then never shown.
-          A family sending a horoscope wants to see that the right page went
-          up, and wants to be able to take the wrong one down. The button
-          changing its own label from "Attach" to "Replace" was the only
-          acknowledgement either of those ever got.
-        */}
-        {values.horoscopeDocumentUrl ? (
-          <div className="flex flex-wrap items-start gap-3 rounded-sm bg-surface-sunken p-3">
-            <a
-              href={String(values.horoscopeDocumentUrl)}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0"
-              title="Open the full chart"
-            >
-              <img
-                src={String(values.horoscopeDocumentUrl)}
-                alt="The horoscope chart you attached"
-                className="h-28 w-28 rounded-sm border border-gray-200 bg-surface object-cover"
-              />
-            </a>
-            <div className="min-w-[12rem] flex-1 space-y-1">
-              <p className="text-sm font-medium text-gray-800">Chart attached</p>
-              <p className="text-xs text-gray-500">
-                Shared only with families you have accepted an interest from. Tap it to see the
-                full page.
-              </p>
-              <button
-                type="button"
-                className="btn-ghost btn-sm -ml-2 text-critical-fg"
-                onClick={() => setValues((v) => ({ ...v, horoscopeDocumentUrl: '' }))}
-              >
-                Remove chart
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={chartAvailable}
-            onChange={(e) => setChartAvailable(e.target.checked)}
-          />
-          <span>A horoscope is available</span>
-        </label>
-
-        {chartAvailable && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Rashi">
-                <input
-                  className="input mt-1"
-                  value={String(mine.rashi ?? '')}
-                  onChange={(e) => setMine((m) => ({ ...m, rashi: e.target.value }))}
-                />
-              </Field>
-              <Field label="Star / Nakshatra">
-                <input
-                  className="input mt-1"
-                  value={String(mine.star ?? '')}
-                  onChange={(e) => setMine((m) => ({ ...m, star: e.target.value }))}
-                />
-              </Field>
-              <Field label="Padam">
-                <input
-                  className="input mt-1"
-                  value={String(mine.padam ?? '')}
-                  onChange={(e) => setMine((m) => ({ ...m, padam: e.target.value }))}
-                />
-              </Field>
-              <Field label="Gothram">
-                <input
-                  className="input mt-1"
-                  value={String(mine.gothram ?? '')}
-                  onChange={(e) => setMine((m) => ({ ...m, gothram: e.target.value }))}
-                />
-              </Field>
-              <Field label="Kuja Dosham">
-                <select
-                  className="input mt-1"
-                  value={String(mine.kujaDosham ?? '')}
-                  onChange={(e) => setMine((m) => ({ ...m, kujaDosham: e.target.value }))}
-                >
-                  <option value="">Not stated</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </Field>
-              <Field label="Time of birth">
-                <input
-                  className="input mt-1"
-                  type="time"
-                  value={String(mine.timeOfBirth ?? '')}
-                  onChange={(e) => setMine((m) => ({ ...m, timeOfBirth: e.target.value }))}
-                />
-              </Field>
-            </div>
-          </>
-        )}
-
-        {/*
-          Its own button, because it saves a different section. One button
-          saving two sections would mean a validation failure in either one
-          silently discarding the other.
-        */}
-        <button
-          type="button"
-          className="btn-outline"
-          onClick={() =>
-            onSaveHoroscope(
-              chartAvailable
-                ? {
-                    horoscopeAvailable: true,
-                    ...Object.fromEntries(
-                      Object.entries(mine).filter(([, v]) => v !== '' && v !== undefined),
-                    ),
-                  }
-                : { horoscopeAvailable: false },
-            )
-          }
-        >
-          Save horoscope
-        </button>
-      </div>
       <Field label="Anything else">
         <textarea className="input mt-1" rows={2} value={String(values.other ?? '')} onChange={set('other')} />
       </Field>

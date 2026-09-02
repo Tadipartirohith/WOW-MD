@@ -146,13 +146,38 @@ export class ProfileDetailsService {
 
   async saveHoroscope(actor: AuthUser, profileId: string, dto: HoroscopeDetailsDto) {
     const row = await this.editable(actor, profileId);
-    const { horoscopeAvailable, horoscopeDocumentUrl, ...chart } = dto;
+    const { horoscopeAvailable, horoscopeDocumentUrl, birthPlace, timeOfBirth, ...chart } = dto;
 
     row.horoscopeAvailable = horoscopeAvailable;
-    // Clearing the chart when the answer turns to "no" matters: a stale rashi
-    // left behind would be shown as fact on a profile that has just said it
-    // does not have a horoscope.
-    row.horoscope = horoscopeAvailable ? (chart as Record<string, unknown>) : {};
+
+    /*
+     * Where and when somebody was born is not part of the chart.
+     *
+     * Clearing the chart when the answer turns to "no" matters — a stale rashi
+     * left behind would be shown as fact on a profile that has just said it
+     * keeps no horoscope. But the birthplace and the time of birth are facts
+     * about the person, true whether or not anybody drew a chart from them,
+     * and wiping them with the rest meant a family who does not use horoscopes
+     * could not record a birthplace they plainly know. They are kept on both
+     * branches and merged over whatever was there, so clearing one is done by
+     * emptying the field rather than by unticking a different question.
+     */
+    const born = {
+      ...(timeOfBirth !== undefined ? { timeOfBirth } : {}),
+      ...(birthPlace !== undefined ? { birthPlace } : {}),
+    };
+    const existing = (row.horoscope ?? {}) as Record<string, unknown>;
+    const keptBorn = {
+      ...(existing.timeOfBirth !== undefined ? { timeOfBirth: existing.timeOfBirth } : {}),
+      ...(existing.birthPlace !== undefined ? { birthPlace: existing.birthPlace } : {}),
+    };
+
+    row.horoscope = horoscopeAvailable
+      ? ({ ...keptBorn, ...(chart as Record<string, unknown>), ...born } as Record<string, unknown>)
+      : ({ ...keptBorn, ...born } as Record<string, unknown>);
+
+    // The document goes with the chart: a family saying they keep no horoscope
+    // should not still have one attached to the profile.
     row.horoscopeDocumentUrl = horoscopeAvailable ? (horoscopeDocumentUrl ?? null) : null;
     return this.persist(profileId, row);
   }
