@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { useAuth } from './auth';
+import { Permission, can } from '../lib/permissions';
 
 /**
  * Which of a vendor's businesses everything else is about.
@@ -57,9 +59,26 @@ export function useBusinesses() {
   const businessId = useBusinessStore((s) => s.businessId);
   const setBusinessId = useBusinessStore((s) => s.setBusinessId);
 
+  /*
+   * Only asked by somebody who could have a business.
+   *
+   * This ran for every signed-in account, so an agent refreshing any page
+   * fired GET /vendors/me and collected a 403 before the app had even
+   * established who they were. Harmless in effect and wrong in every other
+   * way: it is a request the client knows the answer to, it fills the console
+   * with refusals that look like faults, and it asks the server a question
+   * about a capability the token already carries.
+   *
+   * `enabled` rather than a role test, because the capability is what the
+   * endpoint actually checks.
+   */
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const isVendor = can(permissions, Permission.VENDOR_LISTING_MANAGE);
+
   const { data: businesses = [], isLoading } = useQuery<BusinessSummary[]>({
     queryKey: ['vendor-me'],
     queryFn: async () => (await api.get('/vendors/me')).data,
+    enabled: isVendor,
     retry: false,
   });
 

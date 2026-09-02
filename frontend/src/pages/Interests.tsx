@@ -5,6 +5,7 @@ import { useAuth } from '../store/auth';
 import { Permission, can } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
 import ProposalThread from '../components/ProposalThread';
+import ProfilePreview from '../components/ProfilePreview';
 import { EmptyState } from '../components/ui/Feedback';
 import { HandHeart, UsersThree } from '@phosphor-icons/react';
 import { Loading } from '../components/ui/Feedback';
@@ -99,6 +100,8 @@ export default function Interests() {
   const [tab, setTab] = useState<TabKey>('received');
   const [error, setError] = useState('');
   const [openThread, setOpenThread] = useState<string | null>(null);
+  /** Which counterpart's profile is open, if any. */
+  const [previewId, setPreviewId] = useState('');
 
   const params = profileId ? { profileId } : {};
   const ready = !isSteward || Boolean(profileId);
@@ -129,6 +132,8 @@ export default function Interests() {
 
   return (
     <div className="space-y-4">
+      {previewId && <ProfilePreview profileId={previewId} onClose={() => setPreviewId('')} />}
+
       <div>
         <h1 className="page-title">Interests</h1>
         <p className="page-subtitle">
@@ -232,6 +237,18 @@ export default function Interests() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {/*
+                      Look before answering.
+
+                      A received interest showed a name, a city and an age band,
+                      and asked for a decision on that. The same preview the
+                      Matches page uses is right here — the profile is already
+                      identified, and what it discloses is decided by the
+                      server's own rules rather than by which screen asked.
+                    */}
+                    <button className="btn-outline" onClick={() => setPreviewId(row.counterpart.id)}>
+                      View profile
+                    </button>
                     {row.actions.accept && (
                       <button
                         className="btn"

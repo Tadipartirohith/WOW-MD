@@ -144,8 +144,21 @@ export default function Biodata() {
       if (next) {
         setOpen(next);
         setNotice(`Saved. Next: ${SECTION_LABEL[next] ?? next}.`);
-        // The next section opens below the fold on a phone otherwise.
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        /*
+         * To the next section, not to the top of the page.
+         *
+         * This scrolled to the top, on the reasoning that the next section
+         * would otherwise open below the fold on a phone. It does solve that
+         * and it is the reported complaint: somebody who has just finished
+         * section three is put back at the beginning and has to scroll down
+         * past everything they have already done. Bringing the section itself
+         * into view solves the fold problem without the journey back.
+         */
+        requestAnimationFrame(() => {
+          document
+            .getElementById(`section-${next}`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
       } else {
         setNotice('Saved. That is the last section.');
       }
@@ -186,7 +199,18 @@ export default function Biodata() {
             Saved section by section. You can stop and come back.
           </p>
         </div>
-        {isSteward && <ProfileSelector value={profileId} onChange={setProfileId} label="Client" />}
+        {/*
+          "Client" is an agency's word for an agency's business. A father
+          filling in his daughter's biodata is not looking at a client, and
+          being told he is reads as the platform having mistaken him for one.
+        */}
+        {isSteward && (
+          <ProfileSelector
+            value={profileId}
+            onChange={setProfileId}
+            label={isAgent ? 'Client' : 'Browsing as'}
+          />
+        )}
       </div>
 
       {completion && (
@@ -367,7 +391,9 @@ function Accordion({
   const isOpen = open === name;
   const step = SECTION_ORDER.indexOf(name as (typeof SECTION_ORDER)[number]);
   return (
-    <div className="card">
+    // Addressable so that saving one section can bring the next into view
+    // rather than throwing the page back to the top.
+    <div className="card" id={`section-${name}`}>
       <button
         className="flex w-full items-center justify-between text-left"
         onClick={() => setOpen(isOpen ? '' : name)}
@@ -1292,15 +1318,12 @@ function FamilyForm({
               ))}
             </select>
           </Field>
-          <Field label="Profession">
-            <input
-              className="input mt-1"
-              value={String(sibling.profession ?? '')}
-              onChange={(e) =>
-                setSibling((s) => ({ ...s, profession: e.target.value || undefined }))
-              }
-            />
-          </Field>
+          <ChoiceField
+            label="Profession"
+            value={String(sibling.profession ?? '')}
+            onChange={(v) => setSibling((s) => ({ ...s, profession: v || undefined }))}
+            options={PROFESSIONS}
+          />
         </div>
         <button
           className="btn mt-2"
