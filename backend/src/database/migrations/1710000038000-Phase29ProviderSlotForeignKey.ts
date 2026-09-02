@@ -31,7 +31,9 @@ export class Phase29ProviderSlotForeignKey1710000038000 implements MigrationInte
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  // No parameter: the body is deliberately empty, and an unused one is a lint
+  // error rather than documentation.
+  public async down(): Promise<void> {
     /*
      * Deliberately not restored.
      *
