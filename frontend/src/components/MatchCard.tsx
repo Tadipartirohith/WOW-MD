@@ -127,6 +127,7 @@ function activity(lastActiveAt: string | null): string | null {
 export default function MatchCard({
   suggestion,
   showScore = true,
+  detail = 'full',
   onOpen,
   onSendInterest,
   onToggleShortlist,
@@ -134,6 +135,15 @@ export default function MatchCard({
 }: {
   suggestion: Suggestion;
   showScore?: boolean;
+  /**
+   * How much of a person a card is allowed to say.
+   *
+   * `brief` is name, age and profession — what somebody skimming a long list
+   * needs to decide whether to open it. `full` adds the community, the
+   * household details and the chart, and is for the recommendations and the
+   * profile itself, where the reader has already chosen this person.
+   */
+  detail?: 'brief' | 'full';
   onOpen: () => void;
   onSendInterest?: () => void;
   onToggleShortlist?: () => void;
@@ -153,21 +163,35 @@ export default function MatchCard({
     .map(([key]) => DIMENSION_LABEL[key] ?? key)
     .slice(0, 5);
 
-  const facts = [
-    p.ageRange ? `${p.ageRange} yrs` : null,
-    p.city,
-    card?.heightCm ? `${card.heightCm} cm` : null,
-    card?.profession,
-    card?.highestQualification,
-    card?.maritalStatus
-      ? (MARITAL_LABEL[card.maritalStatus as MaritalStatus] ?? card.maritalStatus)
-      : null,
-    card?.occupationStatus && !card?.profession
-      ? (OCCUPATION_LABEL[card.occupationStatus as OccupationStatus] ?? card.occupationStatus)
-      : null,
-    card?.religion,
-    card?.motherTongue,
-  ].filter(Boolean) as string[];
+  const brief = detail === 'brief';
+
+  const facts = (
+    brief
+      ? [
+          p.ageRange ? `${p.ageRange} yrs` : null,
+          card?.profession ??
+            (card?.occupationStatus
+              ? (OCCUPATION_LABEL[card.occupationStatus as OccupationStatus] ??
+                card.occupationStatus)
+              : null),
+        ]
+      : [
+          p.ageRange ? `${p.ageRange} yrs` : null,
+          p.city,
+          card?.heightCm ? `${card.heightCm} cm` : null,
+          card?.profession,
+          card?.highestQualification,
+          card?.maritalStatus
+            ? (MARITAL_LABEL[card.maritalStatus as MaritalStatus] ?? card.maritalStatus)
+            : null,
+          card?.occupationStatus && !card?.profession
+            ? (OCCUPATION_LABEL[card.occupationStatus as OccupationStatus] ??
+              card.occupationStatus)
+            : null,
+          card?.religion,
+          card?.motherTongue,
+        ]
+  ).filter(Boolean) as string[];
 
   /*
    * The chart is its own row rather than more chips in the run above.
@@ -177,13 +201,13 @@ export default function MatchCard({
    * and reads them as a set, and a family that does not use horoscopes should
    * see no trace of them at all.
    */
-  const chart = [
+  const chart = (brief ? [] : [
     card?.rashi ? { label: 'Rashi', value: card.rashi } : null,
     card?.star ? { label: 'Star', value: card.star } : null,
     card?.padam ? { label: 'Padam', value: card.padam } : null,
     card?.gothram ? { label: 'Gothram', value: card.gothram } : null,
     card?.kujaDosham ? { label: 'Kuja dosham', value: card.kujaDosham } : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+  ]).filter(Boolean) as { label: string; value: string }[];
 
   const active = activity(p.lastActiveAt);
 
@@ -220,7 +244,13 @@ export default function MatchCard({
               <span className="block truncate text-[0.9375rem] font-semibold tracking-[-0.012em] text-gray-900 underline-offset-2 group-hover/card:underline">
                 {p.displayName}
               </span>
-              <span className="block font-mono text-[0.6875rem] text-gray-400">{p.profileCode}</span>
+              {/* An internal handle: useful when quoting one profile to support,
+                  noise on a card somebody is skimming. */}
+              {!brief && (
+                <span className="block font-mono text-[0.6875rem] text-gray-400">
+                  {p.profileCode}
+                </span>
+              )}
             </button>
             {showScore && (
               /*

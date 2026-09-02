@@ -146,11 +146,37 @@ export default function Profile() {
     <div className="mx-auto max-w-lg space-y-4">
       <div className="card space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
+          {/*
+            The photograph, which this page never showed.
+
+            A photo added on the biodata was reported as "not reflecting in the
+            profile", and it was not — there was no image on this screen at
+            all, so there was nowhere for it to reflect to. Read from the same
+            /users/me the rest of this page uses, so it cannot drift from what
+            the biodata saved.
+          */}
+          <div className="flex items-start gap-3">
+            {data?.primaryPhotoUrl || data?.photos?.[0] ? (
+              <img
+                src={String(data.primaryPhotoUrl ?? data.photos[0])}
+                alt=""
+                className="h-16 w-16 shrink-0 rounded-full object-cover ring-1 ring-inset ring-gray-900/10"
+              />
+            ) : (
+              <div
+                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full
+                  bg-surface-sunken text-lg font-medium text-gray-400"
+                aria-hidden
+              >
+                {(data?.displayName ?? '?').slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div>
             <h1 className="page-title">Your Profile</h1>
             <p className="page-subtitle">
               Your account details. {hasBiodata && 'The biodata families see lives separately.'}
             </p>
+            </div>
           </div>
           {!editing && data && (
             <button className="btn-outline" onClick={() => setEditing(true)}>

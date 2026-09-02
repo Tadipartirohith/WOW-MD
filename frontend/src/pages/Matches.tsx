@@ -530,6 +530,9 @@ export default function Matches() {
                   key={s.profile.id}
                   suggestion={s}
                   showScore={filters.sort === 'score'}
+                  // Browsing, not recommending: name, age and profession, and
+                  // the profile itself for anything more.
+                  detail="brief"
                   onOpen={() => setPreviewId(s.profile.id)}
                   onSendInterest={interestHandler ? () => sendInterest(s.profile.id) : undefined}
                   onToggleShortlist={() => toggleShortlist(s)}
