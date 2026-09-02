@@ -1,3 +1,4 @@
+import { IsNotFutureDate } from '../../../common/decorators/not-future.decorator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
@@ -51,6 +52,7 @@ export class UpsertAgencyDto {
   @ApiPropertyOptional({ format: 'date', example: '2018-04-01' })
   @IsOptional()
   @IsDateString()
+  @IsNotFutureDate({ message: 'An agency cannot have started trading in the future' })
   startDate?: string;
 
   @ApiPropertyOptional({ type: [String], maxItems: 10, description: 'Office photographs' })

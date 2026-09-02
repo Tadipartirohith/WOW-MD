@@ -27,6 +27,7 @@ import {
 } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+import { likeEscape } from '../../common/util/like';
 
 /**
  * One listing, as somebody who is not the vendor may see it.
@@ -195,7 +196,22 @@ export class VendorsService {
         .createQueryBuilder('v')
         .where('v.isApproved = :approved', { approved: true });
       if (q.category) qb.andWhere('v.category = :category', { category: q.category });
-      if (q.city) qb.andWhere('LOWER(v.city) = LOWER(:city)', { city: q.city });
+      /*
+       * Typed, not chosen.
+       *
+       * This was an equality, so it matched only somebody who typed the city
+       * exactly — "m" found nothing at all, and the report read that as the
+       * search being case-sensitive. It was already case-insensitive; it was
+       * simply not a search. A person typing into a box expects the list to
+       * narrow as they go, so this matches anywhere in the name.
+       *
+       * The wildcards in the *input* are escaped: a bare "%" would otherwise
+       * match every city on the platform, which is a confusing answer to a
+       * search rather than a dangerous one, but still not the answer asked for.
+       */
+      if (q.city) {
+        qb.andWhere('v.city ILIKE :city', { city: `%${likeEscape(q.city)}%` });
+      }
       if (q.minRating !== undefined) {
         qb.andWhere('v."ratingAvg" >= :minRating', { minRating: q.minRating });
       }

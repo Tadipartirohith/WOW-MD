@@ -1,3 +1,4 @@
+import { IsNotFutureDate } from '../../../common/decorators/not-future.decorator';
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -149,6 +150,7 @@ export class CreateManagedProfileDto {
   @ApiPropertyOptional({ format: 'date' })
   @IsOptional()
   @IsDateString()
+  @IsNotFutureDate({ message: 'A date of birth cannot be in the future' })
   dateOfBirth?: string;
 
   @ApiPropertyOptional({ maxLength: 80 })

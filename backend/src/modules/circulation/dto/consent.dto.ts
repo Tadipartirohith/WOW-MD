@@ -1,3 +1,4 @@
+import { IsNotFutureDate } from '../../../common/decorators/not-future.decorator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
@@ -56,6 +57,7 @@ export class RecordConsentDto {
     description: 'When consent was actually given, which may predate this record.',
   })
   @IsDateString({}, { message: 'givenAt must be a date, e.g. 2026-08-12' })
+  @IsNotFutureDate({ message: 'Consent cannot have been given in the future' })
   givenAt: string;
 
   @ApiPropertyOptional({ maxLength: 1000, example: 'Father visited the office with the biodata.' })

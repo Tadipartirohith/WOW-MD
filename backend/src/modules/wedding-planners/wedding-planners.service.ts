@@ -7,6 +7,7 @@ import { RedisService } from '../../platform/redis/redis.service';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { VerificationService } from '../verification/verification.service';
 import { ApplicantType } from '../../common/enums';
+import { likeEscape } from '../../common/util/like';
 
 @Injectable()
 export class WeddingPlannersService {
@@ -68,8 +69,12 @@ export class WeddingPlannersService {
         .createQueryBuilder('p')
         .where('p."isApproved" = :approved', { approved: true });
       if (q.city) {
-        qb.andWhere('(LOWER(p.city) = LOWER(:city) OR p."servesCities" @> :cityJson)', {
-          city: q.city,
+        // Same partial match as the vendor search, for the same reason: this
+        // was an equality, so a half-typed city found nobody. The serves-cities
+        // array stays an exact containment check — that is a list the planner
+        // chose from, not something a client types.
+        qb.andWhere('(p.city ILIKE :cityLike OR p."servesCities" @> :cityJson)', {
+          cityLike: `%${likeEscape(q.city)}%`,
           cityJson: JSON.stringify([q.city]),
         });
       }
