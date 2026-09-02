@@ -239,6 +239,27 @@ export class MatchLifecycleService {
       throw new BadRequestException('This match is already fixed');
     }
 
+    /*
+     * One fixed match per profile, checked here and not only in the list.
+     *
+     * closeOtherInterests removes the other candidates as they arise, but this
+     * is the rule itself rather than a consequence of it: a request that
+     * arrives before that cleanup, or against a row it did not reach, must
+     * still be refused. The report asked for exactly this — that the backend
+     * prevent a second fixed match even when the API is called directly.
+     */
+    const already = await this.interests.findOne({
+      where: [
+        { fromProfileId: In([interest.fromProfileId, interest.toProfileId]), matchFixedState: MatchFixedState.CONFIRMED },
+        { toProfileId: In([interest.fromProfileId, interest.toProfileId]), matchFixedState: MatchFixedState.CONFIRMED },
+      ],
+    });
+    if (already && already.id !== interest.id) {
+      throw new BadRequestException(
+        'One of these profiles already has a fixed match. End that one before fixing another.',
+      );
+    }
+
     const confirmed = (s: 'from' | 'to') =>
       s === 'from' ? Boolean(interest.fixedConfirmedFromAt) : Boolean(interest.fixedConfirmedToAt);
 
@@ -295,6 +316,46 @@ export class MatchLifecycleService {
   }
 
   /**
+   * Ends every other live interest either of these two profiles held.
+   *
+   * Both sides, because both are now spoken for — a fixed match closes the
+   * groom's other conversations as surely as the bride's, and closing only one
+   * side would leave the other still able to fix a second.
+   *
+   * Pending and accepted alike. A pending interest is a question nobody needs
+   * the answer to any more, and leaving it open means the other family is
+   * still waiting on somebody who is getting married.
+   */
+  private async closeOtherInterests(fixed: Interest): Promise<void> {
+    const ids = [fixed.fromProfileId, fixed.toProfileId];
+    const live = await this.interests.find({
+      where: [
+        { fromProfileId: In(ids), status: InterestStatus.ACCEPTED },
+        { toProfileId: In(ids), status: InterestStatus.ACCEPTED },
+        { fromProfileId: In(ids), status: InterestStatus.PENDING },
+        { toProfileId: In(ids), status: InterestStatus.PENDING },
+      ],
+    });
+
+    const others = live.filter((i) => i.id !== fixed.id);
+    if (others.length === 0) return;
+
+    for (const other of others) {
+      other.status = InterestStatus.UNMATCHED;
+      other.endedReason = 'A match was fixed elsewhere';
+      other.matchFixedState = MatchFixedState.NONE;
+    }
+    await this.interests.save(others);
+
+    await this.audit.record({
+      action: AuditAction.MATCH_FIXED_CONFIRMED,
+      resourceType: 'interest',
+      resourceId: fixed.id,
+      metadata: { closedInterestIds: others.map((o) => o.id), reason: 'match fixed' },
+    });
+  }
+
+  /**
    * Everything the second confirmation triggers.
    *
    * Both sides are handled the same way regardless of how the profile got
@@ -306,6 +367,22 @@ export class MatchLifecycleService {
     const profiles = await this.profiles.find({
       where: { id: In([interest.fromProfileId, interest.toProfileId]) },
     });
+
+    /*
+     * Everything else this couple had going is now over.
+     *
+     * A profile can hold several accepted interests at once — that is the
+     * point of accepting, it is not yet a commitment. Fixing turns one of them
+     * into the commitment, and the rest stopped being live the moment it did.
+     * Nothing closed them, so they stayed under Confirmed Matches and could
+     * each be fixed in turn, which is how one person ended up able to fix two
+     * marriages.
+     *
+     * Closed here rather than hidden in the client: the report was explicit
+     * that the API refuses it directly, and a list filtered on the way out is
+     * not a rule, it is a hope.
+     */
+    await this.closeOtherInterests(interest);
 
     const provisioned: { userId: string; email: string }[] = [];
     for (const profile of profiles) {
