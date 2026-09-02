@@ -8,6 +8,7 @@ import { useAuth } from '../store/auth';
 import { useBusinesses } from '../store/business';
 import VendorServices from '../components/VendorServices';
 import ReviewsPanel from '../components/ReviewsPanel';
+import PhotoUploader from '../components/PhotoUploader';
 import {
   GSTIN_PATTERN,
   PAN_PATTERN,
@@ -197,6 +198,7 @@ interface VendorListing {
   registeredAddress: string | null;
   contactPhone: string | null;
   portfolio: string[];
+  complianceDocuments: string[];
   isApproved: boolean;
   payoutAccountId: string | null;
   /** Where this business is in its life, from draft to live. */
@@ -242,7 +244,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(emptyListing);
   const [portfolio, setPortfolio] = useState<string[]>([]);
-  const [portfolioUrl, setPortfolioUrl] = useState('');
+  const [documents, setDocuments] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -266,6 +268,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       contactPhone: current.contactPhone ?? '',
     });
     setPortfolio(current.portfolio ?? []);
+    setDocuments(current.complianceDocuments ?? []);
   }, [current]);
 
   /** Field-level, and specific about what is wrong rather than "invalid". */
@@ -278,7 +281,18 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
     if (form.gstNumber && !GSTIN_PATTERN.test(form.gstNumber.toUpperCase())) {
       errors.gstNumber = 'A GSTIN is 15 characters, like 29ABCDE1234F1Z5';
     }
-    if (form.panNumber && !PAN_PATTERN.test(form.panNumber.toUpperCase())) {
+    /*
+     * PAN is required; GST and the registration number are not.
+     *
+     * The platform invoices against the PAN and cannot pay anybody out
+     * without one, so a listing that reaches verification without it is a
+     * listing that cannot be paid. Plenty of legitimate small businesses have
+     * no GST registration and no company number, and refusing those would
+     * turn away exactly the vendors this marketplace is for.
+     */
+    if (!form.panNumber.trim()) {
+      errors.panNumber = 'A PAN is required — it is what payouts are made against';
+    } else if (!PAN_PATTERN.test(form.panNumber.toUpperCase())) {
       errors.panNumber = 'A PAN is 10 characters, like ABCDE1234F';
     }
     if (form.contactPhone && !/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
@@ -301,6 +315,7 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
         // Portfolio is deliberately always sent, including empty: clearing the
         // last photo has to be able to reach the server.
         portfolio,
+        complianceDocuments: documents,
       };
       if (form.category === 'other') payload.otherCategory = form.otherCategory.trim();
       for (const key of [
@@ -480,25 +495,65 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
             ))}
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          <input
-            className="input flex-1"
-            placeholder="https://…"
-            value={portfolioUrl}
-            onChange={(e) => setPortfolioUrl(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={!/^https?:\/\/\S+$/.test(portfolioUrl.trim())}
-            onClick={() => {
-              setPortfolio((p) => [...p, portfolioUrl.trim()]);
-              setPortfolioUrl('');
-            }}
-          >
-            Add photo
-          </button>
-        </div>
+        {/*
+          From the device, not from a URL.
+
+          This asked for a link, which a vendor photographing their own venue
+          on a phone does not have — and the ones that were pasted showed as
+          broken images, because a pasted link is whatever the person pasted.
+          The uploader stores the file and hands back a URL the platform
+          serves, so the picture that appears is the picture that was chosen.
+        */}
+        <PhotoUploader
+          kind="photo"
+          label="Upload photos"
+          onUploaded={(url: string) => setPortfolio((p) => [...p, url])}
+        />
+      </div>
+
+      {/*
+        The papers the officer asks to see.
+
+        The column has been on the vendor table since it was written and no
+        screen ever offered it, so a visit had nothing to check against. PDFs
+        as well as photographs: a GST certificate is rarely a picture.
+      */}
+      <div className="border-t pt-3">
+        <h3 className="section-title">Compliance documents</h3>
+        <p className="mb-2 text-sm text-gray-600">
+          Your PAN document is what the officer checks first. GST and any trade licence are
+          useful if you have them. PDF, JPG or PNG.
+        </p>
+        {documents.length > 0 && (
+          <ul className="mb-2 divide-y divide-gray-200 rounded-sm border border-gray-200">
+            {documents.map((url) => (
+              <li key={url} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <a
+                  className="min-w-0 flex-1 truncate text-brand-strong"
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {/* The stored name, not the whole URL: a media path is not
+                      something anybody reads. */}
+                  {decodeURIComponent(url.split('/').pop() ?? 'Document')}
+                </a>
+                <button
+                  type="button"
+                  className="btn-ghost btn-sm text-critical-fg"
+                  onClick={() => setDocuments((d) => d.filter((u) => u !== url))}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <PhotoUploader
+          kind="attachment"
+          label="Upload a document"
+          onUploaded={(url: string) => setDocuments((d) => [...d, url])}
+        />
       </div>
 
       <div className="border-t pt-3">
