@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import RsvpDashboard from '../components/RsvpDashboard';
+import ShareInvitation from '../components/ShareInvitation';
 import { formatDate } from '../lib/dates';
 
 interface WEvent {
@@ -664,6 +665,18 @@ export default function Events() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/*
+                The link goes above the guest list on purpose.
+
+                Adding guests by hand is the fallback now, not the route in: a
+                host who has just made a day wants to send it to everybody, and
+                the replies are what build the list underneath.
+              */}
+              <div className="card">
+                <h2 className="section-title mb-2">Invite people to {current.name}</h2>
+                <ShareInvitation eventId={current.id} eventName={current.name} />
               </div>
 
               <RsvpDashboard eventId={current.id} />

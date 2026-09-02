@@ -6,6 +6,7 @@ import {
   IsInt,
   IsNumberString,
   IsOptional,
+  IsBoolean,
   IsString,
   IsUUID,
   Matches,
@@ -249,4 +250,42 @@ export class EventQueryDto {
   @ApiPropertyOptional({ description: 'Matches the name, venue or city.' })
   @IsOptional() @IsString() @MaxLength(120)
   q?: string;
+}
+
+/**
+ * Answering an open invitation.
+ *
+ * The name is the only required field, because it is the only one the host
+ * cannot do without — a guest list of anonymous yeses tells a caterer a
+ * number and tells the couple nothing. Everything else is offered and not
+ * demanded: somebody replying from a WhatsApp link at midnight will abandon
+ * a form that asks for their email.
+ */
+export class SharedRsvpDto {
+  @ApiProperty({ example: 'Ramesh Sharma', minLength: 2, maxLength: 120 })
+  @IsString()
+  @MinLength(2, { message: 'Please give a name so the hosts know who replied' })
+  @MaxLength(120)
+  name: string;
+
+  @ApiPropertyOptional({ maxLength: 160, description: 'Email or phone, if they want to give one' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  contact?: string;
+
+  @ApiProperty({ description: 'true for coming, false for unable to attend' })
+  @IsBoolean()
+  attending: boolean;
+
+  @ApiPropertyOptional({
+    minimum: 1,
+    maximum: 100,
+    description: 'How many are coming in total, including the person replying.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  partySize?: number;
 }

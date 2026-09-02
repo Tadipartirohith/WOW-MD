@@ -16,6 +16,7 @@ import {
   CreateEventDto,
   CreateGuestDto,
   GuestRsvpDto,
+  SharedRsvpDto,
   EventQueryDto,
   InviteDto,
   UpdateEventDto,
@@ -181,6 +182,47 @@ export class EventsController {
   @Get('rsvp/:token')
   rsvpPreview(@Param('token') token: string) {
     return this.events.previewByToken(token);
+  }
+
+  /*
+   * The open invitation: one link for a day, answered by anybody who has it.
+   *
+   * Separate from the per-guest token above rather than an option on it. That
+   * one is addressed to a person the host already entered; this one exists
+   * because the host has not entered anybody, and the reply is what creates
+   * the guest. Sharing the two paths would mean one route that sometimes
+   * knows who is asking and sometimes does not.
+   */
+  @ApiOperation({ summary: 'Create or rotate the shareable invitation link for a day' })
+  @Post(':id/share-link')
+  createShareLink(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.events.createShareLink(userId, id);
+  }
+
+  @ApiOperation({ summary: 'Stop the shareable link working. Guests who used it are kept.' })
+  @Delete(':id/share-link')
+  revokeShareLink(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.events.revokeShareLink(userId, id);
+  }
+
+  @Public()
+  @ApiOperation({ summary: 'The invitation behind a shared link' })
+  @Get('share/:token')
+  sharedPreview(@Param('token') token: string) {
+    return this.events.previewShared(token);
+  }
+
+  @Public()
+  @ApiOperation({ summary: 'Answer a shared invitation. The reply creates the guest.' })
+  @Post('share/:token')
+  sharedRespond(@Param('token') token: string, @Body() dto: SharedRsvpDto) {
+    return this.events.respondShared(token, dto);
   }
 
   @Public()

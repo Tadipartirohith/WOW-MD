@@ -62,6 +62,20 @@ export class WeddingEvent {
   @Column({ type: 'enum', enum: EventStatus, default: EventStatus.UPCOMING })
   status: EventStatus;
 
+  /**
+   * One link per event that anybody can answer, hashed.
+   *
+   * Held here rather than on an invite because it belongs to nobody: the point
+   * is a link that goes into a family group and comes back as replies from
+   * people the host never entered. Stored as a hash so a database dump does
+   * not hand somebody every open invitation on the platform.
+   */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  shareTokenHash: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  shareTokenCreatedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

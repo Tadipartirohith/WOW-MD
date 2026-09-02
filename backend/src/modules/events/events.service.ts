@@ -373,6 +373,101 @@ export class EventsService {
     return this.invites.save(invite);
   }
 
+  /**
+   * Mints (or re-mints) the link for an event.
+   *
+   * Re-minting invalidates the old one, which is the only way to withdraw an
+   * invitation that has gone somewhere it should not have. Anybody already in
+   * the guest list keeps their own per-guest token — those are addressed to a
+   * person and are not affected by rotating the open one.
+   */
+  async createShareLink(userId: string, eventId: string): Promise<{ token: string }> {
+    const event = await this.ownedEvent(userId, eventId);
+    const { token, tokenHash } = generateToken();
+    event.shareTokenHash = tokenHash;
+    event.shareTokenCreatedAt = new Date();
+    await this.events.save(event);
+    return { token };
+  }
+
+  /** Stops the link working, without touching the guests who used it. */
+  async revokeShareLink(userId: string, eventId: string): Promise<void> {
+    const event = await this.ownedEvent(userId, eventId);
+    event.shareTokenHash = null;
+    event.shareTokenCreatedAt = null;
+    await this.events.save(event);
+  }
+
+  private async eventByShareToken(token: string): Promise<WeddingEvent> {
+    const event = await this.events.findOne({ where: { shareTokenHash: hashToken(token) } });
+    if (!event) throw new NotFoundException('That invitation link is not valid');
+    return event;
+  }
+
+  /**
+   * Public: the invitation, for anybody holding the link.
+   *
+   * Deliberately thin. This is reachable by whoever the link reached, so it
+   * carries what an invitation carries — which day, when, where — and nothing
+   * about the household, the other guests, or who else has replied.
+   */
+  async previewShared(token: string) {
+    const event = await this.eventByShareToken(token);
+    const host = await this.profiles.findOne({ where: { userId: event.userId } });
+    return {
+      eventName: event.name,
+      eventDate: event.eventDate ?? null,
+      startTime: event.startTime ?? null,
+      venue: event.venue ?? null,
+      venueAddress: event.venueAddress ?? null,
+      city: event.city ?? null,
+      hostName: host?.displayName ?? 'Your hosts',
+    };
+  }
+
+  /**
+   * Public: somebody answers the invitation.
+   *
+   * The reply creates the guest, because the host has no list yet — that is
+   * what they are building. Answering twice under the same name updates the
+   * first answer rather than adding a second: people change their minds, and
+   * a guest list that counts them twice is worse than one that lets them.
+   */
+  async respondShared(
+    token: string,
+    dto: { name: string; contact?: string; attending: boolean; partySize?: number },
+  ) {
+    const event = await this.eventByShareToken(token);
+
+    const name = dto.name.trim();
+    // Matched on the name within this host's guests: a wedding does not have
+    // two Ramesh Sharmas often enough to justify making everybody type an
+    // email, and the host can merge duplicates from the guest list.
+    let guest = await this.guests.findOne({ where: { userId: event.userId, name } });
+    if (!guest) {
+      guest = await this.guests.save(
+        this.guests.create({
+          userId: event.userId,
+          name,
+          contact: dto.contact?.trim() ?? '',
+          partySize: dto.partySize ?? null,
+          relation: null,
+        }),
+      );
+    }
+
+    let invite = await this.invites.findOne({ where: { eventId: event.id, guestId: guest.id } });
+    if (!invite) {
+      invite = this.invites.create({ eventId: event.id, guestId: guest.id });
+    }
+    invite.status = dto.attending ? RsvpStatus.ATTENDING : RsvpStatus.DECLINED;
+    invite.attendingCount = dto.attending ? (dto.partySize ?? 1) : 0;
+    invite.respondedAt = new Date();
+    await this.invites.save(invite);
+
+    return { recorded: true, attending: dto.attending, name: guest.name };
+  }
+
   private async inviteByToken(token: string): Promise<EventInvite> {
     const invite = await this.invites.findOne({ where: { rsvpTokenHash: hashToken(token) } });
     if (!invite) throw new NotFoundException('That invitation link is not valid');
