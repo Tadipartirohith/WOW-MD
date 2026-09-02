@@ -563,7 +563,7 @@ function RequestRow({
         <p className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">{request.remarks}</p>
       )}
 
-      <SubjectDetails requestId={request.id} />
+      <SubjectDetails requestId={request.id} applicantType={request.applicantType} />
 
       {canAllocate && !decided && (
         <div className="flex flex-wrap items-end gap-2">
@@ -1209,7 +1209,13 @@ function Sla({ request }: { request: VerificationRequest }) {
  * plus every hand the request has passed through, so an approval can be read
  * back later and understood.
  */
-function SubjectDetails({ requestId }: { requestId: string }) {
+function SubjectDetails({
+  requestId,
+  applicantType,
+}: {
+  requestId: string;
+  applicantType?: string;
+}) {
   const [open, setOpen] = useState(false);
 
   const { data } = useQuery({
@@ -1253,8 +1259,21 @@ function SubjectDetails({ requestId }: { requestId: string }) {
       {subject && (
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
           <Row label="Name">{text(subject.name ?? subject.agencyName)}</Row>
+          {/*
+            A planner has no category, and the fallback said "Marriage agency"
+            — so every planner under review was labelled as something it is
+            not. The applicant type is what the queue already knows.
+          */}
           <Row label="Category">
-            {text(subject.otherCategory ?? subject.category ?? 'Marriage agency')}
+            {text(
+              subject.otherCategory ??
+                subject.category ??
+                (applicantType === 'planner'
+                  ? 'Wedding planner'
+                  : applicantType === 'agent'
+                    ? 'Marriage agency'
+                    : null),
+            )}
           </Row>
           <Row label="City">{text(subject.city)}</Row>
           <Row label="Registered address">
