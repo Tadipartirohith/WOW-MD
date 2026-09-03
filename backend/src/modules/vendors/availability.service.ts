@@ -382,8 +382,21 @@ export class AvailabilityService {
    * with confirmed bookings but capacity left **are** included, with their
    * counts, so the buyer sees "3 of 5 taken, 2 left" rather than nothing.
    */
-  async listBookable(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<SlotView[]> {
-    return (await this.list(providerType, providerId, from, to)).filter((s) => s.bookable);
+  async listBookable(
+    providerType: ProviderType,
+    providerId: string,
+    from?: string,
+    to?: string,
+    vendorServiceId?: string,
+  ): Promise<SlotView[]> {
+    const bookable = (await this.list(providerType, providerId, from, to)).filter((s) => s.bookable);
+    // Service-specific: when the buyer names a service, hide slots published for
+    // a different service. A slot with no service (null) is general availability
+    // and stays visible for any service (EZ1-I28).
+    if (!vendorServiceId) return bookable;
+    return bookable.filter(
+      (s) => s.vendorServiceId === vendorServiceId || s.vendorServiceId === null,
+    );
   }
 
   async summary(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<AvailabilitySummary> {

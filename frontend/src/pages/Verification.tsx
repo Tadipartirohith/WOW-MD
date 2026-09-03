@@ -565,7 +565,14 @@ function RequestRow({
 
       <SubjectDetails requestId={request.id} applicantType={request.applicantType} />
 
-      {canAllocate && !decided && (
+      {/*
+        Only while the request is still unallocated. Once an officer is assigned
+        (status leaves 'new'), the Allocate control disappears and the assigned
+        officer is shown instead — the admin UI was still offering "Allocate to"
+        after the backend had already assigned and the officer had submitted
+        findings (EZ1-I26/I22).
+      */}
+      {canAllocate && request.status === 'new' && (
         <div className="flex flex-wrap items-end gap-2">
           <AllocateePicker
             officers={officers}
@@ -592,6 +599,16 @@ function RequestRow({
             something about this case says it should be theirs.
           </p>
         </div>
+      )}
+
+      {/* After allocation, who it went to — replacing the Allocate control. */}
+      {request.status !== 'new' && request.assignedToUserId && (
+        <p className="rounded-sm border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
+          Assigned officer:{' '}
+          <span className="font-medium text-gray-900">
+            {officers.find((o) => o.id === request.assignedToUserId)?.name ?? 'Verification officer'}
+          </span>
+        </p>
       )}
 
       {/* What the officer wrote up, once they have. */}

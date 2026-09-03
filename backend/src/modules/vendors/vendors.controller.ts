@@ -206,7 +206,7 @@ export class VendorsController {
   bookableSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
     return this.availability.listBookable(
       ProviderType.VENDOR,
-      id, q.from, q.to,
+      id, q.from, q.to, q.vendorServiceId,
     );
   }
 

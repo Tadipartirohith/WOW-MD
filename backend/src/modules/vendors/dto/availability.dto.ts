@@ -104,4 +104,13 @@ export class AvailabilityQueryDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+
+  // Availability is service-specific: a buyer checking a particular service
+  // must see only that service's slots (plus any not tied to a service), not
+  // every service the vendor sells. Without this a slot published for Transport
+  // showed up under Makeup too (EZ1-I28).
+  @ApiPropertyOptional({ format: 'uuid', description: 'Only slots for this vendor service' })
+  @IsOptional()
+  @IsUUID()
+  vendorServiceId?: string;
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
@@ -57,6 +58,9 @@ export default function ProfilePreview({
     retry: false,
   });
 
+  // Which photo is open full-size, if any (EZ1-I23).
+  const [preview, setPreview] = useState<string | null>(null);
+
   const d = (data?.details ?? {}) as Record<string, unknown>;
   const str = (key: string) => {
     const v = d[key];
@@ -104,13 +108,20 @@ export default function ProfilePreview({
             {data.profile.photos.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {data.profile.photos.slice(0, 5).map((url) => (
-                  <img
+                  <button
                     key={url}
-                    src={url}
-                    alt=""
-                    loading="lazy"
-                    className="h-32 w-32 rounded-sm object-cover ring-1 ring-gray-200"
-                  />
+                    type="button"
+                    onClick={() => setPreview(url)}
+                    aria-label="Open photo full size"
+                    className="cursor-zoom-in"
+                  >
+                    <img
+                      src={url}
+                      alt=""
+                      loading="lazy"
+                      className="h-32 w-32 rounded-sm object-cover ring-1 ring-gray-200"
+                    />
+                  </button>
                 ))}
               </div>
             )}
@@ -231,6 +242,30 @@ export default function ProfilePreview({
           </div>
         )}
       </div>
+
+      {/* Full-size photo preview, closed by clicking anywhere or the × (EZ1-I23). */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreview(null)}
+          role="dialog"
+          aria-label="Photo preview"
+        >
+          <button
+            className="absolute right-4 top-4 text-4xl leading-none text-white/90"
+            onClick={() => setPreview(null)}
+            aria-label="Close preview"
+          >
+            ×
+          </button>
+          <img
+            src={preview}
+            alt=""
+            className="max-h-full max-w-full rounded-sm object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
