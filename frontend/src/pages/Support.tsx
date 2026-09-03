@@ -205,8 +205,10 @@ const SUBJECTS: { value: string; label: string; hint?: string }[] = [
   },
   { value: 'payment', label: 'A payment or payout' },
   { value: 'vendor', label: 'My business listing' },
+  { value: 'availability', label: 'Availability' },
   { value: 'profile', label: 'A profile' },
   { value: 'match', label: 'A match' },
+  { value: 'account', label: 'My account' },
   { value: 'other', label: 'Something else' },
 ];
 

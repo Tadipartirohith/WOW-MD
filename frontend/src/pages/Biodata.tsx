@@ -1826,13 +1826,25 @@ function AadhaarPanel({ profileId }: { profileId: string }) {
   });
 
   if (data?.verifiedAt) {
+    // The document type the profile was actually verified with, not a hardcoded
+    // "Aadhaar" — otherwise a passport-verified profile read as "Verified" here
+    // and "Verified (Passport)" under Your Profile, the mismatch reported in
+    // EZ1-I42. Both now read the same idVerifiedAt and name the same document.
+    const idTypeLabel: Record<string, string> = {
+      aadhaar: 'Aadhaar',
+      passport: 'Passport',
+      voter_id: 'Voter ID',
+      driving_licence: 'Driving licence',
+      pan: 'PAN',
+    };
+    const label = idTypeLabel[String(data.idType ?? '')] ?? 'Identity document';
     return (
       <div className="space-y-1">
         <p className="flex flex-wrap items-center gap-2 text-sm text-gray-800">
           <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800">
             Verified
           </span>
-          Aadhaar ending <strong>{data.last4}</strong>
+          {label} ending <strong>{data.last4}</strong>
           <span className="text-xs text-gray-500">on {formatDate(data.verifiedAt)}</span>
         </p>
         <p className="text-xs text-gray-500">

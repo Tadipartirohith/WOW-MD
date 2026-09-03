@@ -405,6 +405,12 @@ export default function Events() {
                           {ev.endTime ? `–${ev.endTime.slice(0, 5)}` : ''}
                           {ev.venue ? ` · ${ev.venue}` : ''}
                           {ev.expectedGuests ? ` · ${ev.expectedGuests} expected` : ''}
+                          {/* Budget on the summary line, not only behind "More
+                              details" — a planner comparing days should see it
+                              without opening each one (EZ1-I17). */}
+                          {ev.budget && Number(ev.budget) > 0
+                            ? ` · ₹${Number(ev.budget).toLocaleString('en-IN')}`
+                            : ''}
                         </span>
                         <span className="mt-0.5 flex flex-wrap items-center gap-1">
                           {ev.status && (

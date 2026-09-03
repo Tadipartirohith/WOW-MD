@@ -2,7 +2,8 @@ import { FormEvent, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
-import { VENDOR_CATEGORIES } from '../lib/permissions';
+import { Permission, VENDOR_CATEGORIES, can } from '../lib/permissions';
+import { useAuth } from '../store/auth';
 import DynamicForm, { Answers, FieldSpec, cleanAnswers, validateAnswers } from '../components/DynamicForm';
 import { EmptyState, Loading } from '../components/ui/Feedback';
 import { Star, Storefront } from '@phosphor-icons/react';
@@ -64,6 +65,12 @@ export default function Vendors() {
   const [category, setCategory] = useState('');
   const [city, setCity] = useState('');
   const [requesting, setRequesting] = useState<Vendor | null>(null);
+  // Only buyers place bookings. A planner browses this page to find and
+  // recommend vendors for the weddings they run, but the couple (or their
+  // agent) is who actually books — so a planner sees the listings without the
+  // "Check availability" booking action (EZ1-I29).
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const canBook = can(permissions, Permission.BOOKING_CREATE);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendors', category, city],
@@ -189,13 +196,19 @@ export default function Vendors() {
                 is still obvious, and the card that the pointer is actually on
                 is the one that looks pressable.
               */}
-              <button
-                className="btn-outline btn-sm mt-4 w-full transition-colors
-                  group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
-                onClick={() => setRequesting(v)}
-              >
-                Check availability
-              </button>
+              {canBook ? (
+                <button
+                  className="btn-outline btn-sm mt-4 w-full transition-colors
+                    group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
+                  onClick={() => setRequesting(v)}
+                >
+                  Check availability
+                </button>
+              ) : (
+                <p className="mt-4 rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
+                  Browse to recommend — the couple places the booking.
+                </p>
+              )}
             </div>
           </div>
         ))}

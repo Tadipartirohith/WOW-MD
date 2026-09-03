@@ -402,6 +402,68 @@ function ReviewForm({ booking, onCancel }: { booking: Booking; onCancel: () => v
   );
 }
 
+/**
+ * The booking lifecycle, as one row a buyer can read at a glance (EZ1-I12).
+ * A cancelled or disputed booking has left the happy path and is shown as a
+ * badge instead of a stage.
+ */
+const LIFECYCLE: { key: string; label: string }[] = [
+  { key: 'requested', label: 'Request' },
+  { key: 'quotation_sent', label: 'Quotation' },
+  { key: 'quotation_accepted', label: 'Accepted' },
+  { key: 'payment_pending', label: 'Payment' },
+  { key: 'confirmed', label: 'Confirmed' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'completed', label: 'Completed' },
+];
+
+const STAGE_INDEX: Record<string, number> = {
+  requested: 0,
+  quotation_sent: 1,
+  quotation_accepted: 2,
+  payment_pending: 3,
+  confirmed: 4,
+  in_progress: 5,
+  completed_pending_final_payment: 6,
+  completed: 6,
+};
+
+function BookingProgress({ status }: { status: string }) {
+  if (status === 'cancelled' || status === 'disputed') {
+    return (
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+          status === 'cancelled' ? 'bg-gray-100 text-gray-600' : 'bg-red-50 text-red-700'
+        }`}
+      >
+        {BOOKING_STATUS_LABEL[status] ?? status}
+      </span>
+    );
+  }
+  const at = STAGE_INDEX[status] ?? -1;
+  if (at < 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-xs">
+      {LIFECYCLE.map((s, i) => (
+        <span key={s.key} className="flex items-center gap-1">
+          <span
+            className={`rounded-full px-2 py-0.5 ${
+              i === at
+                ? 'bg-brand text-white'
+                : i < at
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            {s.label}
+          </span>
+          {i < LIFECYCLE.length - 1 && <span className="text-gray-300">→</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function BookingDetail({
   booking,
   canPay,
@@ -447,6 +509,14 @@ function BookingDetail({
 
   return (
     <div className="space-y-4 border-t pt-3">
+      {/* Where this booking has got to, at a glance (EZ1-I12). */}
+      <div>
+        <h3 className="section-title text-sm">Progress</h3>
+        <div className="mt-1">
+          <BookingProgress status={booking.status} />
+        </div>
+      </div>
+
       <div>
         <h3 className="section-title text-sm">Quotations</h3>
         {(quotations ?? []).length === 0 && (

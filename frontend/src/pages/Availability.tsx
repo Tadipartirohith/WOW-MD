@@ -781,8 +781,22 @@ function Calendar({
   if (!from || !to) return null;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {months.map((month) => (
+    <div className="space-y-3">
+      {/*
+        What the colours on the calendar mean, so a day is readable at a glance
+        without hovering each one for its tooltip (EZ1-I27).
+      */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+        {(['available', 'partially_booked', 'fully_booked', 'blocked'] as const).map((state) => (
+          <span key={state} className="flex items-center gap-1.5">
+            <span className={`h-3 w-3 rounded-sm border ${STATE_STYLE[state]}`} aria-hidden />
+            {DAY_STATE_LABEL[state] ?? state}
+          </span>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {months.map((month) => (
         <div key={month.key} className="card">
           <p className="mb-2 font-semibold text-gray-900">{month.label}</p>
           <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase text-gray-400">
@@ -810,7 +824,8 @@ function Calendar({
             )}
           </div>
         </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

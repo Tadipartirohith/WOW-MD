@@ -839,12 +839,20 @@ function Field({
   );
 }
 
+interface PlannerPackage {
+  name: string;
+  price: number;
+  includes?: string[];
+}
+
 interface PlannerListing {
   agencyName?: string;
   city?: string;
   bio?: string;
   yearsExperience?: number;
   isApproved?: boolean;
+  portfolio?: string[];
+  packages?: PlannerPackage[];
 }
 
 /**
@@ -868,6 +876,10 @@ interface PlannerListing {
 function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ agencyName: '', city: '', bio: '', yearsExperience: 0 });
+  const [portfolio, setPortfolio] = useState<string[]>([]);
+  const [packages, setPackages] = useState<PlannerPackage[]>([]);
+  const [pkgName, setPkgName] = useState('');
+  const [pkgPrice, setPkgPrice] = useState('');
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
@@ -878,6 +890,8 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
       bio: existing.bio ?? '',
       yearsExperience: existing.yearsExperience ?? 0,
     });
+    setPortfolio(existing.portfolio ?? []);
+    setPackages(existing.packages ?? []);
   }, [existing]);
 
   async function submit(e: FormEvent) {
@@ -891,6 +905,12 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         ...(form.city.trim() ? { city: form.city.trim() } : {}),
         ...(form.bio.trim() ? { bio: form.bio.trim() } : {}),
         yearsExperience: Number(form.yearsExperience) || 0,
+        // Portfolio and packages are the couple's evidence and the couple's
+        // prices — the backend already stored both, the form never sent them
+        // (EZ1-I24). Always sent, including empty, so removing the last one
+        // reaches the server.
+        portfolio,
+        packages: packages.map((p) => ({ name: p.name, price: p.price })),
       });
       /*
        * What actually happens next, which depends on where the listing stands.
@@ -965,6 +985,88 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         <label className="label">About your agency</label>
         <textarea className="input" rows={3} maxLength={2000} value={form.bio} onChange={set('bio')} />
       </div>
+
+      {/* Portfolio — uploaded from the device, the same as the vendor listing. */}
+      <div className="border-t pt-3">
+        <label className="label">Portfolio</label>
+        <p className="mb-2 text-sm text-gray-600">
+          Weddings you have run. A couple books the planner whose work they can see.
+        </p>
+        {portfolio.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {portfolio.map((url) => (
+              <div key={url} className="relative">
+                <img src={url} alt="" className="h-20 w-28 rounded-sm object-cover" loading="lazy" />
+                <button
+                  type="button"
+                  className="absolute right-1 top-1 rounded-sm bg-surface/90 px-1.5 text-xs text-gray-700"
+                  onClick={() => setPortfolio((p) => p.filter((u) => u !== url))}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <PhotoUploader
+          kind="photo"
+          label="Upload photos"
+          onUploaded={(url) => setPortfolio((p) => [...p, url])}
+        />
+      </div>
+
+      {/* Packages & pricing — the offerings a couple compares planners on. */}
+      <div className="border-t pt-3">
+        <label className="label">Packages &amp; pricing</label>
+        {packages.length > 0 && (
+          <ul className="mb-2 divide-y divide-gray-200 rounded-sm border border-gray-200">
+            {packages.map((p, i) => (
+              <li key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="min-w-0 truncate">{p.name}</span>
+                <span className="flex items-center gap-3">
+                  <span className="text-gray-600">₹{Number(p.price).toLocaleString('en-IN')}</span>
+                  <button
+                    type="button"
+                    className="text-critical-fg"
+                    onClick={() => setPackages((ps) => ps.filter((_, j) => j !== i))}
+                  >
+                    Remove
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <input
+            className="input flex-1"
+            placeholder="Package name (e.g. Full planning)"
+            value={pkgName}
+            onChange={(e) => setPkgName(e.target.value)}
+          />
+          <input
+            className="input w-32"
+            type="number"
+            min={0}
+            placeholder="Price ₹"
+            value={pkgPrice}
+            onChange={(e) => setPkgPrice(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={!pkgName.trim() || !pkgPrice}
+            onClick={() => {
+              setPackages((ps) => [...ps, { name: pkgName.trim(), price: Number(pkgPrice) }]);
+              setPkgName('');
+              setPkgPrice('');
+            }}
+          >
+            Add package
+          </button>
+        </div>
+      </div>
+
       <button className="btn">Save listing</button>
     </form>
   );

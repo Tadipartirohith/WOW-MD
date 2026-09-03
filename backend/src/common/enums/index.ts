@@ -668,6 +668,10 @@ export enum CaseSubject {
   MATCH = 'match',
   BOOKING = 'booking',
   PAYMENT = 'payment',
+  // A vendor's own availability or account, so a case can name exactly what it
+  // is about rather than falling into "something else" (EZ1-I49).
+  AVAILABILITY = 'availability',
+  ACCOUNT = 'account',
   OTHER = 'other',
 }
 

@@ -219,7 +219,7 @@ const NAV: NavEntry[] = [
    */
   { to: '/my-clients', label: 'My Clients', requires: [Permission.PLAN_MANAGE_ENGAGED], group: 'clients', icon: AddressBook },
   { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Buildings },
-  { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE], group: 'wedding', icon: Storefront },
+  { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE], group: 'wedding', icon: Storefront },
   // "Planners" and "Planner" next to each other were indistinguishable. One is
   // the marketplace where a planner is hired; the other is the couple's own
   // timeline. The labels now say which is which.
@@ -809,10 +809,11 @@ export default function App() {
           </Protected>
         }
       />
+      {/* Buyers book vendors; planners browse them to recommend (EZ1-I29). */}
       <Route
         path="/vendors"
         element={
-          <Protected requires={[Permission.BOOKING_CREATE]}>
+          <Protected requires={[Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE]}>
             <Vendors />
           </Protected>
         }
