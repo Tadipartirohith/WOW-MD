@@ -266,9 +266,17 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   const [existing, setExisting] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Availability is service-specific (EZ1-I28/I32): once a service is chosen the
+  // time slots are only that service's (plus any general, service-less slots),
+  // so a slot published for Transport is not offered when booking Makeup.
   const { data: slots = [], isLoading } = useQuery<Slot[]>({
-    queryKey: ['bookable-slots', vendor.id],
-    queryFn: async () => (await api.get(`/vendors/${vendor.id}/availability`)).data,
+    queryKey: ['bookable-slots', vendor.id, serviceId],
+    queryFn: async () =>
+      (
+        await api.get(`/vendors/${vendor.id}/availability`, {
+          params: serviceId ? { vendorServiceId: serviceId } : {},
+        })
+      ).data,
   });
 
   // What this business sells, from the catalog. A vendor who has not adopted
@@ -444,6 +452,9 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                     setQuantity('');
                     setAnswers({});
                     setFieldErrors({});
+                    // The slots belong to the previous service; clear the pick so
+                    // a stale slot cannot be submitted against the new service.
+                    setSlotId('');
                   }}
                   required
                 >

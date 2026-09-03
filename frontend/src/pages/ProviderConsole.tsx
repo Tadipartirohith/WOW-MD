@@ -48,16 +48,11 @@ export default function ProviderConsole() {
   // Which business this page is about comes from the header's switcher, not
   // from `listings[0]`. An account with two businesses could previously only
   // ever edit the first one from here.
-  const { activeId, active } = useBusinesses();
+  const { activeId } = useBusinesses();
   const vendorId: string | undefined = isVendor ? (activeId ?? undefined) : undefined;
   const current = isVendor
     ? ((listing as VendorListing[] | undefined) ?? []).find((l) => l.id === vendorId)
     : undefined;
-  // A vendor has many listings and a planner has exactly one, so the planner
-  // branch reads the object rather than indexing into it. `listing?.[0]` on an
-  // object is always undefined, which is why a planner's approval state never
-  // showed whatever the server said.
-  const approved: boolean | undefined = isVendor ? active?.isApproved : listing?.isApproved;
 
   return (
     <div className="space-y-6">
@@ -84,62 +79,26 @@ export default function ProviderConsole() {
         of what the form was for. GetStarted covers that case, and the planner
         case BusinessSetup never covered at all.
       */}
-      {vendorId ? <BusinessSetup businessId={vendorId} /> : <GetStarted />}
-
       {isVendor ? (
-        <VendorListingForm existing={current ? [current] : []} />
-      ) : (
-        <PlannerListingForm existing={listing} />
-      )}
-
-      {vendorId && (
-        <div className="card">
-          <h2 className="section-title">Verification</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            {approved
-              ? 'Approved. Your listing appears in search and can take bookings.'
-              : 'A verification officer visits before your listing appears in search. You can keep ' +
-                'setting it up in the meantime, nothing is lost while you wait.'}
-          </p>
-          <p className="mt-2">
-            <span
-              className={`rounded-full px-2 py-1 text-xs ${
-                approved ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-              }`}
-            >
-              {current?.status
-                ? current.status.replace(/_/g, ' ')
-                : approved
-                  ? 'Approved'
-                  : 'Awaiting verification'}
-            </span>
-          </p>
-
+        <>
           {/*
-            The exact words the officer wrote. A listing sent back with "there
-            was a problem" is a refusal with no instruction in it — the vendor
-            cannot fix what nobody has named, and the next visit finds the same
-            thing. It is read from the owner-only route, so it is not something
-            a competitor can look up.
+            The whole "My Business" set-up as one guided sequence
+            (EZ1-I21): Business Details -> Catalog & Services -> Offerings &
+            Pricing -> Review & Submit. Each step reuses the piece that already
+            owned it; the wizard only sequences them and carries the server's
+            lock and status rules between the steps.
           */}
-          {current?.decisionReason && (
-            <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                What needs fixing
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">
-                {current.decisionReason}
-              </p>
-            </div>
+          <VendorBusinessWizard vendorId={vendorId} current={current} />
+          {vendorId && (
+            <PayoutAccount vendorId={vendorId} current={current?.payoutAccountId ?? null} />
           )}
-        </div>
+        </>
+      ) : (
+        <>
+          {vendorId ? <BusinessSetup businessId={vendorId} /> : <GetStarted />}
+          <PlannerListingForm existing={listing} />
+        </>
       )}
-
-      {vendorId && (
-        <PayoutAccount vendorId={vendorId} current={current?.payoutAccountId ?? null} />
-      )}
-
-      {vendorId && <VendorServices vendorId={vendorId} />}
 
       {/*
         The vendor's own reviews, with the reviewers left out — the same view a
@@ -206,6 +165,227 @@ interface VendorListing {
   decisionReason: string | null;
 }
 
+const WIZARD_STEPS = [
+  { key: 'business', label: 'Business Details' },
+  { key: 'catalog', label: 'Catalog & Services' },
+  { key: 'offerings', label: 'Offerings & Pricing' },
+  { key: 'review', label: 'Review' },
+] as const;
+
+/**
+ * "My Business" as one guided sequence (EZ1-I21).
+ *
+ * The steps are wiring, not new logic: Business Details is the listing form,
+ * Catalog & Services and Offerings & Pricing are the services manager, and
+ * Review is the server's own completion checklist plus Submit for Verification.
+ * The server owns the lock and the state machine — the identity form goes
+ * read-only once submitted and opens again if the listing is sent back, the
+ * catalog stays editable throughout — and this only walks the vendor through it
+ * in order rather than handing over one long page.
+ */
+function VendorBusinessWizard({
+  vendorId,
+  current,
+}: {
+  vendorId?: string;
+  current?: VendorListing;
+}) {
+  const [step, setStep] = useState(0);
+  // A step requested before the just-saved business has finished loading; the
+  // effect below advances to it the moment `hasBusiness` becomes true, so
+  // "Save & Continue" on a brand-new listing lands on step two rather than
+  // silently doing nothing.
+  const [pendingStep, setPendingStep] = useState<number | null>(null);
+  const hasBusiness = Boolean(vendorId && current);
+
+  useEffect(() => {
+    if (pendingStep !== null && (pendingStep === 0 || hasBusiness)) {
+      setStep(Math.max(0, Math.min(WIZARD_STEPS.length - 1, pendingStep)));
+      setPendingStep(null);
+    }
+  }, [pendingStep, hasBusiness]);
+
+  // Steps past the first need a saved business to attach services to. If one is
+  // requested before that business has loaded, remember it and let the effect
+  // advance once it has.
+  const go = (n: number) => {
+    if (n > 0 && !hasBusiness) {
+      setPendingStep(n);
+      return;
+    }
+    setStep(Math.max(0, Math.min(WIZARD_STEPS.length - 1, n)));
+  };
+
+  return (
+    <div className="space-y-4">
+      <ol className="flex flex-wrap gap-2">
+        {WIZARD_STEPS.map((s, i) => {
+          const disabled = i > 0 && !hasBusiness;
+          const tone =
+            i === step
+              ? 'bg-brand text-white'
+              : i < step
+                ? 'bg-brand-soft text-brand-strong'
+                : 'bg-surface-sunken text-gray-500';
+          return (
+            <li key={s.key}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => go(i)}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${tone} ${
+                  disabled ? 'cursor-not-allowed opacity-50' : ''
+                }`}
+              >
+                {i + 1}. {s.label}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      {/*
+        The officer's own words when a listing is sent back — the vendor cannot
+        fix what nobody named. Read from the owner-only route, so a competitor
+        cannot look it up.
+      */}
+      {current?.decisionReason && (
+        <div className="rounded-sm border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+            What needs fixing
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{current.decisionReason}</p>
+        </div>
+      )}
+
+      {step === 0 && (
+        <div className="space-y-3">
+          <VendorListingForm existing={current ? [current] : []} onSaved={() => go(1)} />
+          {hasBusiness && (
+            <div className="flex justify-end">
+              <button type="button" className="btn" onClick={() => go(1)}>
+                Continue to Catalog &amp; Services →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 1 && vendorId && (
+        <div className="space-y-3">
+          <StepIntro>
+            Pick the services you offer. Each one can carry its own packages and prices in the next
+            step.
+          </StepIntro>
+          <VendorServices vendorId={vendorId} />
+          <WizardNav
+            onBack={() => go(0)}
+            onNext={() => go(2)}
+            nextLabel="Continue to Offerings & Pricing →"
+          />
+        </div>
+      )}
+
+      {step === 2 && vendorId && (
+        <div className="space-y-3">
+          <StepIntro>
+            Add packages, pricing and capacity to each service. This is what a buyer sees and what a
+            quotation is built from.
+          </StepIntro>
+          <VendorServices vendorId={vendorId} />
+          <WizardNav onBack={() => go(1)} onNext={() => go(3)} nextLabel="Review →" />
+        </div>
+      )}
+
+      {step === 3 && vendorId && current && (
+        <div className="space-y-3">
+          <ReviewSummary current={current} />
+          {/*
+            The checklist and the two-step Submit for Verification are the
+            server's, reused verbatim: it decides what is still missing and locks
+            the listing on submit.
+          */}
+          <BusinessSetup businessId={vendorId} />
+          <WizardNav onBack={() => go(2)} onEdit={() => go(0)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepIntro({ children }: { children: ReactNode }) {
+  return <p className="rounded-sm bg-surface-sunken px-3 py-2 text-sm text-gray-600">{children}</p>;
+}
+
+function WizardNav({
+  onBack,
+  onNext,
+  onEdit,
+  nextLabel,
+}: {
+  onBack?: () => void;
+  onNext?: () => void;
+  onEdit?: () => void;
+  nextLabel?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+      <div>
+        {onBack && (
+          <button type="button" className="btn-outline" onClick={onBack}>
+            ← Back
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {onEdit && (
+          <button type="button" className="btn-outline" onClick={onEdit}>
+            Edit business details
+          </button>
+        )}
+        {onNext && (
+          <button type="button" className="btn" onClick={onNext}>
+            {nextLabel ?? 'Next →'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The whole listing, read-only, before it is submitted for verification. */
+function ReviewSummary({ current }: { current: VendorListing }) {
+  const category =
+    current.category === 'other'
+      ? (current.otherCategory ?? 'Other')
+      : (CATEGORY_LABEL[current.category] ?? current.category);
+  return (
+    <div className="card space-y-3">
+      <div>
+        <h2 className="section-title">Review</h2>
+        <p className="text-sm text-gray-600">
+          Everything you have entered, read-only. Go back to change anything, then submit for
+          verification below.
+        </p>
+      </div>
+      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <Detail label="Business name">{current.name}</Detail>
+        <Detail label="Category">{category}</Detail>
+        <Detail label="City">{current.city || 'Not provided'}</Detail>
+        <Detail label="PAN">{current.panNumber ?? 'Not provided'}</Detail>
+        <Detail label="GST number">{current.gstNumber ?? 'Not provided'}</Detail>
+        <Detail label="Registration number">{current.registrationNumber ?? 'Not provided'}</Detail>
+        <Detail label="Registered address">{current.registeredAddress ?? 'Not provided'}</Detail>
+        <Detail label="Contact number">{current.contactPhone ?? 'Not provided'}</Detail>
+        <Detail label="Portfolio photos">{String(current.portfolio?.length ?? 0)}</Detail>
+        <Detail label="Compliance documents">
+          {String(current.complianceDocuments?.length ?? 0)}
+        </Detail>
+      </dl>
+    </div>
+  );
+}
+
 const emptyListing = {
   name: '',
   category: 'venue',
@@ -227,7 +407,14 @@ const emptyListing = {
  * clients about them, and a page that only ever offers an edit form makes that
  * check look like an invitation to change something.
  */
-function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
+function VendorListingForm({
+  existing,
+  onSaved,
+}: {
+  existing?: VendorListing[];
+  /** Wizard hook: advance to the next step after a successful save. */
+  onSaved?: () => void;
+}) {
   const qc = useQueryClient();
   const current = existing?.[0];
   /*
@@ -340,6 +527,14 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       );
       setEditing(false);
       qc.invalidateQueries({ queryKey: ['my-listing'] });
+      qc.invalidateQueries({ queryKey: ['business-completion'] });
+      // The business switcher drives which listing the wizard is about; without
+      // refreshing it, a just-created first listing never becomes "active" and
+      // the wizard cannot leave step one.
+      qc.invalidateQueries({ queryKey: ['businesses'] });
+      // In the wizard, a successful save moves straight to the next step — no
+      // page refresh, the listing is created/updated in place (EZ1-I21).
+      onSaved?.();
     } catch (err) {
       setMsg(apiMessage(err, 'Could not save the listing.'));
     }
@@ -604,7 +799,9 @@ function VendorListingForm({ existing }: { existing?: VendorListing[] }) {
       </div>
 
       <div className="flex gap-2">
-        <button className="btn">{current ? 'Save changes' : 'Create listing'}</button>
+        <button className="btn">
+          {onSaved ? 'Save & Continue' : current ? 'Save changes' : 'Create listing'}
+        </button>
         {current && (
           <button type="button" className="btn-outline" onClick={() => setEditing(false)}>
             Cancel
