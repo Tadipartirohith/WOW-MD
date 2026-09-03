@@ -18,7 +18,15 @@ const empty = {
   bio: '',
   managingFor: '',
   stewardRelation: '',
+  visibility: 'matches_only',
 };
+
+/** The visibility choices, in the words the profile owner uses. */
+const VISIBILITY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'public', label: 'Public' },
+  { value: 'matches_only', label: 'Private / Matches only' },
+  { value: 'private', label: 'Private (hidden until matched)' },
+];
 
 /**
  * How a family member is related to the person whose match they are looking
@@ -101,6 +109,7 @@ export default function Profile() {
       bio: data.bio ?? '',
       managingFor: data.managingFor ?? '',
       stewardRelation: data.stewardRelation ?? '',
+      visibility: data.visibility ?? 'matches_only',
     });
   }, [data]);
 
@@ -126,6 +135,7 @@ export default function Profile() {
             'bio',
             'managingFor',
             'stewardRelation',
+            'visibility',
           ] as const);
       for (const key of fields) {
         if (form[key]) payload[key] = form[key];
@@ -316,6 +326,9 @@ export default function Profile() {
                 <input
                   className="input mt-1"
                   type="date"
+                  // Today or earlier only — a date of birth in the future is not
+                  // a date of birth. The API enforces this too.
+                  max={new Date().toISOString().slice(0, 10)}
                   value={form.dateOfBirth}
                   onChange={set('dateOfBirth')}
                 />
@@ -359,6 +372,29 @@ export default function Profile() {
                 onChange={set('bio')}
               />
             </label>
+
+            {/*
+              Who may see this profile. The backend already honoured PUBLIC /
+              MATCHES_ONLY / PRIVATE; there was simply no control to set it, so a
+              profile could never be made public or matches-only from the UI.
+              Not shown to an agency, which does not appear in matchmaking.
+            */}
+            {!isAgency && (
+              <label className="block text-sm">
+                <span className="text-gray-700">Profile visibility</span>
+                <select className="input mt-1" value={form.visibility} onChange={set('visibility')}>
+                  {VISIBILITY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-gray-500">
+                  Public is visible under the normal rules; the private options stay restricted until
+                  the matching and interest conditions are met.
+                </span>
+              </label>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <button className="btn">Save profile</button>

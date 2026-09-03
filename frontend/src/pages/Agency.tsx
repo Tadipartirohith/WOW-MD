@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { VERIFICATION_LABEL, VerificationStatus } from '../lib/permissions';
+import PhotoUploader from '../components/PhotoUploader';
 
 interface Agency {
   id: string;
@@ -38,7 +39,6 @@ export default function Agency() {
   const qc = useQueryClient();
   const [form, setForm] = useState(empty);
   const [pictures, setPictures] = useState<string[]>([]);
-  const [pictureUrl, setPictureUrl] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -301,24 +301,18 @@ export default function Agency() {
               ))}
             </div>
           )}
-          <div className="mt-2 flex flex-wrap gap-2">
-            <input
-              className="input flex-1"
-              placeholder="https://…"
-              value={pictureUrl}
-              onChange={(e) => setPictureUrl(e.target.value)}
+          {/*
+            Upload from the device, like Biodata photographs — not a URL to
+            paste. Asking an agent for a hosted image URL meant, in practice,
+            no office photos at all: the picture is on their phone, not on a
+            web address they can copy.
+          */}
+          <div className="mt-2">
+            <PhotoUploader
+              label="Add photo"
+              kind="photo"
+              onUploaded={(url) => setPictures((p) => [...p, url])}
             />
-            <button
-              type="button"
-              className="btn-outline"
-              disabled={!pictureUrl.trim()}
-              onClick={() => {
-                setPictures((p) => [...p, pictureUrl.trim()]);
-                setPictureUrl('');
-              }}
-            >
-              Add photo
-            </button>
           </div>
         </div>
 
