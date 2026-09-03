@@ -347,6 +347,18 @@ export class FamilyDetailsDto {
   @MaxLength(80)
   nativeState?: string;
 
+  @ApiPropertyOptional({ maxLength: 80, description: 'The country the native place is in' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  nativeCountry?: string;
+
+  @ApiPropertyOptional({ maxLength: 120, description: 'The district the native place is in' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  nativeDistrict?: string;
+
   /** Settled abroad. The city and country below are only meaningful when true. */
   @ApiPropertyOptional({ default: false })
   @IsOptional()

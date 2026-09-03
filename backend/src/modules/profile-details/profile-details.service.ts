@@ -203,6 +203,8 @@ export class ProfileDetailsService {
       familyStatus: dto.familyStatus,
       ...(dto.nativePlace ? { nativePlace: dto.nativePlace } : {}),
       ...(dto.nativeState ? { nativeState: dto.nativeState } : {}),
+      ...(dto.nativeCountry ? { nativeCountry: dto.nativeCountry } : {}),
+      ...(dto.nativeDistrict ? { nativeDistrict: dto.nativeDistrict } : {}),
       brothers: dto.brothers,
       sisters: dto.sisters,
       /*

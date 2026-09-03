@@ -78,6 +78,21 @@ export class ProfileDetails {
   nativeState: string | null;
 
   /**
+   * The country the native place is in, and the district within the state.
+   *
+   * Native place is a hierarchy — country, then state, then district, then the
+   * village or town — and answering it as one free-text box meant two families
+   * from the same district could not be matched on it. The country anchors the
+   * state list; the district anchors what the village sits inside; the village
+   * itself stays in `nativePlace` as the free-text leaf.
+   */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  nativeCountry: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  nativeDistrict: string | null;
+
+  /**
    * Settled abroad, and where.
    *
    * A yes/no rather than a country field left blank for most people: a blank

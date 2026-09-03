@@ -20,10 +20,10 @@ import ProfileSelector from '../components/ProfileSelector';
 import ProfilePhotos from '../components/ProfilePhotos';
 import PhotoUploader from '../components/PhotoUploader';
 import ChoiceField from '../components/ChoiceField';
+import DependentLocation from '../components/DependentLocation';
 import {
   CASTES_BY_RELIGION,
   CITIES,
-  COUNTRIES,
   MOTHER_TONGUES,
   NAKSHATRAS,
   PADAMS,
@@ -31,7 +31,6 @@ import {
   QUALIFICATIONS,
   RASHIS,
   RELIGIONS,
-  STATES,
 } from '../lib/reference';
 import SavedBiodata from '../components/SavedBiodata';
 import ProfileCard from '../components/ProfileCard';
@@ -788,23 +787,19 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
         may block a save.
       */}
       <div className="grid gap-3 border-t pt-3 sm:grid-cols-4">
-        <ChoiceField
-          label="Birth city"
-          value={String(values.birthCity ?? '')}
-          onChange={put('birthCity')}
-          options={CITIES}
-        />
-        <ChoiceField
-          label="Birth state"
-          value={String(values.birthState ?? '')}
-          onChange={put('birthState')}
-          options={STATES}
-        />
-        <ChoiceField
-          label="Birth country"
-          value={String(values.birthCountry ?? '')}
-          onChange={put('birthCountry')}
-          options={COUNTRIES}
+        {/*
+          Country → State → City, dependent. Choosing the country narrows the
+          state list and choosing the state narrows the city list, so an
+          Australian birthplace no longer offers Indian states and cities.
+        */}
+        <DependentLocation
+          country={String(values.birthCountry ?? '')}
+          state={String(values.birthState ?? '')}
+          city={String(values.birthCity ?? '')}
+          onCountry={put('birthCountry')}
+          onState={put('birthState')}
+          onCity={put('birthCity')}
+          labels={{ country: 'Birth country', state: 'Birth state', city: 'Birth city' }}
         />
         <Field label="Time of birth" hint="Optional">
           <input className="input mt-1" type="time" value={String(values.timeOfBirth ?? '')} onChange={set('timeOfBirth')} />
@@ -1032,6 +1027,8 @@ function FamilyForm({
       familyStatus: initial?.familyStatus ?? '',
       nativePlace: initial?.nativePlace ?? '',
       nativeState: initial?.nativeState ?? '',
+      nativeCountry: initial?.nativeCountry ?? '',
+      nativeDistrict: initial?.nativeDistrict ?? '',
       isNri: Boolean(initial?.isNri),
       nriCity: initial?.nriCity ?? '',
       nriCountry: initial?.nriCountry ?? '',
@@ -1069,6 +1066,8 @@ function FamilyForm({
             familyStatus: values.familyStatus,
             nativePlace: values.nativePlace || undefined,
             nativeState: values.nativeState || undefined,
+            nativeCountry: values.nativeCountry || undefined,
+            nativeDistrict: values.nativeDistrict || undefined,
             isNri: Boolean(values.isNri),
             // Only sent when the answer is yes. A city and country left behind
             // by somebody who changed their mind would otherwise stay on the
@@ -1162,25 +1161,30 @@ function FamilyForm({
               ))}
             </select>
           </Field>
-          <Field label="Native place" hint="Where the family is from">
-            <ChoiceField
-              label=""
-              value={String(values.nativePlace ?? '')}
-              onChange={put('nativePlace')}
-              options={CITIES}
-            />
-          </Field>
           {/*
-            The state, beside the town rather than instead of it. A town on its
-            own is ambiguous across India — there are Rampurs in six states —
-            and the question being asked has two halves.
+            Native place is a hierarchy, not a town: Country → State → District,
+            then the village or town as free text under it. Choosing India
+            narrows the state list to Indian states, and choosing a state
+            narrows the district list — so the ambiguity that made two families
+            from the same district unmatchable is gone, and a village the list
+            has never heard of still goes in via the free-text leaf.
           */}
-          <Field label="Native state">
+          <DependentLocation
+            country={String(values.nativeCountry ?? '')}
+            state={String(values.nativeState ?? '')}
+            city={String(values.nativeDistrict ?? '')}
+            onCountry={put('nativeCountry')}
+            onState={put('nativeState')}
+            onCity={put('nativeDistrict')}
+            labels={{ country: 'Native country', state: 'Native state', city: 'Native district' }}
+          />
+          <Field label="Native place (village / town)" hint="Where the family is from">
             <input
               className="input mt-1"
-              value={String(values.nativeState ?? '')}
-              onChange={set('nativeState')}
-              placeholder="Telangana"
+              value={String(values.nativePlace ?? '')}
+              onChange={set('nativePlace')}
+              placeholder="Village or town"
+              maxLength={120}
             />
           </Field>
           <Field label="Brothers">
@@ -1539,7 +1543,17 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
             <input className="input mt-1" value={String(values.designation ?? '')} onChange={set('designation')} required />
           </Field>
           <Field label="Work location">
-            <input className="input mt-1" value={String(values.workLocation ?? '')} onChange={set('workLocation')} />
+            {/*
+              A dropdown, not free text — the same shape Partner Preferences
+              already uses for Preferred location, so the two are typed once and
+              spelled the same way. "Other" keeps any city the list omits.
+            */}
+            <ChoiceField
+              label=""
+              value={String(values.workLocation ?? '')}
+              onChange={put('workLocation')}
+              options={CITIES}
+            />
           </Field>
           <Field label="Salary" hint="Hidden unless you tick the box below">
             <input className="input mt-1" value={String(values.salary ?? '')} onChange={set('salary')} />

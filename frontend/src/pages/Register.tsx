@@ -70,9 +70,10 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
 
   const selected = ACCOUNT_TYPES.find((a) => a.type === accountType)!;
-  // A business is reached on its number, so it is required; an individual can
-  // sign up on an email alone and add one later.
-  const phoneRequired = accountType !== 'individual';
+  // Every account is reached on its mobile number — it is what an OTP goes to
+  // and how the other side gets in touch — so it is required at sign-up for all
+  // personas, not offered as an optional afterthought.
+  const phoneRequired = true;
 
   /**
    * The same rules the server applies, checked before the round trip.
@@ -93,7 +94,7 @@ export default function Register() {
 
     if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Enter a valid email address';
 
-    if (phoneRequired && !digits) errors.phone = 'A business account needs a contact number';
+    if (phoneRequired && !digits) errors.phone = 'Enter your mobile number';
     else if (digits && !MOBILE_10_PATTERN.test(digits)) {
       errors.phone = 'Enter a 10-digit Indian mobile number, starting 6 to 9';
     }

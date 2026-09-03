@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { OTHER, isOffList } from '../lib/reference';
 
 /**
@@ -35,8 +35,15 @@ export default function ChoiceField({
   placeholder?: string;
 }) {
   const id = useId();
-  const custom = allowOther && isOffList(value, options);
-  const selectValue = custom ? OTHER : value;
+  // A stored value that is not on the list reopens as "Other, already filled in".
+  const offList = allowOther && isOffList(value, options);
+  // But an "Other" the user has *just* picked clears the value to '', and an
+  // empty value is off-list to nobody — so without remembering the pick, the
+  // select snaps back to "Not stated", the box never opens, and a required
+  // field reports "Please select an item in the list" on save. Remember it.
+  const [otherPicked, setOtherPicked] = useState(false);
+  const showOther = offList || otherPicked;
+  const selectValue = showOther ? OTHER : value;
 
   return (
     <div>
@@ -52,7 +59,15 @@ export default function ChoiceField({
           // Choosing "Other" clears the value rather than storing the word
           // "Other" — the box below is what carries the answer, and a profile
           // whose caste literally reads "Other" is a profile nobody can match.
-          onChange(e.target.value === OTHER ? '' : e.target.value);
+          // The select still shows "Other" (via otherPicked) so a required
+          // field stays satisfied while the box is being typed into.
+          if (e.target.value === OTHER) {
+            setOtherPicked(true);
+            onChange('');
+          } else {
+            setOtherPicked(false);
+            onChange(e.target.value);
+          }
         }}
       >
         <option value="">{placeholder}</option>
@@ -64,7 +79,7 @@ export default function ChoiceField({
         {allowOther && !options.includes(OTHER) && <option value={OTHER}>{OTHER}</option>}
       </select>
 
-      {(custom || selectValue === OTHER) && (
+      {showOther && (
         <input
           className="input mt-2"
           value={value}
