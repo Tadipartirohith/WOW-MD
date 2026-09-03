@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
@@ -9,9 +10,20 @@ import {
   MaxLength,
 } from 'class-validator';
 
+/** Trim and lowercase so the same address is not stored two ways. */
+const normaliseEmail = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
+
 export class CreateOfficerDto {
-  @ApiProperty({ example: 'field.officer@wow.local' })
-  @IsEmail()
+  // A real address, normalised to lowercase and refused when it is a
+  // placeholder domain like `@wow.local` — those were being accepted, so an
+  // officer account could be created that no email could ever reach.
+  @ApiProperty({ example: 'field.officer@wow.com' })
+  @Transform(normaliseEmail)
+  @IsEmail(
+    { host_blacklist: ['wow.local', 'localhost', 'test', 'example.com'] },
+    { message: 'Enter a valid email address' },
+  )
   email: string;
 
   @ApiProperty({ example: 'Anitha R' })
@@ -19,10 +31,12 @@ export class CreateOfficerDto {
   @Length(2, 120)
   name: string;
 
-  @ApiPropertyOptional({ example: '+919876543210' })
-  @IsOptional()
-  @Matches(/^\+?[0-9]{10,15}$/, { message: 'phone must be 10-15 digits, optionally with +' })
-  phone?: string;
+  // Mandatory: an officer is allocated work in the field and reached on this
+  // number, so an account without one cannot actually be dispatched.
+  @ApiProperty({ example: '+919876543210' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Matches(/^\+?[0-9]{10,15}$/, { message: 'Enter a valid mobile number (10-15 digits)' })
+  phone: string;
 
   /** Free text: which city or area this officer covers. Shown when allocating. */
   @ApiPropertyOptional({ example: 'Hyderabad' })

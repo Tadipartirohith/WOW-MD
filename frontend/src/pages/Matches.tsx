@@ -13,6 +13,15 @@ import {
   can,
 } from '../lib/permissions';
 import ProfileSelector from '../components/ProfileSelector';
+import ChoiceField from '../components/ChoiceField';
+import {
+  CASTES_BY_RELIGION,
+  CITIES,
+  MOTHER_TONGUES,
+  PROFESSIONS,
+  QUALIFICATIONS,
+  RELIGIONS,
+} from '../lib/reference';
 import { MARITAL_LABEL, OCCUPATION_LABEL } from '../lib/permissions';
 import { formatDate } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
@@ -412,7 +421,14 @@ export default function Matches() {
                 >
                   <Filter label="Age from" value={filters.ageMin} onChange={setField('ageMin')} type="number" />
                   <Filter label="Age to" value={filters.ageMax} onChange={setField('ageMax')} type="number" />
-                  <Filter label="City" value={filters.city} onChange={setField('city')} />
+                  {/*
+                    Searchable dropdowns off the same master data as the biodata
+                    fills, not free text — so a filter for "Telugu" cannot miss
+                    a profile that stored "telegu", and Occupation/Profession read
+                    from the same lists the profile was built from. "Other" keeps
+                    a value the list omits.
+                  */}
+                  <ChoiceField label="City" value={filters.city} onChange={setField('city')} options={CITIES} />
                   <Filter
                     label="Height from (cm)"
                     value={filters.heightMinCm}
@@ -425,26 +441,35 @@ export default function Matches() {
                     onChange={setField('heightMaxCm')}
                     type="number"
                   />
-                  <Filter label="Religion" value={filters.religion} onChange={setField('religion')} />
-                  <Filter
+                  <ChoiceField
+                    label="Religion"
+                    value={filters.religion}
+                    onChange={setField('religion')}
+                    options={RELIGIONS}
+                  />
+                  <ChoiceField
                     label="Caste or community"
                     value={filters.caste}
                     onChange={setField('caste')}
+                    options={CASTES_BY_RELIGION[filters.religion] ?? []}
                   />
-                  <Filter
+                  <ChoiceField
                     label="Mother tongue"
                     value={filters.motherTongue}
                     onChange={setField('motherTongue')}
+                    options={MOTHER_TONGUES}
                   />
-                  <Filter
+                  <ChoiceField
                     label="Education"
                     value={filters.qualification}
                     onChange={setField('qualification')}
+                    options={QUALIFICATIONS}
                   />
-                  <Filter
+                  <ChoiceField
                     label="Profession"
                     value={filters.profession}
                     onChange={setField('profession')}
+                    options={PROFESSIONS}
                   />
                   <label className="block text-sm">
                     <span className="text-gray-700">Marital status</span>

@@ -16,6 +16,7 @@ import { AgentsService } from '../agents/agents.service';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { Permission, roleHasPermission } from '../../common/authz/permissions';
 
 @Injectable()
 export class PlannerService {
@@ -116,6 +117,18 @@ export class PlannerService {
    * on; an agent sees their clients' plans; everyone else sees their own.
    */
   async myPlans(actor: AuthUser): Promise<WeddingPlan[]> {
+    // A seller (vendor) has no weddings of their own to plan. GET /planner/plans
+    // used to fall through to the "everyone else sees their own" branch and hand
+    // a vendor a 200 with an empty list, while /planner/dashboard correctly
+    // refused them — the inconsistency reported in the issue. Refuse anyone who
+    // neither hosts a plan, is engaged on one, nor manages clients who host one.
+    const maySeePlans =
+      roleHasPermission(actor.role, Permission.PLAN_MANAGE_OWN) ||
+      roleHasPermission(actor.role, Permission.PLAN_MANAGE_ENGAGED) ||
+      actor.role === UserRole.AGENT;
+    if (!maySeePlans) {
+      throw new ForbiddenException('You do not have access to planner plans');
+    }
     if (actor.role === UserRole.PLANNER) {
       return this.plans.find({
         where: { plannerUserId: actor.userId },

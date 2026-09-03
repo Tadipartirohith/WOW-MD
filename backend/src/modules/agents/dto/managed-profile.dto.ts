@@ -14,6 +14,7 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
@@ -52,11 +53,16 @@ export class IntakeConsentDto {
   @IsEnum(ConsentRelation)
   givenByRelation: ConsentRelation;
 
-  @ApiProperty({ example: 'Ramesh Sharma', minLength: 2, maxLength: 120 })
+  // Not asked for `self`: the profile is the person themselves, so requiring
+  // their name a second time made the most ordinary answer — "the person
+  // themselves" — the one that could not be saved (the reported defect). For
+  // every other relation it stays mandatory.
+  @ApiPropertyOptional({ example: 'Ramesh Sharma', minLength: 2, maxLength: 120 })
+  @ValidateIf((o: IntakeConsentDto) => o.givenByRelation !== ConsentRelation.SELF)
   @IsString()
   @MinLength(2)
   @MaxLength(120)
-  givenByName: string;
+  givenByName?: string;
 
   @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
@@ -66,6 +72,7 @@ export class IntakeConsentDto {
 
   @ApiProperty({ format: 'date', example: '2026-08-12' })
   @IsDateString({}, { message: 'givenAt must be a date, e.g. 2026-08-12' })
+  @IsNotFutureDate({ message: 'A consent date cannot be in the future' })
   givenAt: string;
 
   @ApiPropertyOptional({ maxLength: 1000 })
