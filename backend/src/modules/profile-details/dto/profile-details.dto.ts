@@ -588,6 +588,28 @@ export class PartnerPreferencesDto {
   @MaxLength(300)
   preferredStars?: string;
 
+  // The rest of the horoscope preferences a family matches on (EZ1-I15/I48).
+  // Free text, stored in the jsonb preferences blob — the values run to
+  // thousands (gothram especially) and vary by community, so a closed list
+  // would exclude more than it helped.
+  @ApiPropertyOptional({ maxLength: 60, description: 'Preferred Rashi' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  preferredRashi?: string;
+
+  @ApiPropertyOptional({ maxLength: 20, description: 'Preferred Padam' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  preferredPadam?: string;
+
+  @ApiPropertyOptional({ maxLength: 300, description: 'Preferred Gothram(s)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  preferredGothram?: string;
+
   /**
    * The chart itself, attached from this screen.
    *

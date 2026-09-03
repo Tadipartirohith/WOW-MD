@@ -1627,6 +1627,9 @@ function PreferencesForm({
       horoscopeExpectation: prefs.horoscopeExpectation ?? '',
       kujaDosham: prefs.kujaDosham ?? '',
       preferredStars: prefs.preferredStars ?? '',
+      preferredRashi: prefs.preferredRashi ?? '',
+      preferredPadam: prefs.preferredPadam ?? '',
+      preferredGothram: prefs.preferredGothram ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial)]);
@@ -1655,6 +1658,9 @@ function PreferencesForm({
           horoscopeExpectation: values.horoscopeExpectation || undefined,
           kujaDosham: values.kujaDosham || undefined,
           preferredStars: values.preferredStars || undefined,
+          preferredRashi: values.preferredRashi || undefined,
+          preferredPadam: values.preferredPadam || undefined,
+          preferredGothram: values.preferredGothram || undefined,
         });
       }}
       className="space-y-3"
@@ -1755,6 +1761,36 @@ function PreferencesForm({
             placeholder="Ashwini, Bharani…"
             value={String(values.preferredStars ?? '')}
             onChange={set('preferredStars')}
+          />
+        </Field>
+      </div>
+
+      {/*
+        The rest of the horoscope preferences a family matches on (EZ1-I15/I48):
+        preferred Rashi and Padam from the same lists the chart uses, and Gothram
+        as free text since it runs to thousands.
+      */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <ChoiceField
+          label="Preferred Rashi"
+          value={String(values.preferredRashi ?? '')}
+          onChange={put('preferredRashi')}
+          options={RASHIS}
+          allowOther={false}
+        />
+        <ChoiceField
+          label="Preferred Padam"
+          value={String(values.preferredPadam ?? '')}
+          onChange={put('preferredPadam')}
+          options={PADAMS}
+          allowOther={false}
+        />
+        <Field label="Preferred Gothram(s)">
+          <input
+            className="input mt-1"
+            placeholder="Any, or list the ones you prefer"
+            value={String(values.preferredGothram ?? '')}
+            onChange={set('preferredGothram')}
           />
         </Field>
       </div>

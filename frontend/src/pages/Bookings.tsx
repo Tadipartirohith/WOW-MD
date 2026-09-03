@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
@@ -103,6 +103,7 @@ export default function Bookings() {
   // person is looking at the thing they just did rather than hunting for it.
   const [expanded, setExpanded] = useState<string | null>(highlight);
   const [disputing, setDisputing] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null);
   /*
    * Which booking is being cancelled, if any.
    *
@@ -232,8 +233,25 @@ export default function Bookings() {
                       {disputing === b.id ? 'Never mind' : 'Raise an issue'}
                     </button>
                   )}
+                {/*
+                  A review can only be written after the job is done, and only
+                  once per booking — the server finds the completed, unreviewed
+                  booking for this vendor and refuses a second (EZ1-I30).
+                */}
+                {b.status === 'completed' && b.providerType === 'vendor' && (
+                  <button
+                    className="btn-outline"
+                    onClick={() => setReviewing(reviewing === b.id ? null : b.id)}
+                  >
+                    {reviewing === b.id ? 'Never mind' : 'Write a review'}
+                  </button>
+                )}
               </div>
             </div>
+
+            {reviewing === b.id && (
+              <ReviewForm booking={b} onCancel={() => setReviewing(null)} />
+            )}
 
             {disputing === b.id && (
               <DisputeForm
@@ -304,6 +322,85 @@ const WAITING_ON: Record<MilestoneKey, string> = {
   second: 'Due once they start the work',
   final: 'Due once they mark it delivered',
 };
+
+/** Rate and review a completed vendor booking, once (EZ1-I30). */
+function ReviewForm({ booking, onCancel }: { booking: Booking; onCancel: () => void }) {
+  const qc = useQueryClient();
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await api.post(`/vendors/${booking.providerId}/reviews`, {
+        rating,
+        ...(comment.trim() ? { comment: comment.trim() } : {}),
+      });
+      setDone(true);
+      qc.invalidateQueries({ queryKey: ['bookings'] });
+    } catch (err) {
+      setError(apiMessage(err, 'That review could not be submitted.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="mt-3 rounded-sm border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+        Review submitted. Thank you.
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 space-y-3 rounded-sm border border-gray-200 p-3">
+      <div>
+        <p className="text-sm font-medium text-gray-900">
+          Rate {booking.providerName ?? 'this service'}
+        </p>
+        <div className="mt-1 flex gap-1">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              aria-label={`${n} star${n === 1 ? '' : 's'}`}
+              className={`text-2xl leading-none ${n <= rating ? 'text-amber-500' : 'text-gray-300'}`}
+            >
+              ★
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="block text-sm">
+        <span className="text-gray-700">Your review</span>
+        <textarea
+          className="input mt-1"
+          rows={3}
+          maxLength={2000}
+          placeholder="Share your experience…"
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+        />
+      </label>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button className="btn" disabled={busy}>
+          Submit review
+        </button>
+        <button type="button" className="btn-outline" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function BookingDetail({
   booking,

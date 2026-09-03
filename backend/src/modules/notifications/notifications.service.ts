@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
-import { NotificationType, UserRole } from '../../common/enums';
+import { Booking } from '../bookings/entities/booking.entity';
+import { BookingStatus, NotificationType, UserRole } from '../../common/enums';
 import { NOTIFICATION_TARGET } from './notification-targets';
 import { DELIVERY } from './notification-delivery';
 import { User } from '../auth/entities/user.entity';
@@ -21,6 +22,7 @@ export class NotificationsService {
   constructor(
     @InjectRepository(Notification) private readonly repo: Repository<Notification>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     private readonly push: PushService,
     private readonly whatsapp: WhatsAppService,
   ) {}
@@ -165,8 +167,45 @@ export class NotificationsService {
     return { whatsappOptIn: optIn };
   }
 
-  listForUser(userId: string) {
-    return this.repo.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 100 });
+  async listForUser(userId: string) {
+    const notes = await this.repo.find({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+
+    // A booking notification's action is stamped when it is created, so a
+    // "Respond" raised for a new request still read as outstanding after the
+    // vendor had already responded (EZ1-I36). Re-derive it against the booking's
+    // current status: an answered request, or any cancelled booking, becomes a
+    // plain "view" rather than an action the reader has in fact already taken.
+    const bookingIds = [
+      ...new Set(
+        notes
+          .filter((n) => n.targetModule === 'bookings' && n.targetId)
+          .map((n) => n.targetId as string),
+      ),
+    ];
+    if (bookingIds.length === 0) return notes;
+
+    const bookings = await this.bookings.find({
+      where: { id: In(bookingIds) },
+      select: ['id', 'status'],
+    });
+    const statusById = new Map(bookings.map((b) => [b.id, b.status]));
+
+    for (const n of notes) {
+      if (n.targetModule !== 'bookings' || !n.targetId) continue;
+      const status = statusById.get(n.targetId);
+      if (!status) continue;
+      const answered = n.targetAction === 'respond' && status !== BookingStatus.REQUESTED;
+      const paid =
+        n.targetAction === 'pay' &&
+        ![BookingStatus.CONFIRMED, BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT].includes(status);
+      const moot = status === BookingStatus.CANCELLED;
+      if (answered || paid || moot) n.targetAction = 'view';
+    }
+    return notes;
   }
 
   /** What the bell shows. Cheap enough to poll. */
