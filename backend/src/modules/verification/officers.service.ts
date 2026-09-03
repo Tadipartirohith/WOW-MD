@@ -120,8 +120,13 @@ export class OfficersService {
    * allocator decides that and this stays a roster.
    */
   async list(): Promise<OfficerView[]> {
+    // Verification officers only. Agents used to appear here because they could
+    // be sent on field visits, but verification is now an internal-officer
+    // function (EZ1-I20/I22): a commercial agent must not show up in the admin's
+    // "allocate to" roster, where the admin might hand them a competitor's or
+    // their own client's application.
     const people = await this.users.find({
-      where: [{ role: UserRole.IN_PERSON }, { role: UserRole.AGENT }],
+      where: { role: UserRole.IN_PERSON },
       select: ['id', 'email', 'phone', 'isActive', 'createdAt', 'role'],
       order: { createdAt: 'ASC' },
     });

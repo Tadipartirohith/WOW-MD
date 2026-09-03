@@ -243,20 +243,16 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.AI_ASSIST,
 
     /*
-     * An agent may be sent out to verify a business, like an officer.
+     * Verification is not the agent's job.
      *
-     * Agents are already on the ground in the cities the platform is short of
-     * officers in, which is what makes them worth allocating to. What they do
-     * NOT get is IDENTITY_CONFIRM: confirming that a person is who they claim
-     * decides who may be matched with whom, and that stays with staff.
-     *
-     * The conflict this obviously invites is refused at allocation rather than
-     * here — VerificationService.allocate will not send an agent to a business
-     * whose owner they introduced, nor to another agency. A permission cannot
-     * express "anyone except the ones you earn from"; the allocator can.
+     * Agents previously held VERIFICATION_PROCESS / VERIFICATION_FIELDWORK so
+     * they could be allocated business visits, which put a Verification page in
+     * their portal and let them reach /verification. Per the QA requirement
+     * (EZ1-I20) verification is an internal officer/admin function only: the
+     * page must not appear in the Agent Portal and agents must be refused the
+     * endpoints. Removing the two permissions closes the nav entry, the route
+     * guard and the API at once, since all three gate on exactly these.
      */
-    Permission.VERIFICATION_PROCESS,
-    Permission.VERIFICATION_FIELDWORK,
   ],
 
   // Vendors sell services. They cannot browse or book matchmaking.

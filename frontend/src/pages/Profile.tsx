@@ -124,8 +124,12 @@ export default function Profile() {
       // An agency is not asked for these, so it does not send them either.
       // Leaving them in the payload would keep resubmitting whatever stale
       // value the form was seeded with, from fields nobody can see.
+      // Per EZ1-I46 a marriage agent is a person and their Gender and Date of
+      // birth are theirs to record — the form shows both fields, so it must send
+      // them too, or they save as null. The DOB picker is capped at today and
+      // the API rejects a future date.
       const fields = isAgency
-        ? (['city', 'address', 'contactPhone', 'bio'] as const)
+        ? (['gender', 'dateOfBirth', 'city', 'address', 'contactPhone', 'bio'] as const)
         : ([
             'gender',
             'dateOfBirth',

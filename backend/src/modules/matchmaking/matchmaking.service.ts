@@ -262,6 +262,15 @@ export class MatchmakingService {
 
   async suggestions(actor: AuthUser, q: SuggestionsQueryDto): Promise<PaginatedResult<Suggestion>> {
     const { page, limit } = q;
+    // A client whose profile an agent built does not browse the directory
+    // themselves — the agent runs their matchmaking. Once they log in with
+    // their own account they still see interests received and any fixed match
+    // (those endpoints are unaffected), but the browse list is empty: they are
+    // not a shopper on the marketplace. An agent acting for them is the actor
+    // in that case and has no managedByAgentId, so this never blocks the agent.
+    if (actor.managedByAgentId) {
+      return paginate([], 0, page, limit);
+    }
     const me = await this.resolveSubject(actor, q.profileId);
     await this.assertMatchmakingOpen(me);
 
@@ -868,6 +877,14 @@ export class MatchmakingService {
     toProfileId: string,
     fromProfileId?: string,
   ): Promise<Interest> {
+    // A managed client does not send interests from their own account — their
+    // agent proposes matches for them. The agent acting on their behalf is a
+    // different actor (no managedByAgentId) and is not blocked here.
+    if (actor.managedByAgentId) {
+      throw new ForbiddenException(
+        'Your profile is managed by an agent, who runs your matchmaking. You cannot send interests yourself.',
+      );
+    }
     const from = await this.resolveSubject(actor, fromProfileId);
     await this.assertMatchmakingOpen(from);
     await this.assertIdentityVerified(from, 'send an interest');

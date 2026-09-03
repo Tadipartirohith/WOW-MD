@@ -15,6 +15,8 @@ interface Viewable {
     bio: string | null;
     identityVerified: boolean;
     profileCode?: string;
+    /** 'bride' | 'groom' when a family member manages this profile. */
+    managingFor?: string | null;
     /** Null when the person runs their own profile, which needs no label. */
     stewardship: {
       kind: 'family' | 'agency';
@@ -197,6 +199,21 @@ export default function ProfilePreview({
                     Their {data.profile.stewardship.relation.toLowerCase()}
                   </p>
                 )}
+              </div>
+            )}
+
+            {/*
+              What the managed person is — Bride or Groom — at the foot of the
+              profile, for a family member opening it from chat (EZ1-I41).
+            */}
+            {data.profile.managingFor && (
+              <div className="rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm">
+                <p className="text-gray-600">
+                  Managed Profile For:{' '}
+                  <span className="font-medium text-gray-800">
+                    {data.profile.managingFor === 'bride' ? 'Bride' : 'Groom'}
+                  </span>
+                </p>
               </div>
             )}
 

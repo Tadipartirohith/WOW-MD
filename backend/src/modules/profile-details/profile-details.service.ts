@@ -29,6 +29,7 @@ import {
   UserRole,
 } from '../../common/enums';
 import { Interest } from '../matchmaking/entities/interest.entity';
+import { ageBand } from '../users/dto/public-profile.dto';
 
 /** The sections a profile has to complete before it is considered ready. */
 export const REQUIRED_SECTIONS = [
@@ -607,10 +608,14 @@ export class ProfileDetailsService {
       profile.managedByUserId === actor.userId ||
       actor.role === UserRole.ADMIN;
 
+    // Whether the caller may see the full biodata, or only the basic card.
+    let basicOnly = false;
+
     if (!controlsIt) {
       if (profile.lifecycle !== ProfileLifecycle.ACTIVE) {
         throw new NotFoundException('That profile is not available');
       }
+      // Explicitly PRIVATE stays fully shut, before and after any interest.
       if (profile.visibility === ProfileVisibility.PRIVATE) {
         throw new ForbiddenException('That profile is private');
       }
@@ -630,12 +635,38 @@ export class ProfileDetailsService {
               ],
             })
           : null;
-        if (!matched) {
-          throw new ForbiddenException(
-            'This profile opens once the interest has been accepted on both sides.',
-          );
-        }
+        // Before mutual acceptance the counterpart is not shut out entirely —
+        // they see a basic card (name, age band, gender, city, one photo) so
+        // they can decide whether to express interest at all. The private
+        // biodata — contact, family, horoscope, the full gallery — stays behind
+        // the mutual accept. A profile marked PRIVATE (above) is exempt.
+        if (!matched) basicOnly = true;
       }
+    }
+
+    if (basicOnly) {
+      return {
+        limited: true as const,
+        // Empty, not absent: the profile view renders these lists, and the basic
+        // card deliberately carries none of the private biodata behind them.
+        siblings: [],
+        assets: [],
+        details: null,
+        contact: null,
+        profile: {
+          id: profile.id,
+          profileCode: profile.profileCode,
+          displayName: profile.displayName,
+          city: profile.city,
+          gender: profile.gender,
+          // An age band, not the exact date of birth: enough to judge a match,
+          // not the full record, which is what the mutual accept unlocks.
+          ageRange: ageBand(profile.dateOfBirth),
+          photos: (profile.photos ?? []).slice(0, 1),
+          identityVerified: Boolean(profile.idVerifiedAt),
+          stewardship: await this.stewardshipOf(profile),
+        },
+      };
     }
 
     const shareable = await this.findShareable(profileId);
@@ -653,6 +684,9 @@ export class ProfileDetailsService {
         // Whether a verification officer has seen the document, which is the
         // thing families ask about before anything else.
         identityVerified: Boolean(profile.idVerifiedAt),
+        // What the managed person is — bride or groom — shown at the foot of the
+        // profile when a family member opens it from chat (EZ1-I41).
+        managingFor: profile.managingFor ?? null,
         // Who is answering for this person, and what they are to them.
         //
         // A family reading a biodata wants to know who they will actually be
