@@ -247,6 +247,25 @@ export default function Dashboard() {
     enabled: isVendor && Boolean(active?.id),
   });
 
+  // A wedding planner is a provider who is not a vendor. Their dashboard opens
+  // onto their clients rather than a shop window, so it carries an "action
+  // required" band of the things waiting on them (EZ1-I39).
+  const isPlanner = isProvider && !isVendor;
+  const { data: plannerBook } = useQuery({
+    queryKey: ['planner-clients-summary'],
+    queryFn: async () =>
+      (await api.get('/planner/clients')).data as {
+        clients: { status: string }[];
+        requests: unknown[];
+      },
+    retry: false,
+    enabled: isPlanner,
+  });
+  const plannerClients = plannerBook?.clients ?? [];
+  const activeClients = plannerClients.filter((c) => c.status === 'active').length;
+  const upcomingClients = plannerClients.filter((c) => c.status === 'upcoming').length;
+  const plannerRequests = plannerBook?.requests?.length ?? 0;
+
   const reduce = useReducedMotion();
   const firstName = (profile?.displayName ?? '').trim().split(' ')[0];
 
@@ -368,6 +387,42 @@ export default function Dashboard() {
             to="/accounts"
           />
         </div>
+      )}
+
+      {/*
+        The planner's action band. A planner opens the app to answer the
+        couples waiting on them and to keep their weddings moving, not to look
+        at a shop window — so the things that need them come first, each with the
+        one action that clears it (EZ1-I39).
+      */}
+      {isPlanner && (
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-gray-500">Action required</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Counter
+              label="Requests to answer"
+              value={plannerRequests}
+              to="/bookings"
+              tone={plannerRequests > 0 ? 'text-amber-700' : undefined}
+            />
+            <Counter label="Active weddings" value={activeClients} to="/my-clients" />
+            <Counter label="Upcoming weddings" value={upcomingClients} to="/my-clients" />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link className="btn" to="/bookings">
+              Review requests
+            </Link>
+            <Link className="btn-outline" to="/my-clients">
+              Manage clients &amp; tasks
+            </Link>
+            <Link className="btn-outline" to="/availability">
+              Set availability
+            </Link>
+            <Link className="btn-outline" to="/events">
+              View events
+            </Link>
+          </div>
+        </section>
       )}
 
       {/*
