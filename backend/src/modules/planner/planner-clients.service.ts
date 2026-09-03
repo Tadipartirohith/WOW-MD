@@ -109,11 +109,14 @@ export class PlannerClientsService {
     if (plans.length === 0) return { clients: [], requests: await this.openRequests(actor) };
 
     const hostIds = [...new Set(plans.map((p) => p.userId))];
-    const [users, profiles, events, tasks] = await Promise.all([
+    const [users, profiles, events, tasks, bookings] = await Promise.all([
       this.users.find({ where: { id: In(hostIds) }, select: ['id', 'email', 'phone', 'role'] }),
       this.profiles.find({ where: { userId: In(hostIds) } }),
       this.events.find({ where: { userId: In(hostIds) }, order: { eventDate: 'ASC' } }),
       this.tasks.find({ where: { planId: In(plans.map((p) => p.id)) } }),
+      // The client's bookings, so the card can carry where each wedding's
+      // spending has got to, not only its tasks (EZ1-I7).
+      this.bookings.find({ where: { userId: In(hostIds) } }),
     ]);
 
     const userById = new Map(users.map((u) => [u.id, u]));
@@ -132,6 +135,16 @@ export class PlannerClientsService {
 
       const { bride, groom } = this.couple(user?.role ?? null, own);
 
+      // A booking is "confirmed" once the vendor has taken the job; anything
+      // earlier (requested, quoted, accepted) is still being negotiated.
+      const clientBookings = bookings.filter((b) => b.userId === plan.userId);
+      const confirmed = clientBookings.filter((b) =>
+        [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED].includes(
+          b.status,
+        ),
+      ).length;
+      const pendingBookings = clientBookings.length - confirmed;
+
       return {
         userId: plan.userId,
         planId: plan.id,
@@ -147,6 +160,11 @@ export class PlannerClientsService {
         tasks: {
           total: planTasks.length,
           done: planTasks.filter((t) => t.status === TaskStatus.DONE).length,
+        },
+        bookings: {
+          total: clientBookings.length,
+          confirmed,
+          pending: pendingBookings,
         },
         status: this.lifecycle(plan.weddingDate ?? null, planTasks),
       };

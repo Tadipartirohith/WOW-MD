@@ -31,6 +31,7 @@ interface Client {
   events: number;
   nextEvent: { id: string; name: string; date: string | null } | null;
   tasks: { total: number; done: number };
+  bookings: { total: number; confirmed: number; pending: number };
   status: 'active' | 'upcoming' | 'completed';
 }
 
@@ -192,6 +193,16 @@ export default function PlannerClients() {
               <Row label="Where" value={c.location ?? '-'} />
               <Row label="Events" value={String(c.events)} />
               <Row label="Tasks done" value={`${c.tasks.done} of ${c.tasks.total}`} />
+              <Row
+                label="Bookings"
+                value={
+                  c.bookings.total === 0
+                    ? 'None yet'
+                    : `${c.bookings.confirmed} confirmed${
+                        c.bookings.pending > 0 ? `, ${c.bookings.pending} pending` : ''
+                      }`
+                }
+              />
               <Row
                 label="Next"
                 value={
