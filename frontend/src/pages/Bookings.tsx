@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
-import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can } from '../lib/permissions';
+import { BOOKING_STATUS_LABEL, MILESTONE_LABEL, Permission, can, canAny } from '../lib/permissions';
 import ProviderBookings from '../components/ProviderBookings';
 import BookingChat from '../components/BookingChat';
 import PaymentMethodPicker from '../components/PaymentMethodPicker';
@@ -92,7 +92,13 @@ export default function Bookings() {
   const canPay = can(permissions, Permission.BOOKING_PAY);
   const canRaiseCase = can(permissions, Permission.CASE_RAISE);
   const canSell = can(permissions, Permission.BOOKING_READ_INCOMING);
-  const canQuote = can(permissions, Permission.VENDOR_LISTING_MANAGE);
+  // A planner answers an incoming request the same way a vendor does — with a
+  // quotation — but only the vendor permission was checked here, so a planner
+  // saw nothing but Decline (EZ1-I67). The server already lets either seller quote.
+  const canQuote = canAny(permissions, [
+    Permission.VENDOR_LISTING_MANAGE,
+    Permission.PLANNER_LISTING_MANAGE,
+  ]);
 
   const [params] = useSearchParams();
   const highlight = params.get('highlight');
