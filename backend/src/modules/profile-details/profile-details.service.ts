@@ -283,6 +283,13 @@ export class ProfileDetailsService {
         ...(dto.horoscopeExpectation ? { horoscopeExpectation: dto.horoscopeExpectation } : {}),
         ...(dto.kujaDosham ? { kujaDosham: dto.kujaDosham } : {}),
         ...(dto.preferredStars ? { preferredStars: dto.preferredStars } : {}),
+        // Rashi, Padam and Gothram were accepted by the DTO and shown on the
+        // form, but never written here — so they saved as nothing and came back
+        // empty on the next visit (EZ1-I15). They live in the same bag as the
+        // rest of the horoscope preferences.
+        ...(dto.preferredRashi ? { preferredRashi: dto.preferredRashi } : {}),
+        ...(dto.preferredPadam ? { preferredPadam: dto.preferredPadam } : {}),
+        ...(dto.preferredGothram ? { preferredGothram: dto.preferredGothram } : {}),
       },
       ...(dto.horoscopeDocumentUrl ? { horoscopeDocumentUrl: dto.horoscopeDocumentUrl } : {}),
     });

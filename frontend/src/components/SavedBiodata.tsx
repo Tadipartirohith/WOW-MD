@@ -30,6 +30,17 @@ interface Asset {
  * Rendered from the server's response rather than from any local draft, so it
  * cannot show something that failed to save.
  */
+/** How the two closed-list horoscope preferences read back, in plain words. */
+const HOROSCOPE_EXPECTATION_LABEL: Record<string, string> = {
+  required: 'Required',
+  preferred: 'Preferred',
+  not_required: 'No preference',
+};
+const KUJA_PREF_LABEL: Record<string, string> = {
+  must_match: 'Must match',
+  no_objection: 'No objection',
+};
+
 /** Rupees, grouped the Indian way — lakhs and crores, not thousands. */
 function rupees(value: number | string): string {
   const amount = typeof value === 'string' ? Number(value) : value;
@@ -214,6 +225,43 @@ export default function SavedBiodata({
             : null}
         </Row>
       </Group>
+
+      {/*
+        The horoscope preferences a family entered, read back. Shown only when
+        they gave at least one — a family that does not use horoscopes should
+        not see a column of "Not set". Same values as the form on every portal
+        writes (EZ1-I15).
+      */}
+      {['horoscopeExpectation', 'kujaDosham', 'preferredStars', 'preferredRashi', 'preferredPadam', 'preferredGothram'].some(
+        (k) => inBag('partnerPreferences', k),
+      ) && (
+        <Group title="Horoscope preferences">
+          {inBag('partnerPreferences', 'horoscopeExpectation') && (
+            <Row label="Horoscope">
+              {HOROSCOPE_EXPECTATION_LABEL[inBag('partnerPreferences', 'horoscopeExpectation')!] ??
+                inBag('partnerPreferences', 'horoscopeExpectation')}
+            </Row>
+          )}
+          {inBag('partnerPreferences', 'kujaDosham') && (
+            <Row label="Kuja dosham">
+              {KUJA_PREF_LABEL[inBag('partnerPreferences', 'kujaDosham')!] ??
+                inBag('partnerPreferences', 'kujaDosham')}
+            </Row>
+          )}
+          {inBag('partnerPreferences', 'preferredStars') && (
+            <Row label="Star / Nakshatra">{inBag('partnerPreferences', 'preferredStars')}</Row>
+          )}
+          {inBag('partnerPreferences', 'preferredRashi') && (
+            <Row label="Rashi">{inBag('partnerPreferences', 'preferredRashi')}</Row>
+          )}
+          {inBag('partnerPreferences', 'preferredPadam') && (
+            <Row label="Padam">{inBag('partnerPreferences', 'preferredPadam')}</Row>
+          )}
+          {inBag('partnerPreferences', 'preferredGothram') && (
+            <Row label="Gothram">{inBag('partnerPreferences', 'preferredGothram')}</Row>
+          )}
+        </Group>
+      )}
 
       {assets.length > 0 && (
         <Group title="Family assets">
