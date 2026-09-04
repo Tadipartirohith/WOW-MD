@@ -1124,7 +1124,11 @@ export class BookingsService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(await this.withProviderNames(data), total, q.page, q.limit);
+    // A provider's incoming list is where they read who is asking, for what and
+    // when — so it needs the client context (name, event, service), not only the
+    // provider names. Without it every row read "Customer" (EZ1-I68).
+    const named = await this.withProviderNames(data);
+    return paginate(await this.withClientContext(named), total, q.page, q.limit);
   }
 
   /**
