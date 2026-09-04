@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
-import { Permission, can } from '../lib/permissions';
+import { Permission, can, isProvider, MOBILE_10_PATTERN } from '../lib/permissions';
 import IdentityPanel from '../components/IdentityPanel';
 import { formatDate } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
@@ -55,7 +55,15 @@ const MANAGING_FOR_LABEL: Record<string, string> = { bride: 'Bride', groom: 'Gro
 export default function Profile() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const role = useAuth((s) => s.user?.role);
   const hasBiodata = can(permissions, Permission.MATCH_BROWSE);
+  /*
+   * A vendor or planner signs in with an email, so the phone on this page is
+   * simply their mobile number, not an "alternate" to a sign-in number they do
+   * not have. An individual signs in with a mobile, so for them it stays the
+   * second, family number. Same field, honest label for each.
+   */
+  const providerPortal = isProvider(role);
   /*
    * Only a steward is asked these. A bride filling in her own profile has no
    * answer to "who are you managing this for", and asking anyway is how a form
@@ -89,6 +97,7 @@ export default function Profile() {
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // A profile with nothing on it opens straight into the form; there is
   // nothing to read back yet.
@@ -113,10 +122,30 @@ export default function Profile() {
     });
   }, [data]);
 
+  /**
+   * The same mobile-number rule the server applies, caught in the field before
+   * a round trip. A rejection must never cost the person what they typed — the
+   * form state is left exactly as it is, one field is marked, and the rest of a
+   * page of correct answers stays put.
+   */
+  function validate(): Record<string, string> {
+    const errors: Record<string, string> = {};
+    if (form.contactPhone) {
+      const digits = form.contactPhone.replace(/[\s-]/g, '').replace(/^\+91/, '');
+      if (!MOBILE_10_PATTERN.test(digits)) {
+        errors.contactPhone = 'Enter a 10-digit Indian mobile number';
+      }
+    }
+    return errors;
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setNotice('');
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     try {
       // Blank optional fields are omitted rather than sent as empty strings,
       // which the validators would reject as malformed rather than absent.
@@ -153,8 +182,11 @@ export default function Profile() {
     }
   }
 
-  const set = (key: keyof typeof empty) => (e: { target: { value: string } }) =>
+  const set = (key: keyof typeof empty) => (e: { target: { value: string } }) => {
     setForm((f) => ({ ...f, [key]: e.target.value }));
+    // The red mark clears the moment they start fixing the field it is on.
+    setFieldErrors((fe) => (fe[key] ? { ...fe, [key]: '' } : fe));
+  };
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
@@ -227,7 +259,9 @@ export default function Profile() {
                 <Saved label="Relationship with the user">{data.stewardRelation}</Saved>
               </>
             )}
-            <Saved label="Alternate mobile">{data.contactPhone}</Saved>
+            <Saved label={providerPortal ? 'Mobile number' : 'Alternate mobile'}>
+              {data.contactPhone}
+            </Saved>
             <Saved label="Address">{data.address}</Saved>
             <Saved label="About you">{data.bio}</Saved>
           </dl>
@@ -342,16 +376,31 @@ export default function Profile() {
                 <input className="input mt-1" value={form.city} onChange={set('city')} />
               </label>
               <label className="block text-sm">
-                <span className="text-gray-700">Alternate mobile</span>
+                <span className="text-gray-700">
+                  {providerPortal ? 'Mobile number' : 'Alternate mobile'}
+                </span>
                 <input
-                  className="input mt-1"
+                  className={`input mt-1${
+                    fieldErrors.contactPhone
+                      ? ' border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                      : ''
+                  }`}
                   placeholder="+919876543210"
                   value={form.contactPhone}
                   onChange={set('contactPhone')}
+                  aria-invalid={Boolean(fieldErrors.contactPhone)}
                 />
-                <span className="mt-1 block text-xs text-gray-500">
-                  A second number. The one you sign in with is under Security.
-                </span>
+                {fieldErrors.contactPhone ? (
+                  <span className="mt-1 block text-xs text-red-600">
+                    {fieldErrors.contactPhone}
+                  </span>
+                ) : (
+                  <span className="mt-1 block text-xs text-gray-500">
+                    {providerPortal
+                      ? 'A number clients can reach you on.'
+                      : 'A second number. The one you sign in with is under Security.'}
+                  </span>
+                )}
               </label>
             </div>
 
