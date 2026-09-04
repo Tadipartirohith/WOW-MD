@@ -1,8 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
   IsEnum,
-  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -11,12 +9,12 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { IsStrictNumber } from '../../../common/decorators/strict-type.decorator';
 import { VendorCategory } from '../../../common/enums';
 
 export class BudgetInsightDto {
   @ApiProperty({ example: 1500000, minimum: 1, maximum: 1_000_000_000 })
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsStrictNumber({ maxDecimalPlaces: 2 })
   @Min(1)
   @Max(1_000_000_000)
   totalBudget: number;

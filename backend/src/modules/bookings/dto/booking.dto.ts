@@ -3,7 +3,6 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
-  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -14,6 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
+import { IsStrictNumber } from '../../../common/decorators/strict-type.decorator';
 import { BookingStatus, PaymentMethod, PaymentMilestone, ProviderType } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -32,7 +32,7 @@ export class CreateBookingDto {
    */
   @ApiPropertyOptional({ example: 50000, minimum: 1, maximum: 100_000_000 })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsStrictNumber({ maxDecimalPlaces: 2 })
   @Min(1, { message: 'A booking amount must be greater than zero' })
   @Max(100_000_000)
   amount?: number;
@@ -107,7 +107,7 @@ export class CreateBookingDto {
    */
   @ApiPropertyOptional({ example: 50000, minimum: 0, maximum: 100_000_000 })
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsStrictNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(100_000_000)
   expectedBudget?: number;

@@ -18,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
+import { IsStrictString } from '../../../common/decorators/strict-type.decorator';
 import { Transform } from 'class-transformer';
 import { ProfileVisibility } from '../../../common/enums';
 import { MOBILE_PATTERN, NAME_PATTERN, normaliseMobile } from '../../../common/util/identity-fields';
@@ -54,14 +55,14 @@ export class PreferencesDto {
 
 export class CreateProfileDto {
   @ApiProperty({ minLength: 2, maxLength: 120 })
-  @IsString()
+  @IsStrictString()
   @MinLength(2)
   @MaxLength(120)
   @Matches(NAME_PATTERN, { message: 'A name may only contain letters and spaces' })
   displayName: string;
 
   @ApiPropertyOptional({ maxLength: 30 })
-  @IsOptional() @IsString() @MaxLength(30)
+  @IsOptional() @IsStrictString() @MaxLength(30)
   gender?: string;
 
   @ApiPropertyOptional({ format: 'date' })
@@ -70,7 +71,7 @@ export class CreateProfileDto {
   dateOfBirth?: string;
 
   @ApiPropertyOptional({ maxLength: 80 })
-  @IsOptional() @IsString() @MaxLength(80)
+  @IsOptional() @IsStrictString() @MaxLength(80)
   city?: string;
 
   /**
