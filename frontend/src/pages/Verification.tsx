@@ -80,15 +80,6 @@ interface Officer {
   kind?: 'officer' | 'agent';
 }
 
-/** Who the picker is offering. `all` is both, which is the usual case. */
-type AllocPool = 'all' | 'officer' | 'agent';
-
-const POOL_LABEL: Record<AllocPool, string> = {
-  all: 'Everyone',
-  officer: 'Officers',
-  agent: 'Agents',
-};
-
 /**
  * Who to send this to.
  *
@@ -111,53 +102,24 @@ function AllocateePicker({
   value: string;
   onChange: (id: string) => void;
 }) {
-  const [pool, setPool] = useState<AllocPool>('all');
-  const shown = officers.filter((o) => pool === 'all' || (o.kind ?? 'officer') === pool);
-  const group = (kind: 'officer' | 'agent') =>
-    shown.filter((o) => (o.kind ?? 'officer') === kind);
-
-  const option = (o: Officer) => (
-    <option key={o.id} value={o.id}>
-      {o.name}
-      {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
-    </option>
-  );
+  // Verification is official work: only a Verification Officer may be allocated
+  // a request, never a commercial agent (EZ1-I22). Agents are filtered out of
+  // the roster here rather than shown and refused later.
+  const eligible = officers.filter((o) => (o.kind ?? 'officer') === 'officer');
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
-      <label className="text-sm">
-        <span className="text-gray-700">Show</span>
-        <select
-          className="input mt-1 w-32"
-          value={pool}
-          onChange={(e) => setPool(e.target.value as AllocPool)}
-        >
-          {(Object.keys(POOL_LABEL) as AllocPool[]).map((k) => (
-            <option key={k} value={k}>
-              {POOL_LABEL[k]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="text-sm">
-        <span className="text-gray-700">Allocate to</span>
-        <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">Lightest workload (recommended)</option>
-          {group('officer').length > 0 && (
-            <optgroup label="Officers">{group('officer').map(option)}</optgroup>
-          )}
-          {/*
-            Labelled as what it is. An agent is a commercial participant, and an
-            administrator picking one should know that without cross-referencing
-            the staff list. The server refuses an agent who introduced the
-            applicant, or any agent against another agency.
-          */}
-          {group('agent').length > 0 && (
-            <optgroup label="Agents (commercial)">{group('agent').map(option)}</optgroup>
-          )}
-        </select>
-      </label>
-    </div>
+    <label className="text-sm">
+      <span className="text-gray-700">Allocate to</span>
+      <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Lightest workload (recommended)</option>
+        {eligible.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+            {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
