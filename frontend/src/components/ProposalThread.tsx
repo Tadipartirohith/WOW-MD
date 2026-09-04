@@ -70,7 +70,7 @@ export default function ProposalThread({ interestId }: { interestId: string }) {
           >
             <p className="font-medium">{side.profile.displayName}</p>
             <p className="text-xs text-gray-500">
-              {side.isMine ? 'Your client' : (side.handledBy ?? 'Handled directly')}
+              {side.isMine ? 'Managed profile' : (side.handledBy ?? 'Handled directly')}
             </p>
           </div>
         ))}

@@ -1555,8 +1555,21 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
               options={CITIES}
             />
           </Field>
-          <Field label="Salary" hint="Hidden unless you tick the box below">
-            <input className="input mt-1" value={String(values.salary ?? '')} onChange={set('salary')} />
+          <Field label="Salary" hint="Numbers only, annual in rupees. Hidden unless you tick the box below">
+            {/*
+              Digits only — a salary is a number, and the field used to take
+              letters and symbols and store them as-is (EZ1-I59). Non-numeric
+              input is dropped as it is typed rather than saved and shown back.
+            */}
+            <input
+              className="input mt-1"
+              inputMode="numeric"
+              placeholder="e.g. 1200000"
+              value={String(values.salary ?? '')}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, salary: e.target.value.replace(/\D/g, '') }))
+              }
+            />
           </Field>
         </div>
       )}
@@ -1566,8 +1579,17 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
           <Field label="Business name">
             <input className="input mt-1" value={String(values.businessName ?? '')} onChange={set('businessName')} required />
           </Field>
-          <Field label="Business income" hint="Hidden unless you tick the box below">
-            <input className="input mt-1" value={String(values.businessIncome ?? '')} onChange={set('businessIncome')} />
+          <Field label="Business income" hint="Numbers only, annual in rupees. Hidden unless you tick the box below">
+            {/* Digits only, same as Salary (EZ1-I59). */}
+            <input
+              className="input mt-1"
+              inputMode="numeric"
+              placeholder="e.g. 1500000"
+              value={String(values.businessIncome ?? '')}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, businessIncome: e.target.value.replace(/\D/g, '') }))
+              }
+            />
           </Field>
           <Field label="Business location">
             <input className="input mt-1" value={String(values.businessLocation ?? '')} onChange={set('businessLocation')} />

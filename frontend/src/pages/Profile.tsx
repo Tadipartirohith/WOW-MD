@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Permission, can, isProvider, MOBILE_10_PATTERN } from '../lib/permissions';
-import IdentityPanel from '../components/IdentityPanel';
 import { formatDate } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
 
@@ -259,9 +258,7 @@ export default function Profile() {
                 <Saved label="Relationship with the user">{data.stewardRelation}</Saved>
               </>
             )}
-            <Saved label={providerPortal ? 'Mobile number' : 'Alternate mobile'}>
-              {data.contactPhone}
-            </Saved>
+            <Saved label="Mobile number">{data.contactPhone}</Saved>
             <Saved label="Address">{data.address}</Saved>
             <Saved label="About you">{data.bio}</Saved>
           </dl>
@@ -376,9 +373,7 @@ export default function Profile() {
                 <input className="input mt-1" value={form.city} onChange={set('city')} />
               </label>
               <label className="block text-sm">
-                <span className="text-gray-700">
-                  {providerPortal ? 'Mobile number' : 'Alternate mobile'}
-                </span>
+                <span className="text-gray-700">Mobile number</span>
                 <input
                   className={`input mt-1${
                     fieldErrors.contactPhone
@@ -478,8 +473,12 @@ export default function Profile() {
           That is what gets circulated.
         </p>
       )}
-
-      {data?.id && <IdentityPanel profileId={data.id} />}
+      {/*
+        Identity lives on the biodata, not here. It was shown in both places,
+        which duplicated the Aadhaar details and made this page longer than it
+        needed to be (EZ1-I60). The verification flow and its APIs are unchanged
+        — this only removes the second copy.
+      */}
     </div>
   );
 }
