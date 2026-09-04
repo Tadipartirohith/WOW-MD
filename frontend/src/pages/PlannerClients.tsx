@@ -38,6 +38,7 @@ interface Client {
 interface Request {
   bookingId: string;
   userId: string;
+  name: string;
   amount: string;
   currency: string;
   requestedAt: string;
@@ -106,11 +107,29 @@ export default function PlannerClients() {
             {data!.requests.length} request{data!.requests.length === 1 ? '' : 's'} waiting on you
           </h2>
           <p className="mt-0.5 text-sm text-gray-600">
-            A couple has asked you to plan their wedding and has not heard back.
+            A couple has asked you to plan their wedding and has not heard back. These are not
+            clients yet — they become clients once you accept and the booking is confirmed.
           </p>
-          <Link className="btn mt-3 inline-flex" to="/bookings">
-            Answer them
-          </Link>
+          <ul className="mt-3 divide-y">
+            {data!.requests.map((r) => (
+              <li
+                key={r.bookingId}
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+              >
+                <div>
+                  <p className="font-medium text-gray-900">{r.name}</p>
+                  <p className="text-xs text-gray-500">
+                    Asked {formatDate(r.requestedAt)}
+                    {Number(r.amount) > 0 &&
+                      ` · ${r.currency} ${Number(r.amount).toLocaleString('en-IN')}`}
+                  </p>
+                </div>
+                <Link className="btn-outline btn-sm" to="/bookings">
+                  Review
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -157,9 +176,11 @@ export default function PlannerClients() {
 
       {!isLoading && rows.length === 0 && (
         <div className="card">
-          <EmptyState icon={Users} title="No clients yet">
-            A couple becomes your client when they book you and the booking is confirmed. Until
-            then they will not appear here.
+          <EmptyState icon={Users} title="No confirmed clients yet">
+            A couple becomes your client when they book you and the booking is confirmed.
+            {(data?.requests.length ?? 0) > 0
+              ? ' You have requests waiting above — accept one to get started.'
+              : ' Until then they will not appear here.'}
           </EmptyState>
         </div>
       )}

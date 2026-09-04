@@ -198,15 +198,29 @@ export class PlannerClientsService {
       select: ['id'],
     });
     const ids = new Set(mine.map((p) => p.id));
-    return rows
-      .filter((b) => ids.has(b.providerId))
-      .map((b) => ({
-        bookingId: b.id,
-        userId: b.userId,
-        amount: b.amount,
-        currency: b.currency,
-        requestedAt: b.createdAt,
-      }));
+    const requests = rows.filter((b) => ids.has(b.providerId));
+
+    // Who is asking, by name — a request the planner cannot put a name to reads
+    // as noise, and the My Clients page is where they decide whether to take it
+    // on (EZ1-I56).
+    const userIds = [...new Set(requests.map((b) => b.userId))];
+    const [profiles, users] = await Promise.all([
+      userIds.length ? this.profiles.find({ where: { userId: In(userIds) } }) : Promise.resolve([]),
+      userIds.length ? this.users.find({ where: { id: In(userIds) } }) : Promise.resolve([]),
+    ]);
+    const nameOf = (uid: string) =>
+      profiles.find((p) => p.userId === uid)?.displayName ??
+      users.find((u) => u.id === uid)?.email ??
+      'A couple';
+
+    return requests.map((b) => ({
+      bookingId: b.id,
+      userId: b.userId,
+      name: nameOf(b.userId),
+      amount: b.amount,
+      currency: b.currency,
+      requestedAt: b.createdAt,
+    }));
   }
 
   /**

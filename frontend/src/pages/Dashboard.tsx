@@ -334,12 +334,20 @@ export default function Dashboard() {
         />
         {isProvider && (
           <>
-            <Counter
-              label="New requests"
-              value={newRequests?.total ?? 0}
-              to="/bookings"
-              tone={(newRequests?.total ?? 0) > 0 ? 'text-amber-700' : undefined}
-            />
+            {/*
+              A planner already has "Requests to answer" in the action band below,
+              off the same requested-booking count — so this generic card would be
+              the same number under a second name, which is the confusion reported
+              in EZ1-I52. It stays for a vendor, whose dashboard has no such band.
+            */}
+            {!isPlanner && (
+              <Counter
+                label="New requests"
+                value={newRequests?.total ?? 0}
+                to="/bookings"
+                tone={(newRequests?.total ?? 0) > 0 ? 'text-amber-700' : undefined}
+              />
+            )}
             <Counter
               label="Bookings in total"
               value={incoming?.total ?? 0}
