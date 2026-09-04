@@ -155,18 +155,12 @@ export default function ProfilePreview({
             )}
 
             {/*
-              A profile shared only as a basic card. The biodata is not missing —
-              it is held back until both sides accept — so say that once, plainly,
-              rather than rendering every section as a row of "Not shared" (EZ1-I51).
+              Before mutual acceptance a MATCHES_ONLY profile shares a basic
+              card: the basic biodata a family reads to decide whether to send
+              interest — community, education and occupation — while the private
+              detail (family, horoscope, marital history, contact) stays behind
+              the accept (EZ1-I37). A fully shared profile shows everything.
             */}
-            {data.limited ? (
-              <div className="rounded-sm border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                The full biodata — religion and community, education, family, horoscope and marital
-                details — is shared once you both accept interest. For now this is the basic card the
-                family chose to show.
-              </div>
-            ) : (
-              <>
             <Group title="Religion and community">
               <Row label="Religion">{str('religion')}</Row>
               <Row label="Caste">{str('caste')}</Row>
@@ -176,13 +170,24 @@ export default function ProfilePreview({
 
             <Group title="Education and occupation">
               <Row label="Qualification">{str('highestQualification')}</Row>
-              <Row label="Course">{str('course')}</Row>
               <Row label="Occupation">{str('occupationStatus')?.replace(/_/g, ' ')}</Row>
-              <Row label="Employer">
-                {String(bag('employment').company ?? bag('business').businessName ?? '') || null}
-              </Row>
+              {!data.limited && <Row label="Course">{str('course')}</Row>}
+              {!data.limited && (
+                <Row label="Employer">
+                  {String(bag('employment').company ?? bag('business').businessName ?? '') || null}
+                </Row>
+              )}
             </Group>
 
+            {data.limited && (
+              <p className="text-xs text-gray-500">
+                Family, horoscope and the rest of the biodata are shared once you both accept
+                interest.
+              </p>
+            )}
+
+            {!data.limited && (
+              <>
             <Group title="Family">
               <Row label="Native place">{str('nativePlace')}</Row>
               <Row label="Father">{String(bag('father').name ?? '') || null}</Row>

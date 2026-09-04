@@ -652,13 +652,29 @@ export class ProfileDetailsService {
     }
 
     if (basicOnly) {
+      // The basic biodata a family reads before deciding to send interest —
+      // community, education and occupation — travels with the basic card, while
+      // family, horoscope, marital history and contact stay behind the mutual
+      // accept (EZ1-I37). Only these fields are copied, so nothing private leaks.
+      const detail = await this.details.findOne({ where: { profileId } });
+      const basicDetails = detail
+        ? {
+            religion: detail.religion,
+            caste: detail.caste,
+            subCaste: detail.subCaste,
+            motherTongue: detail.motherTongue,
+            highestQualification: detail.highestQualification,
+            occupationStatus: detail.occupationStatus,
+            heightCm: detail.heightCm,
+          }
+        : null;
       return {
         limited: true as const,
         // Empty, not absent: the profile view renders these lists, and the basic
         // card deliberately carries none of the private biodata behind them.
         siblings: [],
         assets: [],
-        details: null,
+        details: basicDetails,
         contact: null,
         profile: {
           id: profile.id,
