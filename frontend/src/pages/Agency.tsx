@@ -176,9 +176,16 @@ export default function Agency() {
         <div className="card space-y-2">
           <div>
             <h2 className="section-title">Your ledger</h2>
+            {/*
+              The two fees settle differently, and saying so is the fix for a
+              ledger that read as if a profile creation fee were held in escrow
+              (EZ1-I10). Only a match settlement is held.
+            */}
             <p className="text-sm text-gray-600">
-              Fees are held in escrow and reach you when the match is fixed. You are paid for the
-              outcome, not the effort.
+              A <span className="font-medium">match settlement</span> fee is held in escrow and
+              reaches you when the match is fixed — you are paid for the outcome. A{' '}
+              <span className="font-medium">profile creation</span> fee is settled as soon as it is
+              paid; it is not held in escrow.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-4">
