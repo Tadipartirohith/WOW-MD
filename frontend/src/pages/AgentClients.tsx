@@ -174,7 +174,12 @@ export default function AgentClients() {
                     </button>
                   </>
                 )}
-                <Link className="btn-outline text-xs" to="/client-profiles">
+                {/*
+                  Open this client's own biodata, not the generic client list —
+                  the button carries the profile id so it lands on the right
+                  person's complete bio-data (EZ1-I64).
+                */}
+                <Link className="btn-outline text-xs" to={`/biodata?profileId=${c.profileId}`}>
                   Open profile
                 </Link>
               </div>

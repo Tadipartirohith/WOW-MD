@@ -5,11 +5,17 @@ import { useAuth } from '../store/auth';
 import {
   CLAIM_STATUS_LABEL,
   LIFECYCLE_LABEL,
+  MOBILE_10_PATTERN,
   Permission,
   ProfileClaimStatus,
   ProfileLifecycle,
   can,
 } from '../lib/permissions';
+
+/** A 10-digit Indian mobile, tolerating spaces, hyphens and a +91 prefix. */
+function isValidMobile(value: string): boolean {
+  return MOBILE_10_PATTERN.test(value.replace(/[\s-]/g, '').replace(/^\+91/, ''));
+}
 import ConsentFields, { ConsentDraft, consentPayload, emptyConsent } from '../components/ConsentFields';
 import ShareProfileDialog from '../components/ShareProfileDialog';
 import PhotoUploader from '../components/PhotoUploader';
@@ -211,6 +217,7 @@ export default function ManagedProfiles() {
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (!isValidMobile(draft.contactPhone)) return;
     create.mutate(false);
   }
 
@@ -315,16 +322,30 @@ export default function ManagedProfiles() {
           )}
           <div>
             <label className="label">Mobile number</label>
+            {/*
+              Checked in the field before anything is sent — an invalid or
+              incomplete number must not reach the invite, which is where the
+              verification code goes (EZ1-I63). The server enforces the same rule.
+            */}
             <input
-              className="input"
+              className={`input${
+                draft.contactPhone && !isValidMobile(draft.contactPhone)
+                  ? ' border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                  : ''
+              }`}
               placeholder="+919876543210"
               value={draft.contactPhone}
               onChange={set('contactPhone')}
+              aria-invalid={Boolean(draft.contactPhone) && !isValidMobile(draft.contactPhone)}
               required
             />
-            <p className="mt-1 text-xs text-gray-500">
-              International format. This is how you reach the family.
-            </p>
+            {draft.contactPhone && !isValidMobile(draft.contactPhone) ? (
+              <p className="mt-1 text-xs text-red-600">Enter a 10-digit Indian mobile number.</p>
+            ) : (
+              <p className="mt-1 text-xs text-gray-500">
+                International format. This is how you reach the family.
+              </p>
+            )}
           </div>
           <div>
             <label className="label">
@@ -376,13 +397,13 @@ export default function ManagedProfiles() {
         <ConsentFields value={consent} onChange={setConsent} />
 
         <div className="flex flex-wrap gap-2">
-          <button className="btn" disabled={create.isPending}>
+          <button className="btn" disabled={create.isPending || !isValidMobile(draft.contactPhone)}>
             {create.isPending ? 'Saving...' : 'Save profile'}
           </button>
           <button
             type="button"
             className="btn-outline"
-            disabled={create.isPending || !draft.contactEmail}
+            disabled={create.isPending || !draft.contactEmail || !isValidMobile(draft.contactPhone)}
             title={draft.contactEmail ? undefined : 'An email address is needed to send an invitation'}
             onClick={() => create.mutate(true)}
           >
