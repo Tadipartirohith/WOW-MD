@@ -1908,6 +1908,17 @@ function AadhaarPanel({ profileId }: { profileId: string }) {
         One document, one profile. This is what keeps duplicates off the platform. The number is
         checked, turned into a fingerprint and discarded; only the last four digits are kept.
       </p>
+      {/*
+        A document already on file is the one this profile is tied to. Verifying
+        here has to use that same number — a different one is refused — and
+        changing the document is a case, not a re-entry (EZ1-I42).
+      */}
+      {data?.last4 && !data?.verifiedAt && (
+        <p className="text-xs text-gray-500">
+          A document is already on file for this profile. Verifying must use that same number; to
+          change it, raise a case.
+        </p>
+      )}
       {error && <p className="alert-critical">{error}</p>}
 
       {!sessionId ? (

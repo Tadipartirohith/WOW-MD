@@ -76,6 +76,17 @@ export class AadhaarService {
     }
 
     const hash = hashGovernmentId(GovernmentIdType.AADHAAR, dto.aadhaarNumber, this.pepper);
+    // One identity record per profile, shared with the Your Profile panel. A
+    // document already on file — submitted there or here — cannot be swapped for
+    // a different one from the other section; only the same number may be
+    // re-attempted (an expired OTP). Changing it is a case, not a re-entry.
+    // Without this, a profile verified through one section could be re-verified
+    // with a different Aadhaar through the other, silently replacing it (EZ1-I42).
+    if (profile.governmentIdHash && profile.governmentIdHash !== hash) {
+      throw new BadRequestException(
+        'A different identity document is already on this profile. Raise a case to change it.',
+      );
+    }
     const clash = await this.profiles.findOne({
       where: { governmentIdHash: hash, id: Not(profileId) },
     });

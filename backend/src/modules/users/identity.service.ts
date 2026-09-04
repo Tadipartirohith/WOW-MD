@@ -71,6 +71,15 @@ export class IdentityService {
     }
 
     const hash = hashGovernmentId(dto.idType, dto.idNumber, this.pepper);
+    // One identity record per profile, shared with the Biodata Aadhaar panel. A
+    // document already on file — submitted here or verified there — cannot be
+    // swapped for a different one from this section either; changing it is a
+    // case, not a re-submission (EZ1-I42).
+    if (profile.governmentIdHash && profile.governmentIdHash !== hash) {
+      throw new BadRequestException(
+        'A different identity document is already on this profile. Raise a case to change it.',
+      );
+    }
     const clash = await this.profiles.findOne({
       where: { governmentIdHash: hash, id: Not(profileId) },
     });
