@@ -6,14 +6,22 @@ import { Loading } from './ui/Feedback';
 
 interface Viewable {
   profileId: string;
+  /**
+   * True when only the basic card is shared — a MATCHES_ONLY profile the viewer
+   * has not yet mutually accepted. `details` is null in that case by design, so
+   * the biodata sections are withheld rather than missing.
+   */
+  limited?: boolean;
   profile: {
     id: string;
     displayName: string | null;
     city: string | null;
     gender: string | null;
-    dateOfBirth: string | null;
+    dateOfBirth?: string | null;
+    /** An age band on the basic card, in place of the exact date of birth. */
+    ageRange?: string | null;
     photos: string[];
-    bio: string | null;
+    bio?: string | null;
     identityVerified: boolean;
     profileCode?: string;
     /** 'bride' | 'groom' when a family member manages this profile. */
@@ -127,7 +135,11 @@ export default function ProfilePreview({
             )}
 
             <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-              {age && <span>{age} years</span>}
+              {age ? (
+                <span>{age} years</span>
+              ) : (
+                data.profile.ageRange && <span>{data.profile.ageRange}</span>
+              )}
               {str('heightCm') && <span>· {str('heightCm')} cm</span>}
               {data.profile.city && <span>· {data.profile.city}</span>}
               {/* The thing families ask about before anything else. */}
@@ -142,6 +154,19 @@ export default function ProfilePreview({
               <p className="whitespace-pre-wrap text-sm text-gray-700">{data.profile.bio}</p>
             )}
 
+            {/*
+              A profile shared only as a basic card. The biodata is not missing —
+              it is held back until both sides accept — so say that once, plainly,
+              rather than rendering every section as a row of "Not shared" (EZ1-I51).
+            */}
+            {data.limited ? (
+              <div className="rounded-sm border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                The full biodata — religion and community, education, family, horoscope and marital
+                details — is shared once you both accept interest. For now this is the basic card the
+                family chose to show.
+              </div>
+            ) : (
+              <>
             <Group title="Religion and community">
               <Row label="Religion">{str('religion')}</Row>
               <Row label="Caste">{str('caste')}</Row>
@@ -192,6 +217,8 @@ export default function ProfilePreview({
                 {formatDate(String(bag('maritalHistory').marriageDate ?? ''), '')}
               </Row>
             </Group>
+              </>
+            )}
 
             {/*
               Who you would actually be speaking to.
