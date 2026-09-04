@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { LinkSimple, WhatsappLogo } from '@phosphor-icons/react';
+import { Eye, LinkSimple, WhatsappLogo } from '@phosphor-icons/react';
 import { api, apiMessage } from '../lib/api';
 
 /**
@@ -78,6 +78,12 @@ export default function ShareInvitation({ eventId, eventName }: { eventId: strin
               <LinkSimple size={14} aria-hidden />
               {copied ? 'Copied' : 'Copy'}
             </button>
+            {/* The host seeing exactly what they are about to send. It is the
+                same public page a guest opens, not a mock-up of it. */}
+            <a className="btn-outline btn-sm" href={link} target="_blank" rel="noreferrer">
+              <Eye size={14} aria-hidden />
+              Preview
+            </a>
             <a
               className="btn-outline btn-sm"
               href={`https://wa.me/?text=${encodeURIComponent(
