@@ -15,6 +15,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
+import { IsStrictString } from '../../../common/decorators/strict-type.decorator';
 import {
   CasePriority,
   CaseStatus,
@@ -59,7 +60,7 @@ export class RaiseCaseDto {
   evidence?: string[];
 
   @ApiProperty({ minLength: 5, maxLength: 200 })
-  @IsString()
+  @IsStrictString()
   @MinLength(5)
   @MaxLength(200)
   title: string;

@@ -16,13 +16,14 @@ import {
   MinLength,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
+import { IsStrictString } from '../../../common/decorators/strict-type.decorator';
 import { Transform } from 'class-transformer';
 import { EventCategory, EventStatus, RsvpStatus } from '../../../common/enums';
 import { MOBILE_MESSAGE, MOBILE_PATTERN, normaliseMobile } from '../../../common/util/identity-fields';
 
 export class CreateEventDto {
   @ApiProperty({ example: 'Mehendi', minLength: 1, maxLength: 120 })
-  @IsString() @MinLength(1) @MaxLength(120)
+  @IsStrictString() @MinLength(1) @MaxLength(120)
   name: string;
 
   @ApiPropertyOptional({ format: 'date' })

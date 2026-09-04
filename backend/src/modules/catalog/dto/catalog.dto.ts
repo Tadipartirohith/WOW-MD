@@ -17,6 +17,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { IsStrictString } from '../../../common/decorators/strict-type.decorator';
 import {
   AttributeScope,
   AvailabilityModel,
@@ -42,6 +43,7 @@ const slugify = ({ value }: { value: unknown }) =>
 export class CreateCategoryDto {
   @ApiProperty({ example: 'photography' })
   @Transform(slugify)
+  @IsStrictString()
   @Matches(SLUG_PATTERN, { message: SLUG_MESSAGE })
   @MaxLength(60)
   slug: string;
@@ -84,6 +86,7 @@ export class UpdateCategoryDto {
 export class CreateDefinitionDto {
   @ApiProperty({ example: 'candid-photography' })
   @Transform(slugify)
+  @IsStrictString()
   @Matches(SLUG_PATTERN, { message: SLUG_MESSAGE })
   @MaxLength(60)
   slug: string;

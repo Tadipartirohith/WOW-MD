@@ -1,11 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
+import { IsStrictString } from '../../../common/decorators/strict-type.decorator';
 import { MediaType } from '../../../common/enums';
 
 export class CreateAlbumDto {
   @ApiProperty({ minLength: 1, maxLength: 150 })
-  @IsString() @MinLength(1) @MaxLength(150)
+  @IsStrictString() @MinLength(1) @MaxLength(150)
   title: string;
 
   @ApiPropertyOptional({ default: false })
