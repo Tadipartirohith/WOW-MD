@@ -154,6 +154,8 @@ export class Booking {
   eventCity?: string | null;
   expectedGuests?: number | null;
   serviceName?: string | null;
+  /** The package the customer picked, resolved from offeringId (EZ1-I33). */
+  offeringName?: string | null;
   /** The furthest this booking's money has got, not a list of transactions. */
   paymentStatus?: string | null;
 }

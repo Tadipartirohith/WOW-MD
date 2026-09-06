@@ -35,6 +35,10 @@ interface IncomingBooking {
   eventCity: string | null;
   expectedGuests: number | null;
   serviceName: string | null;
+  /** The package the customer picked, if any (EZ1-I33). */
+  offeringName?: string | null;
+  /** What the customer said they had in mind, before any quote (EZ1-I33, I78). */
+  expectedBudget?: string | null;
   paymentStatus: string | null;
 }
 
@@ -216,6 +220,9 @@ export default function BookingConsole({
                     {booking.serviceName && (
                       <span className="font-normal text-gray-500"> · {booking.serviceName}</span>
                     )}
+                    {booking.offeringName && (
+                      <span className="font-normal text-gray-400"> · {booking.offeringName}</span>
+                    )}
                   </p>
                   <p className="text-xs text-gray-500">
                     Asked {formatDate(booking.createdAt)} · {booking.id.slice(0, 8)}
@@ -267,6 +274,20 @@ export default function BookingConsole({
                     {booking.currency} {Number(booking.amount).toLocaleString('en-IN')}
                   </dd>
                 </div>
+                {/*
+                  The number the customer actually entered when they asked
+                  (EZ1-I78): the booking amount is 0 until a quote is agreed, so
+                  without this the vendor saw INR 0 and could not tell what the
+                  customer had in mind.
+                */}
+                {booking.expectedBudget && Number(booking.expectedBudget) > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <dt className="text-gray-400">Customer budget</dt>
+                    <dd className="font-mono">
+                      {booking.currency} {Number(booking.expectedBudget).toLocaleString('en-IN')}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               {renderDetail?.(booking)}

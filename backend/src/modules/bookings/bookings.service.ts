@@ -1061,8 +1061,9 @@ export class BookingsService {
     const userIds = [...new Set(rows.map((b) => b.userId))];
     const eventIds = [...new Set(rows.map((b) => b.eventId).filter(Boolean))] as string[];
     const serviceIds = [...new Set(rows.map((b) => b.vendorServiceId).filter(Boolean))] as string[];
+    const offeringIds = [...new Set(rows.map((b) => b.offeringId).filter(Boolean))] as string[];
 
-    const [users, profiles, events, payments, services] = await Promise.all([
+    const [users, profiles, events, payments, services, offeringNames] = await Promise.all([
       this.users.find({ where: { id: In(userIds) }, select: ['id', 'email', 'phone'] }),
       this.profiles.find({ where: { userId: In(userIds) } }),
       eventIds.length ? this.events.find({ where: { id: In(eventIds) } }) : Promise.resolve([]),
@@ -1070,6 +1071,7 @@ export class BookingsService {
       serviceIds.length
         ? this.serviceRows.find({ where: { id: In(serviceIds) } })
         : Promise.resolve([]),
+      this.vendorServices.offeringNamesByIds(offeringIds),
     ]);
 
     const byUser = new Map(users.map((u) => [u.id, u]));
@@ -1108,6 +1110,9 @@ export class BookingsService {
       booking.expectedGuests = event?.expectedGuests ?? null;
       booking.serviceName = booking.vendorServiceId
         ? (byService.get(booking.vendorServiceId)?.displayName ?? null)
+        : null;
+      booking.offeringName = booking.offeringId
+        ? (offeringNames.get(booking.offeringId) ?? null)
         : null;
       booking.paymentStatus = paymentByBooking.get(booking.id) ?? null;
     }

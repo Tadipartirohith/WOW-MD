@@ -506,6 +506,13 @@ export class VendorServicesService {
     return this.offerings.findOne({ where: { id } });
   }
 
+  /** Offering id → name, for decorating booking rows in one query (EZ1-I33). */
+  async offeringNamesByIds(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.offerings.find({ where: { id: In(ids) } });
+    return new Map(rows.map((o) => [o.id, o.name]));
+  }
+
   async findService(id: string): Promise<VendorService | null> {
     return this.services.findOne({ where: { id } });
   }
