@@ -179,12 +179,13 @@ export class NotificationsService {
     // vendor had already responded (EZ1-I36). Re-derive it against the booking's
     // current status: an answered request, or any cancelled booking, becomes a
     // plain "view" rather than an action the reader has in fact already taken.
+    // Both the request ("bookings") and the quotation ("quotations") rows carry
+    // the booking id as their target and both raise a "respond" that goes stale
+    // once the booking moves on, so both modules are re-derived here.
+    const isBookingAction = (n: (typeof notes)[number]) =>
+      (n.targetModule === 'bookings' || n.targetModule === 'quotations') && Boolean(n.targetId);
     const bookingIds = [
-      ...new Set(
-        notes
-          .filter((n) => n.targetModule === 'bookings' && n.targetId)
-          .map((n) => n.targetId as string),
-      ),
+      ...new Set(notes.filter(isBookingAction).map((n) => n.targetId as string)),
     ];
     if (bookingIds.length === 0) return notes;
 
@@ -195,10 +196,16 @@ export class NotificationsService {
     const statusById = new Map(bookings.map((b) => [b.id, b.status]));
 
     for (const n of notes) {
-      if (n.targetModule !== 'bookings' || !n.targetId) continue;
-      const status = statusById.get(n.targetId);
+      if (!isBookingAction(n)) continue;
+      const status = statusById.get(n.targetId as string);
       if (!status) continue;
-      const answered = n.targetAction === 'respond' && status !== BookingStatus.REQUESTED;
+      // A request is answered once it leaves REQUESTED; a quotation is answered
+      // once the booking leaves QUOTATION_SENT (the reader has accepted or the
+      // provider re-quoted).
+      const answered =
+        n.targetAction === 'respond' &&
+        status !== BookingStatus.REQUESTED &&
+        status !== BookingStatus.QUOTATION_SENT;
       const paid =
         n.targetAction === 'pay' &&
         ![BookingStatus.CONFIRMED, BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT].includes(status);
