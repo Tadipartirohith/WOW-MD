@@ -174,6 +174,14 @@ export class BookingsController {
     return this.bookings.milestones(actor, id);
   }
 
+  // Either party to the booking may read its history; access is enforced in the
+  // service (assertParticipant), not by a role permission neither side shares.
+  @ApiOperation({ summary: 'The booking activity timeline (EZ1-I68)' })
+  @Get(':id/history')
+  history(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.history(actor, id);
+  }
+
   // ------------------------------------------------------------- quotations
 
   @RequirePermissions(Permission.BOOKING_CONFIRM)

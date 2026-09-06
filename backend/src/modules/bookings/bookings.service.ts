@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
+import { Quotation } from './entities/quotation.entity';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -24,6 +25,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   ProviderType,
+  QuotationStatus,
   UserRole,
   isIndividual,
 } from '../../common/enums';
@@ -129,6 +131,7 @@ export class BookingsService {
   constructor(
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(Quotation) private readonly quotations: Repository<Quotation>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
@@ -952,6 +955,60 @@ export class BookingsService {
       },
     });
     return saved;
+  }
+
+  /**
+   * The booking's activity, in order (EZ1-I68).
+   *
+   * Synthesised rather than stored: the facts already live on the booking's
+   * timestamps, its quotations and its payments, so a timeline is a read over
+   * those three rather than a fourth log to keep in step with them. Either party
+   * to the booking may read it.
+   */
+  async history(
+    actor: AuthUser,
+    bookingId: string,
+  ): Promise<{ at: Date; label: string; detail: string | null }[]> {
+    const booking = await this.loadOrFail(bookingId);
+    await this.assertParticipant(actor, booking);
+
+    const [quotations, payments] = await Promise.all([
+      this.quotations.find({ where: { bookingId }, order: { createdAt: 'ASC' } }),
+      this.payments.find({ where: { bookingId }, order: { createdAt: 'ASC' } }),
+    ]);
+
+    const money = (v: string | number) =>
+      `${booking.currency} ${Number(v).toLocaleString('en-IN')}`;
+    const events: { at: Date; label: string; detail: string | null }[] = [
+      { at: booking.createdAt, label: 'Request placed', detail: null },
+    ];
+    for (const q of quotations) {
+      events.push({ at: q.createdAt, label: 'Quotation sent', detail: money(q.amount) });
+      if (q.status === QuotationStatus.ACCEPTED && q.respondedAt) {
+        events.push({ at: q.respondedAt, label: 'Quotation accepted', detail: money(q.amount) });
+      } else if (q.status === QuotationStatus.REJECTED && q.respondedAt) {
+        events.push({ at: q.respondedAt, label: 'Quotation declined', detail: null });
+      }
+    }
+    for (const p of payments) {
+      events.push({
+        at: p.createdAt,
+        label: `Payment ${p.milestone.replace(/_/g, ' ')} — ${p.status.replace(/_/g, ' ')}`,
+        detail: money(p.amount),
+      });
+    }
+    if (booking.startedAt) events.push({ at: booking.startedAt, label: 'Work started', detail: null });
+    if (booking.completedAt)
+      events.push({ at: booking.completedAt, label: 'Marked delivered', detail: null });
+    if (booking.cancelledAt) {
+      events.push({
+        at: booking.cancelledAt,
+        label: 'Cancelled',
+        detail: booking.cancellationReason ?? null,
+      });
+    }
+
+    return events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   }
 
   /**

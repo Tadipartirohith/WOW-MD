@@ -24,6 +24,14 @@ interface Booking {
   currency: string;
   status: string;
   eventDate: string | null;
+  /** Wedding/service context, already returned by listForBuyer (EZ1-I68). */
+  eventName?: string | null;
+  eventVenue?: string | null;
+  eventCity?: string | null;
+  expectedGuests?: number | null;
+  serviceName?: string | null;
+  offeringName?: string | null;
+  paymentStatus?: string | null;
   /** Cancellation detail, when the booking is cancelled (EZ1-I77). */
   cancellationReason?: string | null;
   cancelledByName?: string | null;
@@ -221,20 +229,44 @@ export default function Bookings() {
             className={`card space-y-3 ${highlight === b.id ? 'ring-2 ring-brand' : ''}`}
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="font-medium text-gray-900">
                   {b.providerName ?? `${b.providerType} ${b.providerId.slice(0, 8)}`}
+                  {/* What was actually booked, not only from whom (EZ1-I68). */}
+                  {b.serviceName && (
+                    <span className="font-normal text-gray-500"> · {b.serviceName}</span>
+                  )}
+                  {b.offeringName && (
+                    <span className="font-normal text-gray-400"> · {b.offeringName}</span>
+                  )}
                 </p>
                 <p className="text-sm text-gray-500">
                   <span className="uppercase tracking-wide text-gray-400">{b.providerType}</span>
                   {Number(b.amount) > 0 ? ` · ${b.currency} ${b.amount}` : ' · not yet priced'}
                   {b.eventDate ? ` · ${b.eventDate}` : ''}
                 </p>
+                {/* Wedding/event facts, already on the wire (EZ1-I68). */}
+                {(b.eventName || b.eventVenue || b.eventCity || b.expectedGuests) && (
+                  <p className="text-xs text-gray-400">
+                    {[
+                      b.eventName,
+                      [b.eventVenue, b.eventCity].filter(Boolean).join(', ') || null,
+                      b.expectedGuests ? `${b.expectedGuests} guests` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                   {BOOKING_STATUS_LABEL[b.status] ?? b.status}
                 </span>
+                {b.paymentStatus && (
+                  <span className="rounded-full bg-brand-soft px-2 py-0.5 text-xs text-brand-strong">
+                    {b.paymentStatus.replace(/_/g, ' ')}
+                  </span>
+                )}
                 <button
                   className="btn-outline"
                   onClick={() => setExpanded(expanded === b.id ? null : b.id)}
@@ -531,6 +563,19 @@ function BookingDetail({
     retry: false,
   });
 
+  // The activity timeline (EZ1-I68): request, quotations, payments, delivery,
+  // cancellation — one read over what already happened.
+  const { data: timeline } = useQuery({
+    queryKey: ['booking-history', booking.id],
+    queryFn: async () =>
+      (await api.get(`/bookings/${booking.id}/history`)).data as {
+        at: string;
+        label: string;
+        detail: string | null;
+      }[],
+    retry: false,
+  });
+
   /*
    * Which method the next instalment uses.
    *
@@ -560,6 +605,22 @@ function BookingDetail({
           <BookingProgress status={booking.status} />
         </div>
       </div>
+
+      {/* Everything that has happened to it, in order (EZ1-I68). */}
+      {timeline && timeline.length > 0 && (
+        <div>
+          <h3 className="section-title text-sm">History</h3>
+          <ol className="mt-1 space-y-1 border-l-2 border-gray-200 pl-3">
+            {timeline.map((e, i) => (
+              <li key={i} className="text-xs text-gray-600">
+                <span className="text-gray-400">{new Date(e.at).toLocaleString()} · </span>
+                <span className="font-medium capitalize text-gray-800">{e.label}</span>
+                {e.detail ? ` — ${e.detail}` : ''}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* Why it was cancelled and who by (EZ1-I77). */}
       {booking.status === 'cancelled' && (

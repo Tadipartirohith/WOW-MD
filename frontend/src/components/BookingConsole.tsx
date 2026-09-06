@@ -40,7 +40,24 @@ interface IncomingBooking {
   /** What the customer said they had in mind, before any quote (EZ1-I33, I78). */
   expectedBudget?: string | null;
   paymentStatus: string | null;
+  /** Cancellation detail on a cancelled row (EZ1-I68). */
+  cancellationReason?: string | null;
+  cancelledByName?: string | null;
+  cancelledByRole?: string | null;
 }
+
+/**
+ * The one thing this booking is waiting on the provider to do, by status
+ * (EZ1-I68). Empty when the ball is in the customer's court or the job is done.
+ */
+const NEXT_ACTION: Record<string, string> = {
+  requested: 'Send a quotation',
+  quotation_accepted: 'Accept the job',
+  payment_pending: 'Awaiting the advance',
+  confirmed: 'Start the work',
+  in_progress: 'Mark delivered when done',
+  completed_pending_final_payment: 'Awaiting the final payment',
+};
 
 /** The tabs, and which statuses each gathers. */
 const TABS: { key: string; label: string; statuses: string[] }[] = [
@@ -289,6 +306,28 @@ export default function BookingConsole({
                   </div>
                 )}
               </dl>
+
+              {/* The one thing waiting on the provider, so the queue reads as a
+                  to-do list rather than a wall of statuses (EZ1-I68). */}
+              {NEXT_ACTION[booking.status] && (
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  Next: {NEXT_ACTION[booking.status]}
+                </p>
+              )}
+
+              {/* Why a cancelled booking was cancelled, and by whom (EZ1-I68/I77). */}
+              {booking.status === 'cancelled' &&
+                (booking.cancellationReason || booking.cancelledByName) && (
+                  <p className="mt-2 rounded-sm bg-red-50 p-2 text-xs text-red-800">
+                    Cancelled
+                    {booking.cancelledByName
+                      ? ` by ${booking.cancelledByName}${
+                          booking.cancelledByRole ? ` (${booking.cancelledByRole})` : ''
+                        }`
+                      : ''}
+                    {booking.cancellationReason ? ` — ${booking.cancellationReason}` : ''}
+                  </p>
+                )}
 
               {renderDetail?.(booking)}
 
