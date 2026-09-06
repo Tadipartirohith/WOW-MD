@@ -273,6 +273,13 @@ export class AgentsController {
   }
 
   @RequirePermissions(Permission.CLIENT_READ)
+  @ApiOperation({ summary: 'Headline counts for the agent dashboard' })
+  @Get('stats')
+  stats(@CurrentUser('userId') agentId: string) {
+    return this.agents.stats(agentId);
+  }
+
+  @RequirePermissions(Permission.CLIENT_READ)
   @Get('clients/:id')
   getClient(@CurrentUser('userId') agentId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.agents.getClient(agentId, id);

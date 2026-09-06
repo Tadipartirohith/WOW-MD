@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { Interest } from '../matchmaking/entities/interest.entity';
 import { AgentProfile } from './entities/agent-profile.entity';
 import { AgentCharge } from './entities/agent-charge.entity';
 import { InvitationsModule } from '../invitations/invitations.module';
@@ -24,7 +25,14 @@ import { ClaimRequestsController } from './claim-requests.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Profile, AgentProfile, AgentCharge, ProfileClaimRequest]),
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      Interest,
+      AgentProfile,
+      AgentCharge,
+      ProfileClaimRequest,
+    ]),
     InvitationsModule,
     NotificationsModule,
     CirculationModule,

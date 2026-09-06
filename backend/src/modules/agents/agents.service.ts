@@ -1,10 +1,20 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { Interest } from '../matchmaking/entities/interest.entity';
+import { MatchFixedState } from '../../common/enums';
 import { ClientSearchDto } from './dto/agent.dto';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
+
+/** Headline numbers for the agent dashboard (EZ1-I79). */
+export interface AgentStats {
+  totalClients: number;
+  matchesFixed: number;
+  remainingClients: number;
+  totalInterests: number;
+}
 
 /**
  * Shape returned to agents. Never leaks password or refresh-token material.
@@ -43,7 +53,48 @@ export class AgentsService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(Interest) private readonly interests: Repository<Interest>,
   ) {}
+
+  /**
+   * Headline counts for the agent dashboard (EZ1-I79): how many clients the
+   * agent runs, how many have a fixed match, how many are still open, and the
+   * total interests their book has taken part in. Derived live so it can never
+   * drift from the client list and the matches.
+   */
+  async stats(agentId: string): Promise<AgentStats> {
+    const rows = await this.profiles.find({
+      where: { managedByUserId: agentId, archivedAt: IsNull() },
+      select: ['id'],
+    });
+    const ids = new Set(rows.map((r) => r.id));
+    const totalClients = ids.size;
+    if (totalClients === 0) {
+      return { totalClients: 0, matchesFixed: 0, remainingClients: 0, totalInterests: 0 };
+    }
+
+    const profileIds = [...ids];
+    const interests = await this.interests.find({
+      where: [{ fromProfileId: In(profileIds) }, { toProfileId: In(profileIds) }],
+      select: ['fromProfileId', 'toProfileId', 'matchFixedState'],
+    });
+
+    // A client counts as "fixed" once any interest on either side is confirmed.
+    const fixed = new Set<string>();
+    for (const i of interests) {
+      if (i.matchFixedState !== MatchFixedState.CONFIRMED) continue;
+      if (ids.has(i.fromProfileId)) fixed.add(i.fromProfileId);
+      if (ids.has(i.toProfileId)) fixed.add(i.toProfileId);
+    }
+    const matchesFixed = fixed.size;
+
+    return {
+      totalClients,
+      matchesFixed,
+      remainingClients: totalClients - matchesFixed,
+      totalInterests: interests.length,
+    };
+  }
 
   /**
    * The agent's whole book, whether or not the client has an account yet.
