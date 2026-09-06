@@ -58,6 +58,8 @@ export interface PublicVendor {
   ratingCount: number;
   /** How a buyer reaches them. Published by the vendor for exactly that. */
   contactPhone: string | null;
+  /** When the business started trading, so a couple can gauge experience (EZ1-I76). */
+  tradingSince: string | null;
   /** Whether the platform has stood behind them, not how it decided to. */
   status: BusinessStatus;
   isApproved: boolean;
@@ -77,6 +79,7 @@ export function publicVendor(v: Vendor): PublicVendor {
     ratingAvg: v.ratingAvg,
     ratingCount: v.ratingCount,
     contactPhone: v.contactPhone,
+    tradingSince: v.tradingSince,
     status: v.status,
     isApproved: v.isApproved,
     verifiedAt: v.verifiedAt,

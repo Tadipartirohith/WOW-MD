@@ -59,6 +59,7 @@ import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import Matches from './pages/Matches';
 import Vendors from './pages/Vendors';
+import VendorDetail from './pages/VendorDetail';
 import Planner from './pages/Planner';
 import PlannerClients from './pages/PlannerClients';
 import PlannerClientDetail from './pages/PlannerClientDetail';
@@ -815,6 +816,15 @@ export default function App() {
         element={
           <Protected requires={[Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE]}>
             <Vendors />
+          </Protected>
+        }
+      />
+      {/* A single vendor's full profile before choosing them (EZ1-I76). */}
+      <Route
+        path="/vendors/:id"
+        element={
+          <Protected requires={[Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE]}>
+            <VendorDetail />
           </Protected>
         }
       />

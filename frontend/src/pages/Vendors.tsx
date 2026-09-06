@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
@@ -71,6 +71,8 @@ export default function Vendors() {
   // "Check availability" booking action (EZ1-I29).
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canBook = can(permissions, Permission.BOOKING_CREATE);
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendors', category, city],
@@ -86,6 +88,20 @@ export default function Vendors() {
   });
 
   const vendors: Vendor[] = data?.data ?? [];
+
+  // Arriving from the vendor detail page's "Check availability" (EZ1-I76),
+  // open that vendor's request dialog straight away. The detail page is a
+  // separate route, so it hands the booking flow back here through ?request=.
+  useEffect(() => {
+    const wanted = params.get('request');
+    if (!wanted || requesting) return;
+    const match = vendors.find((v) => v.id === wanted);
+    if (match) {
+      setRequesting(match);
+      params.delete('request');
+      setParams(params, { replace: true });
+    }
+  }, [params, vendors, requesting, setParams]);
 
   return (
     <div className="space-y-4">
@@ -196,16 +212,26 @@ export default function Vendors() {
                 is still obvious, and the card that the pointer is actually on
                 is the one that looks pressable.
               */}
-              {canBook ? (
+              <div className="mt-4 flex gap-2">
+                {/* The full profile before choosing them (EZ1-I76, I32). */}
                 <button
-                  className="btn-outline btn-sm mt-4 w-full transition-colors
-                    group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
-                  onClick={() => setRequesting(v)}
+                  className="btn-outline btn-sm flex-1"
+                  onClick={() => navigate(`/vendors/${v.id}`)}
                 >
-                  Check availability
+                  View details
                 </button>
-              ) : (
-                <p className="mt-4 rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
+                {canBook && (
+                  <button
+                    className="btn-outline btn-sm flex-1 transition-colors
+                      group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
+                    onClick={() => setRequesting(v)}
+                  >
+                    Check availability
+                  </button>
+                )}
+              </div>
+              {!canBook && (
+                <p className="mt-2 rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
                   Browse to recommend — the couple places the booking.
                 </p>
               )}
