@@ -31,6 +31,7 @@ export default function Home() {
 
   const isProvider = canAny(permissions, [Permission.BOOKING_READ_INCOMING]);
   const isBuyer = canAny(permissions, [Permission.BOOKING_READ_OWN]);
+  const isAgent = canAny(permissions, [Permission.AGENCY_MANAGE]);
 
   const { data: profile, isPending } = useQuery({
     queryKey: ['me'],
@@ -54,11 +55,33 @@ export default function Home() {
     enabled: isProvider,
   });
 
-  const { data: myBookings } = useQuery({
-    queryKey: ['my-bookings-count'],
-    queryFn: async () => (await api.get('/bookings', { params: { limit: 1 } })).data,
+  // Booking buckets from the dedicated counts endpoint, matching the web
+  // dashboard (EZ1-I75) rather than reading .total off a one-row list.
+  const { data: bookingCounts } = useQuery({
+    queryKey: ['my-booking-counts'],
+    queryFn: async () =>
+      (await api.get('/bookings/counts')).data as {
+        all: number;
+        active: number;
+        cancelled: number;
+        completed: number;
+      },
     retry: false,
     enabled: isBuyer,
+  });
+
+  // The agent's book at a glance (EZ1-I79).
+  const { data: agentStats } = useQuery({
+    queryKey: ['agent-stats'],
+    queryFn: async () =>
+      (await api.get('/agents/stats')).data as {
+        totalClients: number;
+        matchesFixed: number;
+        remainingClients: number;
+        totalInterests: number;
+      },
+    retry: false,
+    enabled: isAgent,
   });
 
   const name: string | undefined = profile?.fullName ?? profile?.name;
@@ -75,9 +98,24 @@ export default function Home() {
         <Loading rows={2} />
       ) : (
         <View style={{ gap: space(3) }}>
-          <Counter label="Unread notifications" value={unread?.count} />
+          <Counter label="Unread notifications" value={unread?.unread} />
           {isProvider ? <Counter label="Waiting on a price from you" value={newRequests?.total} /> : null}
-          {isBuyer ? <Counter label="Your bookings" value={myBookings?.total} /> : null}
+          {isBuyer ? (
+            <>
+              <Counter label="My bookings" value={bookingCounts?.all} />
+              <Counter label="Active bookings" value={bookingCounts?.active} />
+              <Counter label="Completed bookings" value={bookingCounts?.completed} />
+              <Counter label="Cancelled bookings" value={bookingCounts?.cancelled} />
+            </>
+          ) : null}
+          {isAgent ? (
+            <>
+              <Counter label="Total clients" value={agentStats?.totalClients} />
+              <Counter label="Matches fixed" value={agentStats?.matchesFixed} />
+              <Counter label="Remaining clients" value={agentStats?.remainingClients} />
+              <Counter label="Total interests" value={agentStats?.totalInterests} />
+            </>
+          ) : null}
         </View>
       )}
     </Screen>

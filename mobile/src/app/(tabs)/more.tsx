@@ -37,10 +37,12 @@ export default function More() {
       <Card>
         <Eyebrow>Signed in as</Eyebrow>
         <SectionTitle>{user ? (ROLE_LABEL[user.role] ?? user.role) : 'Unknown'}</SectionTitle>
+        {/* This is the email-confirmation flag, not in-person identity — which
+            no longer gates matchmaking for individuals (EZ1-I70). */}
         {user?.isVerified ? (
-          <Caption>Your identity has been verified.</Caption>
+          <Caption>Your email address is confirmed.</Caption>
         ) : (
-          <Caption>Identity not verified yet. Some actions stay closed until it is.</Caption>
+          <Caption>Confirm your email address to secure your account.</Caption>
         )}
       </Card>
 
