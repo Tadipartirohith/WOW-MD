@@ -97,6 +97,16 @@ export class BookingsController {
   }
 
   @RequirePermissions(Permission.BOOKING_READ_OWN)
+  @ApiOperation({
+    summary: 'Your booking counts by bucket',
+    description: 'Total, active, cancelled and completed — for the dashboard tiles.',
+  })
+  @Get('counts')
+  buyerCounts(@CurrentUser() actor: AuthUser) {
+    return this.bookings.buyerCounts(actor);
+  }
+
+  @RequirePermissions(Permission.BOOKING_READ_OWN)
   @ApiOperation({ summary: 'Bookings you placed (agents: also your clients’)' })
   @Get()
   list(@CurrentUser() actor: AuthUser, @Query() q: BookingSearchDto) {

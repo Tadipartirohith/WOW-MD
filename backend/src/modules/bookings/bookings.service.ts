@@ -1012,6 +1012,41 @@ export class BookingsService {
   }
 
   /**
+   * Buyer-side status buckets for the individual dashboard tiles (EZ1-I75):
+   * total, active, cancelled and completed. Active is everything still in
+   * flight — neither cancelled nor completed — so the three buckets add up to
+   * the total. Scoped exactly like listForBuyer so the numbers match the list.
+   */
+  async buyerCounts(actor: AuthUser): Promise<{
+    all: number;
+    active: number;
+    cancelled: number;
+    completed: number;
+  }> {
+    const qb = this.bookings
+      .createQueryBuilder('b')
+      .select('b.status', 'status')
+      .addSelect('COUNT(*)', 'count');
+    if (actor.role === UserRole.AGENT) {
+      qb.where('(b."bookedByUserId" = :me OR b."userId" = :me)', { me: actor.userId });
+    } else {
+      qb.where('b."userId" = :me', { me: actor.userId });
+    }
+    const rows = await qb.groupBy('b.status').getRawMany<{ status: string; count: string }>();
+
+    let all = 0;
+    let cancelled = 0;
+    let completed = 0;
+    for (const row of rows) {
+      const n = Number(row.count);
+      all += n;
+      if (row.status === BookingStatus.CANCELLED) cancelled += n;
+      else if (row.status === BookingStatus.COMPLETED) completed += n;
+    }
+    return { all, active: all - cancelled - completed, cancelled, completed };
+  }
+
+  /**
    * Who the job is for, what it is, and whether money has moved.
    *
    * All of it existed and none of it was on the row. A provider deciding

@@ -103,7 +103,10 @@ export default function Bookings() {
   const [params] = useSearchParams();
   const highlight = params.get('highlight');
 
-  const [status, setStatus] = useState('');
+  // A dashboard tile can deep-link to a bucket (EZ1-I75). 'active' is a group
+  // (everything not cancelled or completed) rather than one status, so it is
+  // filtered on the client; the exact statuses pass straight to the API.
+  const [status, setStatus] = useState(params.get('status') ?? '');
   const [error, setError] = useState('');
   // Arriving from a fresh request opens that booking straight away, so the
   // person is looking at the thing they just did rather than hunting for it.
@@ -118,9 +121,13 @@ export default function Bookings() {
    */
   const [cancelling, setCancelling] = useState<string | null>(null);
 
+  // 'active' is a client-side group, so it is never sent as a status filter to
+  // the API; every other value is a real BookingStatus and passes through.
+  const apiStatus = status && status !== 'active' ? status : undefined;
   const { data, isLoading } = useQuery({
     queryKey: ['bookings', status],
-    queryFn: async () => (await api.get('/bookings', { params: status ? { status } : {} })).data,
+    queryFn: async () =>
+      (await api.get('/bookings', { params: apiStatus ? { status: apiStatus } : {} })).data,
     enabled: canBuy,
   });
 
@@ -164,7 +171,11 @@ export default function Bookings() {
     );
   }
 
-  const bookings: Booking[] = data?.data ?? [];
+  const allBookings: Booking[] = data?.data ?? [];
+  const bookings: Booking[] =
+    status === 'active'
+      ? allBookings.filter((b) => b.status !== 'cancelled' && b.status !== 'completed')
+      : allBookings;
 
   return (
     <div className="space-y-6">
@@ -176,6 +187,7 @@ export default function Bookings() {
           onChange={(e) => setStatus(e.target.value)}
         >
           <option value="">All statuses</option>
+          <option value="active">Active (in progress)</option>
           {[...OPEN_STATUSES, 'completed', 'disputed', 'cancelled'].map((s) => (
             <option key={s} value={s}>
               {BOOKING_STATUS_LABEL[s] ?? s}
