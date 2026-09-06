@@ -196,6 +196,17 @@ const SECTIONS: { key: string; label: string; blurb: string; statuses: string[] 
   },
 ];
 
+/** Case status cards for the Cases tab, in the order work moves (EZ1-I83). */
+const CASE_FILTERS: { key: CaseStatus; label: string }[] = [
+  { key: 'open', label: 'Open' },
+  { key: 'allocated', label: 'Allocated' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'escalated', label: 'Escalated' },
+  { key: 'resolved', label: 'Resolved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'closed', label: 'Closed' },
+];
+
 function Pill({ status }: { status: string }) {
   return (
     <span
@@ -238,25 +249,32 @@ export default function Verification() {
   // wants; picking one is for somebody with forty.
   const [section_, setSection] = useState<string | null>(null);
   const visibleSections = section_ ? SECTIONS.filter((x) => x.key === section_) : SECTIONS;
+  // Which case status the Cases tab is filtered to, null for all (EZ1-I83).
+  const [caseFilter, setCaseFilter] = useState<CaseStatus | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  // Polled, so a case or request an administrator allocates in another session
+  // shows up here without the officer having to act first (EZ1-I81).
   const { data: metrics } = useQuery({
     queryKey: ['verification-metrics'],
     queryFn: async () => (await api.get('/verification/metrics')).data,
     retry: false,
+    refetchInterval: 20_000,
   });
 
   const { data: requests } = useQuery({
     queryKey: ['verification-requests'],
     queryFn: async () => (await api.get('/verification/requests')).data,
     retry: false,
+    refetchInterval: 20_000,
   });
 
   const { data: cases } = useQuery({
     queryKey: ['verification-cases'],
     queryFn: async () => (await api.get('/verification/cases')).data,
     retry: false,
+    refetchInterval: 20_000,
   });
 
   const { data: officers } = useQuery({
@@ -321,10 +339,65 @@ export default function Verification() {
 
       {metrics && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric label="Waiting" value={metrics.requests?.new ?? 0} />
-          <Metric label="In progress" value={metrics.requests?.in_progress ?? 0} />
-          <Metric label="Approved" value={metrics.requests?.approved ?? 0} />
-          <Metric label="Open cases" value={metrics.cases?.open ?? 0} />
+          {/*
+            Every tile is a filter now (EZ1-I83): clicking one opens the queue it
+            counts. "Open cases" counts everything still in flight rather than the
+            single literal `open` status, so a case does not vanish from the
+            number the moment an administrator allocates it (EZ1-I81).
+          */}
+          <Metric
+            label="Waiting"
+            value={metrics.requests?.new ?? 0}
+            onClick={() => {
+              setTab('requests');
+              setSection('new');
+            }}
+          />
+          <Metric
+            label="In progress"
+            value={metrics.requests?.in_progress ?? 0}
+            onClick={() => {
+              setTab('requests');
+              setSection('in_progress');
+            }}
+          />
+          <Metric
+            label="Approved"
+            value={metrics.requests?.approved ?? 0}
+            onClick={() => {
+              setTab('requests');
+              setSection('approved');
+            }}
+          />
+          <Metric
+            label="Rejected"
+            value={metrics.requests?.rejected ?? 0}
+            onClick={() => {
+              setTab('requests');
+              setSection('rejected');
+            }}
+          />
+          <Metric
+            label="Open cases"
+            value={
+              (metrics.cases?.open ?? 0) +
+              (metrics.cases?.allocated ?? 0) +
+              (metrics.cases?.in_progress ?? 0) +
+              (metrics.cases?.escalated ?? 0)
+            }
+            onClick={() => {
+              setTab('cases');
+              setCaseFilter(null);
+            }}
+          />
+          <Metric
+            label="Resolved cases"
+            value={metrics.cases?.resolved ?? 0}
+            onClick={() => {
+              setTab('cases');
+              setCaseFilter('resolved');
+            }}
+          />
         </div>
       )}
 
@@ -409,16 +482,52 @@ export default function Verification() {
 
       {tab === 'cases' && (
         <div className="space-y-3">
-          {caseRows.length === 0 && <p className="card text-sm text-gray-500">No open cases.</p>}
-          {caseRows.map((c) => (
-            <CaseRow
-              key={c.id}
-              item={c}
-              officers={activeOfficers}
-              canAllocate={canAllocate}
-              onRun={run}
-            />
-          ))}
+          {/*
+            Case status cards (EZ1-I83). Every status is its own filter with a
+            live count, so an officer can jump straight to the resolved ones or
+            the ones still in flight rather than reading a single long list.
+          */}
+          <div className="flex flex-wrap gap-2">
+            {CASE_FILTERS.map((f) => {
+              const count = caseRows.filter((c) => c.status === f.key).length;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setCaseFilter(f.key === caseFilter ? null : f.key)}
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    f.key === caseFilter
+                      ? 'border-brand bg-brand text-brand-fg'
+                      : count > 0
+                        ? 'border-gray-300 text-gray-700 hover:border-brand'
+                        : 'border-gray-200 text-gray-400'
+                  }`}
+                >
+                  {f.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {(() => {
+            const shown = caseFilter
+              ? caseRows.filter((c) => c.status === caseFilter)
+              : caseRows;
+            if (caseRows.length === 0) {
+              return <p className="card text-sm text-gray-500">No cases.</p>;
+            }
+            if (shown.length === 0) {
+              return <p className="card text-sm text-gray-500">Nothing in that group.</p>;
+            }
+            return shown.map((c) => (
+              <CaseRow
+                key={c.id}
+                item={c}
+                officers={activeOfficers}
+                canAllocate={canAllocate}
+                onRun={run}
+              />
+            ));
+          })()}
         </div>
       )}
 
@@ -429,12 +538,30 @@ export default function Verification() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="card">
+function Metric({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
       <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
       <p className="text-2xl font-semibold text-gray-900">{value}</p>
-    </div>
+    </>
+  );
+  if (!onClick) return <div className="card">{body}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="card text-left transition hover:border-brand hover:shadow-sm"
+    >
+      {body}
+    </button>
   );
 }
 
