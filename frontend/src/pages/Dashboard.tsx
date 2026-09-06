@@ -219,9 +219,18 @@ export default function Dashboard() {
     enabled: isProvider,
   });
 
-  const { data: myBookings } = useQuery({
-    queryKey: ['my-bookings-count'],
-    queryFn: async () => (await api.get('/bookings', { params: { limit: 1 } })).data,
+  // Buyer booking buckets for the dashboard tiles (EZ1-I75). A dedicated counts
+  // endpoint rather than reading .total off a one-row list, so the numbers stay
+  // accurate and each tile can open its own filtered list.
+  const { data: bookingCounts } = useQuery({
+    queryKey: ['my-booking-counts'],
+    queryFn: async () =>
+      (await api.get('/bookings/counts')).data as {
+        all: number;
+        active: number;
+        cancelled: number;
+        completed: number;
+      },
     retry: false,
     enabled: isBuyer,
   });
@@ -265,6 +274,23 @@ export default function Dashboard() {
   const activeClients = plannerClients.filter((c) => c.status === 'active').length;
   const upcomingClients = plannerClients.filter((c) => c.status === 'upcoming').length;
   const plannerRequests = plannerBook?.requests?.length ?? 0;
+
+  // A marriage agent opens the app to see their book at a glance (EZ1-I79):
+  // how many clients, how many are matched, how many are still open, and the
+  // interests their profiles have taken part in.
+  const isAgent = canAny(permissions, [Permission.AGENCY_MANAGE]);
+  const { data: agentStats } = useQuery({
+    queryKey: ['agent-stats'],
+    queryFn: async () =>
+      (await api.get('/agents/stats')).data as {
+        totalClients: number;
+        matchesFixed: number;
+        remainingClients: number;
+        totalInterests: number;
+      },
+    retry: false,
+    enabled: isAgent,
+  });
 
   const reduce = useReducedMotion();
   const firstName = (profile?.displayName ?? '').trim().split(' ')[0];
@@ -361,9 +387,57 @@ export default function Dashboard() {
           </>
         )}
         {isBuyer && !isProvider && (
-          <Counter label="Your bookings" value={myBookings?.total ?? 0} to="/bookings" />
+          <Counter label="My bookings" value={bookingCounts?.all ?? 0} to="/bookings" />
         )}
       </div>
+
+      {/*
+        The individual's booking buckets (EZ1-I75). Each tile opens the list
+        already filtered to that bucket, and the counts come from a dedicated
+        endpoint so they stay in step with the bookings themselves.
+      */}
+      {isBuyer && !isProvider && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Counter
+            label="Active bookings"
+            value={bookingCounts?.active ?? 0}
+            to="/bookings?status=active"
+            tone={(bookingCounts?.active ?? 0) > 0 ? 'text-emerald-700' : undefined}
+          />
+          <Counter
+            label="Completed bookings"
+            value={bookingCounts?.completed ?? 0}
+            to="/bookings?status=completed"
+          />
+          <Counter
+            label="Cancelled bookings"
+            value={bookingCounts?.cancelled ?? 0}
+            to="/bookings?status=cancelled"
+          />
+        </div>
+      )}
+
+      {/*
+        The agent's book at a glance (EZ1-I79). Separate row from the account
+        counters above because these are about the clients they run.
+      */}
+      {isAgent && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Counter label="Total clients" value={agentStats?.totalClients ?? 0} to="/clients" />
+          <Counter
+            label="Matches fixed"
+            value={agentStats?.matchesFixed ?? 0}
+            to="/matches"
+            tone={(agentStats?.matchesFixed ?? 0) > 0 ? 'text-emerald-700' : undefined}
+          />
+          <Counter
+            label="Remaining clients"
+            value={agentStats?.remainingClients ?? 0}
+            to="/clients"
+          />
+          <Counter label="Total interests" value={agentStats?.totalInterests ?? 0} to="/interests" />
+        </div>
+      )}
 
       {/*
         The vendor's own row. Separate from the counters above because these are
