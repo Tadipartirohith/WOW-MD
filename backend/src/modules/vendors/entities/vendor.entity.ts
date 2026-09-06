@@ -75,6 +75,10 @@ export class Vendor {
   @Column({ type: 'varchar', nullable: true })
   registrationNumber: string | null;
 
+  /** When the business started trading — a date, not a year (EZ1-I21). */
+  @Column({ type: 'date', nullable: true })
+  tradingSince: string | null;
+
   @Column({ type: 'text', nullable: true })
   registeredAddress: string | null;
 

@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsDateString,
   IsEnum,
   IsInt,
   IsNumber,
@@ -119,6 +120,12 @@ export class VendorComplianceDto {
   @IsString()
   @MaxLength(64)
   registrationNumber?: string;
+
+  /** When the business started trading — a date (EZ1-I21). Optional. */
+  @ApiPropertyOptional({ example: '2018-06-01', description: 'ISO date the business started' })
+  @IsOptional()
+  @IsDateString()
+  tradingSince?: string;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()

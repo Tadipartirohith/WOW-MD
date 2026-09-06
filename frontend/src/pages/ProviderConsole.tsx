@@ -154,6 +154,7 @@ interface VendorListing {
   gstNumber: string | null;
   panNumber: string | null;
   registrationNumber: string | null;
+  tradingSince: string | null;
   registeredAddress: string | null;
   contactPhone: string | null;
   portfolio: string[];
@@ -375,6 +376,11 @@ function ReviewSummary({ current }: { current: VendorListing }) {
         <Detail label="PAN">{current.panNumber ?? 'Not provided'}</Detail>
         <Detail label="GST number">{current.gstNumber ?? 'Not provided'}</Detail>
         <Detail label="Registration number">{current.registrationNumber ?? 'Not provided'}</Detail>
+        <Detail label="Trading since">
+          {current.tradingSince
+            ? new Date(current.tradingSince).toLocaleDateString()
+            : 'Not provided'}
+        </Detail>
         <Detail label="Registered address">{current.registeredAddress ?? 'Not provided'}</Detail>
         <Detail label="Contact number">{current.contactPhone ?? 'Not provided'}</Detail>
         <Detail label="Portfolio photos">{String(current.portfolio?.length ?? 0)}</Detail>
@@ -395,6 +401,7 @@ const emptyListing = {
   gstNumber: '',
   panNumber: '',
   registrationNumber: '',
+  tradingSince: '',
   registeredAddress: '',
   contactPhone: '',
 };
@@ -451,6 +458,7 @@ function VendorListingForm({
       gstNumber: current.gstNumber ?? '',
       panNumber: current.panNumber ?? '',
       registrationNumber: current.registrationNumber ?? '',
+      tradingSince: current.tradingSince ?? '',
       registeredAddress: current.registeredAddress ?? '',
       contactPhone: current.contactPhone ?? '',
     });
@@ -482,7 +490,11 @@ function VendorListingForm({
     } else if (!PAN_PATTERN.test(form.panNumber.toUpperCase())) {
       errors.panNumber = 'A PAN is 10 characters, like ABCDE1234F';
     }
-    if (form.contactPhone && !/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
+    // Contact mobile is mandatory (EZ1-I21): it is how a client and a
+    // verification officer reach the business.
+    if (!form.contactPhone.trim()) {
+      errors.contactPhone = 'A contact mobile number is required';
+    } else if (!/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
       errors.contactPhone = 'Enter a 10-digit Indian mobile number';
     }
     return errors;
@@ -511,6 +523,7 @@ function VendorListingForm({
         'gstNumber',
         'panNumber',
         'registrationNumber',
+        'tradingSince',
         'registeredAddress',
         'contactPhone',
       ] as const) {
@@ -589,6 +602,11 @@ function VendorListingForm({
           <Detail label="PAN">{current.panNumber ?? 'Not provided'}</Detail>
           <Detail label="Registration number">
             {current.registrationNumber ?? 'Not provided'}
+          </Detail>
+          <Detail label="Trading since">
+            {current.tradingSince
+              ? new Date(current.tradingSince).toLocaleDateString()
+              : 'Not provided'}
           </Detail>
           <Detail label="Registered address">
             {current.registeredAddress ?? 'Not provided'}
@@ -781,6 +799,16 @@ function VendorListingForm({
               className="input"
               value={form.registrationNumber}
               onChange={set('registrationNumber')}
+            />
+          </Field>
+          <Field label="Trading since">
+            {/* A date, not a year (EZ1-I21) — the same question the agency form
+                answers, so families can see how long the business has run. */}
+            <input
+              className="input"
+              type="date"
+              value={form.tradingSince}
+              onChange={set('tradingSince')}
             />
           </Field>
           <div className="sm:col-span-2">

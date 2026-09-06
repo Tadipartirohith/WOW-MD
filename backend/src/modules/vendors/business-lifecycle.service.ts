@@ -72,13 +72,14 @@ export class BusinessLifecycleService {
       ? await this.offerings.find({ where: { vendorServiceId: services[0].id } })
       : [];
 
+    // Mandatory: business name, category, PAN and a contact mobile. GST,
+    // registration number and trading-since are optional (EZ1-I21) — plenty of
+    // legitimate small businesses have no GST registration.
     const missingIdentity: string[] = [];
     if (!business.name) missingIdentity.push('business name');
     if (!business.category) missingIdentity.push('category');
-    if (!business.gstNumber) missingIdentity.push('GST number');
     if (!business.panNumber) missingIdentity.push('PAN number');
-    if (!business.registeredAddress) missingIdentity.push('registered address');
-    if (!business.city) missingIdentity.push('city');
+    if (!business.contactPhone) missingIdentity.push('contact mobile number');
 
     const priced = services.some((svc) =>
       offerings.some((o) => o.vendorServiceId === svc.id && o.active),
@@ -105,10 +106,10 @@ export class BusinessLifecycleService {
       {
         key: 'documents',
         label: 'Documents',
-        // GST and PAN are the documents that matter for a business listing;
-        // anything else an officer asks for, they ask for on the visit.
-        complete: Boolean(business.gstNumber && business.panNumber),
-        missing: business.gstNumber && business.panNumber ? null : 'GST and PAN are both required',
+        // PAN is what payouts are made against, so it is required; GST is
+        // optional (EZ1-I21). Anything else an officer asks for on the visit.
+        complete: Boolean(business.panNumber),
+        missing: business.panNumber ? null : 'PAN is required',
       },
       {
         key: 'portfolio',
