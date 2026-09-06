@@ -114,7 +114,9 @@ export class PlannerClientsService {
    */
   async listClients(actor: AuthUser) {
     const plans = await this.engagedPlans(actor);
-    if (plans.length === 0) return { clients: [], requests: await this.openRequests(actor) };
+    if (plans.length === 0) {
+      return { clients: [], requests: await this.openRequests(actor), upcomingTasks: [] };
+    }
 
     const hostIds = [...new Set(plans.map((p) => p.userId))];
     const [users, profiles, events, tasks, bookings] = await Promise.all([
