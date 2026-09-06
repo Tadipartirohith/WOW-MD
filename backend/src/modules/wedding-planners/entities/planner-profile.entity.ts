@@ -45,6 +45,29 @@ export class PlannerProfile {
   @Column({ type: 'int', default: 0 })
   yearsExperience: number;
 
+  // Contact and location details a couple needs to evaluate a planner, with
+  // proper validation before the profile can be saved (EZ1-I69).
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  contactPerson: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  contactPhone: string | null;
+
+  @Column({ type: 'varchar', length: 254, nullable: true })
+  contactEmail: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  address: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  state: string | null;
+
+  @Column({ type: 'varchar', length: 6, nullable: true })
+  pincode: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  website: string | null;
+
   @Column({ type: 'jsonb', default: [] })
   portfolio: string[];
 

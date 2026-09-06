@@ -878,6 +878,13 @@ interface PlannerListing {
   city?: string;
   bio?: string;
   yearsExperience?: number;
+  contactPerson?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  address?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  website?: string | null;
   isApproved?: boolean;
   portfolio?: string[];
   packages?: PlannerPackage[];
@@ -901,9 +908,24 @@ interface PlannerListing {
  * sending only those, fixes the save; showing what the server said is what
  * makes the next failure diagnosable.
  */
+const EMPTY_PLANNER = {
+  agencyName: '',
+  city: '',
+  bio: '',
+  yearsExperience: 0,
+  contactPerson: '',
+  contactPhone: '',
+  contactEmail: '',
+  address: '',
+  state: '',
+  pincode: '',
+  website: '',
+};
+
 function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState({ agencyName: '', city: '', bio: '', yearsExperience: 0 });
+  const [form, setForm] = useState(EMPTY_PLANNER);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [portfolio, setPortfolio] = useState<string[]>([]);
   const [packages, setPackages] = useState<PlannerPackage[]>([]);
   const [pkgName, setPkgName] = useState('');
@@ -931,14 +953,45 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
       city: existing.city ?? '',
       bio: existing.bio ?? '',
       yearsExperience: existing.yearsExperience ?? 0,
+      contactPerson: existing.contactPerson ?? '',
+      contactPhone: existing.contactPhone ?? '',
+      contactEmail: existing.contactEmail ?? '',
+      address: existing.address ?? '',
+      state: existing.state ?? '',
+      pincode: existing.pincode ?? '',
+      website: existing.website ?? '',
     });
     setPortfolio(existing.portfolio ?? []);
     setPackages(existing.packages ?? []);
   }, [existing]);
 
+  // Field-level validation before the profile can be saved (EZ1-I69). Nothing
+  // entered is lost on a failure: the form keeps its values and only marks the
+  // fields that are wrong.
+  function validate(): Record<string, string> {
+    const errors: Record<string, string> = {};
+    if (!form.agencyName.trim()) errors.agencyName = 'A business name is required';
+    if (form.contactPhone && !/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
+      errors.contactPhone = 'Enter a 10-digit Indian mobile number';
+    }
+    if (form.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.contactEmail.trim())) {
+      errors.contactEmail = 'Enter a valid email address';
+    }
+    if (form.pincode && !/^[1-9]\d{5}$/.test(form.pincode.trim())) {
+      errors.pincode = 'Enter a valid 6-digit pincode';
+    }
+    return errors;
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setMsg('');
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setMsg('Fix the highlighted fields before saving.');
+      return;
+    }
     try {
       await api.put('/wedding-planners/me', {
         agencyName: form.agencyName.trim(),
@@ -947,6 +1000,13 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         ...(form.city.trim() ? { city: form.city.trim() } : {}),
         ...(form.bio.trim() ? { bio: form.bio.trim() } : {}),
         yearsExperience: Number(form.yearsExperience) || 0,
+        ...(form.contactPerson.trim() ? { contactPerson: form.contactPerson.trim() } : {}),
+        ...(form.contactPhone.trim() ? { contactPhone: form.contactPhone.trim() } : {}),
+        ...(form.contactEmail.trim() ? { contactEmail: form.contactEmail.trim() } : {}),
+        ...(form.address.trim() ? { address: form.address.trim() } : {}),
+        ...(form.state.trim() ? { state: form.state.trim() } : {}),
+        ...(form.pincode.trim() ? { pincode: form.pincode.trim() } : {}),
+        ...(form.website.trim() ? { website: form.website.trim() } : {}),
         // Portfolio and packages are the couple's evidence and the couple's
         // prices — the backend already stored both, the form never sent them
         // (EZ1-I24). Always sent, including empty, so removing the last one
@@ -1016,16 +1076,13 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
       )}
       {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
       <div className="grid gap-3 sm:grid-cols-3">
-        <div>
-          <label className="label">Agency name</label>
+        <Field label="Agency name" error={fieldErrors.agencyName}>
           <input className="input" value={form.agencyName} onChange={set('agencyName')} required />
-        </div>
-        <div>
-          <label className="label">Base city</label>
+        </Field>
+        <Field label="Base city">
           <input className="input" value={form.city} onChange={set('city')} />
-        </div>
-        <div>
-          <label className="label">Years of experience</label>
+        </Field>
+        <Field label="Years of experience">
           <input
             className="input"
             type="number"
@@ -1034,7 +1091,60 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
             value={form.yearsExperience}
             onChange={set('yearsExperience')}
           />
-        </div>
+        </Field>
+      </div>
+
+      {/* Contact and location, with field-level validation (EZ1-I69). */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Contact person">
+          <input className="input" value={form.contactPerson} onChange={set('contactPerson')} />
+        </Field>
+        <Field label="Contact mobile" error={fieldErrors.contactPhone}>
+          <input
+            className="input"
+            placeholder="9876543210"
+            value={form.contactPhone}
+            onChange={set('contactPhone')}
+          />
+        </Field>
+        <Field label="Contact email" error={fieldErrors.contactEmail}>
+          <input
+            className="input"
+            type="email"
+            value={form.contactEmail}
+            onChange={set('contactEmail')}
+          />
+        </Field>
+        <Field label="State">
+          <input className="input" value={form.state} onChange={set('state')} />
+        </Field>
+        <Field label="Pincode" error={fieldErrors.pincode}>
+          <input
+            className="input"
+            inputMode="numeric"
+            maxLength={6}
+            value={form.pincode}
+            onChange={set('pincode')}
+          />
+        </Field>
+        <Field label="Website / social">
+          <input
+            className="input"
+            placeholder="https://…"
+            value={form.website}
+            onChange={set('website')}
+          />
+        </Field>
+      </div>
+      <div>
+        <label className="label">Business address</label>
+        <textarea
+          className="input"
+          rows={2}
+          maxLength={500}
+          value={form.address}
+          onChange={set('address')}
+        />
       </div>
       <div>
         <label className="label">About your agency</label>
