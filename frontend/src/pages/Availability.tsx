@@ -546,10 +546,17 @@ function NewSlot({
 }) {
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('13:00');
-  const [serviceId, setServiceId] = useState('');
+  // Availability is per service (EZ1-I28): a window must name the service it is
+  // for, so publishing time for one service does not make every service look
+  // bookable. Defaults to the vendor's first service.
+  const [serviceId, setServiceId] = useState(services[0]?.id ?? '');
   const [capacity, setCapacity] = useState('');
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState('');
+
+  useEffect(() => {
+    if (!serviceId && services.length > 0) setServiceId(services[0].id);
+  }, [services, serviceId]);
 
   const service = services.find((s) => s.id === serviceId);
   // Capacity follows the service unless the vendor overrides it for this one
@@ -565,6 +572,12 @@ function NewSlot({
     }
     if (!Number.isInteger(effectiveCapacity) || effectiveCapacity < 1) {
       setProblem('Capacity has to be a whole number, at least one.');
+      return;
+    }
+    // A window with no service would show under every service (EZ1-I28), so a
+    // vendor who has services must pick the one this window is for.
+    if (services.length > 0 && !serviceId) {
+      setProblem('Choose the service this window is for.');
       return;
     }
     setProblem('');
@@ -608,12 +621,12 @@ function NewSlot({
             <select
               className="input mt-1"
               value={serviceId}
+              required
               onChange={(e) => {
                 setServiceId(e.target.value);
                 setCapacity('');
               }}
             >
-              <option value="">Any</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.displayName ?? s.definition?.name ?? 'Service'}
