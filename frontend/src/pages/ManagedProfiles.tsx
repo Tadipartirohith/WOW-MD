@@ -481,12 +481,27 @@ export default function ManagedProfiles() {
                         to send and the button is gone, so nothing else moves.
                       */}
                       {can(permissions, Permission.MANAGED_PROFILE_INVITE) && allow?.canInvite && (
-                        <button
-                          className={p.claimStatus === 'invited' ? 'btn' : 'btn-outline'}
-                          onClick={() => invite.mutate(p.id)}
-                        >
-                          {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
-                        </button>
+                        <div className="flex flex-col">
+                          {/*
+                            The invitation SMS is the client's verification code,
+                            so it must never go to a malformed number (EZ1-I63).
+                            The number is validated when the profile is created,
+                            but a bad one that reached the record another way is
+                            caught here before the code is ever requested.
+                          */}
+                          <button
+                            className={p.claimStatus === 'invited' ? 'btn' : 'btn-outline'}
+                            disabled={Boolean(p.contactPhone) && !isValidMobile(p.contactPhone!)}
+                            onClick={() => invite.mutate(p.id)}
+                          >
+                            {p.claimStatus === 'invited' ? 'Resend invite' : 'Send invite'}
+                          </button>
+                          {Boolean(p.contactPhone) && !isValidMobile(p.contactPhone!) && (
+                            <span className="mt-1 text-xs text-red-600">
+                              The mobile number is not valid. Fix it before sending the code.
+                            </span>
+                          )}
+                        </div>
                       )}
                       {allow?.canManagePhotos && (
                       <button

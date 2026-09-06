@@ -22,6 +22,7 @@ import {
   UserRole,
 } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { MOBILE_MESSAGE, MOBILE_PATTERN } from '../../common/util/identity-fields';
 
 /** What the public invitation-landing page is allowed to see. */
 export interface InvitationPreview {
@@ -87,6 +88,13 @@ export class InvitationsService {
       throw new BadRequestException(
         'Add a mobile number or an email address to the profile before inviting',
       );
+    }
+    // The invitation SMS is the client's verification code: it must never be
+    // sent to a malformed number (EZ1-I63). The create DTO already enforces the
+    // format, so this is defence-in-depth at send time — an invalid number can
+    // never initiate the verification, whatever route put it on the record.
+    if (profile.contactPhone && !MOBILE_PATTERN.test(profile.contactPhone)) {
+      throw new BadRequestException(MOBILE_MESSAGE);
     }
 
     // The subject may already have signed up on their own since the profile was
