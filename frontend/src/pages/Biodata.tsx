@@ -285,19 +285,36 @@ export default function Biodata() {
       </Accordion>
 
       <Accordion title="Personal details" name="personal" open={open} setOpen={setOpen}>
-        <PersonalForm initial={details} contact={contact} onSave={(b) => save('personal', b)} />
+        <PersonalForm
+          initial={details}
+          contact={contact}
+          onSave={(b) => save('personal', b)}
+          storageKey={`biodata:${targetId}:personal`}
+        />
       </Accordion>
 
       <Accordion title="Religion and community" name="religion" open={open} setOpen={setOpen}>
-        <ReligionForm initial={details} onSave={(b) => save('religion', b)} />
+        <ReligionForm
+          initial={details}
+          onSave={(b) => save('religion', b)}
+          storageKey={`biodata:${targetId}:religion`}
+        />
       </Accordion>
 
       <Accordion title="Horoscope" name="horoscope" open={open} setOpen={setOpen}>
-        <HoroscopeForm initial={details} onSave={(b) => save('horoscope', b)} />
+        <HoroscopeForm
+          initial={details}
+          onSave={(b) => save('horoscope', b)}
+          storageKey={`biodata:${targetId}:horoscope`}
+        />
       </Accordion>
 
       <Accordion title="Marital status" name="marital" open={open} setOpen={setOpen}>
-        <MaritalForm initial={details} onSave={(b) => save('marital', b)} />
+        <MaritalForm
+          initial={details}
+          onSave={(b) => save('marital', b)}
+          storageKey={`biodata:${targetId}:marital`}
+        />
       </Accordion>
 
       <Accordion title="Family" name="family" open={open} setOpen={setOpen}>
@@ -306,6 +323,7 @@ export default function Biodata() {
           siblings={siblings}
           assets={assets}
           onSave={(b) => save('family', b)}
+          storageKey={`biodata:${targetId}:family`}
           onAddSibling={(b) => mutate(() => api.post(`/profiles/${targetId}/details/siblings`, b))}
           onRemoveSibling={(id) =>
             mutate(() => api.delete(`/profiles/${targetId}/details/siblings/${id}`))
@@ -318,13 +336,18 @@ export default function Biodata() {
       </Accordion>
 
       <Accordion title="Education and occupation" name="education" open={open} setOpen={setOpen}>
-        <EducationForm initial={details} onSave={(b) => save('education', b)} />
+        <EducationForm
+          initial={details}
+          onSave={(b) => save('education', b)}
+          storageKey={`biodata:${targetId}:education`}
+        />
       </Accordion>
 
       <Accordion title="Partner preferences" name="preferences" open={open} setOpen={setOpen}>
         <PreferencesForm
           initial={details}
           onSave={(b) => save('preferences', b)}
+          storageKey={`biodata:${targetId}:preferences`}
         />
       </Accordion>
 
@@ -433,31 +456,81 @@ function Field({
 
 type Draft = Record<string, unknown>;
 
-function useDraft(initial: Draft, keys: string[]) {
-  const [draft, setDraft] = useState<Draft>({});
-  useEffect(() => {
+/*
+ * Unsaved bio-data must survive leaving the page and coming back (EZ1-I73).
+ *
+ * Every section form seeds itself from the server copy on mount, so navigating
+ * to Security and back re-seeded from the server and wiped anything typed but
+ * not yet saved. These back the working values with sessionStorage, keyed per
+ * profile and section, so a return restores the draft rather than the last save.
+ * All three swallow their own errors: a private window or a storage quota must
+ * degrade to the old behaviour, never throw.
+ */
+function loadDraft(storageKey?: string): Draft | null {
+  if (!storageKey) return null;
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    return raw ? (JSON.parse(raw) as Draft) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft(storageKey: string | undefined, value: Draft): void {
+  if (!storageKey) return;
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(value));
+  } catch {
+    /* private window / quota — the form still works, it just will not restore. */
+  }
+}
+
+function clearDraft(storageKey?: string): void {
+  if (!storageKey) return;
+  try {
+    sessionStorage.removeItem(storageKey);
+  } catch {
+    /* ignore */
+  }
+}
+
+function useDraft(initial: Draft, keys: string[], storageKey?: string) {
+  const seed = (): Draft => {
     const next: Draft = {};
     for (const key of keys) next[key] = initial?.[key] ?? '';
-    setDraft(next);
+    return next;
+  };
+  const [draft, setDraft] = useState<Draft>(() => loadDraft(storageKey) ?? seed());
+  useEffect(() => {
+    // Prefer an unsaved local draft over re-seeding from the server (EZ1-I73).
+    const stored = loadDraft(storageKey);
+    setDraft(stored ?? seed());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial), keys.join(',')]);
+  }, [JSON.stringify(initial), keys.join(','), storageKey]);
+
+  useEffect(() => {
+    saveDraft(storageKey, draft);
+  }, [storageKey, draft]);
 
   const set = (key: string) => (e: { target: { value: string } }) =>
     setDraft((d) => ({ ...d, [key]: e.target.value }));
   /** For controls that hand back a value rather than an event. */
   const put = (key: string) => (value: string) =>
     setDraft((d) => ({ ...d, [key]: value }));
-  return { draft, setDraft, set, put };
+  const clear = () => clearDraft(storageKey);
+  return { draft, setDraft, set, put, clear };
 }
 
 function PersonalForm({
   initial,
   contact,
   onSave,
+  storageKey,
 }: {
   initial: Draft;
   contact?: ContactBlock;
   onSave: (b: Draft) => void;
+  storageKey?: string;
 }) {
   const keys = [
     'firstName',
@@ -467,10 +540,13 @@ function PersonalForm({
     'communicationAddress',
     'alternateMobile',
   ];
-  const { draft, set } = useDraft(initial, keys);
+  const { draft, set, clear } = useDraft(initial, keys, storageKey);
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    // The draft is saved to the server now, so the local copy can go: the
+    // server is authoritative again until the next unsaved edit (EZ1-I73).
+    clear();
     onSave({
       ...draft,
       heightCm: Number(draft.heightCm) || undefined,
@@ -572,13 +648,20 @@ function PersonalForm({
   );
 }
 
-function ReligionForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
-  const { draft, put } = useDraft(initial, [
-    'religion',
-    'caste',
-    'subCaste',
-    'motherTongue',
-  ]);
+function ReligionForm({
+  initial,
+  onSave,
+  storageKey,
+}: {
+  initial: Draft;
+  onSave: (b: Draft) => void;
+  storageKey?: string;
+}) {
+  const { draft, put, clear } = useDraft(
+    initial,
+    ['religion', 'caste', 'subCaste', 'motherTongue'],
+    storageKey,
+  );
 
   const religion = String(draft.religion ?? '');
   /*
@@ -597,6 +680,7 @@ function ReligionForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) 
         // Denomination is deliberately not sent: the field is gone, and the
         // server treats it as optional, so an old value simply stops being
         // rewritten. Nothing is deleted from rows that already have one.
+        clear();
         onSave(draft);
       }}
       className="space-y-3"
@@ -659,12 +743,32 @@ function rupees(value: number | string): string {
   }).format(amount);
 }
 
-function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
+function HoroscopeForm({
+  initial,
+  onSave,
+  storageKey,
+}: {
+  initial: Draft;
+  onSave: (b: Draft) => void;
+  storageKey?: string;
+}) {
   const chart = (initial?.horoscope ?? {}) as Draft;
-  const [available, setAvailable] = useState(Boolean(initial?.horoscopeAvailable));
-  const [values, setValues] = useState<Draft>({});
+  const stored0 = loadDraft(storageKey);
+  const [available, setAvailable] = useState(
+    stored0 ? Boolean(stored0.available) : Boolean(initial?.horoscopeAvailable),
+  );
+  const [values, setValues] = useState<Draft>(
+    stored0 ? ((stored0.values as Draft) ?? {}) : {},
+  );
 
   useEffect(() => {
+    // An unsaved draft wins over re-seeding from the server (EZ1-I73).
+    const stored = loadDraft(storageKey);
+    if (stored) {
+      setAvailable(Boolean(stored.available));
+      setValues((stored.values as Draft) ?? {});
+      return;
+    }
     setAvailable(Boolean(initial?.horoscopeAvailable));
     const place = (chart.birthPlace ?? {}) as Draft;
     setValues({
@@ -680,7 +784,11 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
       horoscopeDocumentUrl: initial?.horoscopeDocumentUrl ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial)]);
+  }, [JSON.stringify(initial), storageKey]);
+
+  useEffect(() => {
+    saveDraft(storageKey, { available, values });
+  }, [storageKey, available, values]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
@@ -690,6 +798,7 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        clearDraft(storageKey);
         /*
          * Where and when somebody was born is true either way.
          *
@@ -862,14 +971,31 @@ function HoroscopeForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
   );
 }
 
-function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
+function MaritalForm({
+  initial,
+  onSave,
+  storageKey,
+}: {
+  initial: Draft;
+  onSave: (b: Draft) => void;
+  storageKey?: string;
+}) {
   const history = (initial?.maritalHistory ?? {}) as Draft;
+  const stored0 = loadDraft(storageKey);
   const [status, setStatus] = useState<MaritalStatus>(
-    (initial?.maritalStatus as MaritalStatus) ?? 'never_married',
+    stored0
+      ? (stored0.status as MaritalStatus)
+      : ((initial?.maritalStatus as MaritalStatus) ?? 'never_married'),
   );
-  const [values, setValues] = useState<Draft>({});
+  const [values, setValues] = useState<Draft>(stored0 ? ((stored0.values as Draft) ?? {}) : {});
 
   useEffect(() => {
+    const stored = loadDraft(storageKey);
+    if (stored) {
+      setStatus(stored.status as MaritalStatus);
+      setValues((stored.values as Draft) ?? {});
+      return;
+    }
     setStatus((initial?.maritalStatus as MaritalStatus) ?? 'never_married');
     setValues({
       marriageDate: history.marriageDate ?? '',
@@ -882,7 +1008,11 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
       reason: history.reason ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial)]);
+  }, [JSON.stringify(initial), storageKey]);
+
+  useEffect(() => {
+    saveDraft(storageKey, { status, values });
+  }, [storageKey, status, values]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
@@ -891,6 +1021,7 @@ function MaritalForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) =
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        clearDraft(storageKey);
         const body: Draft = { maritalStatus: status };
         if (status !== 'never_married') {
           if (values.marriageDate) body.marriageDate = values.marriageDate;
@@ -997,6 +1128,7 @@ function FamilyForm({
   onRemoveSibling,
   onAddAsset,
   onRemoveAsset,
+  storageKey,
 }: {
   initial: Draft;
   siblings: Sibling[];
@@ -1006,14 +1138,20 @@ function FamilyForm({
   onRemoveSibling: (id: string) => void;
   onAddAsset: (b: Draft) => void;
   onRemoveAsset: (id: string) => void;
+  storageKey?: string;
 }) {
   const father = (initial?.father ?? {}) as Draft;
   const mother = (initial?.mother ?? {}) as Draft;
-  const [values, setValues] = useState<Draft>({});
+  const [values, setValues] = useState<Draft>(() => (loadDraft(storageKey) as Draft) ?? {});
   const [sibling, setSibling] = useState<Draft>({ name: '' });
   const [asset, setAsset] = useState<Draft>({ type: 'independent_house' });
 
   useEffect(() => {
+    const stored = loadDraft(storageKey);
+    if (stored) {
+      setValues(stored);
+      return;
+    }
     setValues({
       fatherName: father.name ?? '',
       fatherProfession: father.profession ?? '',
@@ -1040,7 +1178,11 @@ function FamilyForm({
       familyNetWorthVisible: Boolean(initial?.familyNetWorthVisible),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial)]);
+  }, [JSON.stringify(initial), storageKey]);
+
+  useEffect(() => {
+    saveDraft(storageKey, values);
+  }, [storageKey, values]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
@@ -1051,6 +1193,7 @@ function FamilyForm({
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          clearDraft(storageKey);
           onSave({
             father: {
               name: values.fatherName,
@@ -1437,15 +1580,32 @@ function FamilyForm({
   );
 }
 
-function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft) => void }) {
+function EducationForm({
+  initial,
+  onSave,
+  storageKey,
+}: {
+  initial: Draft;
+  onSave: (b: Draft) => void;
+  storageKey?: string;
+}) {
   const employment = (initial?.employment ?? {}) as Draft;
   const business = (initial?.business ?? {}) as Draft;
+  const stored0 = loadDraft(storageKey);
   const [status, setStatus] = useState<OccupationStatus>(
-    (initial?.occupationStatus as OccupationStatus) ?? 'employed',
+    stored0
+      ? (stored0.status as OccupationStatus)
+      : ((initial?.occupationStatus as OccupationStatus) ?? 'employed'),
   );
-  const [values, setValues] = useState<Draft>({});
+  const [values, setValues] = useState<Draft>(stored0 ? ((stored0.values as Draft) ?? {}) : {});
 
   useEffect(() => {
+    const stored = loadDraft(storageKey);
+    if (stored) {
+      setStatus(stored.status as OccupationStatus);
+      setValues((stored.values as Draft) ?? {});
+      return;
+    }
     setStatus((initial?.occupationStatus as OccupationStatus) ?? 'employed');
     setValues({
       highestQualification: initial?.highestQualification ?? '',
@@ -1462,7 +1622,11 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
       incomeVisible: initial?.incomeVisible ?? false,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial)]);
+  }, [JSON.stringify(initial), storageKey]);
+
+  useEffect(() => {
+    saveDraft(storageKey, { status, values });
+  }, [storageKey, status, values]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
@@ -1472,6 +1636,7 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        clearDraft(storageKey);
         const body: Draft = {
           highestQualification: values.highestQualification,
           course: values.course,
@@ -1627,14 +1792,21 @@ function EducationForm({ initial, onSave }: { initial: Draft; onSave: (b: Draft)
 function PreferencesForm({
   initial,
   onSave,
+  storageKey,
 }: {
   initial: Draft;
   onSave: (b: Draft) => void;
+  storageKey?: string;
 }) {
   const prefs = (initial?.partnerPreferences ?? {}) as Draft;
-  const [values, setValues] = useState<Draft>({});
+  const [values, setValues] = useState<Draft>(() => (loadDraft(storageKey) as Draft) ?? {});
 
   useEffect(() => {
+    const stored = loadDraft(storageKey);
+    if (stored) {
+      setValues(stored);
+      return;
+    }
     setValues({
       preferredAgeMin: initial?.preferredAgeMin ?? 24,
       preferredAgeMax: initial?.preferredAgeMax ?? 34,
@@ -1654,7 +1826,11 @@ function PreferencesForm({
       preferredGothram: prefs.preferredGothram ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(initial)]);
+  }, [JSON.stringify(initial), storageKey]);
+
+  useEffect(() => {
+    saveDraft(storageKey, values);
+  }, [storageKey, values]);
 
   const set = (k: string) => (e: { target: { value: string } }) =>
     setValues((v) => ({ ...v, [k]: e.target.value }));
@@ -1664,6 +1840,7 @@ function PreferencesForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        clearDraft(storageKey);
         onSave({
           preferredAgeMin: Number(values.preferredAgeMin),
           preferredAgeMax: Number(values.preferredAgeMax),
