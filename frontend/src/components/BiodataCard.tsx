@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 export interface Biodata {
   id: string;
   displayName: string;
@@ -43,6 +45,9 @@ export default function BiodataCard({
   print?: boolean;
 }) {
   const years = age(profile.dateOfBirth);
+  // Which photo is open full size, if any (EZ1-I23). Only interactive off the
+  // printed sheet — a print has no click.
+  const [preview, setPreview] = useState<string | null>(null);
   const rows: [string, string | undefined][] = [
     ['Age', years ? `${years} years` : (profile.ageRange ?? undefined)],
     ['Gender', profile.gender],
@@ -71,17 +76,62 @@ export default function BiodataCard({
 
       {profile.photos.length > 0 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
-          {profile.photos.slice(0, print ? 4 : 3).map((src) => (
-            <img
-              key={src}
-              src={src}
-              alt=""
-              className="h-32 w-28 flex-none rounded-sm object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
-              }}
-            />
-          ))}
+          {/* Every photo, clickable to full size in the interactive view (EZ1-I23).
+              The printed sheet stays bounded so it does not run off the page. */}
+          {(print ? profile.photos.slice(0, 4) : profile.photos).map((src) =>
+            print ? (
+              <img
+                key={src}
+                src={src}
+                alt=""
+                className="h-32 w-28 flex-none rounded-sm object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+                }}
+              />
+            ) : (
+              <button
+                key={src}
+                type="button"
+                className="flex-none"
+                onClick={() => setPreview(src)}
+                aria-label="Open photo full size"
+              >
+                <img
+                  src={src}
+                  alt=""
+                  className="h-32 w-28 rounded-sm object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+                  }}
+                />
+              </button>
+            ),
+          )}
+        </div>
+      )}
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreview(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-4 text-3xl leading-none text-white/80"
+            aria-label="Close photo"
+            onClick={() => setPreview(null)}
+          >
+            ×
+          </button>
+          <img
+            src={preview}
+            alt=""
+            className="max-h-full max-w-full rounded-sm object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 
