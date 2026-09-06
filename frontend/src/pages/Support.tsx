@@ -15,13 +15,22 @@ interface SupportCase {
   evidence?: string[];
   createdAt: string;
   history?: { at: string; byUserId: string; status: string; remarks?: string }[];
+  /** The officer's investigation and the resolution, once there is one (EZ1-I49). */
+  findings?: string | null;
+  settlementOutcome?: string | null;
+  settlementNotes?: string | null;
+  resolvedAt?: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
   open: 'Open',
+  triaged: 'Triaged',
   allocated: 'With an investigator',
   in_progress: 'Being looked into',
   waiting_for_information: 'Waiting on you',
+  resolution_submitted: 'Resolution in review',
+  admin_review: 'Resolution in review',
+  reassigned: 'Sent for another look',
   resolved: 'Resolved',
   rejected: 'Closed, no action',
   escalated: 'Escalated for a visit',
@@ -30,13 +39,24 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_TONE: Record<string, string> = {
   open: 'bg-amber-50 text-amber-800',
+  triaged: 'bg-sky-50 text-sky-800',
   allocated: 'bg-sky-50 text-sky-800',
   in_progress: 'bg-sky-50 text-sky-800',
   waiting_for_information: 'bg-amber-50 text-amber-800',
+  resolution_submitted: 'bg-sky-50 text-sky-800',
+  admin_review: 'bg-sky-50 text-sky-800',
+  reassigned: 'bg-amber-50 text-amber-800',
   resolved: 'bg-emerald-50 text-emerald-800',
   rejected: 'bg-gray-100 text-gray-600',
   escalated: 'bg-red-50 text-red-700',
   closed: 'bg-gray-100 text-gray-600',
+};
+
+const OUTCOME_LABEL: Record<string, string> = {
+  release: 'Released to the provider',
+  refund: 'Refunded to the customer',
+  partial: 'Partially settled',
+  no_action: 'No action needed',
 };
 
 /**
@@ -160,6 +180,31 @@ function Section({
             {open === c.id && (
               <div className="mt-3 space-y-2 border-t pt-3 text-sm">
                 <p className="whitespace-pre-wrap text-gray-700">{c.description}</p>
+                {/* The officer's findings and the resolution, once submitted, so
+                    the vendor can see the answer rather than only the status
+                    word (EZ1-I49). */}
+                {(c.findings || c.settlementOutcome || c.settlementNotes) && (
+                  <div className="rounded-sm border border-emerald-200 bg-emerald-50 p-2">
+                    <p className="text-xs font-medium text-emerald-900">
+                      Resolution{c.resolvedAt ? ` · ${formatDateTime(c.resolvedAt)}` : ''}
+                    </p>
+                    {c.settlementOutcome && (
+                      <p className="mt-0.5 text-sm text-emerald-900">
+                        {OUTCOME_LABEL[c.settlementOutcome] ?? c.settlementOutcome.replace(/_/g, ' ')}
+                      </p>
+                    )}
+                    {c.findings && (
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-900">
+                        {c.findings}
+                      </p>
+                    )}
+                    {c.settlementNotes && (
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-emerald-900">
+                        {c.settlementNotes}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {c.evidence && c.evidence.length > 0 && (
                   <p className="flex flex-wrap gap-2">
                     {c.evidence.map((url, i) => (

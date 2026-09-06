@@ -26,6 +26,7 @@ export type TargetModule =
   | 'chat'
   | 'planner'
   | 'clients'
+  | 'support'
   | 'matches';
 
 export type TargetAction = 'view' | 'respond' | 'pay' | 'review' | 'reply';
@@ -99,5 +100,7 @@ export const NOTIFICATION_TARGET: Record<NotificationType, NotificationTarget> =
     action: 'respond',
     idKey: 'requestId',
   },
-  [NotificationType.DISPUTE_UPDATE]: { module: 'disputes', action: 'view', idKey: 'bookingId' },
+  // A support/dispute case. The raiser lands on Support and staff on the
+  // verification Cases tab; linkFor picks the right one by role (EZ1-I49).
+  [NotificationType.DISPUTE_UPDATE]: { module: 'support', action: 'view', idKey: 'caseId' },
 };

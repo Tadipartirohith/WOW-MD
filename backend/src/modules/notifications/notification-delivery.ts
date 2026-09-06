@@ -155,8 +155,8 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
     whatsappTemplate: null,
   },
   [NotificationType.DISPUTE_UPDATE]: {
-    title: 'Dispute',
-    body: () => 'There is an update on a dispute you are part of.',
+    title: 'Support case',
+    body: (p) => str(p, 'message', 'There is an update on a support case you are part of.'),
     whatsappTemplate: null,
   },
 };

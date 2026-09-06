@@ -23,6 +23,7 @@ import {
   TriageCaseDto,
 } from './dto/case.dto';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
@@ -30,6 +31,7 @@ import {
   CasePriority,
   CaseStatus,
   CaseSubject,
+  NotificationType,
   PaymentStatus,
   ProviderType,
   SettlementOutcome,
@@ -80,6 +82,7 @@ export class SupportCasesService {
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -213,6 +216,13 @@ export class SupportCasesService {
       resourceType: 'support_case',
       resourceId: created.id,
       metadata: { subjectType: dto.subjectType, subjectId: dto.subjectId ?? null },
+    });
+
+    // Tell the administrators a case is waiting, so it lands in their feed and
+    // not only in the queue nobody is looking at (EZ1-I49).
+    await this.notifications.createForRole(UserRole.ADMIN, NotificationType.DISPUTE_UPDATE, {
+      caseId: created.id,
+      message: `A ${dto.subjectType} case was raised: ${dto.title}`,
     });
     return created;
   }
@@ -455,6 +465,12 @@ export class SupportCasesService {
       resourceId: caseId,
       metadata: { officerUserId: officer.id },
     });
+
+    // The officer it went to needs to know it is theirs now (EZ1-I49).
+    await this.notifications.create(officer.id, NotificationType.DISPUTE_UPDATE, {
+      caseId,
+      message: `A ${item.subjectType} support case has been allocated to you: ${item.title}`,
+    });
     return saved;
   }
 
@@ -635,6 +651,13 @@ export class SupportCasesService {
         resourceId: caseId,
         metadata: { proposed: true, outcome: dto.outcome, amount: dto.amount ?? null },
       });
+
+      // The officer has proposed a resolution; the administrators decide on it
+      // and should not have to poll the queue to find it (EZ1-I49).
+      await this.notifications.createForRole(UserRole.ADMIN, NotificationType.DISPUTE_UPDATE, {
+        caseId,
+        message: `An officer submitted a resolution for review: ${item.title}`,
+      });
       return proposed;
     }
 
@@ -739,6 +762,16 @@ export class SupportCasesService {
       resourceId: item.id,
       metadata: { outcome, amount, subjectId: item.subjectId },
     });
+
+    // Tell the person who raised it that it has been resolved, so they open the
+    // case and read the outcome rather than wondering whether anything happened
+    // (EZ1-I49).
+    if (item.raisedByUserId) {
+      await this.notifications.create(item.raisedByUserId, NotificationType.DISPUTE_UPDATE, {
+        caseId: item.id,
+        message: `Your ${item.subjectType} case has been resolved: ${item.title}`,
+      });
+    }
     return saved;
   }
 

@@ -10,6 +10,8 @@ import {
   type Notification,
 } from '../lib/notification-copy';
 import { EmptyState, Loading } from '../components/ui/Feedback';
+import { useAuth } from '../store/auth';
+import { Permission, can } from '../lib/permissions';
 import SupportContact from '../components/SupportContact';
 import { BellSlash } from '@phosphor-icons/react';
 
@@ -332,7 +334,13 @@ function SubjectRow({
 }) {
   const [open, setOpen] = useState(false);
   const { latest, earlier, unread } = subject;
-  const href = linkFor(latest);
+  // A support-case notification goes to the verification Cases tab for staff and
+  // to Support for the vendor who raised it (EZ1-I49).
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const canVerify =
+    can(permissions, Permission.VERIFICATION_ALLOCATE) ||
+    can(permissions, Permission.VERIFICATION_FIELDWORK);
+  const href = linkFor(latest, canVerify);
 
   return (
     <div className={`p-4 ${unread > 0 ? 'bg-brand-light/30' : ''}`}>
@@ -406,7 +414,7 @@ function SubjectRow({
   );
 }
 
-function linkFor(n: Notification): string | null {
+function linkFor(n: Notification, canVerify = false): string | null {
   // The server now says where each notification goes, so this maps a module to
   // a route rather than re-deciding from the type. The two used to disagree
   // silently — the rule lived here, in a chain of prefix tests, and a phone
@@ -417,6 +425,10 @@ function linkFor(n: Notification): string | null {
       case 'quotations':
       case 'disputes':
         return n.targetId ? `/bookings?highlight=${n.targetId}` : '/bookings';
+      case 'support':
+        // Staff review cases on the verification Cases tab; the raiser opens
+        // theirs on Support (EZ1-I49).
+        return canVerify ? '/verification' : '/support';
       case 'verification':
         return '/verification';
       case 'chat':
@@ -437,7 +449,7 @@ function linkFor(n: Notification): string | null {
     return bookingId ? `/bookings?highlight=${bookingId}` : '/bookings';
   }
   if (n.type.startsWith('verification_')) return '/verification';
-  if (n.type === 'dispute_update') return '/bookings';
+  if (n.type === 'dispute_update') return canVerify ? '/verification' : '/support';
   if (n.type === 'new_message') return '/chat';
   if (n.type === 'task_reminder') return '/planner';
   if (n.type.startsWith('match_')) {

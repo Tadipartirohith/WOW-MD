@@ -166,8 +166,13 @@ export const VERIFICATION_LABEL: Record<VerificationStatus, string> = {
 
 export type CaseStatus =
   | 'open'
+  | 'triaged'
   | 'allocated'
   | 'in_progress'
+  | 'waiting_for_information'
+  | 'resolution_submitted'
+  | 'admin_review'
+  | 'reassigned'
   | 'resolved'
   | 'rejected'
   | 'escalated'

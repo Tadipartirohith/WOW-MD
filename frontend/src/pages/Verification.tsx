@@ -57,6 +57,7 @@ interface SupportCase {
   assignedToUserId: string | null;
   findings: string | null;
   settlementOutcome: string | null;
+  settlementNotes?: string | null;
   /** Which instalment the argument is over; null when it is not about money. */
   milestone: string | null;
   evidence: string[];
@@ -215,6 +216,9 @@ const CASE_FILTERS: { key: CaseStatus; label: string }[] = [
   { key: 'open', label: 'Open' },
   { key: 'allocated', label: 'Allocated' },
   { key: 'in_progress', label: 'In progress' },
+  // A submitted resolution waiting on an administrator gets its own card so it
+  // is not invisible between "in progress" and "resolved" (EZ1-I49).
+  { key: 'resolution_submitted', label: 'In review' },
   { key: 'escalated', label: 'Escalated' },
   { key: 'resolved', label: 'Resolved' },
   { key: 'rejected', label: 'Rejected' },
@@ -991,6 +995,10 @@ function CaseRow({
   const [findings, setFindings] = useState(item.findings ?? '');
   const [amount, setAmount] = useState('');
   const settled = item.status === 'resolved' || item.status === 'closed';
+  // An officer has proposed a resolution and it is waiting on an administrator
+  // to approve it or send it back (EZ1-I49) — a different screen from settling a
+  // fresh case, so the two do not blur into one another.
+  const inReview = item.status === 'resolution_submitted' || item.status === 'admin_review';
 
   return (
     <div className="card space-y-3">
@@ -1068,13 +1076,64 @@ function CaseRow({
         </div>
       )}
 
-      {item.settlementOutcome && (
+      {item.settlementOutcome && !inReview && (
         <p className="text-sm text-gray-600">
           Settled: <span className="font-medium">{item.settlementOutcome.replace(/_/g, ' ')}</span>
         </p>
       )}
 
-      {canAllocate && !settled && (
+      {/* The officer's proposal, and the administrator's decision on it (EZ1-I49). */}
+      {inReview && (
+        <div className="space-y-2 rounded-sm border border-sky-200 bg-sky-50 p-3">
+          <p className="text-sm font-medium text-sky-900">Resolution submitted for review</p>
+          {item.settlementOutcome && (
+            <p className="text-sm text-sky-900">
+              Proposed: <span className="font-medium">{item.settlementOutcome.replace(/_/g, ' ')}</span>
+            </p>
+          )}
+          {item.findings && <p className="whitespace-pre-wrap text-sm text-sky-900">{item.findings}</p>}
+          {item.settlementNotes && (
+            <p className="whitespace-pre-wrap text-sm text-sky-900">{item.settlementNotes}</p>
+          )}
+          {canAllocate ? (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                className="btn"
+                onClick={() =>
+                  onRun(
+                    () => api.put(`/verification/cases/${item.id}/review`, { decision: 'approve' }),
+                    'Approved. The resolution stands.',
+                  )
+                }
+              >
+                Approve resolution
+              </button>
+              <button
+                className="btn-outline"
+                onClick={() => {
+                  const note = window.prompt('Why is it going back? The next officer needs to know.');
+                  if (note && note.trim().length >= 3) {
+                    void onRun(
+                      () =>
+                        api.put(`/verification/cases/${item.id}/review`, {
+                          decision: 'reassign',
+                          note: note.trim(),
+                        }),
+                      'Sent back for another look.',
+                    );
+                  }
+                }}
+              >
+                Send back
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-sky-800">This is with an administrator for a decision.</p>
+          )}
+        </div>
+      )}
+
+      {canAllocate && !settled && !inReview && (
         <div className="flex flex-wrap items-end gap-2">
           <AllocateePicker
             officers={officers}
@@ -1135,7 +1194,7 @@ function CaseRow({
         </div>
       )}
 
-      {!settled && (
+      {!settled && !inReview && (
         <div className="space-y-2 border-t pt-3">
           <textarea
             className="input"
