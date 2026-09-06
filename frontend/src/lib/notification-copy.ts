@@ -99,12 +99,17 @@ export function describe(n: Notification): string {
       return str('counterpartName')
         ? `${str('counterpartName')}${str('counterpartCity') ? ` from ${str('counterpartCity')}` : ''} would like to take your profile forward.`
         : 'Someone would like to take your profile forward.';
-    case 'match_accepted':
+    case 'match_accepted': {
       // Naming them is the whole point: somebody who has sent five interests
-      // cannot act on "your interest was accepted".
-      return str('counterpartName')
-        ? `${str('counterpartName')} accepted your interest.`
-        : 'Your interest was accepted.';
+      // cannot act on "your interest was accepted". Naming the reader's own
+      // profile too (EZ1-I80) tells an agent which of their clients it is for.
+      const who = str('counterpartName');
+      const forWhom = str('subjectName');
+      if (!who) return 'Your interest was accepted.';
+      return forWhom
+        ? `${who} accepted your interest in ${forWhom}.`
+        : `${who} accepted your interest.`;
+    }
     case 'match_conversation': {
       const who = str('coupleNames') ?? 'Two of your clients';
       return str('kind') === 'call'

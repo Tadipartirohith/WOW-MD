@@ -243,6 +243,7 @@ export class NotificationsConsumer implements OnModuleInit {
 
     for (const [userId, ownProfileId] of byUser) {
       const other = profiles.find((p) => p.id !== ownProfileId) ?? null;
+      const own = profiles.find((p) => p.id === ownProfileId) ?? null;
       await this.notifications.create(userId, type, {
         ...payload,
         // Enough to render the line and open the profile from it.
@@ -250,6 +251,11 @@ export class NotificationsConsumer implements OnModuleInit {
         counterpartName: other?.displayName ?? null,
         counterpartCity: other?.city ?? null,
         counterpartPhotoUrl: other?.photos?.[0] ?? null,
+        // The reader's own side of the pairing, so an agent running many
+        // profiles can tell which client the acceptance is for (EZ1-I80):
+        // "Shravani accepted your interest in <subjectName>".
+        subjectProfileId: ownProfileId,
+        subjectName: own?.displayName ?? null,
       });
     }
   }
