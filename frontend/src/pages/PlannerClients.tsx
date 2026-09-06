@@ -61,6 +61,7 @@ export default function PlannerClients() {
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<'all' | Client['status']>('all');
   const [city, setCity] = useState('');
+  const [sort, setSort] = useState<'date' | 'name'>('date');
 
   const { data, isLoading } = useQuery<{ clients: Client[]; requests: Request[] }>({
     queryKey: ['planner-clients'],
@@ -74,15 +75,24 @@ export default function PlannerClients() {
     [clients],
   );
 
-  const rows = clients.filter((c) => {
-    if (tab !== 'all' && c.status !== tab) return false;
-    if (city && c.location !== city) return false;
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return [c.name, c.bride, c.groom, c.email, c.phone]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(q));
-  });
+  const rows = clients
+    .filter((c) => {
+      if (tab !== 'all' && c.status !== tab) return false;
+      if (city && c.location !== city) return false;
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return [c.name, c.bride, c.groom, c.email, c.phone]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    })
+    // Sort so the soonest wedding, or A–Z by name, is first (EZ1-I56). Undated
+    // weddings sort to the end of the date view rather than jumping to the top.
+    .sort((a, b) => {
+      if (sort === 'name') return a.name.localeCompare(b.name);
+      const at = a.weddingDate ? new Date(a.weddingDate).getTime() : Infinity;
+      const bt = b.weddingDate ? new Date(b.weddingDate).getTime() : Infinity;
+      return at - bt;
+    });
 
   const countFor = (key: (typeof TABS)[number]['key']) =>
     key === 'all' ? clients.length : clients.filter((c) => c.status === key).length;
@@ -170,6 +180,16 @@ export default function PlannerClients() {
             ))}
           </select>
         )}
+        {/* Order the book by the soonest wedding or by name (EZ1-I56). */}
+        <select
+          className="input w-40 py-1.5 text-sm"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as 'date' | 'name')}
+          aria-label="Sort clients"
+        >
+          <option value="date">Soonest wedding</option>
+          <option value="name">Name (A–Z)</option>
+        </select>
       </div>
 
       {isLoading && <Loading rows={4} />}

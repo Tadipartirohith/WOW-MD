@@ -59,7 +59,10 @@ interface Detail {
     bookingId: string;
     name: string;
     category: string;
+    service: string | null;
+    package: string | null;
     status: string;
+    paymentStatus: string | null;
     amount: string;
     currency: string;
     eventDate: string | null;
@@ -112,6 +115,18 @@ export default function PlannerClientDetail() {
           {[client.bride, client.groom].filter(Boolean).join(' & ') || 'Client'}
           {client.city ? ` · ${client.city}` : ''}
         </p>
+        {/* Quick actions into the rest of the workspace (EZ1-I56). */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link className="btn-outline btn-sm" to={`/planner/plan/${wedding.planId}/timeline`}>
+            View wedding plan
+          </Link>
+          <Link className="btn-outline btn-sm" to="/events">
+            Events &amp; tasks
+          </Link>
+          <Link className="btn-outline btn-sm" to="/bookings">
+            Bookings
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -222,10 +237,13 @@ export default function PlannerClientDetail() {
           <div className="mt-2 divide-y">
             {vendors.map((v) => (
               <div key={v.bookingId} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">{v.name}</p>
                   <p className="text-xs capitalize text-gray-500">
                     {String(v.category).replace(/_/g, ' ')}
+                    {/* What was booked, not just from whom (EZ1-I56). */}
+                    {v.service ? ` · ${v.service}` : ''}
+                    {v.package ? ` · ${v.package}` : ''}
                     {v.eventDate ? ` · ${formatDate(v.eventDate)}` : ''}
                   </p>
                 </div>
@@ -233,6 +251,8 @@ export default function PlannerClientDetail() {
                   <p className="text-sm font-medium">{money(v.amount)}</p>
                   <p className="text-xs text-gray-500">
                     {BOOKING_STATUS_LABEL[v.status] ?? v.status.replace(/_/g, ' ')}
+                    {/* Where the money has got to (EZ1-I56). */}
+                    {v.paymentStatus ? ` · ${v.paymentStatus.replace(/_/g, ' ')}` : ''}
                   </p>
                 </div>
               </div>

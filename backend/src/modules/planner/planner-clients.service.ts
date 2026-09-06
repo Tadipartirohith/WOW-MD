@@ -8,7 +8,10 @@ import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { Booking } from '../bookings/entities/booking.entity';
+import { Payment } from '../bookings/entities/payment.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
+import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { BookingStatus, ProviderType, TaskStatus, UserRole } from '../../common/enums';
@@ -36,7 +39,12 @@ export class PlannerClientsService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(WeddingEvent) private readonly events: Repository<WeddingEvent>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
+    @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(VendorService)
+    private readonly vendorServices: Repository<VendorService>,
+    @InjectRepository(ServiceOffering)
+    private readonly offerings: Repository<ServiceOffering>,
     @InjectRepository(PlannerProfile)
     private readonly plannerProfiles: Repository<PlannerProfile>,
     private readonly dashboard: WeddingDashboardService,
@@ -170,7 +178,30 @@ export class PlannerClientsService {
       };
     });
 
-    return { clients, requests: await this.openRequests(actor) };
+    // Deadlines across the whole book, so the dashboard can lead with what is
+    // actually due rather than a count (EZ1-I52). Unfinished tasks that carry a
+    // due date, soonest first — overdue ones sort to the top — capped so the
+    // dashboard shows the next handful rather than the entire backlog.
+    const nameByPlan = new Map(clients.map((c) => [c.planId, c.name]));
+    const now = new Date();
+    const upcomingTasks = tasks
+      .filter((t) => t.status !== TaskStatus.DONE && t.dueDate)
+      .sort(
+        (a, b) =>
+          new Date(a.dueDate as string).getTime() - new Date(b.dueDate as string).getTime(),
+      )
+      .slice(0, 12)
+      .map((t) => ({
+        id: t.id,
+        planId: t.planId,
+        clientName: nameByPlan.get(t.planId) ?? 'A client',
+        title: t.title,
+        dueDate: t.dueDate,
+        status: t.status,
+        overdue: new Date(t.dueDate as string) < now,
+      }));
+
+    return { clients, requests: await this.openRequests(actor), upcomingTasks };
   }
 
   /**
@@ -261,10 +292,43 @@ export class PlannerClientsService {
     const vendorIds = bookings
       .filter((b) => b.providerType === ProviderType.VENDOR)
       .map((b) => b.providerId);
-    const listings = vendorIds.length
-      ? await this.vendors.find({ where: { id: In(vendorIds) } })
-      : [];
+    // The service and package a booking is for, and where its money has got to,
+    // so the client-detail vendor list says what was booked and how it stands
+    // (EZ1-I56), not just the provider name and a status word.
+    const serviceIds = [...new Set(bookings.map((b) => b.vendorServiceId).filter(Boolean))] as string[];
+    const offeringIds = [...new Set(bookings.map((b) => b.offeringId).filter(Boolean))] as string[];
+    const [listings, serviceRows, offeringRows, paymentRows] = await Promise.all([
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : Promise.resolve([]),
+      serviceIds.length
+        ? this.vendorServices.find({ where: { id: In(serviceIds) } })
+        : Promise.resolve([]),
+      offeringIds.length
+        ? this.offerings.find({ where: { id: In(offeringIds) } })
+        : Promise.resolve([]),
+      bookings.length
+        ? this.payments.find({ where: { bookingId: In(bookings.map((b) => b.id)) } })
+        : Promise.resolve([]),
+    ]);
     const vendorById = new Map(listings.map((v) => [v.id, v]));
+    const serviceNameById = new Map(serviceRows.map((s) => [s.id, s.displayName]));
+    const offeringNameById = new Map(offeringRows.map((o) => [o.id, o.name]));
+    // The furthest a booking's money has reached, ranked, mirroring the booking
+    // service's own rollup so the two screens agree.
+    const PAYMENT_RANK: Record<string, number> = {
+      initiated: 1,
+      held_in_escrow: 2,
+      disputed: 3,
+      pending_payout: 4,
+      released: 5,
+      refunded: 6,
+    };
+    const paymentByBooking = new Map<string, string>();
+    for (const p of paymentRows) {
+      const seen = paymentByBooking.get(p.bookingId);
+      if (!seen || (PAYMENT_RANK[p.status] ?? 0) > (PAYMENT_RANK[seen] ?? 0)) {
+        paymentByBooking.set(p.bookingId, p.status);
+      }
+    }
 
     const { bride, groom } = this.couple(user?.role ?? null, profiles);
 
@@ -316,7 +380,10 @@ export class PlannerClientsService {
           bookingId: b.id,
           name: listing?.name ?? (b.providerType === ProviderType.PLANNER ? 'Planning' : 'Provider'),
           category: listing?.category ?? b.providerType,
+          service: b.vendorServiceId ? (serviceNameById.get(b.vendorServiceId) ?? null) : null,
+          package: b.offeringId ? (offeringNameById.get(b.offeringId) ?? null) : null,
           status: b.status,
+          paymentStatus: paymentByBooking.get(b.id) ?? null,
           amount: b.amount,
           currency: b.currency,
           eventDate: b.eventDate ?? null,

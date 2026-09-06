@@ -264,8 +264,21 @@ export default function Dashboard() {
     queryKey: ['planner-clients-summary'],
     queryFn: async () =>
       (await api.get('/planner/clients')).data as {
-        clients: { status: string }[];
+        clients: {
+          userId: string;
+          name: string;
+          status: string;
+          weddingDate: string | null;
+          location: string | null;
+        }[];
         requests: unknown[];
+        upcomingTasks?: {
+          id: string;
+          clientName: string;
+          title: string;
+          dueDate: string | null;
+          overdue: boolean;
+        }[];
       },
     retry: false,
     enabled: isPlanner,
@@ -274,6 +287,13 @@ export default function Dashboard() {
   const activeClients = plannerClients.filter((c) => c.status === 'active').length;
   const upcomingClients = plannerClients.filter((c) => c.status === 'upcoming').length;
   const plannerRequests = plannerBook?.requests?.length ?? 0;
+  // The next few weddings by date, so the band leads with what is coming rather
+  // than only how many there are (EZ1-I52).
+  const upcomingWeddings = plannerClients
+    .filter((c) => c.weddingDate)
+    .sort((a, b) => new Date(a.weddingDate!).getTime() - new Date(b.weddingDate!).getTime())
+    .slice(0, 4);
+  const upcomingTasks = plannerBook?.upcomingTasks ?? [];
 
   // A marriage agent opens the app to see their book at a glance (EZ1-I79):
   // how many clients, how many are matched, how many are still open, and the
@@ -503,6 +523,59 @@ export default function Dashboard() {
             <Link className="btn-outline" to="/events">
               View events
             </Link>
+          </div>
+
+          {/* What is actually coming and what is actually due — the two lists a
+              planner opens the app to see, not just their counts (EZ1-I52). */}
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="card">
+              <h3 className="section-title text-sm">Upcoming weddings</h3>
+              {upcomingWeddings.length === 0 ? (
+                <p className="mt-1 text-sm text-gray-500">No dated weddings yet.</p>
+              ) : (
+                <ul className="mt-2 divide-y">
+                  {upcomingWeddings.map((c) => (
+                    <li key={c.userId} className="py-1.5 text-sm">
+                      <Link className="text-brand-dark hover:underline" to={`/my-clients/${c.userId}`}>
+                        {c.name}
+                      </Link>
+                      <span className="text-gray-500">
+                        {' · '}
+                        {new Date(c.weddingDate as string).toLocaleDateString()}
+                        {c.location ? ` · ${c.location}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="card">
+              <h3 className="section-title text-sm">Tasks &amp; deadlines</h3>
+              {upcomingTasks.length === 0 ? (
+                <p className="mt-1 text-sm text-gray-500">Nothing due across your weddings.</p>
+              ) : (
+                <ul className="mt-2 divide-y">
+                  {upcomingTasks.slice(0, 6).map((t) => (
+                    <li key={t.id} className="flex items-baseline justify-between gap-2 py-1.5 text-sm">
+                      <span className="truncate">
+                        <span className="text-gray-800">{t.title}</span>
+                        <span className="text-gray-400"> · {t.clientName}</span>
+                      </span>
+                      {t.dueDate && (
+                        <span
+                          className={`shrink-0 text-xs ${
+                            t.overdue ? 'font-medium text-red-600' : 'text-gray-500'
+                          }`}
+                        >
+                          {t.overdue ? 'overdue · ' : ''}
+                          {new Date(t.dueDate).toLocaleDateString()}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </section>
       )}

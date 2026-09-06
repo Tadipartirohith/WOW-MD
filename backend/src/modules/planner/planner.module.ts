@@ -9,6 +9,9 @@ import { WeddingEvent } from '../events/entities/event.entity';
 import { Guest } from '../events/entities/guest.entity';
 import { EventInvite } from '../events/entities/event-invite.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { Payment } from '../bookings/entities/payment.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
+import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { AgentsModule } from '../agents/agents.module';
 import { PlannerService } from './planner.service';
@@ -33,6 +36,9 @@ import { PlannerController } from './planner.controller';
       Guest,
       EventInvite,
       Vendor,
+      Payment,
+      VendorService,
+      ServiceOffering,
       Profile,
     ]),
     AgentsModule,
