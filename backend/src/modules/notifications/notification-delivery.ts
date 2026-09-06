@@ -118,7 +118,16 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
   },
   [NotificationType.BOOKING_CANCELLED]: {
     title: 'Booking cancelled',
-    body: (p) => `${job(p)} was cancelled.`,
+    // Who cancelled it and why, not just that it happened (EZ1-I77).
+    body: (p) => {
+      const role = str(p, 'cancelledByRole', '');
+      const name = str(p, 'cancelledByName', '');
+      const who = name && role ? `${name} (${role})` : role || name;
+      const reason = str(p, 'cancellationReason', '');
+      let text = who ? `${job(p)} was cancelled by ${who}.` : `${job(p)} was cancelled.`;
+      if (reason) text += ` Reason: ${reason}`;
+      return text;
+    },
     whatsappTemplate: null,
   },
 

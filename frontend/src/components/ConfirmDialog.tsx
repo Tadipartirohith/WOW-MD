@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { ReactNode, useEffect } from 'react';
 
 /**
  * Asks before something that cannot be taken back.
@@ -21,6 +21,7 @@ export default function ConfirmDialog({
   busy = false,
   onConfirm,
   onDismiss,
+  children,
 }: {
   title: string;
   body: string;
@@ -30,6 +31,8 @@ export default function ConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onDismiss: () => void;
+  /** Extra content between the body and the buttons — e.g. a reason field. */
+  children?: ReactNode;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -57,6 +60,7 @@ export default function ConfirmDialog({
           {title}
         </h2>
         <p className="mt-1 text-sm text-gray-600">{body}</p>
+        {children && <div className="mt-3">{children}</div>}
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <button className="btn-outline" onClick={onDismiss} autoFocus disabled={busy}>
             {cancelLabel}

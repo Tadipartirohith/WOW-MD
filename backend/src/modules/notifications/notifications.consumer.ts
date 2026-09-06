@@ -166,6 +166,20 @@ export class NotificationsConsumer implements OnModuleInit {
       this.serviceName(booking),
     ]);
 
+    // Who cancelled, in words the recipient can act on (EZ1-I77): the side
+    // (customer or provider) and their name, resolved from the payload's
+    // cancelledBy so the notification can say who, not just that it happened.
+    let cancelledByName: string | null = null;
+    let cancelledByRole: string | null = null;
+    if (typeof extra.cancelledBy === 'string') {
+      const isBuyer = extra.cancelledBy === booking.userId;
+      cancelledByRole = isBuyer ? 'the customer' : 'the provider';
+      const cancellerProfile = isBuyer
+        ? buyerProfile
+        : await this.profiles.findOne({ where: { userId: extra.cancelledBy } });
+      cancelledByName = cancellerProfile?.displayName ?? null;
+    }
+
     const payload = {
       ...extra,
       bookingId: booking.id,
@@ -178,6 +192,8 @@ export class NotificationsConsumer implements OnModuleInit {
       slotId: booking.slotId,
       amount: booking.amount,
       currency: booking.currency,
+      cancelledByName,
+      cancelledByRole,
     };
 
     for (const userId of recipients) {

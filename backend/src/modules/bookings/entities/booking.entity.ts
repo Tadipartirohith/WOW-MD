@@ -122,6 +122,13 @@ export class Booking {
   @Column({ type: 'text', nullable: true })
   cancellationReason: string | null;
 
+  /** Who cancelled it, so the other side is told (EZ1-I77). */
+  @Column({ type: 'uuid', nullable: true })
+  cancelledByUserId: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
+
   /**
    * The quotation this booking was struck on, if it came through one.
    *
@@ -158,4 +165,7 @@ export class Booking {
   offeringName?: string | null;
   /** The furthest this booking's money has got, not a list of transactions. */
   paymentStatus?: string | null;
+  /** Who cancelled it, resolved for display (EZ1-I77). */
+  cancelledByName?: string | null;
+  cancelledByRole?: string | null;
 }

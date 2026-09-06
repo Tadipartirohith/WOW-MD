@@ -907,6 +907,8 @@ export class BookingsService {
     const heldSlot = HOLDS_SLOT.includes(booking.status);
 
     booking.cancellationReason = reason ?? null;
+    booking.cancelledByUserId = actor.userId;
+    booking.cancelledAt = new Date();
     const saved = await this.transition(booking, BookingStatus.CANCELLED);
 
     // Give the window back. `wasConfirmed` decides whether a confirmed booking
@@ -940,7 +942,14 @@ export class BookingsService {
     await this.outbox.record({
       eventType: 'booking.cancelled',
       aggregateType: 'booking',
-      payload: { bookingId, cancelledBy: actor.userId, refunded: held.length },
+      // The reason and who cancelled travel with the event so the notification
+      // can tell the other side both (EZ1-I77), not just that it happened.
+      payload: {
+        bookingId,
+        cancelledBy: actor.userId,
+        cancellationReason: reason ?? null,
+        refunded: held.length,
+      },
     });
     return saved;
   }
@@ -1115,6 +1124,19 @@ export class BookingsService {
         ? (offeringNames.get(booking.offeringId) ?? null)
         : null;
       booking.paymentStatus = paymentByBooking.get(booking.id) ?? null;
+      // Who cancelled, for the booking detail (EZ1-I77). Either the customer or
+      // the provider; withProviderNames has already put the provider's name on
+      // the row when this runs, so both sides resolve without another query.
+      if (booking.cancelledByUserId) {
+        if (booking.cancelledByUserId === booking.userId) {
+          booking.cancelledByRole = 'customer';
+          booking.cancelledByName = booking.clientName;
+        } else {
+          booking.cancelledByRole = 'provider';
+          booking.cancelledByName =
+            (booking as { providerName?: string }).providerName ?? null;
+        }
+      }
     }
     return rows;
   }

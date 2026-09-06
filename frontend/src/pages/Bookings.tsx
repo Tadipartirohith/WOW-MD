@@ -24,6 +24,11 @@ interface Booking {
   currency: string;
   status: string;
   eventDate: string | null;
+  /** Cancellation detail, when the booking is cancelled (EZ1-I77). */
+  cancellationReason?: string | null;
+  cancelledByName?: string | null;
+  cancelledByRole?: string | null;
+  cancelledAt?: string | null;
 }
 
 interface Quotation {
@@ -120,6 +125,7 @@ export default function Bookings() {
    * released and escrow unwound before anybody could think better of it.
    */
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   // 'active' is a client-side group, so it is never sent as a status filter to
   // the API; every other value is a real BookingStatus and passes through.
@@ -304,12 +310,32 @@ export default function Bookings() {
                 }
                 confirmLabel="Confirm cancellation"
                 cancelLabel="Keep booking"
-                onDismiss={() => setCancelling(null)}
-                onConfirm={async () => {
-                  await run(() => api.put(`/bookings/${b.id}/cancel`, {}));
+                onDismiss={() => {
                   setCancelling(null);
+                  setCancelReason('');
                 }}
-              />
+                onConfirm={async () => {
+                  // The reason travels with the cancellation so the other side
+                  // is told why, not just that it happened (EZ1-I77).
+                  await run(() =>
+                    api.put(`/bookings/${b.id}/cancel`, {
+                      ...(cancelReason.trim() ? { reason: cancelReason.trim() } : {}),
+                    }),
+                  );
+                  setCancelling(null);
+                  setCancelReason('');
+                }}
+              >
+                <label className="label">Reason (shared with the other side)</label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Let them know why you are cancelling"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                />
+              </ConfirmDialog>
             )}
           </div>
         ))}
@@ -534,6 +560,26 @@ function BookingDetail({
           <BookingProgress status={booking.status} />
         </div>
       </div>
+
+      {/* Why it was cancelled and who by (EZ1-I77). */}
+      {booking.status === 'cancelled' && (
+        <div className="rounded-sm border border-red-200 bg-red-50 p-3 text-sm">
+          <p className="font-medium text-red-900">Cancelled</p>
+          <p className="mt-1 text-red-900">
+            {booking.cancelledByName || booking.cancelledByRole
+              ? `Cancelled by ${[booking.cancelledByName, booking.cancelledByRole && `(${booking.cancelledByRole})`]
+                  .filter(Boolean)
+                  .join(' ')}`
+              : 'This booking was cancelled.'}
+            {booking.cancelledAt
+              ? ` on ${new Date(booking.cancelledAt).toLocaleString()}`
+              : ''}
+          </p>
+          <p className="mt-1 text-red-900">
+            Reason: {booking.cancellationReason || 'No reason was given.'}
+          </p>
+        </div>
+      )}
 
       <div>
         <h3 className="section-title text-sm">Quotations</h3>
