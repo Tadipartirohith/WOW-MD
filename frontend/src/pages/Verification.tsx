@@ -62,6 +62,18 @@ interface SupportCase {
   evidence: string[];
   requiresPhysicalVerification: boolean;
   createdAt: string;
+  /** Investigation context filled in on read (EZ1-I74). */
+  raisedByName?: string | null;
+  raisedByEmail?: string | null;
+  raisedByRole?: string | null;
+  booking?: {
+    id: string;
+    status: string;
+    amount: string;
+    currency: string;
+    buyerName: string | null;
+    providerName: string | null;
+  } | null;
 }
 
 interface Officer {
@@ -993,6 +1005,32 @@ function CaseRow({
       </div>
 
       <p className="text-sm text-gray-700">{item.description}</p>
+
+      {/* Who raised it and, for a booking/payment case, the booking and parties
+          — so an admin can investigate without opening other screens (EZ1-I74). */}
+      {(item.raisedByName || item.raisedByEmail) && (
+        <p className="text-sm text-gray-600">
+          Raised by{' '}
+          <span className="font-medium text-gray-800">
+            {item.raisedByName ?? item.raisedByEmail}
+          </span>
+          {item.raisedByRole ? ` · ${item.raisedByRole}` : ''}
+          {item.raisedByName && item.raisedByEmail ? ` · ${item.raisedByEmail}` : ''}
+        </p>
+      )}
+
+      {item.booking && (
+        <div className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">
+            Booking {item.booking.id.slice(0, 8)} · {item.booking.status.replace(/_/g, ' ')}
+          </p>
+          <p className="text-gray-600">
+            {item.booking.currency} {Number(item.booking.amount).toLocaleString('en-IN')}
+            {item.booking.buyerName ? ` · Buyer: ${item.booking.buyerName}` : ''}
+            {item.booking.providerName ? ` · Provider: ${item.booking.providerName}` : ''}
+          </p>
+        </div>
+      )}
 
       {item.milestone && (
         <p className="text-sm text-gray-600">

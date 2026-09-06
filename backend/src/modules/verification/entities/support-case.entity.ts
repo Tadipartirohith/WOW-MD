@@ -134,4 +134,22 @@ export class SupportCase {
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
+
+  /**
+   * Investigation context, filled in when a case is read (EZ1-I74). Not columns
+   * — resolved from the raiser account and, for a booking/payment case, the
+   * booking and the two parties, so an admin can investigate without opening
+   * three other screens to find out who and what a complaint is about.
+   */
+  raisedByName?: string | null;
+  raisedByEmail?: string | null;
+  raisedByRole?: string | null;
+  booking?: {
+    id: string;
+    status: string;
+    amount: string;
+    currency: string;
+    buyerName: string | null;
+    providerName: string | null;
+  } | null;
 }

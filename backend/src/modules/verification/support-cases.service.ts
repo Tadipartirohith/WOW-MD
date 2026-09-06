@@ -12,6 +12,7 @@ import { Payment } from '../bookings/entities/payment.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { Profile } from '../users/entities/profile.entity';
 import {
   AllocateCaseDto,
   CaseQueryDto,
@@ -77,8 +78,98 @@ export class SupportCasesService {
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
+    @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Decorate cases with who raised them and, for a booking or payment case, the
+   * booking and both parties (EZ1-I74). An administrator investigating a dispute
+   * then has the who and the what in front of them instead of a bare complaint.
+   */
+  private async withContext(rows: SupportCase[]): Promise<SupportCase[]> {
+    if (rows.length === 0) return rows;
+
+    // Raiser identity: account plus display name.
+    const raiserIds = [...new Set(rows.map((r) => r.raisedByUserId).filter(Boolean))] as string[];
+    const [raiserUsers, raiserProfiles] = await Promise.all([
+      raiserIds.length
+        ? this.users.find({ where: { id: In(raiserIds) }, select: ['id', 'email', 'role'] })
+        : [],
+      raiserIds.length ? this.profiles.find({ where: { userId: In(raiserIds) } }) : [],
+    ]);
+    const userById = new Map(raiserUsers.map((u) => [u.id, u]));
+    const nameByUser = new Map(raiserProfiles.map((p) => [p.userId, p.displayName]));
+
+    // Bookings behind BOOKING cases (subjectId is the booking) and PAYMENT cases
+    // (subjectId is a payment, which points at a booking).
+    const bookingCaseIds = rows
+      .filter((r) => r.subjectType === CaseSubject.BOOKING && r.subjectId)
+      .map((r) => r.subjectId as string);
+    const paymentCaseIds = rows
+      .filter((r) => r.subjectType === CaseSubject.PAYMENT && r.subjectId)
+      .map((r) => r.subjectId as string);
+    const payments = paymentCaseIds.length
+      ? await this.payments.find({ where: { id: In(paymentCaseIds) } })
+      : [];
+    const bookingIdByPayment = new Map(payments.map((p) => [p.id, p.bookingId]));
+    const allBookingIds = [
+      ...new Set([...bookingCaseIds, ...payments.map((p) => p.bookingId)]),
+    ];
+    const bookings = allBookingIds.length
+      ? await this.bookings.find({ where: { id: In(allBookingIds) } })
+      : [];
+    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+
+    // Party names for those bookings: buyer display name, and the provider's
+    // business name resolved per provider type.
+    const buyerIds = [...new Set(bookings.map((b) => b.userId).filter(Boolean))] as string[];
+    const buyerProfiles = buyerIds.length
+      ? await this.profiles.find({ where: { userId: In(buyerIds) } })
+      : [];
+    const buyerNameByUser = new Map(buyerProfiles.map((p) => [p.userId, p.displayName]));
+    const vendorIds = bookings
+      .filter((b) => b.providerType === ProviderType.VENDOR)
+      .map((b) => b.providerId);
+    const plannerIds = bookings
+      .filter((b) => b.providerType !== ProviderType.VENDOR)
+      .map((b) => b.providerId);
+    const [providerVendors, providerPlanners] = await Promise.all([
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : [],
+      plannerIds.length ? this.planners.find({ where: { id: In(plannerIds) } }) : [],
+    ]);
+    const vendorNameById = new Map(providerVendors.map((v) => [v.id, v.name]));
+    const plannerNameById = new Map(providerPlanners.map((p) => [p.id, p.agencyName]));
+
+    for (const row of rows) {
+      const user = row.raisedByUserId ? userById.get(row.raisedByUserId) : null;
+      row.raisedByName = row.raisedByUserId ? (nameByUser.get(row.raisedByUserId) ?? null) : null;
+      row.raisedByEmail = user?.email ?? null;
+      row.raisedByRole = user?.role ?? null;
+
+      const bookingId =
+        row.subjectType === CaseSubject.BOOKING
+          ? row.subjectId
+          : row.subjectType === CaseSubject.PAYMENT && row.subjectId
+            ? (bookingIdByPayment.get(row.subjectId) ?? null)
+            : null;
+      const booking = bookingId ? bookingById.get(bookingId) : null;
+      row.booking = booking
+        ? {
+            id: booking.id,
+            status: booking.status,
+            amount: booking.amount,
+            currency: booking.currency,
+            buyerName: booking.userId ? (buyerNameByUser.get(booking.userId) ?? null) : null,
+            providerName:
+              booking.providerType === ProviderType.VENDOR
+                ? (vendorNameById.get(booking.providerId) ?? null)
+                : (plannerNameById.get(booking.providerId) ?? null),
+          }
+        : null;
+    }
+    return rows;
+  }
 
   async raise(actor: AuthUser, dto: RaiseCaseDto): Promise<SupportCase> {
     // Read where the booking stands before freezing it, so the settlement can
@@ -748,7 +839,7 @@ export class SupportCasesService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    return paginate(await this.withContext(data), total, q.page, q.limit);
   }
 
   async findOne(actor: AuthUser, id: string): Promise<SupportCase> {
@@ -758,7 +849,8 @@ export class SupportCasesService {
     if (!mine && actor.role !== UserRole.ADMIN) {
       throw new ForbiddenException('That case is not yours');
     }
-    return item;
+    const [enriched] = await this.withContext([item]);
+    return enriched;
   }
 
   async metrics(officerUserId?: string): Promise<Record<string, number>> {
