@@ -166,31 +166,6 @@ export class MatchmakingService {
    * a half-filled profile wastes the time of everyone it is shown to, and a
    * fixed match is the end of matchmaking for that person rather than a pause.
    */
-  /**
-   * Identity, before anything that binds two families together.
-   *
-   * Browsing is deliberately left open. Somebody who has not verified yet still
-   * needs to see what is on the other side of the step, and a blank page is a
-   * poor argument for producing a passport. What is closed is everything that
-   * commits: sending an interest, accepting one, and fixing a match.
-   *
-   * The check lives here rather than in a guard because it is a fact about the
-   * *subject profile*, not about the account making the call. An agency is
-   * verified as a business and still must not send interests on behalf of a
-   * client whose own document has not been seen — the client is the person
-   * whose identity the other family is relying on.
-   */
-  async assertIdentityVerified(profile: Profile, action: string): Promise<void> {
-    if (profile.idVerifiedAt) return;
-    throw new ForbiddenException(
-      profile.idSubmittedAt
-        ? `Identity verification is still pending for this profile, so you cannot ${action} yet. ` +
-          'A verification officer confirms the document in person.'
-        : `Identity verification is required before you can ${action}. ` +
-          'Add an identity document on the biodata, and an officer will confirm it.',
-    );
-  }
-
   private async assertMatchmakingOpen(profile: Profile): Promise<void> {
     if (profile.lifecycle !== ProfileLifecycle.ACTIVE) {
       throw new ForbiddenException(`This profile is ${profile.lifecycle} and is not matchmaking`);
@@ -887,7 +862,6 @@ export class MatchmakingService {
     }
     const from = await this.resolveSubject(actor, fromProfileId);
     await this.assertMatchmakingOpen(from);
-    await this.assertIdentityVerified(from, 'send an interest');
     if (from.id === toProfileId) throw new BadRequestException('Cannot send interest to yourself');
 
     const target = await this.profiles.findOne({ where: { id: toProfileId } });
@@ -996,7 +970,6 @@ export class MatchmakingService {
     // that. Both ends are checked: the requests either side is holding are as
     // closed as the ones nobody has sent yet.
     if (accept) {
-      await this.assertIdentityVerified(recipient, 'accept an interest');
       const settled =
         (await this.isMatchFixed(interest.toProfileId)) ||
         (await this.isMatchFixed(interest.fromProfileId));

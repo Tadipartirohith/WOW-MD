@@ -30,11 +30,8 @@ export function matchmakingGate(status?: MatchStatus): string | undefined {
   if (!status.profileCompleted) {
     return 'Fill in the profile first: basic details, preferences and a photo.';
   }
-  if (!status.identityVerified) {
-    return status.identitySubmitted
-      ? 'Identity verification is still pending. An officer confirms the document in person.'
-      : 'Identity verification is required before you can send or accept an interest.';
-  }
+  // Identity verification is no longer a matchmaking gate (EZ1-I70): in-person
+  // verification is not part of the individual-user flow.
   if (status.matchFixedState === 'confirmed') {
     return 'This profile has a fixed match, so matchmaking is closed.';
   }

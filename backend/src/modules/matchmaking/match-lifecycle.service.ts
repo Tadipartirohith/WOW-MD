@@ -226,15 +226,6 @@ export class MatchLifecycleService {
       throw new BadRequestException('Only an accepted match can be fixed');
     }
 
-    // Fixing a match is the point at which two families act on this. Whichever
-    // side is confirming, the profile they are confirming for must have had its
-    // document seen.
-    const confirmingProfileId =
-      (requestedSide ?? sides[0]) === 'from' ? interest.fromProfileId : interest.toProfileId;
-    const confirming = await this.profiles.findOne({ where: { id: confirmingProfileId } });
-    if (confirming) {
-      await this.matchmaking.assertIdentityVerified(confirming, 'confirm a match as fixed');
-    }
     if (interest.matchFixedState === MatchFixedState.CONFIRMED) {
       throw new BadRequestException('This match is already fixed');
     }

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import ProfilePreview from '../components/ProfilePreview';
 import MatchCard, { PublicProfile, Suggestion } from '../components/MatchCard';
@@ -135,6 +135,19 @@ export default function Matches() {
   const [pages, setPages] = useState(1);
   const [showShortlist, setShowShortlist] = useState(false);
 
+  // Arriving from an "accepted your interest" notification, open that exact
+  // profile straight away instead of dropping the agent on the list to hunt for
+  // it (EZ1-I82). The link carries ?profile=<counterpartProfileId>; consume it
+  // once so closing the preview does not immediately reopen it.
+  const [urlParams, setUrlParams] = useSearchParams();
+  useEffect(() => {
+    const target = urlParams.get('profile');
+    if (!target) return;
+    setPreviewId(target);
+    urlParams.delete('profile');
+    setUrlParams(urlParams, { replace: true });
+  }, [urlParams, setUrlParams]);
+
   const params = profileId ? { profileId } : {};
   const ready = !isAgent || Boolean(profileId);
 
@@ -239,17 +252,16 @@ export default function Matches() {
    * disabled button with no explanation is its own defect. The reason travels
    * with the button rather than being written out beside each list.
    */
+  // Identity verification is no longer a matchmaking gate for individual users
+  // (EZ1-I70): in-person verification is not part of their flow, so it must not
+  // block sending, accepting or fixing an interest.
   const gate = !status
     ? undefined
     : !status.profileCompleted
       ? 'Fill in the profile first: basic details, preferences and a photo.'
-      : !status.identityVerified
-        ? status.identitySubmitted
-          ? 'Identity verification is still pending. An officer confirms the document in person.'
-          : 'Identity verification is required before you can send or accept an interest.'
-        : fixed
-          ? 'This profile has a fixed match, so matchmaking is closed.'
-          : undefined;
+      : fixed
+        ? 'This profile has a fixed match, so matchmaking is closed.'
+        : undefined;
 
   const interestHandler = gate ? undefined : sendInterest;
 
@@ -283,31 +295,6 @@ export default function Matches() {
       )}
 
       {error && <p className="alert-critical">{error}</p>}
-
-      {/*
-        The verification gate, stated where the buttons it disables are.
-        Browsing stays open deliberately: somebody who has not verified yet
-        still needs to see what is on the other side of the step.
-      */}
-      {ready && status && !status.identityVerified && (
-        <div className="card border-l-4 border-amber-400 bg-amber-50">
-          <p className="font-medium text-amber-900">
-            {status.identitySubmitted
-              ? 'Identity verification is pending'
-              : 'Identity verification is required'}
-          </p>
-          <p className="mt-1 text-sm text-amber-800">
-            {status.identitySubmitted
-              ? 'The document is on file. A verification officer confirms it against the person, and interests open as soon as that is done. You can keep browsing in the meantime.'
-              : 'Browsing is open, but sending an interest, accepting one and fixing a match all wait on it. Add a document on the biodata and an officer will confirm it.'}
-          </p>
-          {!status.identitySubmitted && (
-            <Link className="btn mt-2 inline-block text-xs" to="/biodata">
-              Add an identity document
-            </Link>
-          )}
-        </div>
-      )}
 
       {previewId && (
         <ProfilePreview
