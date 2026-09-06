@@ -31,6 +31,8 @@ interface VerificationRequest {
   remarks: string | null;
   createdAt: string;
   findings: VerificationFindings | null;
+  /** When the officer filed the findings, for the submitted card (EZ1-I26). */
+  submittedAt?: string | null;
   revisitCount: number;
   /** What the automatic allocation went on. Absent on an older request. */
   allocationBasis?: string | null;
@@ -714,6 +716,17 @@ function RequestRow({
               </span>
             )}
           </p>
+          {/* Who filed it and when, so the reviewer is not guessing (EZ1-I26). */}
+          <p className="mt-0.5 text-xs text-gray-500">
+            Findings submitted
+            {request.assignedToUserId
+              ? ` by ${
+                  officers.find((o) => o.id === request.assignedToUserId)?.name ??
+                  'the verification officer'
+                }`
+              : ''}
+            {request.submittedAt ? ` on ${new Date(request.submittedAt).toLocaleString()}` : ''}
+          </p>
           <p className="mt-1 whitespace-pre-wrap text-gray-700">
             {request.findings.observations}
           </p>
@@ -1315,6 +1328,15 @@ function Sla({ request }: { request: VerificationRequest }) {
  * plus every hand the request has passed through, so an approval can be read
  * back later and understood.
  */
+/** A vendor service with its priced offerings, for the officer's review (EZ1-I25). */
+interface ServiceSummary {
+  id: string;
+  active: boolean;
+  definition?: { name?: string } | null;
+  category?: { name?: string } | null;
+  offerings?: { id: string; name: string; price: string | number }[];
+}
+
 function SubjectDetails({
   requestId,
   applicantType,
@@ -1397,6 +1419,80 @@ function SubjectDetails({
       {subject?.description ? (
         <p className="border-t pt-2 text-sm text-gray-700">{String(subject.description)}</p>
       ) : null}
+
+      {/* Portfolio images the business submitted (EZ1-I25). */}
+      {Array.isArray(subject?.portfolio) && (subject!.portfolio as string[]).length > 0 && (
+        <div className="border-t pt-2">
+          <p className="mb-1 text-sm font-medium text-gray-900">Portfolio</p>
+          <div className="flex flex-wrap gap-2">
+            {(subject!.portfolio as string[]).map((url) => (
+              <a key={url} href={url} target="_blank" rel="noreferrer">
+                <img
+                  src={url}
+                  alt=""
+                  className="h-20 w-28 rounded-sm object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Compliance documents, as links — an officer checks these before the visit. */}
+      {Array.isArray(subject?.complianceDocuments) &&
+        (subject!.complianceDocuments as string[]).length > 0 && (
+          <div className="border-t pt-2">
+            <p className="mb-1 text-sm font-medium text-gray-900">Compliance documents</p>
+            <ul className="flex flex-wrap gap-2">
+              {(subject!.complianceDocuments as string[]).map((url, i) => (
+                <li key={url}>
+                  <a className="text-xs text-brand underline" href={url} target="_blank" rel="noreferrer">
+                    Document {i + 1}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+      {/* Catalog & services with their priced offerings (EZ1-I25). */}
+      {Array.isArray(data?.services) && (data!.services as ServiceSummary[]).length > 0 && (
+        <div className="border-t pt-2">
+          <p className="mb-1 text-sm font-medium text-gray-900">Catalog &amp; services</p>
+          <div className="space-y-2">
+            {(data!.services as ServiceSummary[]).map((svc) => (
+              <div key={svc.id} className="rounded-sm bg-gray-50 p-2">
+                <p className="text-sm font-medium text-gray-800">
+                  {svc.definition?.name ?? svc.category?.name ?? 'Service'}
+                  {svc.category?.name && svc.definition?.name ? (
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      {svc.category.name}
+                    </span>
+                  ) : null}
+                  {!svc.active && (
+                    <span className="ml-2 text-xs font-normal text-amber-700">inactive</span>
+                  )}
+                </p>
+                {svc.offerings && svc.offerings.length > 0 ? (
+                  <ul className="mt-1 space-y-0.5 text-sm text-gray-700">
+                    {svc.offerings.map((off) => (
+                      <li key={off.id} className="flex justify-between gap-3">
+                        <span>{off.name}</span>
+                        <span className="tabular-nums text-gray-600">
+                          ₹{Number(off.price).toLocaleString('en-IN')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-400">No offerings priced yet.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {applicant && (
         <p className="border-t pt-2 text-sm text-gray-600">

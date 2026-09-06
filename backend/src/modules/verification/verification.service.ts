@@ -26,6 +26,7 @@ import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { AppConfigService } from '../../config/app-config.service';
 import { BusinessLifecycleService } from '../vendors/business-lifecycle.service';
+import { VendorServicesService } from '../catalog/vendor-services.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { Permission, roleHasPermission } from '../../common/authz/permissions';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
@@ -71,6 +72,7 @@ export class VerificationService {
     private readonly cfg: AppConfigService,
     @Inject(forwardRef(() => BusinessLifecycleService))
     private readonly lifecycle: BusinessLifecycleService,
+    private readonly vendorServices: VendorServicesService,
   ) {}
 
   /**
@@ -656,7 +658,7 @@ export class VerificationService {
   async findOne(
     actor: AuthUser,
     id: string,
-  ): Promise<VerificationRequest & { applicant: unknown; subject: unknown }> {
+  ): Promise<VerificationRequest & { applicant: unknown; subject: unknown; services: unknown }> {
     const request = await this.loadOrFail(id);
     // The same rule the queue uses, and for the same reason: a role test let an
     // agent open any request by id even once the list stopped offering them.
@@ -686,7 +688,18 @@ export class VerificationService {
      */
     const subject = await this.subjectFor(request);
 
-    return { ...request, applicant: applicant ?? null, subject: subject ?? null };
+    // A vendor under review submitted a catalog and priced offerings, not just
+    // a business row. The officer has to be able to see them before the visit
+    // (EZ1-I25); the base row already carries portfolio and compliance
+    // documents. Services are read for the vendor being verified regardless of
+    // whether they are live yet, so nothing is hidden pre-approval.
+    let services: unknown = null;
+    if (request.applicantType === ApplicantType.VENDOR && subject) {
+      const vendorId = (subject as { id?: string }).id;
+      if (vendorId) services = await this.vendorServices.listForVendor(vendorId);
+    }
+
+    return { ...request, applicant: applicant ?? null, subject: subject ?? null, services };
   }
 
   /**

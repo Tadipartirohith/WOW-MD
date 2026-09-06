@@ -17,6 +17,7 @@ import { VerificationController } from './verification.controller';
 import { UsersModule } from '../users/users.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { VendorsModule } from '../vendors/vendors.module';
+import { CatalogModule } from '../catalog/catalog.module';
 
 @Module({
   imports: [
@@ -37,6 +38,9 @@ import { VendorsModule } from '../vendors/vendors.module';
     // The lifecycle lives with the vendors module; the two reference each other
     // because a verification decision is what moves a business.
     forwardRef(() => VendorsModule),
+    // So an officer reviewing a vendor can see the catalog & offerings that
+    // business submitted, not just its base row (EZ1-I25).
+    CatalogModule,
   ],
   providers: [VerificationService, SupportCasesService, OfficersService],
   controllers: [VerificationController],
