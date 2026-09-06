@@ -93,6 +93,11 @@ export default function Agency() {
     }
   }, [agency]);
 
+  // A rejected agency is locked out of re-verification (EZ1-I66): the server
+  // refuses a resubmit, so the form disables its submit and says why rather
+  // than letting the agent post into a 403.
+  const rejected = verification?.status === 'rejected';
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
@@ -138,26 +143,41 @@ export default function Agency() {
       {!isLoading && agency && (
         <div
           className={`card ${
-            agency.isApproved ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'
+            agency.isApproved
+              ? 'border-green-200 bg-green-50'
+              : rejected
+                ? 'border-red-200 bg-red-50'
+                : 'border-amber-200 bg-amber-50'
           }`}
         >
-          <p className={`font-medium ${agency.isApproved ? 'text-green-900' : 'text-amber-900'}`}>
-            {agency.isApproved ? 'Approved' : 'Awaiting approval'}
+          <p
+            className={`font-medium ${
+              agency.isApproved ? 'text-green-900' : rejected ? 'text-red-900' : 'text-amber-900'
+            }`}
+          >
+            {agency.isApproved ? 'Approved' : rejected ? 'Rejected' : 'Awaiting approval'}
           </p>
-          <p className={`text-sm ${agency.isApproved ? 'text-green-900' : 'text-amber-900'}`}>
+          <p
+            className={`text-sm ${
+              agency.isApproved ? 'text-green-900' : rejected ? 'text-red-900' : 'text-amber-900'
+            }`}
+          >
             {agency.isApproved
               ? 'You can build client profiles, invite clients and book on their behalf.'
-              : 'You can sign in and browse, but onboarding clients is locked until an administrator approves you.'}
+              : rejected
+                ? 'Your verification was rejected, so onboarding clients stays locked. This account cannot be submitted for verification again — an administrator must review the decision first.'
+                : 'You can sign in and browse, but onboarding clients is locked until an administrator approves you.'}
           </p>
-          {agency.rejectionReason && (
+          {/* The reason on the record, whichever field carries it (EZ1-I66). */}
+          {(verification?.remarks || agency.rejectionReason) && (
             <p className="mt-2 alert-critical">
-              Not approved: {agency.rejectionReason}
+              {rejected ? 'Reason' : 'Note'}: {verification?.remarks || agency.rejectionReason}
             </p>
           )}
         </div>
       )}
 
-      {verification?.status && !agency?.isApproved && (
+      {verification?.status && !agency?.isApproved && !rejected && (
         <div className="card space-y-1 border-blue-200 bg-blue-50">
           <p className="font-medium text-blue-900">
             Field verification: {VERIFICATION_LABEL[verification.status]}
@@ -323,7 +343,15 @@ export default function Agency() {
           </div>
         </div>
 
-        <button className="btn">{agency ? 'Save details' : 'Submit for review'}</button>
+        <button className="btn" disabled={rejected}>
+          {agency ? 'Save details' : 'Submit for review'}
+        </button>
+        {rejected && (
+          <p className="text-xs text-red-600">
+            This account was rejected and cannot be resubmitted for verification. Contact an
+            administrator to have the decision reviewed.
+          </p>
+        )}
       </form>
     </div>
   );

@@ -78,6 +78,27 @@ export class VerificationService {
    * Idempotent: re-submitting details while a request is open reuses it rather
    * than flooding the queue.
    */
+  /**
+   * Refuse if this business has already been rejected (EZ1-I66, EZ1-I72).
+   * Rejection is terminal and only an administrator may move it, so a rejected
+   * applicant must not be able to edit-and-resubmit its way back into review.
+   * Callers assert this before mutating their record so a refused resubmit does
+   * not leave the record half-written.
+   */
+  async assertNotRejected(applicantUserId: string, subjectId: string | null): Promise<void> {
+    const rejected = await this.requests.findOne({
+      where: subjectId
+        ? { applicantUserId, subjectId, status: VerificationStatus.REJECTED }
+        : { applicantUserId, subjectId: IsNull(), status: VerificationStatus.REJECTED },
+    });
+    if (rejected) {
+      throw new ForbiddenException(
+        'This account was rejected in verification and cannot be submitted again. ' +
+          'An administrator must review the decision before it can return to the queue.',
+      );
+    }
+  }
+
   async raise(
     applicantType: ApplicantType,
     applicantUserId: string,
@@ -113,6 +134,11 @@ export class VerificationService {
       ),
     });
     if (open) return open;
+
+    // A rejected account cannot put itself back in the queue (EZ1-I66, EZ1-I72).
+    // Belt-and-braces here at the one place every applicant type re-enters the
+    // queue; callers should also assert it before they mutate their record.
+    await this.assertNotRejected(applicantUserId, subjectId);
 
     const request = await this.requests.save(
       this.requests.create({

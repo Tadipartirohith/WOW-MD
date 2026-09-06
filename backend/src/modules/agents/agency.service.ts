@@ -39,6 +39,11 @@ export class AgencyService {
       // the name and contact information can drift, and admins can suspend.
       Object.assign(agency, dto);
       return this.agencies.save(agency);
+    } else {
+      // A rejected agency cannot edit-and-resubmit its way back into review
+      // (EZ1-I66, EZ1-I72). Checked before any mutation so a refused resubmit
+      // does not wipe the rejection reason or the saved details.
+      await this.verification.assertNotRejected(ownerUserId, agency.id);
     }
     Object.assign(agency, dto);
     agency.rejectionReason = null;

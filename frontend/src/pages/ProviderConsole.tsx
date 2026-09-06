@@ -882,6 +882,20 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
   const [pkgPrice, setPkgPrice] = useState('');
   const [msg, setMsg] = useState('');
 
+  // A rejected planner is locked out of re-verification (EZ1-I66, EZ1-I72): the
+  // listing badge shows Rejected, and the save is disabled because the server
+  // refuses to re-queue a rejected account.
+  const { data: verification } = useQuery({
+    queryKey: ['my-verification'],
+    queryFn: async () =>
+      (await api.get('/verification/me')).data as {
+        status: string | null;
+        remarks: string | null;
+      },
+    retry: false,
+  });
+  const rejected = verification?.status === 'rejected';
+
   useEffect(() => {
     if (!existing) return;
     setForm({
@@ -952,13 +966,26 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
             className={`rounded-full px-2 py-0.5 text-xs ${
               existing.isApproved
                 ? 'bg-emerald-50 text-emerald-800'
-                : 'bg-amber-50 text-amber-800'
+                : rejected
+                  ? 'bg-red-50 text-red-800'
+                  : 'bg-amber-50 text-amber-800'
             }`}
           >
-            {existing.isApproved ? 'Approved — visible to couples' : 'Awaiting approval'}
+            {existing.isApproved
+              ? 'Approved — visible to couples'
+              : rejected
+                ? 'Rejected'
+                : 'Awaiting approval'}
           </span>
         )}
       </div>
+      {rejected && (
+        <p className="alert-critical">
+          Your verification was rejected, so this listing stays out of search and cannot be
+          submitted again. {verification?.remarks ? `Reason: ${verification.remarks}. ` : ''}An
+          administrator must review the decision before it can return to the queue.
+        </p>
+      )}
       {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
@@ -1067,7 +1094,9 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         </div>
       </div>
 
-      <button className="btn">Save listing</button>
+      <button className="btn" disabled={rejected}>
+        Save listing
+      </button>
     </form>
   );
 }

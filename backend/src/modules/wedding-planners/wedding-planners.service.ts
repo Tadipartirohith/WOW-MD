@@ -25,6 +25,11 @@ export class WeddingPlannersService {
     let profile = await this.planners.findOne({ where: { ownerUserId } });
     if (!profile) {
       profile = this.planners.create({ ownerUserId, isApproved: false });
+    } else if (!profile.isApproved) {
+      // A rejected planner cannot edit-and-resubmit its way back into review
+      // (EZ1-I66, EZ1-I72). Checked before mutating so a refused resubmit leaves
+      // the saved listing untouched.
+      await this.verification.assertNotRejected(ownerUserId, profile.id);
     }
     Object.assign(profile, dto);
     const saved = await this.planners.save(profile);
