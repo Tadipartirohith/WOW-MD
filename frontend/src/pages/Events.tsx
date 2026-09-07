@@ -2,7 +2,8 @@ import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
-import { BOOKING_STATUS_LABEL } from '../lib/permissions';
+import { BOOKING_STATUS_LABEL, Permission, can } from '../lib/permissions';
+import { useAuth } from '../store/auth';
 import RsvpDashboard from '../components/RsvpDashboard';
 import ShareInvitation from '../components/ShareInvitation';
 import { formatDate } from '../lib/dates';
@@ -93,6 +94,10 @@ interface EventVendor {
 export default function Events() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
+  // Hiring a planner is a buyer's action. A planner has EVENT_MANAGE_OWN and so
+  // reaches this page, but must not be offered a planner to hire (EZ1-I120);
+  // BOOKING_CREATE is exactly the buyer capability they lack.
+  const canHirePlanner = can(useAuth((s) => s.user?.permissions ?? []), Permission.BOOKING_CREATE);
 
   /*
    * Whose wedding this is.
@@ -479,14 +484,17 @@ export default function Events() {
                           Vendors
                         </Link>
                         {/* Hire a Planner sits next to Vendors here (EZ1-I108),
-                            the second half of the wedding's marketplace. */}
-                        <Link
-                          className="rounded-sm px-2 py-1 text-xs text-brand-dark hover:bg-gray-100"
-                          to="/wedding-planners"
-                          title="Hire a wedding planner"
-                        >
-                          Hire a Planner
-                        </Link>
+                            the second half of the wedding's marketplace — but
+                            only for a buyer, never for a planner (EZ1-I120). */}
+                        {canHirePlanner && (
+                          <Link
+                            className="rounded-sm px-2 py-1 text-xs text-brand-dark hover:bg-gray-100"
+                            to="/wedding-planners"
+                            title="Hire a wedding planner"
+                          >
+                            Hire a Planner
+                          </Link>
+                        )}
                         <button
                           className="rounded-sm px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
                           onClick={() => setEditing(ev.id)}

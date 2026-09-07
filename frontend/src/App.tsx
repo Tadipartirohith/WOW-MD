@@ -63,7 +63,6 @@ import Vendors from './pages/Vendors';
 import VendorDetail from './pages/VendorDetail';
 import Planner from './pages/Planner';
 import PlannerClients from './pages/PlannerClients';
-import PlannerEvents from './pages/PlannerEvents';
 import PlannerClientDetail from './pages/PlannerClientDetail';
 import Chat from './pages/Chat';
 import Bookings from './pages/Bookings';
@@ -282,18 +281,10 @@ const NAV: NavEntry[] = [
   {
     to: '/events',
     label: 'Events',
-    // The couple's own days. A planner has their own aggregated workspace
-    // under Client Events (EZ1-I84), so this one is the individual's.
+    // The couple's own days. A planner manages a client's events from My
+    // Clients (EZ1-I121), so this page is the individual's alone.
     requires: [Permission.EVENT_MANAGE_OWN],
     group: 'wedding',
-    icon: Confetti,
-  },
-  {
-    // The planner's events workspace across all their confirmed clients (EZ1-I84).
-    to: '/planner/events',
-    label: 'Client Events',
-    requires: [Permission.PLAN_MANAGE_ENGAGED],
-    group: 'clients',
     icon: Confetti,
   },
   { to: '/travel', label: 'Honeymoon', requires: [Permission.TRAVEL_BOOK], group: 'wedding', icon: AirplaneTilt },
@@ -872,14 +863,6 @@ export default function App() {
         element={
           <Protected requires={[Permission.PLAN_MANAGE_ENGAGED]}>
             <PlannerClientDetail />
-          </Protected>
-        }
-      />
-      <Route
-        path="/planner/events"
-        element={
-          <Protected requires={[Permission.PLAN_MANAGE_ENGAGED]}>
-            <PlannerEvents />
           </Protected>
         }
       />
