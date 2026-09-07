@@ -142,6 +142,13 @@ export class AdminController {
     return this.console.allBookings(q);
   }
 
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({ summary: 'Every payment/transaction, with parties and escrow status (EZ1-I111)' })
+  @Get('transactions')
+  transactions(@Query() q: AdminBookingQueryDto) {
+    return this.console.transactions(q);
+  }
+
   @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
   @ApiOperation({
     summary: 'Price changes on live listings waiting for a look',

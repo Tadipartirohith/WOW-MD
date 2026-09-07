@@ -214,6 +214,17 @@ function AccountDetail({ userId }: { userId: string }) {
         note: c.status.replace(/_/g, ' '),
       })),
     ],
+    // An agency's own clients — the accounts they brought on (EZ1-I111).
+    [
+      'Agency clients',
+      (data.agency?.clients ?? []).map(
+        (u: { id: string; email: string; role: string; isActive: boolean }) => ({
+          id: u.id,
+          label: u.email,
+          note: `${u.role}${u.isActive ? '' : ' · suspended'}`,
+        }),
+      ),
+    ],
   ];
 
   return (

@@ -12,6 +12,7 @@ import {
 } from '../components/AdminConsole';
 import ReviewModeration from '../components/ReviewModeration';
 import Admin360 from '../components/Admin360';
+import { Loading } from '../components/ui/Feedback';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
 import CatalogAdmin from '../components/CatalogAdmin';
 
@@ -78,13 +79,14 @@ interface Analytics {
   };
 }
 
-type Section = 'overview' | 'accounts' | 'businesses' | 'bookings' | 'staff' | 'reports';
+type Section = 'overview' | 'accounts' | 'businesses' | 'bookings' | 'payments' | 'staff' | 'reports';
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'accounts', label: 'Accounts' },
   { key: 'businesses', label: 'Businesses' },
   { key: 'bookings', label: 'Bookings' },
+  { key: 'payments', label: 'Payments' },
   { key: 'staff', label: 'Staff' },
   { key: 'reports', label: 'Reports' },
 ];
@@ -128,14 +130,26 @@ export default function Admin() {
   // Every count opens the section that manages it (EZ1-I111): no dashboard card
   // is a dead end. Disputes live on the verification Cases screen, so that one
   // is a route rather than a section on this page.
-  const cards: { label: string; value: number; section?: Section; to?: string }[] = analytics
+  const cards: { label: string; value: number | string; section?: Section; to?: string }[] = analytics
     ? [
         { label: 'Users', value: analytics.totalUsers, section: 'accounts' },
         { label: 'Agents', value: analytics.totalAgents, section: 'accounts' },
         { label: 'Vendors', value: analytics.totalVendors, section: 'businesses' },
         { label: 'Planners', value: analytics.totalPlanners, section: 'businesses' },
         { label: 'Bookings', value: analytics.totalBookings, section: 'bookings' },
+        {
+          label: 'Awaiting verification',
+          value: analytics.verification.awaitingAllocation,
+          to: '/verification',
+        },
+        { label: 'Open cases', value: analytics.verification.casesOpen, to: '/verification' },
         { label: 'Open disputes', value: analytics.openDisputes, to: '/verification' },
+        {
+          label: 'Held in escrow',
+          value: `₹${Number(analytics.escrow?.bookings?.held ?? 0).toLocaleString('en-IN')}`,
+          section: 'payments',
+        },
+        { label: 'Payments', value: analytics.totalBookings, section: 'payments' },
       ]
     : [];
 
@@ -172,6 +186,7 @@ export default function Admin() {
       {section === 'accounts' && <Directory />}
       {section === 'businesses' && <Businesses />}
       {section === 'bookings' && <AllBookings />}
+      {section === 'payments' && <Payments escrow={analytics?.escrow?.bookings} />}
       {section === 'staff' && <Staff />}
       {section === 'reports' && <Reports />}
 
@@ -452,6 +467,134 @@ function Panel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+interface Transaction {
+  paymentId: string;
+  bookingId: string;
+  milestone: string;
+  status: string;
+  amount: string;
+  commissionAmount: string;
+  payoutAmount: string;
+  currency: string;
+  createdAt: string;
+  buyerName: string | null;
+  providerName: string | null;
+  providerType: string | null;
+}
+
+const TXN_STATUS_STYLE: Record<string, string> = {
+  held_in_escrow: 'bg-amber-50 text-amber-800',
+  released: 'bg-emerald-50 text-emerald-800',
+  disputed: 'bg-red-50 text-red-700',
+  refunded: 'bg-gray-100 text-gray-500',
+  pending_payout: 'bg-sky-50 text-sky-800',
+  partially_settled: 'bg-sky-50 text-sky-800',
+};
+
+/**
+ * The admin Payments/Transactions page (EZ1-I111): where the money is (escrow
+ * position) and every payment that made it up, with its booking, parties,
+ * instalment and status.
+ */
+function Payments({ escrow }: { escrow?: Record<string, string> }) {
+  const [status, setStatus] = useState('');
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-transactions', status],
+    queryFn: async () =>
+      (await api.get('/admin/transactions', { params: { limit: 50, status: status || undefined } }))
+        .data as { data: Transaction[]; total: number },
+  });
+
+  const money = (v?: string) => `₹${Number(v ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  const rows = data?.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      {/* Where the money is right now, from the platform's own ledger. */}
+      {escrow && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <EscrowStat label="Held in escrow" value={money(escrow.held)} tone="text-amber-700" />
+          <EscrowStat label="Frozen (disputed)" value={money(escrow.disputed)} tone="text-red-700" />
+          <EscrowStat label="Released" value={money(escrow.released)} tone="text-emerald-700" />
+          <EscrowStat label="Commission" value={money(escrow.commission)} />
+          <EscrowStat label="Refunded" value={money(escrow.refunded)} />
+        </div>
+      )}
+
+      <div className="card overflow-x-auto">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-title">Transactions</h2>
+          <select className="input w-48" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">Any status</option>
+            <option value="held_in_escrow">In escrow</option>
+            <option value="released">Released</option>
+            <option value="disputed">Disputed</option>
+            <option value="refunded">Refunded</option>
+            <option value="pending_payout">Pending payout</option>
+          </select>
+        </div>
+        {isLoading && <Loading rows={4} />}
+        {!isLoading && (
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+                <th className="pb-2">Date</th>
+                <th className="pb-2">Booking</th>
+                <th className="pb-2">Customer</th>
+                <th className="pb-2">Provider</th>
+                <th className="pb-2">Instalment</th>
+                <th className="pb-2 text-right">Amount</th>
+                <th className="pb-2 text-right">Payout</th>
+                <th className="pb-2">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {rows.map((t) => (
+                <tr key={t.paymentId}>
+                  <td className="py-2 text-gray-600">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td className="py-2 font-mono text-xs text-gray-500">{t.bookingId.slice(0, 8)}</td>
+                  <td className="py-2">{t.buyerName ?? '—'}</td>
+                  <td className="py-2">
+                    {t.providerName ?? (t.providerType === 'planner' ? 'Wedding planner' : '—')}
+                  </td>
+                  <td className="py-2 capitalize">{t.milestone.replace(/_/g, ' ')}</td>
+                  <td className="py-2 text-right">{money(t.amount)}</td>
+                  <td className="py-2 text-right text-gray-600">{money(t.payoutAmount)}</td>
+                  <td className="py-2">
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs ${
+                        TXN_STATUS_STYLE[t.status] ?? 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {t.status.replace(/_/g, ' ')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-4 text-center text-gray-400">
+                    No transactions.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EscrowStat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="card">
+      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-1 text-lg font-semibold tabular-nums ${tone ?? 'text-gray-900'}`}>{value}</p>
     </div>
   );
 }

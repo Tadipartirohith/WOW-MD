@@ -418,6 +418,70 @@ export class AdminConsoleService {
   }
 
   /**
+   * Every payment on the platform, for the admin Payments/Transactions page
+   * (EZ1-I111): the booking it is on, the customer and provider, the instalment,
+   * amount, escrow/payout status and date. One row per payment, newest first.
+   */
+  async transactions(q: AdminBookingQueryDto): Promise<
+    PaginatedResult<{
+      paymentId: string;
+      bookingId: string;
+      milestone: string;
+      status: string;
+      amount: string;
+      commissionAmount: string;
+      payoutAmount: string;
+      currency: string;
+      createdAt: Date;
+      buyerName: string | null;
+      providerName: string | null;
+      providerType: string | null;
+    }>
+  > {
+    const qb = this.payments.createQueryBuilder('p');
+    if (q.status) qb.andWhere('p.status = :status', { status: q.status });
+    qb.orderBy('p.createdAt', 'DESC')
+      .skip((q.page - 1) * q.limit)
+      .take(q.limit);
+    const [rows, total] = await qb.getManyAndCount();
+    if (rows.length === 0) return paginate([], total, q.page, q.limit);
+
+    const bookings = await this.bookings.find({
+      where: { id: In([...new Set(rows.map((r) => r.bookingId))]) },
+    });
+    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+    const buyerIds = [...new Set(bookings.map((b) => b.userId))];
+    const vendorIds = [
+      ...new Set(bookings.filter((b) => b.providerType === 'vendor').map((b) => b.providerId)),
+    ];
+    const [profiles, vendors] = await Promise.all([
+      buyerIds.length ? this.profiles.find({ where: { userId: In(buyerIds) } }) : Promise.resolve([]),
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : Promise.resolve([]),
+    ]);
+    const buyerName = new Map(profiles.map((p) => [p.userId as string, p.displayName]));
+    const vendorName = new Map(vendors.map((v) => [v.id, v.name]));
+
+    const data = rows.map((p) => {
+      const b = bookingById.get(p.bookingId);
+      return {
+        paymentId: p.id,
+        bookingId: p.bookingId,
+        milestone: p.milestone,
+        status: p.status,
+        amount: p.amount,
+        commissionAmount: p.commissionAmount,
+        payoutAmount: p.payoutAmount,
+        currency: p.currency,
+        createdAt: p.createdAt,
+        buyerName: b ? (buyerName.get(b.userId) ?? null) : null,
+        providerName: b?.providerType === 'vendor' ? (vendorName.get(b.providerId) ?? null) : null,
+        providerType: b?.providerType ?? null,
+      };
+    });
+    return paginate(data, total, q.page, q.limit);
+  }
+
+  /**
    * The six reports, over a window.
    *
    * One route rather than six, because they differ only in which counts they
