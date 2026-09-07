@@ -32,6 +32,7 @@ import {
   ShareNetwork,
   ShieldCheck,
   Sparkle,
+  Star,
   Storefront,
   UsersThree,
   CaretDown,
@@ -87,6 +88,7 @@ import Verification from './pages/Verification';
 import SetPassword from './pages/SetPassword';
 import Availability from './pages/Availability';
 import Accounts from './pages/Accounts';
+import MyReviews from './pages/MyReviews';
 import Notifications from './pages/Notifications';
 import Biodata from './pages/Biodata';
 import BusinessSwitcher from './components/BusinessSwitcher';
@@ -242,6 +244,9 @@ const NAV: NavEntry[] = [
     icon: CalendarBlank,
   },
   { to: '/accounts', label: 'Accounts', requires: [Permission.BOOKING_READ_INCOMING], group: 'business', icon: Coins },
+  // A vendor's own reviews, on their own page rather than inside My Business
+  // (EZ1-I103).
+  { to: '/my-reviews', label: 'My Reviews', requires: [Permission.VENDOR_LISTING_MANAGE], group: 'business', icon: Star },
   {
     to: '/planner',
     label: 'My Wedding Plan',
@@ -947,6 +952,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.BOOKING_READ_INCOMING]}>
             <Accounts />
+          </Protected>
+        }
+      />
+      <Route
+        path="/my-reviews"
+        element={
+          <Protected requires={[Permission.VENDOR_LISTING_MANAGE]}>
+            <MyReviews />
           </Protected>
         }
       />

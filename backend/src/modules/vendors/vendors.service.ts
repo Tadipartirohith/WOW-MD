@@ -10,6 +10,9 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Vendor } from './entities/vendor.entity';
 import { BusinessLifecycleService } from './business-lifecycle.service';
 import { VendorReview } from './entities/vendor-review.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
+import { ServiceOffering } from '../catalog/entities/service-offering.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 import { User } from '../auth/entities/user.entity';
 import { screenText } from '../../common/util/text-moderation';
 import {
@@ -92,6 +95,11 @@ export class VendorsService {
   constructor(
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     @InjectRepository(VendorReview) private readonly reviews: Repository<VendorReview>,
+    // Read-only, to name the service, package and booking on the vendor's own
+    // reviews view (EZ1-I103).
+    @InjectRepository(VendorService) private readonly serviceRows: Repository<VendorService>,
+    @InjectRepository(ServiceOffering) private readonly offeringRows: Repository<ServiceOffering>,
+    @InjectRepository(Booking) private readonly bookingRows: Repository<Booking>,
     // Only to put a name and an address on a review for the administrator
     // moderating it: deciding in the dark is not deciding.
     @InjectRepository(User) private readonly users: Repository<User>,
@@ -295,6 +303,74 @@ export class VendorsService {
       comment: r.comment,
       createdAt: r.createdAt,
     }));
+  }
+
+  /**
+   * The vendor's own reviews, enriched for the dedicated My Reviews page
+   * (EZ1-I103): each review carries the service, package and booking it is
+   * about, plus the rating, comment and date. The reviewer is still left out —
+   * no name and no contact — so the vendor cannot trace a rating to a customer.
+   */
+  async listReviewsForOwner(
+    ownerUserId: string,
+    vendorId: string,
+  ): Promise<
+    {
+      id: string;
+      rating: number;
+      comment: string;
+      createdAt: Date;
+      bookingId: string | null;
+      serviceName: string | null;
+      offeringName: string | null;
+    }[]
+  > {
+    const vendor = await this.vendors.findOne({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException('Listing not found');
+    if (vendor.ownerUserId !== ownerUserId) {
+      throw new ForbiddenException('This listing does not belong to you');
+    }
+
+    const reviews = await this.reviews.find({
+      where: { vendorId, status: ReviewStatus.PUBLISHED },
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+    if (reviews.length === 0) return [];
+
+    // Resolve the service and package names through the booking each review is
+    // about. Reviews written before bookingId existed simply have no facts.
+    const bookingIds = [...new Set(reviews.map((r) => r.bookingId).filter(Boolean))] as string[];
+    const bookings = bookingIds.length
+      ? await this.bookingRows.find({ where: { id: In(bookingIds) } })
+      : [];
+    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+
+    const serviceIds = [...new Set(bookings.map((b) => b.vendorServiceId).filter(Boolean))] as string[];
+    const offeringIds = [...new Set(bookings.map((b) => b.offeringId).filter(Boolean))] as string[];
+    const services = serviceIds.length
+      ? await this.serviceRows.find({ where: { id: In(serviceIds) } })
+      : [];
+    const offerings = offeringIds.length
+      ? await this.offeringRows.find({ where: { id: In(offeringIds) } })
+      : [];
+    const serviceName = new Map(services.map((s) => [s.id, s.displayName]));
+    const offeringName = new Map(offerings.map((o) => [o.id, o.name]));
+
+    return reviews.map((r) => {
+      const booking = r.bookingId ? bookingById.get(r.bookingId) : undefined;
+      return {
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        bookingId: r.bookingId,
+        serviceName: booking?.vendorServiceId
+          ? (serviceName.get(booking.vendorServiceId) ?? null)
+          : null,
+        offeringName: booking?.offeringId ? (offeringName.get(booking.offeringId) ?? null) : null,
+      };
+    });
   }
 
   /** Which of this user's bookings already carry a review, for the eligibility check. */

@@ -699,6 +699,15 @@ export class BookingsService {
     booking.startedAt = new Date();
     const saved = await this.transition(booking, BookingStatus.IN_PROGRESS);
 
+    // The advance is released to the provider the moment they start the work
+    // (EZ1-I100): it has done its job of committing the buyer, and the provider
+    // is now out of pocket on materials and time. Only the advance — the second
+    // and final instalments stay in escrow until the work is completed and
+    // signed off. An open case freezes everything, so it is checked first.
+    if (!(await this.cases.hasOpenCaseFor(bookingId))) {
+      await this.releaseHeld(actor, bookingId, PaymentMilestone.ADVANCE);
+    }
+
     await this.outbox.record({
       eventType: 'booking.started',
       aggregateType: 'booking',
@@ -769,9 +778,17 @@ export class BookingsService {
    * happened. `PENDING_PAYOUT` is the difference between "we paid them" and "we
    * owe them", and collapsing those two was the thing worth avoiding.
    */
-  private async releaseHeld(actor: AuthUser | undefined, bookingId: string): Promise<number> {
+  private async releaseHeld(
+    actor: AuthUser | undefined,
+    bookingId: string,
+    milestone?: PaymentMilestone,
+  ): Promise<number> {
     const held = await this.payments.find({
-      where: { bookingId, status: PaymentStatus.HELD_IN_ESCROW },
+      where: {
+        bookingId,
+        status: PaymentStatus.HELD_IN_ESCROW,
+        ...(milestone ? { milestone } : {}),
+      },
     });
     if (held.length === 0) return 0;
 

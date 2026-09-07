@@ -1,13 +1,11 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import BusinessSetup, { useCompletion } from '../components/BusinessSetup';
 import GetStarted from '../components/GetStarted';
 import { useAuth } from '../store/auth';
 import { useBusinesses } from '../store/business';
 import VendorServices from '../components/VendorServices';
-import ReviewsPanel from '../components/ReviewsPanel';
 import PhotoUploader from '../components/PhotoUploader';
 import {
   GSTIN_PATTERN,
@@ -89,9 +87,6 @@ export default function ProviderConsole() {
             lock and status rules between the steps.
           */}
           <VendorBusinessWizard vendorId={vendorId} current={current} />
-          {vendorId && (
-            <PayoutAccount vendorId={vendorId} current={current?.payoutAccountId ?? null} />
-          )}
         </>
       ) : (
         <>
@@ -99,47 +94,12 @@ export default function ProviderConsole() {
           <PlannerListingForm existing={listing} />
         </>
       )}
-
       {/*
-        The vendor's own reviews, with the reviewers left out — the same view a
-        buyer gets, and deliberately so. A vendor who could work out which
-        customer left three stars could take it up with them, and the prospect
-        of that conversation is what stops the next honest review being written.
+        Reviews live on their own My Reviews page (EZ1-I103); the payout account
+        lives on Accounts (EZ1-I100); Availability and Bookings are their own
+        navbar modules (EZ1-I105). None of them belong on My Business, which is
+        only about the shop window.
       */}
-      {vendorId && (
-        <div className="card space-y-3">
-          <div>
-            <h2 className="section-title">What people said</h2>
-            <p className="text-sm text-gray-600">
-              Written after a completed booking. You cannot edit or remove these; if one breaks the
-              rules, raise it on Support and an administrator looks at it.
-            </p>
-          </div>
-          <ReviewsPanel vendorId={vendorId} />
-        </div>
-      )}
-
-      {/*
-        Availability and Bookings are their own modules. Duplicating them here
-        was the reported defect: the same list in two places drifts, and the
-        vendor stops trusting either.
-      */}
-      {vendorId && (
-        <div className="card space-y-2 text-sm text-gray-600">
-          <p>
-            <Link className="text-brand underline" to="/availability">
-              Availability
-            </Link>:{' '}
-          publish the windows you can take work in, and set how many bookings each one holds.
-          </p>
-          <p>
-            <Link className="text-brand underline" to="/bookings">
-              Bookings
-            </Link>:{' '}
-          new requests, quotations, confirmations, payments and disputes.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -168,9 +128,9 @@ interface VendorListing {
 
 const WIZARD_STEPS = [
   { key: 'business', label: 'Business Details' },
+  // Services and their offerings & pricing are one step now (EZ1-I96).
   { key: 'catalog', label: 'Catalog & Services' },
-  { key: 'offerings', label: 'Offerings & Pricing' },
-  { key: 'review', label: 'Review' },
+  { key: 'review', label: 'Review & Submit' },
 ] as const;
 
 /**
@@ -274,31 +234,21 @@ function VendorBusinessWizard({
 
       {step === 1 && vendorId && (
         <div className="space-y-3">
+          {/*
+            Services and their offerings & pricing are managed together here
+            (EZ1-I96): one step, not two. VendorServices already owns both — the
+            services list and each service's packages, prices and capacity.
+          */}
           <StepIntro>
-            Pick the services you offer. Each one can carry its own packages and prices in the next
-            step.
+            Pick the services you offer, then add packages, pricing and capacity to each. This is
+            what a buyer sees and what a quotation is built from.
           </StepIntro>
           <VendorServices vendorId={vendorId} />
-          <WizardNav
-            onBack={() => go(0)}
-            onNext={() => go(2)}
-            nextLabel="Continue to Offerings & Pricing →"
-          />
+          <WizardNav onBack={() => go(0)} onNext={() => go(2)} nextLabel="Review & Submit →" />
         </div>
       )}
 
-      {step === 2 && vendorId && (
-        <div className="space-y-3">
-          <StepIntro>
-            Add packages, pricing and capacity to each service. This is what a buyer sees and what a
-            quotation is built from.
-          </StepIntro>
-          <VendorServices vendorId={vendorId} />
-          <WizardNav onBack={() => go(1)} onNext={() => go(3)} nextLabel="Review →" />
-        </div>
-      )}
-
-      {step === 3 && vendorId && current && (
+      {step === 2 && vendorId && current && (
         <div className="space-y-3">
           <ReviewSummary current={current} />
           {/*
@@ -307,7 +257,7 @@ function VendorBusinessWizard({
             the listing on submit.
           */}
           <BusinessSetup businessId={vendorId} />
-          <WizardNav onBack={() => go(2)} onEdit={() => go(0)} />
+          <WizardNav onBack={() => go(1)} onEdit={() => go(0)} />
         </div>
       )}
     </div>
@@ -803,10 +753,13 @@ function VendorListingForm({
           </Field>
           <Field label="Trading since">
             {/* A date, not a year (EZ1-I21) — the same question the agency form
-                answers, so families can see how long the business has run. */}
+                answers, so families can see how long the business has run.
+                Today or earlier only; a future trading-since date is not a real
+                one (EZ1-I96). The API enforces this too. */}
             <input
               className="input"
               type="date"
+              max={new Date().toISOString().slice(0, 10)}
               value={form.tradingSince}
               onChange={set('tradingSince')}
             />
@@ -1236,100 +1189,5 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         Save listing
       </button>
     </form>
-  );
-}
-
-/**
- * Where escrow pays out to.
- *
- * Its own card rather than a field on the listing form, because it is the one
- * value on a business record that decides where money lands — and burying it
- * among portfolio URLs is how it gets changed by accident.
- *
- * Until it is set, money released from escrow is held as owed rather than
- * transferred. That is said plainly here: a provider whose payment has not
- * arrived should be able to find out why on the screen that caused it.
- */
-function PayoutAccount({ vendorId, current }: { vendorId: string; current: string | null }) {
-  const qc = useQueryClient();
-  const [value, setValue] = useState(current ?? '');
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-
-  useEffect(() => setValue(current ?? ''), [current]);
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    setNotice('');
-    try {
-      await api.put(`/vendors/${vendorId}/payout-account`, { payoutAccountId: value.trim() });
-      await qc.invalidateQueries({ queryKey: ['my-listing'] });
-      await qc.invalidateQueries({ queryKey: ['earnings'] });
-      setEditing(false);
-      setNotice(
-        value.trim()
-          ? 'Saved. Anything already owed to you goes out on the next payout run.'
-          : 'Cleared. Payouts will be held until you add an account.',
-      );
-    } catch (err) {
-      setError(apiMessage(err, 'That could not be saved.'));
-    }
-  }
-
-  return (
-    <div className="card space-y-2">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="section-title">Payouts</h2>
-          <p className="text-sm text-gray-600">
-            Where money leaves escrow to. Until this is set, what you have earned is held as owed
-            rather than paid.
-          </p>
-        </div>
-        <span
-          className={`rounded-full px-2 py-1 text-xs ${
-            current ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
-          }`}
-        >
-          {current ? 'Ready' : 'Not set up'}
-        </span>
-      </div>
-
-      {error && <p className="alert-critical">{error}</p>}
-      {notice && <p className="rounded-sm bg-emerald-50 p-2 text-sm text-emerald-700">{notice}</p>}
-
-      {!editing ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <span className={current ? 'font-medium text-gray-900' : 'text-gray-400'}>
-            {current ?? 'No payout account'}
-          </span>
-          <button className="btn-outline" onClick={() => setEditing(true)}>
-            {current ? 'Change' : 'Add one'}
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={save} className="flex flex-wrap items-end gap-2">
-          <label className="text-sm">
-            <span className="text-gray-700">Linked account</span>
-            <input
-              className="input mt-1"
-              placeholder="acc_XXXXXXXXXXXX"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-            <span className="mt-1 block text-xs text-gray-500">
-              From your payment gateway, once your onboarding has cleared. Leave it blank to stop
-              payouts.
-            </span>
-          </label>
-          <button className="btn">Save</button>
-          <button type="button" className="btn-outline" onClick={() => setEditing(false)}>
-            Cancel
-          </button>
-        </form>
-      )}
-    </div>
   );
 }

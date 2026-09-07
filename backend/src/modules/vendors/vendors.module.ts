@@ -10,6 +10,7 @@ import { VerificationModule } from '../verification/verification.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { VendorReview } from './entities/vendor-review.entity';
 import { VendorAvailabilitySlot } from './entities/vendor-availability-slot.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 import { VendorsService } from './vendors.service';
 import { AvailabilityService } from './availability.service';
 import { AdminReviewsController, VendorsController } from './vendors.controller';
@@ -26,6 +27,9 @@ import { CatalogModule } from '../catalog/catalog.module';
       VendorAvailabilitySlot,
       VendorService,
       ServiceOffering,
+      // Read-only, to put the service, package and booking on the vendor's own
+      // reviews view (EZ1-I103).
+      Booking,
       // Read-only, to name the reviewer for an administrator.
       User,
       // Read-only, so availability can ask whether a planner listing is yours.

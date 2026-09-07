@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
-import { MILESTONE_LABEL } from '../lib/permissions';
+import { MILESTONE_LABEL, Permission, can } from '../lib/permissions';
 import { Loading } from '../components/ui/Feedback';
+import PayoutAccount from '../components/PayoutAccount';
+import { useAuth } from '../store/auth';
+import { useBusinesses } from '../store/business';
 
 interface LedgerRow {
   paymentId: string;
@@ -56,9 +59,24 @@ const STATUS_STYLE: Record<string, string> = {
  * and mislead somebody deciding whether they can pay their own suppliers.
  */
 export default function Accounts() {
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const isVendor = can(permissions, Permission.VENDOR_LISTING_MANAGE);
+  const { activeId } = useBusinesses();
+
   const { data, isLoading } = useQuery<Earnings>({
     queryKey: ['earnings'],
     queryFn: async () => (await api.get('/bookings/earnings')).data,
+  });
+
+  // The vendor's payout account lives here now, not in My Business (EZ1-I100).
+  const { data: payout } = useQuery<{ payoutAccountId: string | null } | null>({
+    queryKey: ['payout-account', activeId],
+    enabled: isVendor && Boolean(activeId),
+    queryFn: async () => {
+      const listings = (await api.get('/vendors/me')).data as { id: string; payoutAccountId: string | null }[];
+      return listings.find((l) => l.id === activeId) ?? null;
+    },
+    retry: false,
   });
 
   const money = (value: string) =>
@@ -74,6 +92,10 @@ export default function Accounts() {
           Every rupee that has moved through your bookings, and where it currently sits.
         </p>
       </div>
+
+      {isVendor && activeId && (
+        <PayoutAccount vendorId={activeId} current={payout?.payoutAccountId ?? null} />
+      )}
 
       {isLoading && <Loading rows={3} />}
 

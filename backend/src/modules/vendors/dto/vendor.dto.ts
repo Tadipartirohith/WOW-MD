@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { IsNotFutureDate } from '../../../common/decorators/not-future.decorator';
 import {
   ArrayMaxSize,
   IsArray,
@@ -125,6 +126,7 @@ export class VendorComplianceDto {
   @ApiPropertyOptional({ example: '2018-06-01', description: 'ISO date the business started' })
   @IsOptional()
   @IsDateString()
+  @IsNotFutureDate({ message: 'Trading since cannot be in the future' })
   tradingSince?: string;
 
   @ApiPropertyOptional({ maxLength: 500 })

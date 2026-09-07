@@ -365,6 +365,19 @@ export class VendorsController {
   }
 
   /**
+   * The vendor's own reviews for their My Reviews page (EZ1-I103): the same
+   * anonymised reviews, enriched with the service, package and booking each is
+   * about. Owner-only — the service checks the listing belongs to the caller.
+   */
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "A vendor's own reviews, with service and booking detail" })
+  @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
+  @Get(':id/reviews/mine')
+  myReviews(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vendors.listReviewsForOwner(actor.userId, id);
+  }
+
+  /**
    * Reviews are gated on a completed booking so the rating signal reflects real
    * transactions. Agents review on behalf of the client whose booking it was,
    * which is why the check runs against the agent's own completed bookings too.
