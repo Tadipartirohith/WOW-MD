@@ -15,6 +15,7 @@ import { Quotation } from './entities/quotation.entity';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { VendorReview } from '../vendors/entities/vendor-review.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
@@ -133,6 +134,9 @@ export class BookingsService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Quotation) private readonly quotations: Repository<Quotation>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    // Read-only, to tell a buyer which completed bookings they have already
+    // reviewed and show what they wrote (EZ1-I114).
+    @InjectRepository(VendorReview) private readonly vendorReviews: Repository<VendorReview>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
@@ -1064,7 +1068,27 @@ export class BookingsService {
 
     const [data, total] = await qb.getManyAndCount();
     const named = await this.withProviderNames(data);
-    return paginate(await this.withClientContext(named), total, q.page, q.limit);
+    const withContext = await this.withClientContext(named);
+    return paginate(await this.withMyReviews(actor.userId, withContext), total, q.page, q.limit);
+  }
+
+  /**
+   * Attaches the buyer's own review to each booking they have reviewed, so the
+   * list can hide the "Write a review" form and show what was written instead
+   * (EZ1-I114). Only the caller's own reviews — never anybody else's.
+   */
+  private async withMyReviews(userId: string, rows: Booking[]): Promise<Booking[]> {
+    const ids = rows.map((b) => b.id);
+    if (ids.length === 0) return rows;
+    const reviews = await this.vendorReviews.find({
+      where: { userId, bookingId: In(ids) },
+    });
+    const byBooking = new Map(reviews.map((r) => [r.bookingId, r]));
+    for (const b of rows) {
+      const r = byBooking.get(b.id);
+      b.myReview = r ? { rating: r.rating, comment: r.comment } : null;
+    }
+    return rows;
   }
 
   /**

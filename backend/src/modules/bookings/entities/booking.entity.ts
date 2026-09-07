@@ -168,4 +168,6 @@ export class Booking {
   /** Who cancelled it, resolved for display (EZ1-I77). */
   cancelledByName?: string | null;
   cancelledByRole?: string | null;
+  /** The buyer's own review of this booking, when they have written one (EZ1-I114). */
+  myReview?: { rating: number; comment: string } | null;
 }

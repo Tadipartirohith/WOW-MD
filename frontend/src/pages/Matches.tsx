@@ -33,6 +33,8 @@ interface AcceptedMatch {
   counterpart: PublicProfile;
   direction: 'incoming' | 'outgoing';
   score: number;
+  /** The counterpart's profile manager relation, or null if self-run (EZ1-I115). */
+  managedBy: string | null;
   matchFixedState: MatchFixedState;
   confirmedByYouAt: string | null;
   confirmedByThemAt: string | null;
@@ -660,6 +662,10 @@ export default function Matches() {
                     <p className="text-sm text-gray-500">
                       {[m.counterpart.city, m.counterpart.ageRange].filter(Boolean).join(' · ')}
                     </p>
+                    {/* Who runs the profile, on the confirmed-match card (EZ1-I115). */}
+                    {m.managedBy && (
+                      <p className="text-xs text-gray-500">Managed by their {m.managedBy}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">

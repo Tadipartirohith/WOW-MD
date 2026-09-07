@@ -80,6 +80,8 @@ export interface InterestView {
 /** An accepted match, with everything the Confirmed Matches card has to state. */
 export interface AcceptedMatchView extends InterestView {
   score: number;
+  /** Who runs the counterpart's profile — their relation, or null if self-run (EZ1-I115). */
+  managedBy: string | null;
   matchFixedState: MatchFixedState;
   confirmedByYouAt: Date | null;
   confirmedByThemAt: Date | null;
@@ -1033,6 +1035,15 @@ export class MatchmakingService {
       where: { id: In(views.map((v) => v.counterpart.id)) },
     });
     const pool = await this.detailsFor([me.id, ...counterparts.map((c) => c.id)]);
+    // Who runs the counterpart's profile, for the confirmed-match card
+    // (EZ1-I115): a managed profile says "Managed by their <relation>", a
+    // self-run one says nothing.
+    const managementFor = new Map(
+      counterparts.map((c) => [
+        c.id,
+        c.managedByUserId ? (c.stewardRelation ?? 'family') : null,
+      ] as const),
+    );
     const mine = { profile: me, details: pool.get(me.id) ?? null };
     const scoreFor = new Map(
       counterparts.map(
@@ -1050,6 +1061,7 @@ export class MatchmakingService {
       return {
         ...view,
         score: scoreFor.get(view.counterpart.id) ?? 0,
+        managedBy: managementFor.get(view.counterpart.id) ?? null,
         matchFixedState: row?.matchFixedState ?? MatchFixedState.NONE,
         confirmedByYouAt: myConfirmation ?? null,
         confirmedByThemAt: theirConfirmation ?? null,

@@ -37,6 +37,8 @@ interface Booking {
   cancelledByName?: string | null;
   cancelledByRole?: string | null;
   cancelledAt?: string | null;
+  /** The buyer's own review of this booking, when written (EZ1-I114). */
+  myReview?: { rating: number; comment: string } | null;
 }
 
 interface Quotation {
@@ -294,7 +296,9 @@ export default function Bookings() {
                   once per booking — the server finds the completed, unreviewed
                   booking for this vendor and refuses a second (EZ1-I30).
                 */}
-                {b.status === 'completed' && b.providerType === 'vendor' && (
+                {/* Once reviewed, the form is gone and the submitted review is
+                    shown instead — no second review field (EZ1-I114). */}
+                {b.status === 'completed' && b.providerType === 'vendor' && !b.myReview && (
                   <button
                     className="btn-outline"
                     onClick={() => setReviewing(reviewing === b.id ? null : b.id)}
@@ -305,8 +309,28 @@ export default function Bookings() {
               </div>
             </div>
 
-            {reviewing === b.id && (
-              <ReviewForm booking={b} onCancel={() => setReviewing(null)} />
+            {b.myReview ? (
+              <div className="mt-2 rounded-sm bg-surface-sunken p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-emerald-700">Review submitted</span>
+                  <span className="flex items-center gap-0.5" aria-label={`${b.myReview.rating} out of 5`}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <span
+                        key={star}
+                        className={star <= b.myReview!.rating ? 'text-caution-fg' : 'text-gray-300'}
+                        aria-hidden
+                      >
+                        ★
+                      </span>
+                    ))}
+                  </span>
+                </div>
+                {b.myReview.comment && (
+                  <p className="mt-1 text-sm text-gray-700">{b.myReview.comment}</p>
+                )}
+              </div>
+            ) : (
+              reviewing === b.id && <ReviewForm booking={b} onCancel={() => setReviewing(null)} />
             )}
 
             {disputing === b.id && (
