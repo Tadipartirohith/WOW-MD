@@ -7,6 +7,12 @@ import { Permission, can } from '../lib/permissions';
 import ClientSelector from '../components/ClientSelector';
 import { Loading } from '../components/ui/Feedback';
 
+interface PlannerPackage {
+  name: string;
+  price: number;
+  includes?: string[];
+}
+
 interface Planner {
   id: string;
   agencyName: string;
@@ -15,17 +21,33 @@ interface Planner {
   yearsExperience: number;
   ratingAvg: number;
   ratingCount: number;
+  servesCities?: string[];
+  packages?: PlannerPackage[];
+  portfolio?: string[];
+  website?: string | null;
+  contactPerson?: string | null;
 }
 
+/**
+ * Hire a Wedding Planner.
+ *
+ * The flow mirrors the vendor one (EZ1-I113): a buyer explores the planners,
+ * opens one to read the full profile — experience, the areas they cover, their
+ * packages and portfolio — and only then requests a booking, rather than the
+ * grid asking for a booking on sight. The page itself is a clean set of cards
+ * with a budget and city filter (EZ1-I95).
+ */
 export default function WeddingPlanners() {
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const isAgent = can(permissions, Permission.CLIENT_ACT_ON_BEHALF);
+  const canBook = can(permissions, Permission.BOOKING_CREATE);
 
   const [city, setCity] = useState('');
   const [onBehalfOf, setOnBehalfOf] = useState('');
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['planners', city],
@@ -37,23 +59,14 @@ export default function WeddingPlanners() {
     setBusy(plannerId);
     setMessage('');
     try {
-      const payload: Record<string, unknown> = {
-        providerType: 'planner',
-        providerId: plannerId,
-      };
-      /*
-       * Sent only when it was typed.
-       *
-       * This used to fall back to `Number(amount) || 1`, so leaving the box
-       * empty asked a planner to run a wedding for one rupee. The server makes
-       * the amount optional precisely because the planner is the one who
-       * prices the job — an empty box means "quote me", which is the normal
-       * way this starts, not a number the client has to invent.
-       */
+      const payload: Record<string, unknown> = { providerType: 'planner', providerId: plannerId };
+      // An empty budget means "quote me" — the planner prices the job, so a
+      // number is never invented on the client's behalf.
       const quoted = Number(amount);
       if (amount.trim() && Number.isFinite(quoted) && quoted > 0) payload.amount = quoted;
       if (isAgent && onBehalfOf) payload.onBehalfOfUserId = onBehalfOf;
       await api.post('/bookings', payload);
+      setOpenId(null);
       setMessage('Booking requested. Pay to move it into escrow from the Bookings page.');
     } catch (err) {
       const msg = (err as AxiosError<{ message?: string | string[] }>).response?.data?.message;
@@ -64,78 +77,203 @@ export default function WeddingPlanners() {
   }
 
   const planners: Planner[] = data?.data ?? [];
+  const open = planners.find((p) => p.id === openId) ?? null;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div>
         <h1 className="page-title">Hire a Wedding Planner</h1>
-        <div className="flex flex-wrap items-end gap-3">
-          {isAgent && <ClientSelector value={onBehalfOf} onChange={setOnBehalfOf} />}
-          <div>
-            <label className="label">
-              Your budget <span className="font-normal text-gray-400">(optional)</span>
-            </label>
-            <input
-              className="input max-w-[10rem]"
-              type="number"
-              min={1}
-              placeholder="Leave blank"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-gray-500">Leave it blank and the planner quotes you.</p>
-          </div>
-          <div>
-            <label className="label">City</label>
-            <input
-              className="input max-w-xs"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Any"
-            />
-          </div>
+        <p className="page-subtitle">
+          Browse approved planners, open one to see their experience, packages and portfolio, then
+          request a booking. The planner quotes you unless you set a budget.
+        </p>
+      </div>
+
+      {/* Budget and city filters, together with the search they drive (EZ1-I95). */}
+      <div className="card flex flex-wrap items-end gap-3">
+        {isAgent && <ClientSelector value={onBehalfOf} onChange={setOnBehalfOf} />}
+        <div>
+          <label className="label">
+            Your budget <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <input
+            className="input max-w-[10rem]"
+            type="number"
+            min={1}
+            placeholder="Leave blank"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+        <div className="flex-1">
+          <label className="label">City</label>
+          <input
+            className="input max-w-xs"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="Any city"
+          />
         </div>
       </div>
 
       {message && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{message}</p>}
       {isLoading && <Loading rows={3} />}
       {!isLoading && planners.length === 0 && (
-        <p className="text-gray-500">No approved planners match that search.</p>
+        <div className="card text-center text-gray-500">
+          No approved planners match that search. Try a different city or clear the filter.
+        </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {planners.map((p) => (
-          <div key={p.id} className="group/tile card flex flex-col transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card">
-            <div className="flex items-center justify-between">
+          <div
+            key={p.id}
+            className="card flex flex-col transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card"
+          >
+            <div className="flex items-start justify-between gap-2">
               <h2 className="section-title">{p.agencyName}</h2>
-              <span className="text-sm text-amber-600">
-                {p.ratingAvg} ({p.ratingCount})
-              </span>
+              {p.ratingCount > 0 && (
+                <span className="whitespace-nowrap text-sm text-amber-600">
+                  ★ {p.ratingAvg.toFixed(1)} ({p.ratingCount})
+                </span>
+              )}
             </div>
             <p className="text-sm text-gray-500">
               {p.city}
-              {p.yearsExperience ? ` · ${p.yearsExperience} yrs` : ''}
+              {p.yearsExperience ? ` · ${p.yearsExperience} yrs experience` : ''}
             </p>
-            {p.bio && <p className="mt-2 flex-1 text-sm text-gray-600">{p.bio}</p>}
-            {/*
-              Disabled only while this one is in flight.
-
-              It used to be disabled whenever the amount box at the top of the
-              page was empty — which it is on arrival — so every button on the
-              screen was dead on load and nothing said why. A control that
-              refuses to be pressed and gives no reason reads as a broken page,
-              and the amount was never required by the handler or the server
-              anyway.
-            */}
-            <button
-              className="btn-outline btn-sm mt-4 w-full transition-colors group-hover/tile:border-brand group-hover/tile:text-brand-strong"
-              disabled={busy === p.id}
-              onClick={() => book(p.id)}
-            >
-              {busy === p.id ? 'Requesting...' : 'Request booking'}
+            {p.bio && <p className="mt-2 line-clamp-3 flex-1 text-sm text-gray-600">{p.bio}</p>}
+            {(p.packages?.length ?? 0) > 0 && (
+              <p className="mt-2 text-xs text-gray-500">
+                {p.packages!.length} package{p.packages!.length === 1 ? '' : 's'} · from ₹
+                {Math.min(...p.packages!.map((k) => k.price)).toLocaleString('en-IN')}
+              </p>
+            )}
+            <button className="btn mt-4 w-full" onClick={() => setOpenId(p.id)}>
+              View profile
             </button>
           </div>
         ))}
+      </div>
+
+      {open && (
+        <PlannerDetail
+          planner={open}
+          canBook={canBook}
+          busy={busy === open.id}
+          onClose={() => setOpenId(null)}
+          onBook={() => book(open.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A planner's full profile, opened from the grid — the explore step the vendor
+ * flow has and this page was missing (EZ1-I113). The booking action lives here,
+ * after the buyer has seen who they are hiring.
+ */
+function PlannerDetail({
+  planner,
+  canBook,
+  busy,
+  onClose,
+  onBook,
+}: {
+  planner: Planner;
+  canBook: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onBook: () => void;
+}) {
+  // The full record, so packages/portfolio are shown even if the search
+  // projection trimmed them.
+  const { data } = useQuery({
+    queryKey: ['planner', planner.id],
+    queryFn: async () => (await api.get(`/wedding-planners/${planner.id}`)).data as Planner,
+    initialData: planner,
+  });
+  const p = data ?? planner;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
+      <div className="my-8 w-full max-w-2xl rounded-lg bg-surface p-6">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="section-title">{p.agencyName}</h2>
+            <p className="text-sm text-gray-500">
+              {p.city}
+              {p.yearsExperience ? ` · ${p.yearsExperience} yrs experience` : ''}
+              {p.ratingCount > 0 ? ` · ★ ${p.ratingAvg.toFixed(1)} (${p.ratingCount})` : ''}
+            </p>
+          </div>
+          <button className="text-sm text-gray-500 underline" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        {p.bio && <p className="text-sm text-gray-700">{p.bio}</p>}
+
+        {(p.servesCities?.length ?? 0) > 0 && (
+          <p className="mt-3 text-sm text-gray-600">
+            <span className="font-medium text-gray-800">Serves:</span> {p.servesCities!.join(', ')}
+          </p>
+        )}
+
+        {(p.packages?.length ?? 0) > 0 && (
+          <div className="mt-3">
+            <h3 className="section-title text-sm">Packages</h3>
+            <ul className="mt-1 space-y-1 text-sm">
+              {p.packages!.map((k, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3 border-b py-1">
+                  <span>
+                    {k.name}
+                    {k.includes?.length ? (
+                      <span className="ml-1 text-xs text-gray-400">
+                        · {k.includes.join(', ')}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="tabular-nums text-gray-700">
+                    ₹{Number(k.price).toLocaleString('en-IN')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(p.portfolio?.length ?? 0) > 0 && (
+          <div className="mt-3">
+            <h3 className="section-title text-sm">Portfolio</h3>
+            <div className="mt-1 grid grid-cols-3 gap-2">
+              {p.portfolio!.map((url) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt="" loading="lazy" className="aspect-square w-full rounded-sm object-cover" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {p.website && (
+          <p className="mt-3 text-sm">
+            <a className="text-brand underline" href={p.website} target="_blank" rel="noreferrer">
+              Visit website
+            </a>
+          </p>
+        )}
+
+        {canBook ? (
+          <button className="btn mt-5 w-full" disabled={busy} onClick={onBook}>
+            {busy ? 'Requesting…' : 'Request booking'}
+          </button>
+        ) : (
+          <p className="mt-5 text-sm text-gray-500">
+            Sign in as an individual or agent to request a booking.
+          </p>
+        )}
       </div>
     </div>
   );

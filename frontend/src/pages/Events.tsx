@@ -466,6 +466,15 @@ export default function Events() {
                         >
                           Vendors
                         </Link>
+                        {/* Hire a Planner sits next to Vendors here (EZ1-I108),
+                            the second half of the wedding's marketplace. */}
+                        <Link
+                          className="rounded-sm px-2 py-1 text-xs text-brand-dark hover:bg-gray-100"
+                          to="/wedding-planners"
+                          title="Hire a wedding planner"
+                        >
+                          Hire a Planner
+                        </Link>
                         <button
                           className="rounded-sm px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
                           onClick={() => setEditing(ev.id)}
