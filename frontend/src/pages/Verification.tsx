@@ -64,6 +64,7 @@ interface SupportCase {
   requiresPhysicalVerification: boolean;
   createdAt: string;
   /** Investigation context filled in on read (EZ1-I74). */
+  raisedByUserId?: string | null;
   raisedByName?: string | null;
   raisedByEmail?: string | null;
   raisedByRole?: string | null;
@@ -112,15 +113,20 @@ function AllocateePicker({
   officers,
   value,
   onChange,
+  excludeUserId,
 }: {
   officers: Officer[];
   value: string;
   onChange: (id: string) => void;
+  /** The case's raiser, kept out of the roster so it cannot be self-allocated (EZ1-I98). */
+  excludeUserId?: string | null;
 }) {
   // Verification is official work: only a Verification Officer may be allocated
   // a request, never a commercial agent (EZ1-I22). Agents are filtered out of
   // the roster here rather than shown and refused later.
-  const eligible = officers.filter((o) => (o.kind ?? 'officer') === 'officer');
+  const eligible = officers.filter(
+    (o) => (o.kind ?? 'officer') === 'officer' && o.id !== excludeUserId,
+  );
 
   return (
     <label className="text-sm">
@@ -1139,6 +1145,7 @@ function CaseRow({
             officers={officers}
             value={officerUserId}
             onChange={setOfficerUserId}
+            excludeUserId={item.raisedByUserId}
           />
           <button
             className="btn"

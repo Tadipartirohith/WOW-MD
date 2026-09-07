@@ -417,6 +417,13 @@ export class SupportCasesService {
     if (officer.role !== UserRole.IN_PERSON) {
       throw new BadRequestException('Cases can only be allocated to a verification officer');
     }
+    // The officer who raised a case cannot be sent to investigate it — that is
+    // marking their own homework (EZ1-I98).
+    if (item.raisedByUserId && officer.id === item.raisedByUserId) {
+      throw new BadRequestException(
+        'This case was raised by that officer; allocate it to a different officer.',
+      );
+    }
 
     // A case allocated straight from OPEN was read by whoever allocated it, so
     // it has been triaged whether or not anybody pressed the button. Recording
