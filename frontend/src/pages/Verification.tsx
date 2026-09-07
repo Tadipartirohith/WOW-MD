@@ -1011,9 +1011,20 @@ function CaseRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium">{item.title}</p>
+          {/* Case id, type and raised time up front, so the record identifies
+              itself for the admin and officer reviewing it (EZ1-I88, EZ1-I112). */}
           <p className="text-xs capitalize text-gray-500">
-            {item.subjectType} · raised {new Date(item.createdAt).toLocaleDateString()}
+            Case {item.id.slice(0, 8)} · {item.subjectType.replace(/_/g, ' ')} · raised{' '}
+            {new Date(item.createdAt).toLocaleString()}
           </p>
+          {item.assignedToUserId && (
+            <p className="text-xs text-gray-500">
+              Assigned to{' '}
+              <span className="text-gray-700">
+                {officers.find((o) => o.id === item.assignedToUserId)?.name ?? 'an officer'}
+              </span>
+            </p>
+          )}
         </div>
         <Pill status={item.status} />
       </div>
@@ -1201,7 +1212,14 @@ function CaseRow({
         </div>
       )}
 
-      {!settled && !inReview && (
+      {/*
+        Sequential workflow (EZ1-I99): recording findings and proposing a
+        resolution is the assigned officer's step, so the administrator — who
+        allocates and later reviews — is not shown these controls. They appear
+        once the case is in an officer's hands and disappear once it is settled
+        or already submitted for review.
+      */}
+      {!canAllocate && !settled && !inReview && (
         <div className="space-y-2 border-t pt-3">
           <textarea
             className="input"
@@ -1220,61 +1238,89 @@ function CaseRow({
             Record findings
           </button>
 
-          <div className="rounded-sm bg-gray-50 p-3">
-            <p className="text-sm font-medium text-gray-800">Settlement</p>
-            <p className="mb-2 text-xs text-gray-600">
-              Money on the disputed booking is frozen until one of these is recorded.
-            </p>
-            <div className="flex flex-wrap items-end gap-2">
+          {/*
+            Money settlement only when there is money to settle (EZ1-I94): a
+            case about an account, availability or a profile has no booking to
+            release or refund, so the officer proposes a plain resolution instead
+            of being shown release/refund/partial controls that do not apply.
+          */}
+          {item.booking || item.milestone ? (
+            <div className="rounded-sm bg-gray-50 p-3">
+              <p className="text-sm font-medium text-gray-800">Settlement</p>
+              <p className="mb-2 text-xs text-gray-600">
+                Money on the disputed booking is frozen until one of these is recorded.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <button
+                  className="btn"
+                  onClick={() =>
+                    onRun(
+                      () =>
+                        api.put(`/verification/cases/${item.id}/settle`, { outcome: 'release' }),
+                      'Released to the provider.',
+                    )
+                  }
+                >
+                  Release to provider
+                </button>
+                <button
+                  className="btn-outline"
+                  onClick={() =>
+                    onRun(
+                      () => api.put(`/verification/cases/${item.id}/settle`, { outcome: 'refund' }),
+                      'Refunded to the buyer.',
+                    )
+                  }
+                >
+                  Refund the buyer
+                </button>
+                <label className="text-sm">
+                  <span className="text-gray-700">Partial amount</span>
+                  <input
+                    className="input mt-1 w-32"
+                    type="number"
+                    min={1}
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </label>
+                <button
+                  className="btn-outline"
+                  disabled={!amount}
+                  onClick={() =>
+                    onRun(() =>
+                      api.put(`/verification/cases/${item.id}/settle`, {
+                        outcome: 'partial',
+                        amount: Number(amount),
+                      }),
+                    )
+                  }
+                >
+                  Settle partially
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-sm bg-gray-50 p-3">
+              <p className="text-sm font-medium text-gray-800">Resolution</p>
+              <p className="mb-2 text-xs text-gray-600">
+                No money is involved on this case. Record what was done and submit it for the
+                administrator to approve.
+              </p>
               <button
                 className="btn"
                 onClick={() =>
                   onRun(
                     () =>
-                      api.put(`/verification/cases/${item.id}/settle`, { outcome: 'release' }),
-                    'Released to the provider.',
+                      api.put(`/verification/cases/${item.id}/settle`, { outcome: 'no_action' }),
+                    'Resolution submitted for review.',
                   )
                 }
               >
-                Release to provider
-              </button>
-              <button
-                className="btn-outline"
-                onClick={() =>
-                  onRun(
-                    () => api.put(`/verification/cases/${item.id}/settle`, { outcome: 'refund' }),
-                    'Refunded to the buyer.',
-                  )
-                }
-              >
-                Refund the buyer
-              </button>
-              <label className="text-sm">
-                <span className="text-gray-700">Partial amount</span>
-                <input
-                  className="input mt-1 w-32"
-                  type="number"
-                  min={1}
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                />
-              </label>
-              <button
-                className="btn-outline"
-                disabled={!amount}
-                onClick={() =>
-                  onRun(() =>
-                    api.put(`/verification/cases/${item.id}/settle`, {
-                      outcome: 'partial',
-                      amount: Number(amount),
-                    }),
-                  )
-                }
-              >
-                Settle partially
+                Submit resolution
               </button>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
