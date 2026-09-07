@@ -275,6 +275,9 @@ export default function Verification() {
   const visibleSections = section_ ? SECTIONS.filter((x) => x.key === section_) : SECTIONS;
   // Which case status the Cases tab is filtered to, null for all (EZ1-I83).
   const [caseFilter, setCaseFilter] = useState<CaseStatus | null>(null);
+  // Free-text search across the visits queue (EZ1-I90): business/applicant,
+  // email, city, type or id.
+  const [visitSearch, setVisitSearch] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -447,6 +450,14 @@ export default function Verification() {
             work moves — and a section with nothing in it is not shown, so the
             list does not fill up with empty headings.
           */}
+          {/* Search the queue (EZ1-I90). */}
+          <input
+            className="input"
+            placeholder="Search visits — business, applicant, city, type or id"
+            value={visitSearch}
+            onChange={(e) => setVisitSearch(e.target.value)}
+          />
+
           <div className="flex flex-wrap gap-2">
             {SECTIONS.map((section) => {
               const count = rows.filter((r) => section.statuses.includes(r.status)).length;
@@ -469,7 +480,16 @@ export default function Verification() {
           </div>
 
           {visibleSections.map((section) => {
-            const sectionRows = rows.filter((r) => section.statuses.includes(r.status));
+            const q = visitSearch.trim().toLowerCase();
+            const sectionRows = rows
+              .filter((r) => section.statuses.includes(r.status))
+              .filter(
+                (r) =>
+                  !q ||
+                  [r.subjectName, r.applicantEmail, r.applicantCity, r.applicantType, r.id]
+                    .filter(Boolean)
+                    .some((v) => String(v).toLowerCase().includes(q)),
+              );
             if (sectionRows.length === 0) return null;
             return (
               <div key={section.key} className="space-y-3">
