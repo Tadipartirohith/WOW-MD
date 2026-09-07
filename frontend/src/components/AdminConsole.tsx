@@ -86,8 +86,17 @@ interface DirectoryRow {
 
 const ROLES = ['', 'bride', 'groom', 'family', 'agent', 'vendor', 'planner', 'in_person', 'admin'];
 
-export function Directory() {
-  const [role, setRole] = useState('');
+export function Directory({
+  title = 'Accounts',
+  initialRole = '',
+  roles = ROLES,
+}: {
+  title?: string;
+  initialRole?: string;
+  /** The roles offered in the filter — a dedicated page narrows this (EZ1-I123). */
+  roles?: readonly string[];
+} = {}) {
+  const [role, setRole] = useState(initialRole);
   const [q, setQ] = useState('');
   const [active, setActive] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -109,7 +118,7 @@ export function Directory() {
 
   return (
     <div className="card">
-      <h2 className="section-title">Accounts</h2>
+      <h2 className="section-title">{title}</h2>
       <p className="mb-3 text-xs text-gray-500">
         {data?.meta.total ?? 0} matching. Suspended accounts are the ones people arrive looking
         for, so they are a filter rather than something to scroll past.
@@ -123,7 +132,7 @@ export function Directory() {
           onChange={(e) => setQ(e.target.value)}
         />
         <select className="input w-40" value={role} onChange={(e) => setRole(e.target.value)}>
-          {ROLES.map((r) => (
+          {roles.map((r) => (
             <option key={r} value={r}>
               {r === '' ? 'Any role' : r.replace(/_/g, ' ')}
             </option>

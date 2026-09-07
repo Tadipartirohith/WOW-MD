@@ -79,12 +79,26 @@ interface Analytics {
   };
 }
 
-type Section = 'overview' | 'accounts' | 'businesses' | 'bookings' | 'payments' | 'staff' | 'reports';
+type Section =
+  | 'overview'
+  | 'users'
+  | 'agents'
+  | 'vendors'
+  | 'planners'
+  | 'bookings'
+  | 'payments'
+  | 'staff'
+  | 'reports';
 
+// Dedicated management pages per entity (EZ1-I123): a Users page filtered to the
+// individual roles, and a page each for Agents, Vendors and Wedding Planners,
+// rather than one combined Accounts/Businesses view.
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'overview', label: 'Overview' },
-  { key: 'accounts', label: 'Accounts' },
-  { key: 'businesses', label: 'Businesses' },
+  { key: 'users', label: 'Users' },
+  { key: 'agents', label: 'Agents' },
+  { key: 'vendors', label: 'Vendors' },
+  { key: 'planners', label: 'Wedding Planners' },
   { key: 'bookings', label: 'Bookings' },
   { key: 'payments', label: 'Payments' },
   { key: 'staff', label: 'Staff' },
@@ -132,10 +146,10 @@ export default function Admin() {
   // is a route rather than a section on this page.
   const cards: { label: string; value: number | string; section?: Section; to?: string }[] = analytics
     ? [
-        { label: 'Users', value: analytics.totalUsers, section: 'accounts' },
-        { label: 'Agents', value: analytics.totalAgents, section: 'accounts' },
-        { label: 'Vendors', value: analytics.totalVendors, section: 'businesses' },
-        { label: 'Planners', value: analytics.totalPlanners, section: 'businesses' },
+        { label: 'Users', value: analytics.totalUsers, section: 'users' },
+        { label: 'Agents', value: analytics.totalAgents, section: 'agents' },
+        { label: 'Vendors', value: analytics.totalVendors, section: 'vendors' },
+        { label: 'Planners', value: analytics.totalPlanners, section: 'planners' },
         { label: 'Bookings', value: analytics.totalBookings, section: 'bookings' },
         {
           label: 'Awaiting verification',
@@ -183,8 +197,21 @@ export default function Admin() {
         ))}
       </nav>
 
-      {section === 'accounts' && <Directory />}
-      {section === 'businesses' && <Businesses />}
+      {section === 'users' && (
+        <Directory title="Users" roles={['', 'bride', 'groom', 'family']} />
+      )}
+      {section === 'agents' && (
+        <Directory title="Agents" initialRole="agent" roles={['agent']} />
+      )}
+      {section === 'vendors' && (
+        <>
+          <Directory title="Vendors" initialRole="vendor" roles={['vendor']} />
+          <Businesses />
+        </>
+      )}
+      {section === 'planners' && (
+        <Directory title="Wedding Planners" initialRole="planner" roles={['planner']} />
+      )}
       {section === 'bookings' && <AllBookings />}
       {section === 'payments' && <Payments escrow={analytics?.escrow?.bookings} />}
       {section === 'staff' && <Staff />}
