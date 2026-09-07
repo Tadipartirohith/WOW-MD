@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import {
@@ -124,14 +125,17 @@ export default function Admin() {
     }
   }
 
-  const cards = analytics
+  // Every count opens the section that manages it (EZ1-I111): no dashboard card
+  // is a dead end. Disputes live on the verification Cases screen, so that one
+  // is a route rather than a section on this page.
+  const cards: { label: string; value: number; section?: Section; to?: string }[] = analytics
     ? [
-        { label: 'Users', value: analytics.totalUsers },
-        { label: 'Agents', value: analytics.totalAgents },
-        { label: 'Vendors', value: analytics.totalVendors },
-        { label: 'Planners', value: analytics.totalPlanners },
-        { label: 'Bookings', value: analytics.totalBookings },
-        { label: 'Open disputes', value: analytics.openDisputes },
+        { label: 'Users', value: analytics.totalUsers, section: 'accounts' },
+        { label: 'Agents', value: analytics.totalAgents, section: 'accounts' },
+        { label: 'Vendors', value: analytics.totalVendors, section: 'businesses' },
+        { label: 'Planners', value: analytics.totalPlanners, section: 'businesses' },
+        { label: 'Bookings', value: analytics.totalBookings, section: 'bookings' },
+        { label: 'Open disputes', value: analytics.openDisputes, to: '/verification' },
       ]
     : [];
 
@@ -176,12 +180,27 @@ export default function Admin() {
       <ActivityFeed />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-        {cards.map((c) => (
-          <div key={c.label} className="card text-center">
-            <p className="page-title">{c.value}</p>
-            <p className="text-xs text-gray-500">{c.label}</p>
-          </div>
-        ))}
+        {cards.map((c) =>
+          c.to ? (
+            <Link
+              key={c.label}
+              to={c.to}
+              className="card text-center transition-colors hover:border-gray-300"
+            >
+              <p className="page-title">{c.value}</p>
+              <p className="text-xs text-gray-500">{c.label}</p>
+            </Link>
+          ) : (
+            <button
+              key={c.label}
+              onClick={() => c.section && setSection(c.section)}
+              className="card text-center transition-colors hover:border-gray-300"
+            >
+              <p className="page-title">{c.value}</p>
+              <p className="text-xs text-gray-500">{c.label}</p>
+            </button>
+          ),
+        )}
       </div>
 
       {/*
