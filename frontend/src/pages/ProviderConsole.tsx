@@ -941,8 +941,13 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
   // fields that are wrong.
   function validate(): Record<string, string> {
     const errors: Record<string, string> = {};
+    // Required fields the business cannot go live without (EZ1-I106).
     if (!form.agencyName.trim()) errors.agencyName = 'A business name is required';
-    if (form.contactPhone && !/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
+    if (!form.city.trim()) errors.city = 'A city is required';
+    if (!form.contactPerson.trim()) errors.contactPerson = 'A contact person is required';
+    if (!form.contactPhone.trim()) {
+      errors.contactPhone = 'A contact number is required';
+    } else if (!/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
       errors.contactPhone = 'Enter a 10-digit Indian mobile number';
     }
     if (form.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.contactEmail.trim())) {
@@ -950,6 +955,15 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
     }
     if (form.pincode && !/^[1-9]\d{5}$/.test(form.pincode.trim())) {
       errors.pincode = 'Enter a valid 6-digit pincode';
+    }
+    if (
+      form.yearsExperience !== undefined &&
+      (Number(form.yearsExperience) < 0 || Number(form.yearsExperience) > 80)
+    ) {
+      errors.yearsExperience = 'Enter a realistic number of years';
+    }
+    if (form.website && !/^https?:\/\/[^\s.]+\.[^\s]{2,}$/.test(form.website.trim())) {
+      errors.website = 'Enter a full web address, starting http:// or https://';
     }
     return errors;
   }
@@ -1050,10 +1064,10 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         <Field label="Agency name" error={fieldErrors.agencyName}>
           <input className="input" value={form.agencyName} onChange={set('agencyName')} required />
         </Field>
-        <Field label="Base city">
-          <input className="input" value={form.city} onChange={set('city')} />
+        <Field label="Base city" error={fieldErrors.city}>
+          <input className="input" value={form.city} onChange={set('city')} required />
         </Field>
-        <Field label="Years of experience">
+        <Field label="Years of experience" error={fieldErrors.yearsExperience}>
           <input
             className="input"
             type="number"
@@ -1067,8 +1081,8 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
 
       {/* Contact and location, with field-level validation (EZ1-I69). */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Contact person">
-          <input className="input" value={form.contactPerson} onChange={set('contactPerson')} />
+        <Field label="Contact person" error={fieldErrors.contactPerson}>
+          <input className="input" value={form.contactPerson} onChange={set('contactPerson')} required />
         </Field>
         <Field label="Contact mobile" error={fieldErrors.contactPhone}>
           <input
@@ -1098,7 +1112,7 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
             onChange={set('pincode')}
           />
         </Field>
-        <Field label="Website / social">
+        <Field label="Website / social" error={fieldErrors.website}>
           <input
             className="input"
             placeholder="https://…"
