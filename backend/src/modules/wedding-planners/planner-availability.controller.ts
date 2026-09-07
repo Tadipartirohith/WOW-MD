@@ -117,4 +117,16 @@ export class PlannerAvailabilityController {
   calendar(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
     return this.availability.calendar(ProviderType.PLANNER, id, q.from, q.to);
   }
+
+  /**
+   * Slots a buyer can actually book, so the Hire-a-Planner flow can check a
+   * planner's availability before requesting a booking (EZ1-I113) — the same
+   * availability-first path the vendor flow already offers. Any signed-in user
+   * may look; only full and blocked windows are hidden.
+   */
+  @ApiOperation({ summary: 'Bookable slots for a buyer checking availability (EZ1-I113)' })
+  @Get('bookable')
+  bookable(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+    return this.availability.listBookable(ProviderType.PLANNER, id, q.from, q.to);
+  }
 }

@@ -55,7 +55,7 @@ export default function WeddingPlanners() {
       (await api.get('/wedding-planners/search', { params: city ? { city } : {} })).data,
   });
 
-  async function book(plannerId: string) {
+  async function book(plannerId: string, eventDate?: string) {
     setBusy(plannerId);
     setMessage('');
     try {
@@ -64,6 +64,8 @@ export default function WeddingPlanners() {
       // number is never invented on the client's behalf.
       const quoted = Number(amount);
       if (amount.trim() && Number.isFinite(quoted) && quoted > 0) payload.amount = quoted;
+      // The date the buyer checked availability for travels with the request (EZ1-I113).
+      if (eventDate) payload.eventDate = eventDate;
       if (isAgent && onBehalfOf) payload.onBehalfOfUserId = onBehalfOf;
       await api.post('/bookings', payload);
       setOpenId(null);
@@ -162,7 +164,7 @@ export default function WeddingPlanners() {
           canBook={canBook}
           busy={busy === open.id}
           onClose={() => setOpenId(null)}
-          onBook={() => book(open.id)}
+          onBook={(date) => book(open.id, date)}
         />
       )}
     </div>
@@ -174,6 +176,14 @@ export default function WeddingPlanners() {
  * flow has and this page was missing (EZ1-I113). The booking action lives here,
  * after the buyer has seen who they are hiring.
  */
+interface BookableSlot {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  remaining: number;
+}
+
 function PlannerDetail({
   planner,
   canBook,
@@ -185,7 +195,7 @@ function PlannerDetail({
   canBook: boolean;
   busy: boolean;
   onClose: () => void;
-  onBook: () => void;
+  onBook: (eventDate?: string) => void;
 }) {
   // The full record, so packages/portfolio are shown even if the search
   // projection trimmed them.
@@ -195,6 +205,27 @@ function PlannerDetail({
     initialData: planner,
   });
   const p = data ?? planner;
+
+  // Availability-first: the buyer names a date, checks whether the planner is
+  // free, and only then requests — the same path the vendor flow has (EZ1-I113).
+  const [date, setDate] = useState('');
+  const [checkedDate, setCheckedDate] = useState('');
+  const {
+    data: slots,
+    isFetching: checking,
+    refetch: check,
+  } = useQuery({
+    queryKey: ['planner-availability', planner.id, date],
+    enabled: false,
+    queryFn: async () =>
+      (
+        await api.get(`/wedding-planners/${planner.id}/availability/bookable`, {
+          params: { from: date, to: date },
+        })
+      ).data as BookableSlot[],
+  });
+  const daySlots = (slots ?? []).filter((s) => s.date === checkedDate && s.remaining > 0);
+  const hasChecked = Boolean(checkedDate);
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
@@ -266,9 +297,61 @@ function PlannerDetail({
         )}
 
         {canBook ? (
-          <button className="btn mt-5 w-full" disabled={busy} onClick={onBook}>
-            {busy ? 'Requesting…' : 'Request booking'}
-          </button>
+          <div className="mt-5 space-y-3 border-t border-gray-200 pt-4">
+            <h3 className="section-title text-sm">Check availability</h3>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                <span className="block text-gray-600">Event date</span>
+                <input
+                  className="input mt-1"
+                  type="date"
+                  min={new Date().toISOString().slice(0, 10)}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+              </label>
+              <button
+                className="btn-outline"
+                disabled={!date || checking}
+                onClick={async () => {
+                  await check();
+                  setCheckedDate(date);
+                }}
+              >
+                {checking ? 'Checking…' : 'Check availability'}
+              </button>
+            </div>
+
+            {hasChecked && !checking && (
+              <div className="rounded-sm bg-surface-sunken p-3 text-sm">
+                {daySlots.length > 0 ? (
+                  <p className="text-emerald-700">
+                    Available on {new Date(checkedDate).toLocaleDateString()} —{' '}
+                    {daySlots.reduce((n, s) => n + s.remaining, 0)} opening
+                    {daySlots.reduce((n, s) => n + s.remaining, 0) === 1 ? '' : 's'} left.
+                  </p>
+                ) : (
+                  <p className="text-gray-600">
+                    No published opening on {new Date(checkedDate).toLocaleDateString()}. You can
+                    still send a request and the planner will confirm.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <button
+              className="btn w-full"
+              disabled={busy || !hasChecked}
+              onClick={() => onBook(checkedDate || undefined)}
+            >
+              {busy ? 'Requesting…' : 'Request booking'}
+            </button>
+            {!hasChecked && (
+              <p className="text-xs text-gray-400">
+                Check a date first, so your request carries the day you need.
+              </p>
+            )}
+          </div>
         ) : (
           <p className="mt-5 text-sm text-gray-500">
             Sign in as an individual or agent to request a booking.
