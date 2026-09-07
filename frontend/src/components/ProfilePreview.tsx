@@ -251,10 +251,16 @@ export default function ProfilePreview({
             */}
             {data.profile.managingFor && (
               <div className="rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm">
+                {/* The Bride/Groom's own name, alongside the managed-for label, so
+                    a family-managed profile shows whose profile it is and not
+                    just the family member running it (EZ1-I97). */}
                 <p className="text-gray-600">
                   Managed Profile For:{' '}
                   <span className="font-medium text-gray-800">
-                    {data.profile.managingFor === 'bride' ? 'Bride' : 'Groom'}
+                    {data.profile.displayName ?? (data.profile.managingFor === 'bride' ? 'Bride' : 'Groom')}
+                  </span>{' '}
+                  <span className="text-gray-500">
+                    ({data.profile.managingFor === 'bride' ? 'Bride' : 'Groom'})
                   </span>
                 </p>
               </div>
