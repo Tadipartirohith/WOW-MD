@@ -244,6 +244,16 @@ export default function BookingConsole({
                   <p className="text-xs text-gray-500">
                     Asked {formatDate(booking.createdAt)} · {booking.id.slice(0, 8)}
                   </p>
+                  {/* The customer's own contact and location, so the provider can
+                      reach them and place the event without opening another
+                      screen (EZ1-I109). */}
+                  {(booking.clientPhone || booking.clientEmail || booking.eventCity) && (
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {[booking.clientPhone, booking.clientEmail, booking.eventCity]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-gray-700">
