@@ -138,7 +138,13 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
   },
   [NotificationType.VERIFICATION_DECIDED]: {
     title: 'Verification decided',
-    body: (p) => `Your verification was ${str(p, 'status', 'decided').replace(/_/g, ' ')}.`,
+    // Carry the reason when there is one, so a rejection says why and not just
+    // that it happened (EZ1-I110).
+    body: (p) => {
+      const status = str(p, 'status', 'decided').replace(/_/g, ' ');
+      const reason = str(p, 'reason');
+      return reason ? `Your verification was ${status}: ${reason}` : `Your verification was ${status}.`;
+    },
     // A rejection or a request to fix something is worth reaching somebody for:
     // a listing sitting unfixed is a business not trading.
     whatsappTemplate: 'verification_decided',

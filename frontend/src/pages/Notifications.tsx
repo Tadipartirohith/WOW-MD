@@ -125,13 +125,20 @@ export default function Notifications() {
     return [...bySubject.entries()]
       .map(([key, all]) => {
         const sorted = [...all].sort((a, b) => when(b) - when(a));
+        const latest = sorted[0];
+        // The server re-derives a booking action to "view" once it has actually
+        // been answered (EZ1-I36). An action whose action is spent is no longer
+        // "waiting on you" — it belongs under Progress, not at the top.
+        const baseGroup = (TYPE_GROUP[latest.type] ?? 'other') as Group;
+        const group: Group =
+          baseGroup === 'action' && latest.targetAction === 'view' ? 'progress' : baseGroup;
         return {
           key,
-          latest: sorted[0],
+          latest,
           earlier: sorted.slice(1),
           unread: sorted.filter((n) => !n.isRead).length,
           ids: sorted.filter((n) => !n.isRead).map((n) => n.id),
-          group: (TYPE_GROUP[sorted[0].type] ?? 'other') as Group,
+          group,
         };
       })
       .sort((a, b) => when(b.latest) - when(a.latest));
@@ -430,12 +437,23 @@ function linkFor(n: Notification, canVerify = false): string | null {
         // theirs on Support (EZ1-I49).
         return canVerify ? '/verification' : '/support';
       case 'verification':
+        // A decision is for the applicant — a vendor or planner reads it on
+        // their own business page, an agent on their agency page. Only staff
+        // notifications (assigned/submitted/requested) belong on the officer
+        // Cases screen (EZ1-I110).
+        if (n.type === 'verification_decided' && !canVerify) {
+          return '/console';
+        }
         return '/verification';
       case 'chat':
         return '/chat';
       case 'planner':
         return '/planner';
       case 'matches':
+        // An incoming interest is responded to on the Interests → Received tab,
+        // where the actions are Accept / Decline — not on Matches, which offers
+        // "Send interest" to somebody who has already sent one to you (EZ1-I107).
+        if (n.type === 'match_interest') return '/interests';
         return n.targetId ? `/matches?profile=${n.targetId}` : '/matches';
     }
   }
@@ -448,10 +466,12 @@ function linkFor(n: Notification, canVerify = false): string | null {
   if (n.type.startsWith('booking_')) {
     return bookingId ? `/bookings?highlight=${bookingId}` : '/bookings';
   }
+  if (n.type === 'verification_decided') return canVerify ? '/verification' : '/console';
   if (n.type.startsWith('verification_')) return '/verification';
   if (n.type === 'dispute_update') return canVerify ? '/verification' : '/support';
   if (n.type === 'new_message') return '/chat';
   if (n.type === 'task_reminder') return '/planner';
+  if (n.type === 'match_interest') return '/interests';
   if (n.type.startsWith('match_')) {
     const profileId = typeof p.counterpartProfileId === 'string' ? p.counterpartProfileId : null;
     return profileId ? `/matches?profile=${profileId}` : '/matches';

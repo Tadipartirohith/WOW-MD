@@ -566,6 +566,23 @@ export class VerificationService {
       status: request.status,
       remarks: request.remarks,
     });
+
+    // An in-app notification too, so the decision reaches the applicant in the
+    // Notifications section and not only their inbox. A vendor already gets one
+    // through the business lifecycle; a planner and an agent did not, so the
+    // rejection never reached them on the platform (EZ1-I110).
+    if (
+      request.applicantType === ApplicantType.PLANNER ||
+      request.applicantType === ApplicantType.AGENT
+    ) {
+      await this.notifications.create(request.applicantUserId, NotificationType.VERIFICATION_DECIDED, {
+        requestId: request.id,
+        businessId: request.subjectId,
+        applicantType: request.applicantType,
+        status: request.status,
+        reason: request.remarks ?? null,
+      });
+    }
   }
 
   // --------------------------------------------------------------- queries
