@@ -19,6 +19,7 @@ import { VendorReview } from '../vendors/entities/vendor-review.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { BookingSearchDto, CreateBookingDto } from './dto/booking.dto';
 import {
   BookingStatus,
@@ -138,6 +139,9 @@ export class BookingsService {
     // reviewed and show what they wrote (EZ1-I114).
     @InjectRepository(VendorReview) private readonly vendorReviews: Repository<VendorReview>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
+    // Read/write, to auto-engage a planner on their client's plan on confirmation
+    // (EZ1-I116).
+    @InjectRepository(WeddingPlan) private readonly weddingPlans: Repository<WeddingPlan>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
     // Read-only, so a provider's booking row can say who and where it is for.
@@ -499,7 +503,7 @@ export class BookingsService {
       }
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const bookingRepo = manager.getRepository(Booking);
       const paymentRepo = manager.getRepository(Payment);
 
@@ -603,6 +607,37 @@ export class BookingsService {
 
       return { booking, payment };
     });
+
+    // A planner booking that has just been confirmed by its advance makes the
+    // buyer that planner's client — no separate "engage" step (EZ1-I116). Done
+    // after the payment transaction so a failure here never rolls the money back.
+    if (
+      result.booking.providerType === ProviderType.PLANNER &&
+      result.booking.status === BookingStatus.CONFIRMED
+    ) {
+      await this.autoEngagePlanner(result.booking).catch(() => undefined);
+    }
+
+    return result;
+  }
+
+  /**
+   * Links a confirmed planner booking to the client's wedding plan, which is
+   * what puts the client on the planner's My Clients list (EZ1-I116). Idempotent
+   * and best-effort: a plan already engaged to this planner is left alone, and a
+   * client with no plan yet simply has nothing to link.
+   */
+  private async autoEngagePlanner(booking: Booking): Promise<void> {
+    const planner = await this.planners.findOne({ where: { id: booking.providerId } });
+    if (!planner) return;
+    const plans = await this.weddingPlans.find({ where: { userId: booking.userId } });
+    for (const plan of plans) {
+      // Never override a plan already engaged to a planner — theirs to release.
+      if (plan.plannerUserId) continue;
+      plan.plannerUserId = planner.ownerUserId;
+      plan.plannerBookingId = booking.id;
+      await this.weddingPlans.save(plan);
+    }
   }
 
   /**

@@ -9,6 +9,7 @@ import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { AgentsModule } from '../agents/agents.module';
 import { VerificationModule } from '../verification/verification.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
@@ -38,6 +39,9 @@ import {
       User,
       WeddingEvent,
       VendorService,
+      // Read/write, to auto-engage a planner on their client's plan when the
+      // booking is confirmed (EZ1-I116).
+      WeddingPlan,
     ]),
     AgentsModule,
     VerificationModule,
