@@ -179,10 +179,23 @@ export default function ProfilePreview({
               )}
             </Group>
 
+            {/* The horoscope headline before acceptance, so a family can compare
+                charts while deciding whether to send interest (EZ1-I48). The full
+                chart and document stay behind the mutual accept. */}
+            {data.limited && (str('rashi') || str('star') || str('gothram') || str('kujaDosham')) && (
+              <Group title="Horoscope">
+                <Row label="Rashi">{str('rashi')}</Row>
+                <Row label="Star">{str('star')}</Row>
+                <Row label="Padam">{str('padam')}</Row>
+                <Row label="Gothram">{str('gothram')}</Row>
+                <Row label="Kuja dosham">{str('kujaDosham')}</Row>
+              </Group>
+            )}
+
             {data.limited && (
               <p className="text-xs text-gray-500">
-                Family, horoscope and the rest of the biodata are shared once you both accept
-                interest.
+                Family, the full horoscope and the rest of the biodata are shared once you both
+                accept interest.
               </p>
             )}
 
@@ -249,20 +262,25 @@ export default function ProfilePreview({
               What the managed person is — Bride or Groom — at the foot of the
               profile, for a family member opening it from chat (EZ1-I41).
             */}
-            {data.profile.managingFor && (
-              <div className="rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm">
-                {/* The Bride/Groom's own name, alongside the managed-for label, so
-                    a family-managed profile shows whose profile it is and not
-                    just the family member running it (EZ1-I97). */}
-                <p className="text-gray-600">
-                  Managed Profile For:{' '}
+            {(data.profile.managingFor || data.profile.stewardship) && (
+              <div className="rounded-sm border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                {/* The name is the heading above; this line names what the
+                    profile is and who runs it, without repeating the name
+                    (EZ1-I97, EZ1-I115) or printing it twice (EZ1-I91). */}
+                {data.profile.managingFor && (
                   <span className="font-medium text-gray-800">
-                    {data.profile.displayName ?? (data.profile.managingFor === 'bride' ? 'Bride' : 'Groom')}
-                  </span>{' '}
-                  <span className="text-gray-500">
-                    ({data.profile.managingFor === 'bride' ? 'Bride' : 'Groom'})
+                    {data.profile.managingFor === 'bride' ? 'Bride' : 'Groom'} profile
                   </span>
-                </p>
+                )}
+                {data.profile.stewardship && (
+                  <span>
+                    {data.profile.managingFor ? ' · ' : ''}
+                    Managed by{' '}
+                    {data.profile.stewardship.relation
+                      ? `their ${data.profile.stewardship.relation}`
+                      : data.profile.stewardship.label}
+                  </span>
+                )}
               </div>
             )}
 

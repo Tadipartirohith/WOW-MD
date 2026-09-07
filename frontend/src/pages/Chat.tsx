@@ -413,13 +413,17 @@ export default function Chat() {
                   */}
                   {call.state === 'idle' && (
                     <>
+                      {/* Always enabled (EZ1-I38, EZ1-I89): a call to somebody
+                          offline is answered by the server with "they are not
+                          online right now" and resets cleanly, which is a clearer
+                          answer than a permanently greyed-out button that reads
+                          as "calling isn't built". */}
                       <button
                         className="btn-outline text-xs"
-                        disabled={!presence?.online}
                         title={
                           presence?.online
                             ? 'Audio call, in the app, no number is exchanged'
-                            : 'They are offline. Calls connect only while both of you are here.'
+                            : 'Audio call — connects when they are also in the app'
                         }
                         onClick={() => call.call(withUserId, 'audio')}
                       >
@@ -427,11 +431,10 @@ export default function Chat() {
                       </button>
                       <button
                         className="btn-outline text-xs"
-                        disabled={!presence?.online}
                         title={
                           presence?.online
                             ? 'Video call, in the app'
-                            : 'They are offline. Calls connect only while both of you are here.'
+                            : 'Video call — connects when they are also in the app'
                         }
                         onClick={() => call.call(withUserId, 'video')}
                       >

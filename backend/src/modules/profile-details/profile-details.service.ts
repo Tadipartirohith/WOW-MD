@@ -666,6 +666,11 @@ export class ProfileDetailsService {
       // family, horoscope, marital history and contact stay behind the mutual
       // accept (EZ1-I37). Only these fields are copied, so nothing private leaks.
       const detail = await this.details.findOne({ where: { profileId } });
+      // The horoscope headline (rashi, star, padam, gothram, kuja dosham) is on
+      // the match card already and is what many families compare on before they
+      // decide (EZ1-I48), so the basic profile view carries it too. The rest of
+      // the chart, and the document, stay behind the mutual accept.
+      const chart = detail?.horoscopeAvailable ? (detail.horoscope ?? {}) : {};
       const basicDetails = detail
         ? {
             religion: detail.religion,
@@ -675,6 +680,12 @@ export class ProfileDetailsService {
             highestQualification: detail.highestQualification,
             occupationStatus: detail.occupationStatus,
             heightCm: detail.heightCm,
+            horoscopeAvailable: detail.horoscopeAvailable,
+            rashi: chart.rashi ?? null,
+            star: chart.star ?? null,
+            padam: chart.padam ?? null,
+            gothram: chart.gothram ?? null,
+            kujaDosham: chart.kujaDosham ?? null,
           }
         : null;
       return {

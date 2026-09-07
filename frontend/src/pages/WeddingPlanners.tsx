@@ -42,6 +42,7 @@ export default function WeddingPlanners() {
   const isAgent = can(permissions, Permission.CLIENT_ACT_ON_BEHALF);
   const canBook = can(permissions, Permission.BOOKING_CREATE);
 
+  const [cityInput, setCityInput] = useState('');
   const [city, setCity] = useState('');
   const [onBehalfOf, setOnBehalfOf] = useState('');
   const [amount, setAmount] = useState('');
@@ -91,7 +92,7 @@ export default function WeddingPlanners() {
         </p>
       </div>
 
-      {/* Budget and city filters, together with the search they drive (EZ1-I95). */}
+      {/* Budget and city filters with a prominent search button (EZ1-I95). */}
       <div className="card flex flex-wrap items-end gap-3">
         {isAgent && <ClientSelector value={onBehalfOf} onChange={setOnBehalfOf} />}
         <div>
@@ -107,15 +108,19 @@ export default function WeddingPlanners() {
             onChange={(e) => setAmount(e.target.value)}
           />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-[12rem]">
           <label className="label">City</label>
           <input
             className="input max-w-xs"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
+            value={cityInput}
+            onChange={(e) => setCityInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && setCity(cityInput.trim())}
             placeholder="Any city"
           />
         </div>
+        <button className="btn shrink-0" onClick={() => setCity(cityInput.trim())}>
+          Search planners
+        </button>
       </div>
 
       {message && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{message}</p>}
@@ -127,35 +132,55 @@ export default function WeddingPlanners() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {planners.map((p) => (
+        {planners.map((p) => {
+          const fromPrice = (p.packages?.length ?? 0) > 0
+            ? Math.min(...p.packages!.map((k) => k.price))
+            : null;
+          return (
           <div
             key={p.id}
-            className="card flex flex-col transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card"
+            className="card flex flex-col overflow-hidden p-0 transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card"
           >
-            <div className="flex items-start justify-between gap-2">
-              <h2 className="section-title">{p.agencyName}</h2>
+            {/* A cover, so the grid reads as a set of businesses rather than a
+                list of names (EZ1-I95). Portfolio first, initial as the fallback. */}
+            <div className="relative aspect-[16/9] bg-surface-sunken">
+              {p.portfolio?.[0] ? (
+                <img src={p.portfolio[0]} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="grid h-full w-full place-items-center text-3xl font-semibold text-gray-300">
+                  {p.agencyName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
               {p.ratingCount > 0 && (
-                <span className="whitespace-nowrap text-sm text-amber-600">
+                <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
                   ★ {p.ratingAvg.toFixed(1)} ({p.ratingCount})
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-500">
-              {p.city}
-              {p.yearsExperience ? ` · ${p.yearsExperience} yrs experience` : ''}
-            </p>
-            {p.bio && <p className="mt-2 line-clamp-3 flex-1 text-sm text-gray-600">{p.bio}</p>}
-            {(p.packages?.length ?? 0) > 0 && (
-              <p className="mt-2 text-xs text-gray-500">
-                {p.packages!.length} package{p.packages!.length === 1 ? '' : 's'} · from ₹
-                {Math.min(...p.packages!.map((k) => k.price)).toLocaleString('en-IN')}
+            <div className="flex flex-1 flex-col p-4">
+              <h2 className="section-title">{p.agencyName}</h2>
+              <p className="text-sm text-gray-500">
+                {p.city}
+                {p.yearsExperience ? ` · ${p.yearsExperience} yrs experience` : ''}
               </p>
-            )}
-            <button className="btn mt-4 w-full" onClick={() => setOpenId(p.id)}>
-              View profile
-            </button>
+              {p.bio && <p className="mt-2 line-clamp-2 text-sm text-gray-600">{p.bio}</p>}
+              <div className="mt-2 flex-1">
+                {(p.packages?.length ?? 0) > 0 ? (
+                  <p className="text-xs text-gray-500">
+                    {p.packages!.length} package{p.packages!.length === 1 ? '' : 's'}
+                    {fromPrice !== null ? ` · from ₹${fromPrice.toLocaleString('en-IN')}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400">Pricing on request</p>
+                )}
+              </div>
+              <button className="btn mt-4 w-full" onClick={() => setOpenId(p.id)}>
+                View profile &amp; availability
+              </button>
+            </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {open && (
