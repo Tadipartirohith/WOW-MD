@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes, Link, useLocation, useNavigate } from 'react-router-dom';
-import { ReactNode, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { ReactNode, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './store/auth';
 import { api, bootstrapSession } from './lib/api';
 import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from './lib/permissions';
@@ -700,6 +700,28 @@ export default function App() {
   useEffect(() => {
     void bootstrapSession();
   }, []);
+
+  /*
+   * Wipe every cached query when the signed-in user changes (EZ1-I122).
+   *
+   * This is a single-page app: logging out and back in as somebody else never
+   * reloads the page, so React Query kept the previous user's answers until
+   * they happened to refetch — which is how a new wedding planner opened My
+   * Business and saw the last planner's business details. Clearing on any
+   * change of user id (login, logout, or switching accounts) makes one user's
+   * data structurally unable to appear under another's session. Only a change
+   * away from a real user clears, so restoring a session on a cold load (null →
+   * user) keeps the cache it just filled.
+   */
+  const qc = useQueryClient();
+  const userId = useAuth((s) => s.user?.id ?? null);
+  const prevUserId = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevUserId.current != null && prevUserId.current !== userId) {
+      qc.clear();
+    }
+    prevUserId.current = userId;
+  }, [userId, qc]);
 
   return (
     <Routes>
