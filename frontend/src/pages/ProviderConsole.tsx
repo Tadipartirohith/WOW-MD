@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import BusinessSetup, { useCompletion } from '../components/BusinessSetup';
 import GetStarted from '../components/GetStarted';
@@ -77,7 +78,24 @@ export default function ProviderConsole() {
         of what the form was for. GetStarted covers that case, and the planner
         case BusinessSetup never covered at all.
       */}
-      {isVendor ? (
+      {isVendor && current?.status === 'rejected' ? (
+        // A rejected listing is locked: no set-up, no availability, no services —
+        // only the way to contact support (EZ1-I119). The backend enforces this
+        // too, so a hidden form is not the whole of the restriction.
+        <div className="card space-y-3">
+          <h2 className="section-title text-red-700">This listing was rejected</h2>
+          {current.decisionReason && (
+            <p className="whitespace-pre-wrap text-sm text-gray-700">{current.decisionReason}</p>
+          )}
+          <p className="text-sm text-gray-600">
+            The account is locked while it is rejected — Business Details, Services, Availability and
+            Bookings cannot be changed. If you think this is a mistake, raise it on Support.
+          </p>
+          <Link className="btn w-fit" to="/support">
+            Contact support
+          </Link>
+        </div>
+      ) : isVendor ? (
         <>
           {/*
             The whole "My Business" set-up as one guided sequence

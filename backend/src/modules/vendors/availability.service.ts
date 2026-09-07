@@ -13,7 +13,7 @@ import { PlannerProfile } from '../wedding-planners/entities/planner-profile.ent
 import { VendorAvailabilitySlot } from './entities/vendor-availability-slot.entity';
 import { BlockSlotDto, CreateSlotDto, UpdateSlotDto } from './dto/availability.dto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
-import { ProviderType, SlotStatus, UserRole } from '../../common/enums';
+import { BusinessStatus, ProviderType, SlotStatus, UserRole } from '../../common/enums';
 import { VendorServicesService } from '../catalog/vendor-services.service';
 
 export interface AvailabilitySummary {
@@ -649,14 +649,27 @@ export class AvailabilityService {
     providerType: ProviderType,
     providerId: string,
   ): Promise<void> {
-    const owner =
-      providerType === ProviderType.PLANNER
-        ? (await this.planners.findOne({ where: { id: providerId } }))?.ownerUserId
-        : (await this.vendors.findOne({ where: { id: providerId } }))?.ownerUserId;
+    if (providerType === ProviderType.PLANNER) {
+      const owner = (await this.planners.findOne({ where: { id: providerId } }))?.ownerUserId;
+      if (!owner) throw new NotFoundException('Business not found');
+      if (actor.role !== UserRole.ADMIN && owner !== actor.userId) {
+        throw new ForbiddenException('That business is not yours');
+      }
+      return;
+    }
 
-    if (!owner) throw new NotFoundException('Business not found');
-    if (actor.role !== UserRole.ADMIN && owner !== actor.userId) {
+    const vendor = await this.vendors.findOne({ where: { id: providerId } });
+    if (!vendor) throw new NotFoundException('Business not found');
+    if (actor.role !== UserRole.ADMIN && vendor.ownerUserId !== actor.userId) {
       throw new ForbiddenException('That business is not yours');
+    }
+    // A rejected listing is locked: nothing on it may be changed until an
+    // administrator re-verifies it, so its owner cannot keep publishing
+    // availability against a business that has been turned down (EZ1-I119).
+    if (actor.role !== UserRole.ADMIN && vendor.status === BusinessStatus.REJECTED) {
+      throw new ForbiddenException(
+        'This listing was rejected in verification and is locked. Raise a support case if you think this is a mistake.',
+      );
     }
   }
 }

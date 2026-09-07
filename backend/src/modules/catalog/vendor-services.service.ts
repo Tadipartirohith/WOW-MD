@@ -147,7 +147,14 @@ export class VendorServicesService {
   }
 
   async addService(actor: AuthUser, vendorId: string, dto: UpsertVendorServiceDto) {
-    await this.assertOwner(actor, vendorId);
+    const vendor = await this.assertOwner(actor, vendorId);
+    // A rejected listing is locked — no new services on a business that has been
+    // turned down in verification (EZ1-I119).
+    if (actor.role !== UserRole.ADMIN && vendor.status === BusinessStatus.REJECTED) {
+      throw new ForbiddenException(
+        'This listing was rejected in verification and is locked. Raise a support case if you think this is a mistake.',
+      );
+    }
 
     const definition = await this.catalog.getDefinition(dto.definitionId);
     if (!definition.active) {

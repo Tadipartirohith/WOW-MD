@@ -194,11 +194,15 @@ export default function Dashboard() {
     retry: false,
   });
 
+  // The provider dashboard always refetches on mount (EZ1-I118): navigating back
+  // to it after changing something in another module shows the current figures,
+  // not whatever was cached when it was last open.
   const { data: incoming } = useQuery({
     queryKey: ['incoming-bookings-count'],
     queryFn: async () => (await api.get('/bookings/incoming', { params: { limit: 1 } })).data,
     retry: false,
     enabled: isProvider,
+    refetchOnMount: 'always',
   });
 
   // "Bookings against your listing" counts everything ever, including jobs
@@ -210,6 +214,7 @@ export default function Dashboard() {
       (await api.get('/bookings/incoming', { params: { limit: 1, status: 'requested' } })).data,
     retry: false,
     enabled: isProvider,
+    refetchOnMount: 'always',
   });
 
   const { data: earnings } = useQuery({
@@ -217,6 +222,7 @@ export default function Dashboard() {
     queryFn: async () => (await api.get('/bookings/earnings')).data,
     retry: false,
     enabled: isProvider,
+    refetchOnMount: 'always',
   });
 
   // Buyer booking buckets for the dashboard tiles (EZ1-I75). A dedicated counts
@@ -247,6 +253,7 @@ export default function Dashboard() {
         .data,
     retry: false,
     enabled: isVendor,
+    refetchOnMount: 'always',
   });
 
   const { data: slots } = useQuery({
@@ -254,6 +261,7 @@ export default function Dashboard() {
     queryFn: async () => (await api.get(`/vendors/${active?.id}/availability/summary`)).data,
     retry: false,
     enabled: isVendor && Boolean(active?.id),
+    refetchOnMount: 'always',
   });
 
   // A wedding planner is a provider who is not a vendor. Their dashboard opens
