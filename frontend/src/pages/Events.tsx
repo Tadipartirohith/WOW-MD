@@ -20,6 +20,8 @@ interface WEvent {
   endTime?: string | null;
   expectedGuests?: number | null;
   budget?: string | null;
+  theme?: string | null;
+  specialRequirements?: string | null;
   description?: string | null;
   imageUrl?: string | null;
   status?: EventStatus;
@@ -228,6 +230,8 @@ export default function Events() {
           endTime: draft.endTime || undefined,
           expectedGuests: draft.expectedGuests ? Number(draft.expectedGuests) : undefined,
           budget: draft.budget || undefined,
+          theme: draft.theme || undefined,
+          specialRequirements: draft.specialRequirements || undefined,
           description: draft.description || undefined,
         }),
       ['events', 'event-summary'],
@@ -411,6 +415,9 @@ export default function Events() {
                           {ev.budget && Number(ev.budget) > 0
                             ? ` · ₹${Number(ev.budget).toLocaleString('en-IN')}`
                             : ''}
+                          {/* Theme and special requirements travel with the
+                              shared event so a hired planner sees them (EZ1-I84). */}
+                          {ev.theme ? ` · ${ev.theme}` : ''}
                         </span>
                         <span className="mt-0.5 flex flex-wrap items-center gap-1">
                           {ev.status && (
@@ -592,6 +599,19 @@ export default function Events() {
                   placeholder="Venue address"
                   value={draft.venueAddress ?? ''}
                   onChange={(e) => setDraft({ ...draft, venueAddress: e.target.value })}
+                />
+                <input
+                  className="input"
+                  placeholder="Theme / preferences"
+                  value={draft.theme ?? ''}
+                  onChange={(e) => setDraft({ ...draft, theme: e.target.value })}
+                />
+                <textarea
+                  className="input"
+                  rows={2}
+                  placeholder="Special requirements — anything the planner or vendors must know"
+                  value={draft.specialRequirements ?? ''}
+                  onChange={(e) => setDraft({ ...draft, specialRequirements: e.target.value })}
                 />
                 <textarea
                   className="input"

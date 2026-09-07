@@ -55,6 +55,15 @@ export class WeddingEvent {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  /** The couple's theme/preferences and any special requirements for the
+   *  function, part of the shared record a hired planner then executes against
+   *  (EZ1-I84). */
+  @Column({ type: 'varchar', length: 240, nullable: true })
+  theme: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  specialRequirements: string | null;
+
   @Column({ type: 'varchar', length: 2000, nullable: true })
   imageUrl: string | null;
 

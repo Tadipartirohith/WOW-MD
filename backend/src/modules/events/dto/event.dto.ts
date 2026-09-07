@@ -70,6 +70,14 @@ export class CreateEventDto {
   @IsOptional() @IsString() @MaxLength(4000)
   description?: string;
 
+  @ApiPropertyOptional({ maxLength: 240, description: 'Theme / preferences (EZ1-I84)' })
+  @IsOptional() @IsString() @MaxLength(240)
+  theme?: string;
+
+  @ApiPropertyOptional({ maxLength: 4000, description: 'Special requirements (EZ1-I84)' })
+  @IsOptional() @IsString() @MaxLength(4000)
+  specialRequirements?: string;
+
   @ApiPropertyOptional()
   @IsOptional() @IsUploadedUrl()
   imageUrl?: string;
@@ -128,6 +136,14 @@ export class UpdateEventDto {
   @ApiPropertyOptional({ maxLength: 4000 })
   @IsOptional() @IsString() @MaxLength(4000)
   description?: string;
+
+  @ApiPropertyOptional({ maxLength: 240, description: 'Theme / preferences (EZ1-I84)' })
+  @IsOptional() @IsString() @MaxLength(240)
+  theme?: string;
+
+  @ApiPropertyOptional({ maxLength: 4000, description: 'Special requirements (EZ1-I84)' })
+  @IsOptional() @IsString() @MaxLength(4000)
+  specialRequirements?: string;
 
   @ApiPropertyOptional()
   @IsOptional() @IsUploadedUrl()
