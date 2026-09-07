@@ -513,6 +513,13 @@ function VendorListingForm({
       // refreshing it, a just-created first listing never becomes "active" and
       // the wizard cannot leave step one.
       qc.invalidateQueries({ queryKey: ['businesses'] });
+      // The dashboard and the header switcher read the business off ['vendor-me']
+      // (via useBusinesses), which the always-mounted header keeps alive — so
+      // without invalidating it here, the saved name/status never reached the
+      // dashboard until a full refresh (EZ1-I118).
+      qc.invalidateQueries({ queryKey: ['vendor-me'] });
+      // The dashboard greeting and profile-completion come off /users/me.
+      qc.invalidateQueries({ queryKey: ['me'] });
       // In the wizard, a successful save moves straight to the next step — no
       // page refresh, the listing is created/updated in place (EZ1-I21).
       onSaved?.();
@@ -1014,6 +1021,8 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
           : 'Saved. An administrator will review it before it appears in search.',
       );
       qc.invalidateQueries({ queryKey: ['my-listing'] });
+      // Keep the dashboard greeting and profile-completion in step (EZ1-I118).
+      qc.invalidateQueries({ queryKey: ['me'] });
     } catch (err) {
       setMsg(apiMessage(err, 'Could not save the listing.'));
     }
