@@ -31,8 +31,16 @@ interface PublicProfile {
   verified: boolean;
   card?: {
     religion: string | null;
+    caste: string | null;
     motherTongue: string | null;
     profession: string | null;
+    // The horoscope headline, on the card so families can compare it while
+    // deciding — the same facts the web card carries (EZ1-I48).
+    rashi: string | null;
+    star: string | null;
+    padam: string | null;
+    gothram: string | null;
+    kujaDosham: string | null;
   };
 }
 
@@ -166,9 +174,22 @@ function MatchCard({
   const facts = [
     profile.ageRange,
     profile.city,
+    [profile.card?.religion, profile.card?.caste].filter(Boolean).join(' · ') || null,
     profile.card?.profession,
     profile.card?.motherTongue,
   ].filter(Boolean) as string[];
+
+  // The horoscope chips, labelled so a reader who does not use them can skip
+  // them and one who does can read them (EZ1-I48).
+  const chart = (
+    [
+      ['Rashi', profile.card?.rashi],
+      ['Star', profile.card?.star],
+      ['Padam', profile.card?.padam],
+      ['Gothram', profile.card?.gothram],
+      ['Kuja dosham', profile.card?.kujaDosham],
+    ] as const
+  ).filter(([, v]) => Boolean(v)) as [string, string][];
 
   const settled = interaction && interaction !== 'none';
 
@@ -226,6 +247,26 @@ function MatchCard({
                 }}
               >
                 <Caption>{fact}</Caption>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {chart.length > 0 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: space(3),
+              borderTopWidth: 1,
+              borderTopColor: rgb(theme.border),
+              paddingTop: space(2),
+            }}
+          >
+            {chart.map(([label, value]) => (
+              <View key={label} style={{ flexDirection: 'row', gap: space(1) }}>
+                <Caption tone="faint">{label}</Caption>
+                <Caption>{value}</Caption>
               </View>
             ))}
           </View>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -56,6 +56,26 @@ function useAuthGate() {
   }, [ready, user, segments, router]);
 }
 
+/**
+ * Wipe the query cache whenever the signed-in user changes (EZ1-I122).
+ *
+ * The same data-isolation rule the web app enforces: signing out and back in as
+ * somebody else never restarts the app, and with a 30s staleTime the previous
+ * user's cached answers would otherwise be served to the next one. Clearing on
+ * any change away from a real user makes one account's data unable to appear
+ * under another's session.
+ */
+function useClearCacheOnUserChange() {
+  const userId = useAuth((s) => s.user?.id ?? null);
+  const prev = useRef<string | null>(null);
+  useEffect(() => {
+    if (prev.current != null && prev.current !== userId) {
+      queryClient.clear();
+    }
+    prev.current = userId;
+  }, [userId]);
+}
+
 export default function RootLayout() {
   const theme = useTheme();
   const themeReady = useHydrateTheme();
@@ -88,6 +108,7 @@ export default function RootLayout() {
 function Routes() {
   const theme = useTheme();
   useAuthGate();
+  useClearCacheOnUserChange();
 
   return (
     <Stack
