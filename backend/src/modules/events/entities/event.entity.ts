@@ -64,6 +64,11 @@ export class WeddingEvent {
   @Column({ type: 'text', nullable: true })
   specialRequirements: string | null;
 
+  /** The engaged planner's own execution notes for this event (EZ1-I84). The
+   *  couple defines the requirements above; the planner coordinates here. */
+  @Column({ type: 'text', nullable: true })
+  plannerNotes: string | null;
+
   @Column({ type: 'varchar', length: 2000, nullable: true })
   imageUrl: string | null;
 
