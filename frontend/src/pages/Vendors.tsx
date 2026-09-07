@@ -212,23 +212,21 @@ export default function Vendors() {
                 is still obvious, and the card that the pointer is actually on
                 is the one that looks pressable.
               */}
-              <div className="mt-4 flex gap-2">
-                {/* The full profile before choosing them (EZ1-I76, I32). */}
+              {/*
+                One way in from the card — View details (EZ1-I117): availability
+                is chosen inside the details page, after picking a service, not
+                straight off the card. The details page hands the booking flow
+                back here through ?request=, so the availability dialog is one
+                click deeper rather than gone.
+              */}
+              <div className="mt-4">
                 <button
-                  className="btn-outline btn-sm flex-1"
+                  className="btn-outline btn-sm w-full transition-colors
+                    group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
                   onClick={() => navigate(`/vendors/${v.id}`)}
                 >
                   View details
                 </button>
-                {canBook && (
-                  <button
-                    className="btn-outline btn-sm flex-1 transition-colors
-                      group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
-                    onClick={() => setRequesting(v)}
-                  >
-                    Check availability
-                  </button>
-                )}
               </div>
               {!canBook && (
                 <p className="mt-2 rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
