@@ -312,6 +312,29 @@ export default function Dashboard() {
     enabled: isAgent,
   });
 
+  // A verification officer opens the app to see the work waiting on them
+  // (EZ1-I92): how many verifications are new, in progress or submitted, and
+  // which have a deadline coming up. VERIFICATION_FIELDWORK is held by officers
+  // and never by an administrator, so it identifies the persona cleanly.
+  const isOfficer = canAny(permissions, [Permission.VERIFICATION_FIELDWORK]);
+  const { data: officerQueue } = useQuery({
+    queryKey: ['officer-queue'],
+    queryFn: async () =>
+      (await api.get('/verification/requests', { params: { limit: 100 } })).data as {
+        data: { id: string; status: string; deadlineAt?: string | null }[];
+      },
+    retry: false,
+    enabled: isOfficer,
+  });
+  const officerRequests = officerQueue?.data ?? [];
+  const officerCounts = {
+    assigned: officerRequests.filter((r) => r.status === 'assigned').length,
+    inProgress: officerRequests.filter((r) => r.status === 'in_progress').length,
+    submitted: officerRequests.filter((r) => r.status === 'submitted').length,
+    additional: officerRequests.filter((r) => r.status === 'additional_review').length,
+  };
+  const officerOpen = officerCounts.assigned + officerCounts.inProgress + officerCounts.additional;
+
   const reduce = useReducedMotion();
   const firstName = (profile?.displayName ?? '').trim().split(' ')[0];
 
@@ -409,7 +432,41 @@ export default function Dashboard() {
         {isBuyer && !isProvider && (
           <Counter label="My bookings" value={bookingCounts?.all ?? 0} to="/bookings" />
         )}
+        {isOfficer && (
+          <>
+            <Counter
+              label="Verifications open"
+              value={officerOpen}
+              to="/verification"
+              tone={officerOpen > 0 ? 'text-amber-700' : undefined}
+            />
+            <Counter label="In progress" value={officerCounts.inProgress} to="/verification" />
+            <Counter label="Submitted" value={officerCounts.submitted} to="/verification" />
+          </>
+        )}
       </div>
+
+      {/*
+        The officer's workload at a glance and the quick way into it (EZ1-I92):
+        the counts above break down here by stage, and the button opens the
+        queue those numbers belong to.
+      */}
+      {isOfficer && (
+        <div className="rounded-lg border border-gray-200 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-gray-500">Your verification workload</h2>
+            <Link className="btn-outline btn-sm" to="/verification">
+              Open the queue
+            </Link>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+            <MiniStat label="Assigned" value={officerCounts.assigned} />
+            <MiniStat label="In progress" value={officerCounts.inProgress} />
+            <MiniStat label="Submitted" value={officerCounts.submitted} />
+            <MiniStat label="Needs another look" value={officerCounts.additional} />
+          </div>
+        </div>
+      )}
 
       {/*
         The individual's booking buckets (EZ1-I75). Each tile opens the list
@@ -627,6 +684,16 @@ function greeting(): string {
   if (hour < 12) return 'Good morning';
   if (hour < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+/** A small labelled figure inside a band, with no link of its own (EZ1-I92). */
+function MiniStat({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-md bg-surface-sunken p-3">
+      <p className="truncate text-xs text-gray-500">{label}</p>
+      <p className="mt-1 font-mono text-xl font-medium leading-none text-gray-900">{value}</p>
+    </div>
+  );
 }
 
 function Counter({
