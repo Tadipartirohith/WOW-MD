@@ -31,6 +31,9 @@ import {
 import { Interest } from '../matchmaking/entities/interest.entity';
 import { ageBand } from '../users/dto/public-profile.dto';
 
+/** The most brothers and sisters a profile may list (EZ1-I102). */
+export const SIBLING_LIMIT = 10;
+
 /** The sections a profile has to complete before it is considered ready. */
 export const REQUIRED_SECTIONS = [
   'personal',
@@ -484,6 +487,12 @@ export class ProfileDetailsService {
 
   async addSibling(actor: AuthUser, profileId: string, dto: SiblingDto) {
     await this.editable(actor, profileId);
+    const count = await this.siblings.count({ where: { profileId } });
+    if (count >= SIBLING_LIMIT) {
+      throw new BadRequestException(
+        `You can add up to ${SIBLING_LIMIT} brothers and sisters.`,
+      );
+    }
     return this.siblings.save(this.siblings.create({ profileId, ...dto }));
   }
 

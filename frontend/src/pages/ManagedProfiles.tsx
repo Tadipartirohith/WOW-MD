@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
+import { adultDobMax } from '../lib/dates';
 import { useAuth } from '../store/auth';
 import {
   CLAIM_STATUS_LABEL,
@@ -380,9 +381,11 @@ export default function ManagedProfiles() {
             <input
               className="input"
               type="date"
+              max={adultDobMax(18)}
               value={draft.dateOfBirth}
               onChange={set('dateOfBirth')}
             />
+            <p className="mt-1 text-xs text-gray-500">The client must be at least 18 years old.</p>
           </div>
           <div>
             <label className="label">City</label>

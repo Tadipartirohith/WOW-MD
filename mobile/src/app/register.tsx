@@ -5,6 +5,7 @@ import { Link } from 'expo-router';
 import { acceptAuth, api, apiMessage } from '@/lib/api';
 import {
   EMAIL_PATTERN,
+  GMAIL_PATTERN,
   MOBILE_10_PATTERN,
   NAME_PATTERN,
   type AccountType,
@@ -99,10 +100,9 @@ export default function Register() {
     }
 
     if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Enter a valid email address';
-    // Individual accounts must use a Gmail address (EZ1-I71); business personas
-    // register with their own domain, so the rule is scoped to individuals.
-    else if (accountType === 'individual' && !/@gmail\.com$/i.test(email.trim())) {
-      errors.email = 'Individual accounts must use a @gmail.com email address';
+    // Every portal registers with a Gmail address (EZ1-I104).
+    else if (!GMAIL_PATTERN.test(email.trim())) {
+      errors.email = 'Registration requires a @gmail.com email address';
     }
 
     if (phoneRequired && !digits) errors.phone = 'A business account needs a contact number';

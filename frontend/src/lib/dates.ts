@@ -102,3 +102,16 @@ export function daysAway(value: string | null | undefined): number | null {
   target.setHours(0, 0, 0, 0);
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
+
+/**
+ * The latest date of birth (yyyy-mm-dd) that is already `minAge` today — the
+ * `max` for a date-of-birth picker so under-age entries can't be chosen
+ * (EZ1-I101, EZ1-I85). Mirrors the backend IsAdultDate rule.
+ */
+export function adultDobMax(minAge = 18): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - minAge);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}

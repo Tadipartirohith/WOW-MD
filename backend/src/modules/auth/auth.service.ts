@@ -118,6 +118,11 @@ export class AuthService {
    * account type maps through ACCOUNT_TYPE_ROLE, which has no admin entry.
    */
   private resolveRole(dto: RegisterDto): UserRole {
+    // Every portal registers with a Gmail address (EZ1-I104). dto.email is
+    // already trimmed and lower-cased by normaliseEmail on the DTO.
+    if (!/@gmail\.com$/.test(dto.email)) {
+      throw new BadRequestException('Registration requires a @gmail.com email address.');
+    }
     if (dto.accountType === AccountType.INDIVIDUAL) {
       // The Individual User flow is a business switch, not a code path: with it
       // off the platform is an agent-only brokerage and the only way onto it is
@@ -126,13 +131,6 @@ export class AuthService {
         throw new ForbiddenException(
           'Individual sign-up is closed at the moment. An agent can register you and send an invitation.',
         );
-      }
-      // Individual accounts must sign up with a Gmail address (EZ1-I71). The
-      // rule is scoped to this branch on purpose: agents, vendors and planners
-      // register with their business email. dto.email is already trimmed and
-      // lower-cased by normaliseEmail on the DTO.
-      if (!/@gmail\.com$/.test(dto.email)) {
-        throw new BadRequestException('Individual accounts must use a @gmail.com email address.');
       }
       const role = dto.role;
       if (!role || !INDIVIDUAL_ROLES.includes(role)) {

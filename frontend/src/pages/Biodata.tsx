@@ -1474,7 +1474,7 @@ function FamilyForm({
         </div>
         <button
           className="btn mt-2"
-          disabled={!String(sibling.name ?? '').trim()}
+          disabled={!String(sibling.name ?? '').trim() || siblings.length >= 10}
           onClick={() => {
             onAddSibling(sibling);
             setSibling({ name: '' });
@@ -1482,6 +1482,11 @@ function FamilyForm({
         >
           Add sibling
         </button>
+        {siblings.length >= 10 && (
+          <p className="mt-2 text-xs text-amber-600">
+            You can add up to 10 brothers and sisters. Remove one to add another.
+          </p>
+        )}
       </div>
 
       <div className="border-t pt-4">

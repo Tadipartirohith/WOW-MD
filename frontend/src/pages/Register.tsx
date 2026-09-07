@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import PasswordField from '../components/PasswordField';
 import type { AccountType } from '../lib/permissions';
-import { EMAIL_PATTERN, MOBILE_10_PATTERN, NAME_PATTERN } from '../lib/permissions';
+import { EMAIL_PATTERN, GMAIL_PATTERN, MOBILE_10_PATTERN, NAME_PATTERN } from '../lib/permissions';
 
 /**
  * Sign-up is a two-step choice: first *what kind of account*, then the details.
@@ -93,10 +93,9 @@ export default function Register() {
     }
 
     if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Enter a valid email address';
-    // Individual accounts must use a Gmail address (EZ1-I71); business personas
-    // register with their own domain, so the rule is scoped to individuals.
-    else if (accountType === 'individual' && !/@gmail\.com$/i.test(email.trim())) {
-      errors.email = 'Individual accounts must use a @gmail.com email address';
+    // Every portal registers with a Gmail address (EZ1-I104).
+    else if (!GMAIL_PATTERN.test(email.trim())) {
+      errors.email = 'Registration requires a @gmail.com email address';
     }
 
     if (phoneRequired && !digits) errors.phone = 'Enter your mobile number';

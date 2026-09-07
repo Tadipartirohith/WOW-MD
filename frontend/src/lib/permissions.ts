@@ -327,6 +327,8 @@ export const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 export const MOBILE_10_PATTERN = /^[6-9]\d{9}$/;
 export const NAME_PATTERN = /^[\p{L}][\p{L}\s]*$/u;
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Registration accepts only Gmail addresses across every portal (EZ1-I104). */
+export const GMAIL_PATTERN = /@gmail\.com$/i;
 
 export const VENDOR_CATEGORIES = [
   'venue',

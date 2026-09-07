@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Permission, can, isProvider, MOBILE_10_PATTERN } from '../lib/permissions';
-import { formatDate } from '../lib/dates';
+import { formatDate, adultDobMax } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
 
 const empty = {
@@ -85,6 +85,14 @@ export default function Profile() {
    */
   const isAgency = can(permissions, Permission.AGENCY_MANAGE);
   const stewardFields = isSteward && !isAgency;
+  /*
+   * Profile visibility is a matrimony-profile setting: who may see the biodata
+   * in matching. Vendors, planners and verification officers have no biodata
+   * and no place in matchmaking, so the control was noise on their profile
+   * (EZ1-I85, EZ1-I93). Show it only to people who actually have a profile in
+   * the matches — an individual, or a steward managing one.
+   */
+  const showVisibility = hasBiodata || stewardFields;
 
   const { data, isLoading } = useQuery({
     queryKey: ['me'],
@@ -156,19 +164,14 @@ export default function Profile() {
       // birth are theirs to record — the form shows both fields, so it must send
       // them too, or they save as null. The DOB picker is capped at today and
       // the API rejects a future date.
-      const fields = isAgency
-        ? (['gender', 'dateOfBirth', 'city', 'address', 'contactPhone', 'bio'] as const)
-        : ([
-            'gender',
-            'dateOfBirth',
-            'city',
-            'address',
-            'contactPhone',
-            'bio',
-            'managingFor',
-            'stewardRelation',
-            'visibility',
-          ] as const);
+      const base = ['gender', 'dateOfBirth', 'city', 'address', 'contactPhone', 'bio'] as const;
+      const fields: readonly (keyof typeof form)[] = isAgency
+        ? base
+        : [
+            ...base,
+            ...(stewardFields ? (['managingFor', 'stewardRelation'] as const) : []),
+            ...(showVisibility ? (['visibility'] as const) : []),
+          ];
       for (const key of fields) {
         if (form[key]) payload[key] = form[key];
       }
@@ -361,9 +364,9 @@ export default function Profile() {
                 <input
                   className="input mt-1"
                   type="date"
-                  // Today or earlier only — a date of birth in the future is not
-                  // a date of birth. The API enforces this too.
-                  max={new Date().toISOString().slice(0, 10)}
+                  // Must be at least 18 years old — this platform is for adults
+                  // arranging a marriage. The API enforces this too (EZ1-I85).
+                  max={adultDobMax(18)}
                   value={form.dateOfBirth}
                   onChange={set('dateOfBirth')}
                 />
@@ -425,9 +428,10 @@ export default function Profile() {
               Who may see this profile. The backend already honoured PUBLIC /
               MATCHES_ONLY / PRIVATE; there was simply no control to set it, so a
               profile could never be made public or matches-only from the UI.
-              Not shown to an agency, which does not appear in matchmaking.
+              Only shown to people with a matrimony profile — not to agencies,
+              vendors, planners or officers, who do not appear in matchmaking.
             */}
-            {!isAgency && (
+            {showVisibility && (
               <label className="block text-sm">
                 <span className="text-gray-700">Profile visibility</span>
                 <select className="input mt-1" value={form.visibility} onChange={set('visibility')}>
