@@ -1246,9 +1246,10 @@ function CaseRow({
           */}
           {item.booking || item.milestone ? (
             <div className="rounded-sm bg-gray-50 p-3">
-              <p className="text-sm font-medium text-gray-800">Settlement</p>
+              <p className="text-sm font-medium text-gray-800">Recommended resolution</p>
               <p className="mb-2 text-xs text-gray-600">
-                Money on the disputed booking is frozen until one of these is recorded.
+                Money on the disputed booking stays frozen. You recommend the outcome; an
+                administrator approves it before anything moves (EZ1-I94).
               </p>
               <div className="flex flex-wrap items-end gap-2">
                 <button
@@ -1257,22 +1258,22 @@ function CaseRow({
                     onRun(
                       () =>
                         api.put(`/verification/cases/${item.id}/settle`, { outcome: 'release' }),
-                      'Released to the provider.',
+                      'Recommendation submitted for review.',
                     )
                   }
                 >
-                  Release to provider
+                  Recommend release to provider
                 </button>
                 <button
                   className="btn-outline"
                   onClick={() =>
                     onRun(
                       () => api.put(`/verification/cases/${item.id}/settle`, { outcome: 'refund' }),
-                      'Refunded to the buyer.',
+                      'Recommendation submitted for review.',
                     )
                   }
                 >
-                  Refund the buyer
+                  Recommend refund to buyer
                 </button>
                 <label className="text-sm">
                   <span className="text-gray-700">Partial amount</span>
