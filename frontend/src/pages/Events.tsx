@@ -432,9 +432,14 @@ export default function Events() {
                               {CATEGORY_LABEL[ev.category] ?? ev.category}
                             </span>
                           )}
-                          {ev.eventType && (
-                            <span className="text-[10px] text-gray-400">· {ev.eventType}</span>
-                          )}
+                          {/* The event type is shown only when it says something
+                              the name does not — a "Mehendi" event typed as type
+                              "Mehendi" printed the word twice on the card, which
+                              is the reported duplication (EZ1-I91). */}
+                          {ev.eventType &&
+                            ev.eventType.trim().toLowerCase() !== ev.name.trim().toLowerCase() && (
+                              <span className="text-[10px] text-gray-400">· {ev.eventType}</span>
+                            )}
                         </span>
                         {/*
                           Where this day stands, on the day itself.
