@@ -33,8 +33,11 @@ export class WeddingPlan {
   @Column({ type: 'uuid', nullable: true })
   plannerBookingId: string | null;
 
-  @Column({ type: 'date' })
-  weddingDate: string;
+  // Nullable so a plan can exist before its date is known — a couple who books
+  // a planner before starting their own plan (EZ1-I116). Every reader treats it
+  // as optional.
+  @Column({ type: 'date', nullable: true })
+  weddingDate: string | null;
 
   @OneToMany(() => PlanTask, (task) => task.plan)
   tasks: PlanTask[];

@@ -156,6 +156,9 @@ export class Booking {
   clientName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
+  /** The client's own city and first photo, for the provider's booking detail (EZ1-I109). */
+  clientCity?: string | null;
+  clientPhoto?: string | null;
   eventName?: string | null;
   eventVenue?: string | null;
   eventCity?: string | null;

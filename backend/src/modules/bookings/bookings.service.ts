@@ -631,6 +631,24 @@ export class BookingsService {
     const planner = await this.planners.findOne({ where: { id: booking.providerId } });
     if (!planner) return;
     const plans = await this.weddingPlans.find({ where: { userId: booking.userId } });
+
+    // The couple booked a planner before ever starting a wedding plan of their
+    // own, so there was nothing to attach the engagement to and they never
+    // appeared as a client (EZ1-I116). Create the plan the paid booking
+    // implies — dated to the booking's event when it has one, otherwise left
+    // for the couple to set — and engage against it.
+    if (plans.length === 0) {
+      await this.weddingPlans.save(
+        this.weddingPlans.create({
+          userId: booking.userId,
+          weddingDate: booking.eventDate ?? null,
+          plannerUserId: planner.ownerUserId,
+          plannerBookingId: booking.id,
+        }),
+      );
+      return;
+    }
+
     for (const plan of plans) {
       // Never override a plan already engaged to a planner — theirs to release.
       if (plan.plannerUserId) continue;
@@ -1218,6 +1236,7 @@ export class BookingsService {
 
     const byUser = new Map(users.map((u) => [u.id, u]));
     const nameByUser = new Map(profiles.map((p) => [p.userId as string, p.displayName]));
+    const profileByUser = new Map(profiles.map((p) => [p.userId as string, p]));
     const byEvent = new Map(events.map((e) => [e.id, e]));
     const byService = new Map(services.map((v) => [v.id, v]));
 
@@ -1243,9 +1262,12 @@ export class BookingsService {
     for (const booking of rows) {
       const user = byUser.get(booking.userId);
       const event = booking.eventId ? byEvent.get(booking.eventId) : undefined;
+      const clientProfile = profileByUser.get(booking.userId);
       booking.clientName = nameByUser.get(booking.userId) ?? null;
       booking.clientEmail = user?.email ?? null;
       booking.clientPhone = user?.phone ?? null;
+      booking.clientCity = clientProfile?.city ?? null;
+      booking.clientPhoto = clientProfile?.photos?.[0] ?? null;
       booking.eventName = event?.name ?? null;
       booking.eventVenue = event?.venue ?? null;
       booking.eventCity = event?.city ?? null;

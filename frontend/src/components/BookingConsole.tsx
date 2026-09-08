@@ -30,6 +30,11 @@ interface IncomingBooking {
   clientName: string | null;
   clientEmail: string | null;
   clientPhone: string | null;
+  /** The client's own city and photo, for the provider's booking detail (EZ1-I109). */
+  clientCity?: string | null;
+  clientPhoto?: string | null;
+  /** A note the customer added to the request, distinct from requirements. */
+  notes?: string | null;
   eventName: string | null;
   eventVenue: string | null;
   eventCity: string | null;
@@ -229,7 +234,18 @@ export default function BookingConsole({
           {rows.map((booking) => (
             <li key={booking.id} className="rounded-lg border border-gray-200 bg-surface p-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="flex min-w-0 gap-3">
+                  {/* The client's photo, so the provider recognises who they are
+                      dealing with without opening the profile (EZ1-I109). */}
+                  {booking.clientPhoto && (
+                    <img
+                      src={booking.clientPhoto}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-inset ring-gray-900/5"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="min-w-0">
                   <p className="font-medium text-gray-900">
                     {/* The real customer/couple name; "Customer" only when the
                         record genuinely has no name (EZ1-I33), never "A client". */}
@@ -247,13 +263,14 @@ export default function BookingConsole({
                   {/* The customer's own contact and location, so the provider can
                       reach them and place the event without opening another
                       screen (EZ1-I109). */}
-                  {(booking.clientPhone || booking.clientEmail || booking.eventCity) && (
+                  {(booking.clientPhone || booking.clientEmail || booking.clientCity || booking.eventCity) && (
                     <p className="mt-0.5 text-xs text-gray-500">
-                      {[booking.clientPhone, booking.clientEmail, booking.eventCity]
+                      {[booking.clientPhone, booking.clientEmail, booking.clientCity ?? booking.eventCity]
                         .filter(Boolean)
                         .join(' · ')}
                     </p>
                   )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-gray-700">
@@ -344,6 +361,14 @@ export default function BookingConsole({
               {booking.requirements && (
                 <p className="mt-2 rounded-sm bg-surface-sunken p-2 text-xs text-gray-700">
                   {booking.requirements}
+                </p>
+              )}
+
+              {/* A free-text note the customer left on the request (EZ1-I109). */}
+              {booking.notes && (
+                <p className="mt-2 rounded-sm bg-surface-sunken p-2 text-xs text-gray-700">
+                  <span className="text-gray-400">Note: </span>
+                  {booking.notes}
                 </p>
               )}
 
