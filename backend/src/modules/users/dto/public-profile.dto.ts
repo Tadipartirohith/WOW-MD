@@ -219,9 +219,21 @@ export interface BiodataView {
   preferences?: ProfilePreferences;
   claimStatus: ProfileClaimStatus;
   managed: boolean;
+  /** The basic biodata a shared link shows (EZ1-I135). Null until details exist. */
+  basic?: {
+    religion: string | null;
+    caste: string | null;
+    subCaste: string | null;
+    motherTongue: string | null;
+    highestQualification: string | null;
+    occupationStatus: string | null;
+  } | null;
 }
 
-export function toBiodata(profile: Profile): BiodataView {
+export function toBiodata(
+  profile: Profile,
+  basic?: BiodataView['basic'],
+): BiodataView {
   return {
     id: profile.id,
     displayName: profile.displayName,
@@ -237,6 +249,7 @@ export function toBiodata(profile: Profile): BiodataView {
     claimStatus: profile.claimStatus,
     managed: profile.managedByUserId !== null,
     profileCode: profile.profileCode,
+    basic: basic ?? null,
   };
 }
 

@@ -30,6 +30,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
 import { toBiodata } from '../users/dto/public-profile.dto';
+import { ProfileDetailsService } from '../profile-details/profile-details.service';
 
 /**
  * Circulation: consent, sharing, the agent pool, and cross-agent pairing
@@ -44,6 +45,7 @@ export class CirculationController {
     private readonly sharing: SharingService,
     private readonly proposals: ProposalsService,
     private readonly directory: AgentDirectoryService,
+    private readonly details: ProfileDetailsService,
   ) {}
 
   // ------------------------------------------------------------------ consent
@@ -242,7 +244,10 @@ export class CirculationController {
   @Get('biodata/:token')
   async biodata(@Param('token') token: string) {
     const profile = await this.sharing.resolveLink(token);
-    return toBiodata(profile);
+    // The basic biodata detail the recipient needs to judge a match — religion,
+    // community, education, occupation — not just name/age/city (EZ1-I135).
+    const basic = await this.details.basicCard(profile.id);
+    return toBiodata(profile, basic);
   }
 
   // --------------------------------------------------- cross-agent proposals

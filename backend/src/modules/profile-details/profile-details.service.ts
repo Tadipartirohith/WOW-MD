@@ -483,6 +483,31 @@ export class ProfileDetailsService {
     return this.persist(profileId, row);
   }
 
+  /**
+   * The basic biodata a shared link may show (EZ1-I135): religion, community,
+   * mother tongue, education and occupation — the details a family reads to
+   * decide, without the native place, which stays behind a fixed match.
+   */
+  async basicCard(profileId: string): Promise<{
+    religion: string | null;
+    caste: string | null;
+    subCaste: string | null;
+    motherTongue: string | null;
+    highestQualification: string | null;
+    occupationStatus: string | null;
+  } | null> {
+    const row = await this.details.findOne({ where: { profileId } });
+    if (!row) return null;
+    return {
+      religion: row.religion,
+      caste: row.caste,
+      subCaste: row.subCaste,
+      motherTongue: row.motherTongue,
+      highestQualification: row.highestQualification,
+      occupationStatus: row.occupationStatus,
+    };
+  }
+
   // ------------------------------------------------- siblings and assets
 
   async addSibling(actor: AuthUser, profileId: string, dto: SiblingDto) {

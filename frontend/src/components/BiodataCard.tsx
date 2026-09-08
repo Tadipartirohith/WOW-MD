@@ -15,6 +15,15 @@ export interface Biodata {
     education?: string;
     lifestyle?: string[];
   };
+  /** The person's own basic biodata, shown on a shared link (EZ1-I135). */
+  basic?: {
+    religion: string | null;
+    caste: string | null;
+    subCaste: string | null;
+    motherTongue: string | null;
+    highestQualification: string | null;
+    occupationStatus: string | null;
+  } | null;
   managed: boolean;
 }
 
@@ -48,13 +57,20 @@ export default function BiodataCard({
   // Which photo is open full size, if any (EZ1-I23). Only interactive off the
   // printed sheet — a print has no click.
   const [preview, setPreview] = useState<string | null>(null);
+  // The person's own basic biodata takes precedence over the search
+  // preferences, so a shared link shows religion/caste/etc. and not just
+  // name/age/city (EZ1-I135). Native place is deliberately absent here.
+  const b = profile.basic;
   const rows: [string, string | undefined][] = [
     ['Age', years ? `${years} years` : (profile.ageRange ?? undefined)],
     ['Gender', profile.gender],
     ['City', profile.city],
-    ['Religion', profile.preferences?.religion],
-    ['Community', profile.preferences?.community],
-    ['Education', profile.preferences?.education],
+    ['Religion', b?.religion ?? profile.preferences?.religion ?? undefined],
+    ['Caste', b?.caste ?? undefined],
+    ['Sub-caste', b?.subCaste ?? undefined],
+    ['Mother tongue', b?.motherTongue ?? undefined],
+    ['Qualification', b?.highestQualification ?? profile.preferences?.education ?? undefined],
+    ['Occupation', b?.occupationStatus?.replace(/_/g, ' ') ?? undefined],
     ['Lifestyle', profile.preferences?.lifestyle?.join(', ')],
   ];
 
