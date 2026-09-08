@@ -173,4 +173,10 @@ export class Booking {
   cancelledByRole?: string | null;
   /** The buyer's own review of this booking, when they have written one (EZ1-I114). */
   myReview?: { rating: number; comment: string } | null;
+  /**
+   * True on a buyer-side list when the row belongs to the caller's match-fixed
+   * partner rather than the caller (EZ1-I160). Lets the shared wedding view mark
+   * "booked by your partner" without a second lookup, and is never stored.
+   */
+  sharedFromPartner?: boolean;
 }

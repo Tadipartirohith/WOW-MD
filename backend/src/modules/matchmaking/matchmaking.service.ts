@@ -196,6 +196,33 @@ export class MatchmakingService {
   }
 
   /**
+   * The account this user shares a fixed wedding with, if any (EZ1-I160).
+   *
+   * Once a bride and groom are match-fixed the two accounts share one
+   * booking/wedding context, so several buyer-side reads need the partner's
+   * userId as well as the caller's. Resolves through the CONFIRMED interest
+   * that links the two profiles: the caller's own profile, the partner's
+   * profile on the other end, and that profile's account. Returns null for
+   * anyone not in a fixed match, or one whose partner has no account yet —
+   * which keeps every caller of this an ordinary single-account read.
+   */
+  async fixedPartnerUserId(userId: string): Promise<string | null> {
+    const mine = await this.profiles.findOne({ where: { userId } });
+    if (!mine) return null;
+    const fixed = await this.interests.findOne({
+      where: [
+        { fromProfileId: mine.id, matchFixedState: MatchFixedState.CONFIRMED },
+        { toProfileId: mine.id, matchFixedState: MatchFixedState.CONFIRMED },
+      ],
+    });
+    if (!fixed) return null;
+    const partnerProfileId =
+      fixed.fromProfileId === mine.id ? fixed.toProfileId : fixed.fromProfileId;
+    const partner = await this.profiles.findOne({ where: { id: partnerProfileId } });
+    return partner?.userId ?? null;
+  }
+
+  /**
    * Counterparts this profile should never be shown again: anyone either side
    * blocked, and anyone an ended match already ruled out. Withdrawn and
    * rejected interests are deliberately absent — people change their minds,

@@ -39,6 +39,10 @@ interface Booking {
   cancelledAt?: string | null;
   /** The buyer's own review of this booking, when written (EZ1-I114). */
   myReview?: { rating: number; comment: string } | null;
+  /** True when this row is the match-fixed partner's booking, not the caller's (EZ1-I160). */
+  sharedFromPartner?: boolean;
+  /** The client the booking is for — the partner's name on a shared row (EZ1-I160). */
+  clientName?: string | null;
 }
 
 interface Quotation {
@@ -336,6 +340,14 @@ export default function Bookings() {
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold text-gray-900">
                   {b.providerName ?? `${b.providerType} ${b.providerId.slice(0, 8)}`}
+                  {/* A booking the match-fixed partner placed, shared into this
+                      account's wedding view (EZ1-I160). Service/offering already
+                      read on the category/extras lines below (EZ1-I167). */}
+                  {b.sharedFromPartner && (
+                    <span className="ml-2 rounded-full bg-brand-light px-2 py-0.5 align-middle text-xs font-normal text-brand-dark">
+                      Booked by {b.clientName || 'your partner'}
+                    </span>
+                  )}
                 </p>
                 <p className="mt-0.5 text-sm text-gray-500">
                   <span className="capitalize">{category}</span>

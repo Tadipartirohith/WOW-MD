@@ -407,6 +407,9 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   const [budget, setBudget] = useState('');
   const [error, setError] = useState('');
   const [existing, setExisting] = useState('');
+  // The note beside the "open it" link — the partner-already-booked case says
+  // something different from an ordinary duplicate (EZ1-I160).
+  const [existingNote, setExistingNote] = useState('');
   const [busy, setBusy] = useState(false);
 
   // Availability is service-specific (EZ1-I28/I32): once a service is chosen the
@@ -462,6 +465,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
     e.preventDefault();
     setError('');
     setExisting('');
+    setExistingNote('');
 
     // Checked here so a long form does not have to be sent to find out about a
     // missing guest count. The server checks all of it again regardless.
@@ -492,6 +496,11 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
         .response?.data?.error;
       if (body?.code === 'DUPLICATE_BOOKING_REQUEST' && body.bookingId) {
         setExisting(body.bookingId);
+      } else if (body?.code === 'PARTNER_ALREADY_BOOKED' && body.bookingId) {
+        // The couple share one wedding: the partner already holds this booking,
+        // and it shows up in this account's shared Bookings list (EZ1-I160).
+        setExisting(body.bookingId);
+        setExistingNote('Your partner has already booked this service.');
       } else {
         setError(apiMessage(err, 'That request could not be sent.'));
       }
@@ -519,9 +528,9 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
         {error && <p className="mb-3 alert-critical">{error}</p>}
         {existing && (
           <div className="mb-3 alert-caution">
-            You have already asked this vendor for that window.{' '}
+            {existingNote || 'You have already asked this vendor for that window.'}{' '}
             <button className="underline" onClick={() => nav(`/bookings?highlight=${existing}`)}>
-              Open the request you already have
+              {existingNote ? 'Open the booking' : 'Open the request you already have'}
             </button>
             .
           </div>

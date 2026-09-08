@@ -49,6 +49,12 @@ import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
  */
 export const DUPLICATE_BOOKING_REQUEST = 'DUPLICATE_BOOKING_REQUEST';
 
+/**
+ * The client branches on this to explain that the couple's other half already
+ * booked the service, and to open that shared booking (EZ1-I160).
+ */
+export const PARTNER_ALREADY_BOOKED = 'PARTNER_ALREADY_BOOKED';
+
 /** Money is added in minor units; summing decimal strings drifts a paisa at a time. */
 const toMinor = (amount: string): number => Math.round(parseFloat(amount || '0') * 100);
 const toMajor = (minor: number): string => (minor / 100).toFixed(2);
@@ -295,6 +301,22 @@ export class BookingsService {
       });
     }
 
+    // A match-fixed couple share one wedding (EZ1-I160): if the partner already
+    // holds a live booking for this provider and service, that booking is the
+    // couple's, and a second one from this side would duplicate it. Nothing
+    // happens for anyone not in a fixed match — fixedPartnerUserId returns null.
+    const partnerUserId = await this.matchmaking.fixedPartnerUserId(clientUserId);
+    if (partnerUserId) {
+      const partnerBooking = await this.partnerActiveBooking(partnerUserId, dto);
+      if (partnerBooking) {
+        throw new ConflictException({
+          message: 'Your partner has already booked this service.',
+          code: PARTNER_ALREADY_BOOKED,
+          bookingId: partnerBooking.id,
+        });
+      }
+    }
+
     if (dto.slotId) {
       const slot = await this.availability.findSlot(dto.slotId);
       // Both halves. A slot is identified by the provider it belongs to and
@@ -419,6 +441,30 @@ export class BookingsService {
           (dto.eventId ? b.eventId === dto.eventId : true) &&
           (!dto.slotId && !dto.eventId ? b.eventDate === (dto.eventDate ?? null) : true),
       ) ?? null
+    );
+  }
+
+  /**
+   * A live booking the match-fixed partner already holds for this provider and
+   * service (EZ1-I160). Keyed on provider + service rather than the slot, so the
+   * couple cannot both book the same service from two accounts however each
+   * side reached it. A booking with no catalog service matches another with no
+   * service against the same provider.
+   */
+  private async partnerActiveBooking(
+    partnerUserId: string,
+    dto: CreateBookingDto,
+  ): Promise<Booking | null> {
+    const rows = await this.bookings.find({
+      where: {
+        userId: partnerUserId,
+        providerType: dto.providerType,
+        providerId: dto.providerId,
+        status: In(ACTIVE_REQUEST),
+      },
+    });
+    return (
+      rows.find((b) => (b.vendorServiceId ?? null) === (dto.vendorServiceId ?? null)) ?? null
     );
   }
 
@@ -1101,6 +1147,7 @@ export class BookingsService {
   /** Buyer-side listing: own bookings, plus managed clients' for an agent. */
   async listForBuyer(actor: AuthUser, q: BookingSearchDto): Promise<PaginatedResult<Booking>> {
     const qb = this.bookings.createQueryBuilder('b');
+    let partnerUserId: string | null = null;
 
     if (actor.role === UserRole.AGENT) {
       if (q.clientId) {
@@ -1111,7 +1158,16 @@ export class BookingsService {
         qb.where('(b."bookedByUserId" = :me OR b."userId" = :me)', { me: actor.userId });
       }
     } else {
-      qb.where('b."userId" = :me', { me: actor.userId });
+      // A match-fixed couple share one wedding, so a booking made from either
+      // account is visible in the other (EZ1-I160): both sides read the same
+      // rows, which is what keeps the shared view inherently in sync. For
+      // everyone else this is exactly the caller's own bookings.
+      partnerUserId = await this.matchmaking.fixedPartnerUserId(actor.userId);
+      if (partnerUserId) {
+        qb.where('b."userId" IN (:...ids)', { ids: [actor.userId, partnerUserId] });
+      } else {
+        qb.where('b."userId" = :me', { me: actor.userId });
+      }
     }
 
     if (q.status) qb.andWhere('b.status = :status', { status: q.status });
@@ -1122,6 +1178,9 @@ export class BookingsService {
     const [data, total] = await qb.getManyAndCount();
     const named = await this.withProviderNames(data);
     const withContext = await this.withClientContext(named);
+    if (partnerUserId) {
+      for (const b of withContext) b.sharedFromPartner = b.userId === partnerUserId;
+    }
     return paginate(await this.withMyReviews(actor.userId, withContext), total, q.page, q.limit);
   }
 
@@ -1190,7 +1249,15 @@ export class BookingsService {
     if (actor.role === UserRole.AGENT) {
       qb.where('(b."bookedByUserId" = :me OR b."userId" = :me)', { me: actor.userId });
     } else {
-      qb.where('b."userId" = :me', { me: actor.userId });
+      // Match-fixed couples share one wedding (EZ1-I160), so the tiles count
+      // both sides' bookings — the same scope as listForBuyer, so the numbers
+      // match the list. Null partner keeps this the caller's own rows.
+      const partnerUserId = await this.matchmaking.fixedPartnerUserId(actor.userId);
+      if (partnerUserId) {
+        qb.where('b."userId" IN (:...ids)', { ids: [actor.userId, partnerUserId] });
+      } else {
+        qb.where('b."userId" = :me', { me: actor.userId });
+      }
     }
     const rows = await qb.groupBy('b.status').getRawMany<{ status: string; count: string }>();
 
