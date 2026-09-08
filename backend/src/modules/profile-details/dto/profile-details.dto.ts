@@ -19,6 +19,8 @@ import {
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
+import { IsNotFutureDate } from '../../../common/decorators/not-future.decorator';
+import { IsAdultDate } from '../../../common/decorators/adult-date.decorator';
 import {
   Complexion,
   FamilyAssetType,
@@ -89,6 +91,20 @@ export class PersonalDetailsDto {
   @Matches(NAME_PATTERN, { message: NAME_MESSAGE })
   @MaxLength(80)
   lastName?: string;
+
+  /**
+   * The bride/groom's date of birth, entered here only when a family member is
+   * filling the biodata in for them (EZ1-I158). An individual sets their own
+   * date of birth on their profile, not in the biodata, so this stays optional
+   * and the form shows it only for a family login. The service writes it onto
+   * the managed profile.
+   */
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @IsDateString()
+  @IsNotFutureDate({ message: 'A date of birth cannot be in the future' })
+  @IsAdultDate(18, { message: 'The bride/groom must be at least 18 years old' })
+  dateOfBirth?: string;
 
   @ApiProperty({ example: 170, minimum: 120, maximum: 230, description: 'Height in centimetres' })
   @IsInt()

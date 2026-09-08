@@ -133,6 +133,34 @@ export class ProfileDetailsService {
       alternateMobile: dto.alternateMobile ?? null,
       residence: (dto.residence ?? {}) as Record<string, string>,
     });
+
+    // A family member fills the biodata in for the bride/groom they manage, but
+    // the profile was created with the family member's own account name — so
+    // every card and title read as the parent's name, not the bride/groom's
+    // (EZ1-I151). The biodata name is the authoritative one for a managed
+    // profile, so it becomes the profile's display name. The family member's
+    // own name stays on their user account and surfaces only as the "managed
+    // by their <relation>" line. Left untouched for a self-registered
+    // individual, whose display name is already their own.
+    if (profile.managingFor) {
+      let touched = false;
+      if (dto.firstName) {
+        const biodataName = `${dto.firstName} ${lastName}`.trim();
+        if (biodataName && profile.displayName !== biodataName) {
+          profile.displayName = biodataName;
+          touched = true;
+        }
+      }
+      // The bride/groom's date of birth is collected in the biodata only for a
+      // family login (EZ1-I158) and belongs on the managed profile, the same
+      // column an individual sets on their own profile.
+      if (dto.dateOfBirth && profile.dateOfBirth !== dto.dateOfBirth) {
+        profile.dateOfBirth = dto.dateOfBirth;
+        touched = true;
+      }
+      if (touched) await this.profiles.save(profile);
+    }
+
     return this.persist(profileId, row);
   }
 

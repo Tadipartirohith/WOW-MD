@@ -286,10 +286,14 @@ export default function Biodata() {
 
       <Accordion title="Personal details" name="personal" open={open} setOpen={setOpen}>
         <PersonalForm
-          initial={details}
+          initial={{ ...details, dateOfBirth: me?.dateOfBirth ?? '' }}
           contact={contact}
           onSave={(b) => save('personal', b)}
           storageKey={`biodata:${targetId}:personal`}
+          // A family member enters the bride/groom's date of birth here; an
+          // individual sets their own on their profile, not in the biodata
+          // (EZ1-I158). `managingFor` is set only on a family-managed profile.
+          showDob={Boolean(me?.managingFor)}
         />
       </Accordion>
 
@@ -526,15 +530,19 @@ function PersonalForm({
   contact,
   onSave,
   storageKey,
+  showDob = false,
 }: {
   initial: Draft;
   contact?: ContactBlock;
   onSave: (b: Draft) => void;
   storageKey?: string;
+  /** Family login only: the bride/groom's date of birth is entered here. */
+  showDob?: boolean;
 }) {
   const keys = [
     'firstName',
     'lastName',
+    'dateOfBirth',
     'heightCm',
     'complexion',
     'communicationAddress',
@@ -551,6 +559,9 @@ function PersonalForm({
       ...draft,
       heightCm: Number(draft.heightCm) || undefined,
       alternateMobile: draft.alternateMobile || undefined,
+      // Only meaningful for a family login; blank otherwise, and the server
+      // ignores it for a self-registered individual (EZ1-I158).
+      dateOfBirth: draft.dateOfBirth || undefined,
     });
   }
 
@@ -569,6 +580,23 @@ function PersonalForm({
         <Field label="Last name" hint="Family name, as on your documents">
           <input className="input mt-1" value={String(draft.lastName ?? '')} onChange={set('lastName')} required />
         </Field>
+        {/*
+          The bride/groom's date of birth, shown only for a family member
+          filling this in on their behalf (EZ1-I158). An individual sets their
+          own date of birth on their profile, so the field is not shown to them
+          here.
+        */}
+        {showDob && (
+          <Field label="Bride/Groom date of birth" hint="Of the person this profile is for">
+            <input
+              className="input mt-1"
+              type="date"
+              value={String(draft.dateOfBirth ?? '')}
+              onChange={set('dateOfBirth')}
+              required
+            />
+          </Field>
+        )}
         <Field label="Height (cm)">
           <input
             className="input mt-1"
