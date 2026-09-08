@@ -9,6 +9,7 @@ import { ReactNode } from 'react';
 import ClaimRequests from '../components/ClaimRequests';
 import GetStarted from '../components/GetStarted';
 import VendorDashboard from '../components/VendorDashboard';
+import IndividualDashboard from '../components/IndividualDashboard';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight } from '@phosphor-icons/react';
 
@@ -232,22 +233,6 @@ export default function Dashboard() {
     refetchOnMount: 'always',
   });
 
-  // Buyer booking buckets for the dashboard tiles (EZ1-I75). A dedicated counts
-  // endpoint rather than reading .total off a one-row list, so the numbers stay
-  // accurate and each tile can open its own filtered list.
-  const { data: bookingCounts } = useQuery({
-    queryKey: ['my-booking-counts'],
-    queryFn: async () =>
-      (await api.get('/bookings/counts')).data as {
-        all: number;
-        active: number;
-        cancelled: number;
-        completed: number;
-      },
-    retry: false,
-    enabled: isBuyer,
-  });
-
   // A vendor's own summary, for the business the header switcher has selected.
   // Everything here is a number they would otherwise open three pages to find.
   const isVendor = canAny(permissions, [Permission.VENDOR_LISTING_MANAGE]);
@@ -448,9 +433,6 @@ export default function Dashboard() {
             />
           </>
         )}
-        {isBuyer && !isProvider && (
-          <Counter label="My bookings" value={bookingCounts?.all ?? 0} to="/bookings" />
-        )}
         {isOfficer && (
           <>
             <Counter
@@ -488,30 +470,13 @@ export default function Dashboard() {
       )}
 
       {/*
-        The individual's booking buckets (EZ1-I75). Each tile opens the list
-        already filtered to that bucket, and the counts come from a dedicated
-        endpoint so they stay in step with the bookings themselves.
+        The individual couple's home screen (EZ1-I150): matches, interests,
+        messages, events, bookings, the wedding plan, the honeymoon and support,
+        each a live figure wired to its own module with the right navigation and
+        an honest empty state. It owns its own booking counts, so the buckets
+        that used to live here (EZ1-I75) now sit inside it.
       */}
-      {isBuyer && !isProvider && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Counter
-            label="Active bookings"
-            value={bookingCounts?.active ?? 0}
-            to="/bookings?status=active"
-            tone={(bookingCounts?.active ?? 0) > 0 ? 'text-emerald-700' : undefined}
-          />
-          <Counter
-            label="Completed bookings"
-            value={bookingCounts?.completed ?? 0}
-            to="/bookings?status=completed"
-          />
-          <Counter
-            label="Cancelled bookings"
-            value={bookingCounts?.cancelled ?? 0}
-            to="/bookings?status=cancelled"
-          />
-        </div>
-      )}
+      {isBuyer && !isProvider && <IndividualDashboard />}
 
       {/*
         The agent's book at a glance (EZ1-I79). Separate row from the account
