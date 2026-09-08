@@ -13,6 +13,7 @@ interface Agency {
   about: string | null;
   address: string | null;
   startDate: string | null;
+  profileCreationFee: string | null;
   pictures: string[];
   isApproved: boolean;
   rejectionReason: string | null;
@@ -26,6 +27,7 @@ const empty = {
   address: '',
   startDate: '',
   about: '',
+  profileCreationFee: '',
 };
 
 /**
@@ -88,6 +90,7 @@ export default function Agency() {
         address: agency.address ?? '',
         startDate: agency.startDate ?? '',
         about: agency.about ?? '',
+        profileCreationFee: agency.profileCreationFee ?? '',
       });
       setPictures(agency.pictures ?? []);
     }
@@ -113,6 +116,11 @@ export default function Agency() {
         'about',
       ] as const) {
         if (form[key]) payload[key] = form[key];
+      }
+      // The agency's own profile-creation fee (EZ1-I128); a number, or omitted
+      // to fall back to the platform default.
+      if (form.profileCreationFee.trim() && Number(form.profileCreationFee) >= 0) {
+        payload.profileCreationFee = Number(form.profileCreationFee);
       }
       payload.pictures = pictures;
       await api.put('/agents/agency', payload);
@@ -275,6 +283,21 @@ export default function Agency() {
             <p className="mt-1 text-xs text-gray-500">
               Families ask how long you have been doing this. Answering it up front saves the
               question.
+            </p>
+          </div>
+          <div>
+            <label className="label">Profile creation fee (₹)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              placeholder="Platform default"
+              value={form.profileCreationFee}
+              onChange={set('profileCreationFee')}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Your agreed fee for creating and running a client's profile (EZ1-I128). Leave blank
+              to use the platform default.
             </p>
           </div>
         </div>

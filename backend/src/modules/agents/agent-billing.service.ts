@@ -8,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AgentCharge } from './entities/agent-charge.entity';
+import { AgentProfile } from './entities/agent-profile.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { PAYMENT_PROVIDER, PaymentProvider } from '../bookings/payment.provider';
@@ -32,6 +33,7 @@ import { AgentChargeType, PaymentStatus, UserRole } from '../../common/enums';
 export class AgentBillingService {
   constructor(
     @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
+    @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     private readonly cfg: AppConfigService,
     private readonly audit: AuditService,
@@ -55,7 +57,10 @@ export class AgentBillingService {
    * time is not billing them three times.
    */
   async raiseProfileFee(agentUserId: string, profile: Profile): Promise<AgentCharge | null> {
-    const fee = this.cfg.payments.agentProfileFee;
+    // The agency's own agreed fee overrides the platform default (EZ1-I128).
+    const agency = await this.agencies.findOne({ where: { ownerUserId: agentUserId } });
+    const override = agency?.profileCreationFee ? Number(agency.profileCreationFee) : null;
+    const fee = override && override > 0 ? override : this.cfg.payments.agentProfileFee;
     if (!fee || fee <= 0) return null;
 
     const existing = await this.charges.findOne({

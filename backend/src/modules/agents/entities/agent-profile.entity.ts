@@ -46,6 +46,14 @@ export class AgentProfile {
   startDate: string | null;
 
   /**
+   * This agency's own profile-creation fee (EZ1-I128). Different agencies agree
+   * different fees with their clients, so this overrides the platform default
+   * (AGENT_PROFILE_FEE) when set. Null means "use the platform default".
+   */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  profileCreationFee: string | null;
+
+  /**
    * Photographs of the office. Optional on purpose: a small agency working out
    * of a front room should not be blocked from registering because it has
    * nothing photogenic to show.

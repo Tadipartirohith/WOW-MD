@@ -5,10 +5,12 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
@@ -67,6 +69,13 @@ export class UpsertAgencyDto {
   @IsString()
   @MaxLength(2000)
   about?: string;
+
+  /** This agency's own profile-creation fee (EZ1-I128); 0/blank uses the default. */
+  @ApiPropertyOptional({ minimum: 0, example: 2500 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  profileCreationFee?: number;
 }
 
 export class RejectAgencyDto {
