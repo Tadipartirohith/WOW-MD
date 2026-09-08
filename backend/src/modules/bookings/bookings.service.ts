@@ -1467,6 +1467,179 @@ export class BookingsService {
     };
   }
 
+  /**
+   * The buyer's escrow, grouped by booking (EZ1-I148).
+   *
+   * The mirror of {@link earnings} for the other side of the table: not what a
+   * provider has earned, but what the couple has paid in and where it currently
+   * sits. Scoped strictly on `payments.userId` — the client the booking is for —
+   * so an individual only ever sees the money they themselves put into escrow,
+   * never anybody else's.
+   *
+   * Amounts are the gross the buyer was charged (commission included): the buyer
+   * paid the whole instalment, and the split between payout and commission is
+   * the provider's concern, not theirs. This complements the per-booking
+   * Instalments panel on Bookings rather than repeating it — one money view
+   * across every booking at once.
+   */
+  async buyerEscrow(actor: AuthUser): Promise<{
+    currency: string;
+    heldInEscrow: string;
+    released: string;
+    refunded: string;
+    records: {
+      bookingId: string;
+      providerType: ProviderType;
+      providerName: string;
+      serviceName: string | null;
+      eventDate: string | null;
+      bookingAmount: string;
+      currency: string;
+      /** The furthest-along status across this booking's instalments. */
+      status: PaymentStatus;
+      heldInEscrow: string;
+      released: string;
+      refunded: string;
+      payments: {
+        paymentId: string;
+        milestone: PaymentMilestone;
+        status: PaymentStatus;
+        amount: string;
+        method: PaymentMethod;
+        /** The gateway's reference for the hold, where the gateway gave one. */
+        reference: string | null;
+        /** The gateway's reference for the payout, once released. */
+        payoutRef: string | null;
+        createdAt: Date;
+        /** When the status last changed — the release/refund date, in effect. */
+        updatedAt: Date;
+      }[];
+    }[];
+  }> {
+    const empty = {
+      currency: this.cfg.payments.currency,
+      heldInEscrow: '0.00',
+      released: '0.00',
+      refunded: '0.00',
+      records: [],
+    };
+
+    const payments = await this.payments.find({
+      where: { userId: actor.userId },
+      order: { createdAt: 'ASC' },
+    });
+    if (payments.length === 0) return empty;
+
+    const bookingIds = [...new Set(payments.map((p) => p.bookingId))];
+    const bookings = await this.bookings.find({ where: { id: In(bookingIds) } });
+    const named = await this.withProviderNames(bookings);
+
+    const serviceIds = [
+      ...new Set(named.map((b) => b.vendorServiceId).filter(Boolean)),
+    ] as string[];
+    const services = serviceIds.length
+      ? await this.serviceRows.find({ where: { id: In(serviceIds) } })
+      : [];
+    const serviceName = new Map(services.map((s) => [s.id, s.displayName]));
+    const byBooking = new Map(named.map((b) => [b.id, b]));
+
+    // Same ranking the provider-facing list uses, so a booking whose instalments
+    // sit in different states reports the one that best describes the whole.
+    const RANK: Record<string, number> = {
+      initiated: 1,
+      held_in_escrow: 2,
+      disputed: 3,
+      pending_payout: 4,
+      released: 5,
+      refunded: 6,
+    };
+
+    const grouped = new Map<string, Payment[]>();
+    for (const p of payments) {
+      const list = grouped.get(p.bookingId) ?? [];
+      list.push(p);
+      grouped.set(p.bookingId, list);
+    }
+
+    let totalHeld = 0;
+    let totalReleased = 0;
+    let totalRefunded = 0;
+
+    const records = bookingIds
+      .filter((id) => byBooking.has(id))
+      .map((id) => {
+        const booking = byBooking.get(id)!;
+        const rows = grouped.get(id) ?? [];
+
+        let held = 0;
+        let released = 0;
+        let refunded = 0;
+        let top = rows[0].status;
+        for (const p of rows) {
+          const amt = toMinor(p.amount);
+          if (p.status === PaymentStatus.HELD_IN_ESCROW || p.status === PaymentStatus.DISPUTED) {
+            held += amt;
+          } else if (
+            p.status === PaymentStatus.RELEASED ||
+            p.status === PaymentStatus.PENDING_PAYOUT ||
+            p.status === PaymentStatus.PARTIALLY_SETTLED
+          ) {
+            // From the buyer's side these all mean the same thing: the money has
+            // left escrow towards the provider and is not coming back to them.
+            released += amt;
+          } else if (p.status === PaymentStatus.REFUNDED) {
+            refunded += amt;
+          }
+          if ((RANK[p.status] ?? 0) > (RANK[top] ?? 0)) top = p.status;
+        }
+        totalHeld += held;
+        totalReleased += released;
+        totalRefunded += refunded;
+
+        return {
+          bookingId: id,
+          providerType: booking.providerType,
+          providerName: (booking as { providerName?: string }).providerName ?? 'Provider',
+          serviceName: booking.vendorServiceId
+            ? (serviceName.get(booking.vendorServiceId) ?? null)
+            : null,
+          eventDate: booking.eventDate ?? null,
+          bookingAmount: booking.amount,
+          currency: booking.currency,
+          status: top,
+          heldInEscrow: toMajor(held),
+          released: toMajor(released),
+          refunded: toMajor(refunded),
+          payments: rows.map((p) => ({
+            paymentId: p.id,
+            milestone: p.milestone,
+            status: p.status,
+            amount: p.amount,
+            method: p.method,
+            reference: p.providerRef ?? null,
+            payoutRef: p.payoutRef ?? null,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          })),
+        };
+      });
+
+    // Most recent activity first — ordered by the latest payment in each group.
+    records.sort((a, b) => {
+      const latest = (bid: string) =>
+        Math.max(...(grouped.get(bid) ?? []).map((p) => new Date(p.createdAt).getTime()));
+      return latest(b.bookingId) - latest(a.bookingId);
+    });
+
+    return {
+      currency: bookings[0].currency ?? this.cfg.payments.currency,
+      heldInEscrow: toMajor(totalHeld),
+      released: toMajor(totalReleased),
+      refunded: toMajor(totalRefunded),
+      records,
+    };
+  }
+
   private async ownedProviderIds(actor: AuthUser): Promise<string[]> {
     if (actor.role === UserRole.VENDOR) {
       const rows = await this.vendors.find({ where: { ownerUserId: actor.userId } });

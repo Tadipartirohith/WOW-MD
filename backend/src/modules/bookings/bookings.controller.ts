@@ -141,6 +141,18 @@ export class BookingsController {
     return this.bookings.earnings(actor);
   }
 
+  @RequirePermissions(Permission.BOOKING_READ_OWN)
+  @ApiOperation({
+    summary: 'Your escrow: what you have paid into your bookings, and where it sits',
+    description:
+      'Grouped by booking, newest first. Strictly your own — scoped to the money you paid — for ' +
+      'the individual portal Escrow page (EZ1-I148). Complements the Instalments panel on Bookings.',
+  })
+  @Get('escrow')
+  escrow(@CurrentUser() actor: AuthUser) {
+    return this.bookings.buyerEscrow(actor);
+  }
+
   @RequirePermissions(Permission.BOOKING_PAY)
   @ApiOperation({
     summary: 'Pay an escrow milestone',

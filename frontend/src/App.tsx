@@ -35,6 +35,7 @@ import {
   Star,
   Storefront,
   UsersThree,
+  Vault,
   CaretDown,
   Desktop,
   List,
@@ -89,6 +90,7 @@ import Verification from './pages/Verification';
 import SetPassword from './pages/SetPassword';
 import Availability from './pages/Availability';
 import Accounts from './pages/Accounts';
+import Escrow from './pages/Escrow';
 import MyReviews from './pages/MyReviews';
 import Notifications from './pages/Notifications';
 import Biodata from './pages/Biodata';
@@ -278,6 +280,16 @@ const NAV: NavEntry[] = [
     requires: [Permission.BOOKING_READ_OWN, Permission.BOOKING_READ_INCOMING],
     group: 'wedding',
     icon: Receipt,
+  },
+  // The couple's escrow, across every booking (EZ1-I148). Buyer-only: a provider
+  // reads the same money from the other side on Accounts, so BOOKING_READ_OWN —
+  // which only the individual holds — is exactly the right gate.
+  {
+    to: '/escrow',
+    label: 'Escrow',
+    requires: [Permission.BOOKING_READ_OWN],
+    group: 'wedding',
+    icon: Vault,
   },
   {
     to: '/events',
@@ -982,6 +994,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.BOOKING_READ_INCOMING]}>
             <Accounts />
+          </Protected>
+        }
+      />
+      <Route
+        path="/escrow"
+        element={
+          <Protected requires={[Permission.BOOKING_READ_OWN]}>
+            <Escrow />
           </Protected>
         }
       />
