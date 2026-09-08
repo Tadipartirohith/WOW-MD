@@ -202,7 +202,8 @@ export default function ProfilePreview({
             {!data.limited && (
               <>
             <Group title="Family">
-              <Row label="Native place">{str('nativePlace')}</Row>
+              {/* Native place is not shown in View Profile — it stays private
+                  until a match is fixed, not merely accepted (EZ1-I136). */}
               <Row label="Father">{String(bag('father').name ?? '') || null}</Row>
               <Row label="Mother">{String(bag('mother').name ?? '') || null}</Row>
               <Row label="Family type">{str('familyType')}</Row>

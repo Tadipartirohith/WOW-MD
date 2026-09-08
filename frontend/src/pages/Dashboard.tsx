@@ -197,12 +197,20 @@ export default function Dashboard() {
   // The provider dashboard always refetches on mount (EZ1-I118): navigating back
   // to it after changing something in another module shows the current figures,
   // not whatever was cached when it was last open.
+  // The provider's "waiting on you" counts poll while the dashboard is open and
+  // refresh when the tab regains focus, so a new request shows up without a
+  // manual refresh (EZ1-I133), on top of the refetch-on-navigation (EZ1-I118).
+  const liveCount = {
+    retry: false,
+    enabled: isProvider,
+    refetchOnMount: 'always' as const,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+  };
   const { data: incoming } = useQuery({
     queryKey: ['incoming-bookings-count'],
     queryFn: async () => (await api.get('/bookings/incoming', { params: { limit: 1 } })).data,
-    retry: false,
-    enabled: isProvider,
-    refetchOnMount: 'always',
+    ...liveCount,
   });
 
   // "Bookings against your listing" counts everything ever, including jobs
@@ -212,9 +220,7 @@ export default function Dashboard() {
     queryKey: ['new-requests-count'],
     queryFn: async () =>
       (await api.get('/bookings/incoming', { params: { limit: 1, status: 'requested' } })).data,
-    retry: false,
-    enabled: isProvider,
-    refetchOnMount: 'always',
+    ...liveCount,
   });
 
   const { data: earnings } = useQuery({
@@ -251,9 +257,8 @@ export default function Dashboard() {
     queryFn: async () =>
       (await api.get('/bookings/incoming', { params: { limit: 1, status: 'quotation_sent' } }))
         .data,
-    retry: false,
+    ...liveCount,
     enabled: isVendor,
-    refetchOnMount: 'always',
   });
 
   const { data: slots } = useQuery({
