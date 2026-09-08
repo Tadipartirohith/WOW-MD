@@ -1505,7 +1505,12 @@ interface ServiceSummary {
   active: boolean;
   definition?: { name?: string } | null;
   category?: { name?: string } | null;
-  offerings?: { id: string; name: string; price: string | number }[];
+  offerings?: {
+    id: string;
+    name: string;
+    price: string | number | null;
+    pricingModel?: string;
+  }[];
 }
 
 function SubjectDetails({
@@ -1582,7 +1587,7 @@ function SubjectDetails({
           <Row label="GST number">{text(subject.gstNumber)}</Row>
           <Row label="PAN">{text(subject.panNumber)}</Row>
           <Row label="Registration number">{text(subject.registrationNumber)}</Row>
-          <Row label="Trading since">{text(subject.startDate)}</Row>
+          <Row label="Trading since">{text(subject.tradingSince ?? subject.startDate)}</Row>
           <Row label="Currently approved">{subject.isApproved ? 'Yes' : 'No'}</Row>
         </dl>
       )}
@@ -1647,14 +1652,25 @@ function SubjectDetails({
                 </p>
                 {svc.offerings && svc.offerings.length > 0 ? (
                   <ul className="mt-1 space-y-0.5 text-sm text-gray-700">
-                    {svc.offerings.map((off) => (
-                      <li key={off.id} className="flex justify-between gap-3">
-                        <span>{off.name}</span>
-                        <span className="tabular-nums text-gray-600">
-                          ₹{Number(off.price).toLocaleString('en-IN')}
-                        </span>
-                      </li>
-                    ))}
+                    {svc.offerings.map((off) => {
+                      // A custom-quote / price-on-request offering carries no
+                      // amount; it was printing as ₹0 (EZ1-I139). Show the model
+                      // instead, and only format a real number.
+                      const hasPrice =
+                        off.price !== null && off.price !== undefined && Number(off.price) > 0;
+                      return (
+                        <li key={off.id} className="flex justify-between gap-3">
+                          <span>{off.name}</span>
+                          <span className="tabular-nums text-gray-600">
+                            {hasPrice
+                              ? `₹${Number(off.price).toLocaleString('en-IN')}`
+                              : off.pricingModel === 'custom_quote'
+                                ? 'Custom quote'
+                                : 'Price on request'}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <p className="mt-1 text-xs text-gray-400">No offerings priced yet.</p>
