@@ -183,8 +183,13 @@ export default function PlannerClientDetail() {
           <p className="mt-1 text-sm text-gray-500">No functions have been added yet.</p>
         ) : (
           <div className="mt-2 divide-y">
+            {/* Each function opens the shared event workspace (EZ1-I84). */}
             {events.map((e) => (
-              <div key={e.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+              <Link
+                key={e.id}
+                to={`/my-clients/${client.userId}/events/${e.id}`}
+                className="flex flex-wrap items-baseline justify-between gap-2 py-2 hover:bg-gray-50"
+              >
                 <div>
                   <p className="text-sm font-medium text-gray-900">{e.name}</p>
                   <p className="text-xs text-gray-500">
@@ -195,7 +200,7 @@ export default function PlannerClientDetail() {
                 <p className="text-sm text-gray-600">
                   {e.date ? formatDate(e.date) : 'Date not set'}
                 </p>
-              </div>
+              </Link>
             ))}
           </div>
         )}

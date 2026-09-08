@@ -26,6 +26,7 @@ export type TargetModule =
   | 'chat'
   | 'planner'
   | 'clients'
+  | 'events'
   | 'support'
   | 'matches';
 
@@ -103,4 +104,10 @@ export const NOTIFICATION_TARGET: Record<NotificationType, NotificationTarget> =
   // A support/dispute case. The raiser lands on Support and staff on the
   // verification Cases tab; linkFor picks the right one by role (EZ1-I49).
   [NotificationType.DISPUTE_UPDATE]: { module: 'support', action: 'view', idKey: 'caseId' },
+
+  // Both open the shared wedding event they are about (EZ1-I84). The couple
+  // land on their Events page; the planner's Events page opens the same day
+  // through the client picker.
+  [NotificationType.EVENT_CHANGED_BY_COUPLE]: { module: 'events', action: 'view', idKey: 'eventId' },
+  [NotificationType.EVENT_CHANGED_BY_PLANNER]: { module: 'events', action: 'view', idKey: 'eventId' },
 };

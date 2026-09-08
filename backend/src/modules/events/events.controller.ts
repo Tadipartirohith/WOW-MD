@@ -79,13 +79,30 @@ export class EventsController {
     return this.events.eventSummary(userId);
   }
 
+  @ApiOperation({
+    summary: 'Amend a function',
+    description:
+      'The couple and the planner engaged on their wedding edit the one shared record; whatever ' +
+      'one side changes, the other is notified (EZ1-I84).',
+  })
   @Put(':id')
   updateEvent(
-    @CurrentUser('userId') userId: string,
+    @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEventDto,
   ) {
-    return this.events.updateEvent(userId, id, dto);
+    return this.events.updateEvent(actor, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'One shared event: overview, vendors, guests, tasks, budget, notes',
+    description:
+      'The couple and their engaged planner open the same record. Guests and vendors are the ' +
+      "couple's own — no duplicate lists (EZ1-I84).",
+  })
+  @Get(':id/workspace')
+  workspace(@CurrentUser('userId') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.events.eventWorkspace(userId, id);
   }
 
   @Delete(':id')

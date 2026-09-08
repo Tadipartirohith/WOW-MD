@@ -51,6 +51,9 @@ export const TYPE_LABEL: Record<string, string> = {
   verification_requested: 'New application',
   verification_decided: 'Verification decided',
   dispute_update: 'Dispute',
+
+  event_changed_by_couple: 'Client updated an event',
+  event_changed_by_planner: 'Planner updated an event',
 };
 
 /** A sentence a person can read, built from whatever the payload carries. */
@@ -118,6 +121,18 @@ export function describe(n: Notification): string {
     }
     case 'task_reminder':
       return str('title') ?? 'A planning task is due.';
+    case 'event_changed_by_couple': {
+      const name = str('eventName') ?? 'an event';
+      const changed = str('changed');
+      return changed ? `The couple updated ${changed} on ${name}.` : `The couple changed ${name}.`;
+    }
+    case 'event_changed_by_planner': {
+      const name = str('eventName') ?? 'an event';
+      const changed = str('changed');
+      return changed
+        ? `Your planner updated ${changed} on ${name}.`
+        : `Your planner changed ${name}.`;
+    }
     default:
       return '';
   }

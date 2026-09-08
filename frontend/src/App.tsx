@@ -64,6 +64,7 @@ import VendorDetail from './pages/VendorDetail';
 import Planner from './pages/Planner';
 import PlannerClients from './pages/PlannerClients';
 import PlannerClientDetail from './pages/PlannerClientDetail';
+import PlannerEventWorkspace from './pages/PlannerEventWorkspace';
 import Chat from './pages/Chat';
 import Bookings from './pages/Bookings';
 import Genie from './pages/Genie';
@@ -885,6 +886,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.PLAN_MANAGE_ENGAGED]}>
             <PlannerClientDetail />
+          </Protected>
+        }
+      />
+      <Route
+        path="/my-clients/:userId/events/:eventId"
+        element={
+          <Protected requires={[Permission.PLAN_MANAGE_ENGAGED]}>
+            <PlannerEventWorkspace />
           </Protected>
         }
       />

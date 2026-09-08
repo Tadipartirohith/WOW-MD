@@ -42,6 +42,8 @@ const TYPE_GROUP: Record<string, Group> = {
   new_message: 'action',
   task_reminder: 'action',
   booking_update: 'progress',
+  event_changed_by_couple: 'progress',
+  event_changed_by_planner: 'progress',
 };
 
 const GROUP_LABEL: Record<Group, string> = {
@@ -449,6 +451,16 @@ function linkFor(n: Notification, canVerify = false): string | null {
         return '/chat';
       case 'planner':
         return '/planner';
+      case 'events': {
+        // A shared wedding event (EZ1-I84). The couple hear about a planner's
+        // change and open their own Events page; the planner hears about the
+        // couple's change and opens that client's event workspace.
+        const host = typeof n.payload?.hostUserId === 'string' ? n.payload.hostUserId : null;
+        if (n.type === 'event_changed_by_couple' && host && n.targetId) {
+          return `/my-clients/${host}/events/${n.targetId}`;
+        }
+        return '/events';
+      }
       case 'matches':
         // An incoming interest is responded to on the Interests → Received tab,
         // where the actions are Accept / Decline — not on Matches, which offers

@@ -7,11 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
+import { PlanTask } from '../planner/entities/plan-task.entity';
 import { In, Not, Repository } from 'typeorm';
 import { WeddingEvent } from './entities/event.entity';
 import { Guest } from './entities/guest.entity';
 import { EventInvite } from './entities/event-invite.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   CreateEventDto,
   CreateGuestDto,
@@ -23,7 +25,13 @@ import {
 } from './dto/event.dto';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
-import { BookingStatus, EventStatus, RsvpStatus, UserRole } from '../../common/enums';
+import {
+  BookingStatus,
+  EventStatus,
+  NotificationType,
+  RsvpStatus,
+  UserRole,
+} from '../../common/enums';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { ModerationService } from '../../platform/moderation/moderation.service';
@@ -55,9 +63,11 @@ export class EventsService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(PlanTask) private readonly tasks: Repository<PlanTask>,
     private readonly cfg: AppConfigService,
     private readonly mail: MailService,
     private readonly moderation: ModerationService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async createEvent(actor: AuthUser, dto: CreateEventDto) {
@@ -76,7 +86,11 @@ export class EventsService {
         kind: 'event',
       });
     }
-    return this.events.save(this.events.create({ userId, ...fields }));
+    const saved = await this.events.save(this.events.create({ userId, ...fields }));
+    // A function is one shared record between the couple and their engaged
+    // planner (EZ1-I84). Whoever added it, tell the other side.
+    await this.notifyEventSync(saved, actor.userId, ['a new function']);
+    return saved;
   }
 
   /**
@@ -179,14 +193,99 @@ export class EventsService {
     };
   }
 
-  async updateEvent(userId: string, eventId: string, dto: UpdateEventDto) {
-    const event = await this.ownedEvent(userId, eventId);
+  /**
+   * Amend a function.
+   *
+   * Reachable by the couple and by the planner engaged on their wedding — one
+   * record, two editors (see ownedEvent). Whatever one side changes on the
+   * shared record, the other is told: the couple move a date or a guest count
+   * and the planner hears; the planner changes how the day runs and the couple
+   * hear (EZ1-I84).
+   */
+  async updateEvent(actor: AuthUser, eventId: string, dto: UpdateEventDto) {
+    const event = await this.ownedEvent(actor.userId, eventId);
     this.assertTimeOrder(
       dto.startTime ?? event.startTime,
       dto.endTime ?? event.endTime,
     );
+    const changed = this.changedSyncLabels(event, dto);
     Object.assign(event, dto);
-    return this.events.save(event);
+    const saved = await this.events.save(event);
+    await this.notifyEventSync(saved, actor.userId, changed);
+    return saved;
+  }
+
+  /**
+   * The fields on a shared event whose change is worth telling the other side
+   * about, each with the word the notification uses for it. Grouped so the
+   * three venue columns read as one change ("the venue"), not three.
+   */
+  private static readonly SYNC_FIELDS: { keys: (keyof UpdateEventDto)[]; label: string }[] = [
+    { keys: ['name'], label: 'the name' },
+    { keys: ['eventDate'], label: 'the date' },
+    { keys: ['startTime', 'endTime'], label: 'the timing' },
+    { keys: ['venue', 'venueAddress', 'city'], label: 'the venue' },
+    { keys: ['expectedGuests'], label: 'the guest count' },
+    { keys: ['budget'], label: 'the budget' },
+    { keys: ['theme'], label: 'the theme' },
+    { keys: ['specialRequirements'], label: 'the requirements' },
+    { keys: ['description'], label: 'the details' },
+    { keys: ['plannerNotes'], label: 'the planning notes' },
+    { keys: ['status'], label: 'the status' },
+  ];
+
+  /** Which of the synced fields this update actually changes, as labels. */
+  private changedSyncLabels(event: WeddingEvent, dto: UpdateEventDto): string[] {
+    const before = event as unknown as Record<string, unknown>;
+    return EventsService.SYNC_FIELDS.filter((f) =>
+      f.keys.some(
+        (k) =>
+          dto[k] !== undefined && String(dto[k] ?? '') !== String(before[k as string] ?? ''),
+      ),
+    ).map((f) => f.label);
+  }
+
+  /**
+   * Tell the other party to a shared event that it changed.
+   *
+   * Engagement is read from the wedding plan, the platform's one answer to "is
+   * this planner working for this couple". With no planner engaged there is
+   * nobody to sync to, and an edit by anyone other than the two parties (an
+   * admin) notifies neither. Never allowed to fail the edit that triggered it —
+   * the change is saved whether or not the feed is reachable.
+   */
+  private async notifyEventSync(
+    event: WeddingEvent,
+    editorUserId: string,
+    changedLabels: string[],
+  ): Promise<void> {
+    if (changedLabels.length === 0) return;
+    const plan = await this.plans.findOne({
+      where: { userId: event.userId },
+      order: { createdAt: 'DESC' },
+    });
+    const plannerUserId = plan?.plannerUserId ?? null;
+    if (!plannerUserId) return;
+
+    const editorIsHost = editorUserId === event.userId;
+    if (!editorIsHost && editorUserId !== plannerUserId) return;
+
+    const recipient = editorIsHost ? plannerUserId : event.userId;
+    const type = editorIsHost
+      ? NotificationType.EVENT_CHANGED_BY_COUPLE
+      : NotificationType.EVENT_CHANGED_BY_PLANNER;
+
+    try {
+      await this.notifications.create(recipient, type, {
+        eventId: event.id,
+        eventName: event.name,
+        hostUserId: event.userId,
+        changed: changedLabels.join(', '),
+      });
+    } catch {
+      // A wedding edit must not fail because the notification could not be
+      // written. The shared record is already saved.
+    }
   }
 
   /**
@@ -216,6 +315,16 @@ export class EventsService {
   /** Who is booked for this event, so the couple can see the day as a whole. */
   async eventVendors(userId: string, eventId: string) {
     await this.ownedEvent(userId, eventId);
+    return this.vendorRowsForEvent(eventId);
+  }
+
+  /**
+   * The bookings placed against one event, named. Vendors the couple booked
+   * before hiring a planner show up here as the day's providers — one record,
+   * so the planner sees what is already arranged rather than a blank slate
+   * (EZ1-I84). Permission is the caller's to check; this only reads.
+   */
+  private async vendorRowsForEvent(eventId: string) {
     const bookings = await this.bookings.find({
       where: { eventId },
       order: { createdAt: 'DESC' },
@@ -236,6 +345,100 @@ export class EventsService {
       providerName: byId.get(b.providerId)?.name ?? 'Provider',
       category: byId.get(b.providerId)?.category ?? null,
     }));
+  }
+
+  /**
+   * One shared event, everything about it, on one screen (EZ1-I84).
+   *
+   * The couple's Events page and the planner's workspace open the same record
+   * through this — vendors, guests, tasks, budget and notes for a single day —
+   * so neither side is looking at a copy. Reuses the couple's own guest/RSVP
+   * data (no second guest list) and the wedding plan's tasks (no second task
+   * list). Reachable by the host and by the planner engaged on the wedding;
+   * ownedEvent refuses anyone else.
+   */
+  async eventWorkspace(userId: string, eventId: string) {
+    const event = await this.ownedEvent(userId, eventId);
+
+    const [vendors, invites, plan] = await Promise.all([
+      this.vendorRowsForEvent(eventId),
+      this.invites.find({ where: { eventId } }),
+      this.plans.findOne({ where: { userId: event.userId }, order: { createdAt: 'DESC' } }),
+    ]);
+    const [guests, tasks] = await Promise.all([
+      this.guestsFor(invites),
+      plan
+        ? this.tasks.find({ where: { planId: plan.id }, order: { dueDate: 'ASC' } })
+        : Promise.resolve([]),
+    ]);
+
+    // The day's own budget against what its bookings actually came to. A
+    // cancelled booking is not a commitment.
+    const committed = vendors
+      .filter((v) => v.status !== BookingStatus.CANCELLED)
+      .reduce((n, v) => n + Number(v.amount ?? 0), 0);
+    const budgeted = Number(event.budget ?? 0);
+
+    const attending = invites.filter((i) => i.status === RsvpStatus.ATTENDING);
+    return {
+      event: {
+        id: event.id,
+        userId: event.userId,
+        name: event.name,
+        eventType: event.eventType,
+        category: event.category,
+        eventDate: event.eventDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        venue: event.venue ?? null,
+        venueAddress: event.venueAddress,
+        city: event.city,
+        expectedGuests: event.expectedGuests,
+        budget: event.budget,
+        status: event.status,
+      },
+      plannerEngaged: Boolean(plan?.plannerUserId),
+      vendors,
+      guests: {
+        summary: {
+          onList: invites.length,
+          attending: attending.length,
+          declined: invites.filter((i) => i.status === RsvpStatus.DECLINED).length,
+          maybe: invites.filter((i) => i.status === RsvpStatus.MAYBE).length,
+          awaiting: invites.filter((i) => i.status === RsvpStatus.INVITED).length,
+          expectedHeadcount: attending.reduce(
+            (n, i) => n + (i.attendingCount ?? guests.get(i.guestId)?.partySize ?? 1),
+            0,
+          ),
+        },
+        rows: invites.map((i) => ({
+          inviteId: i.id,
+          name: guests.get(i.guestId)?.name ?? 'Guest',
+          status: i.status,
+          attendingCount: i.attendingCount,
+          invitedPartySize: guests.get(i.guestId)?.partySize ?? null,
+        })),
+      },
+      tasks: tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        category: t.category,
+        dueDate: t.dueDate,
+        status: t.status,
+      })),
+      budget: {
+        budgeted: budgeted.toFixed(2),
+        committed: committed.toFixed(2),
+        remaining: (budgeted - committed).toFixed(2),
+        overBudget: committed > budgeted && budgeted > 0,
+      },
+      notes: {
+        theme: event.theme,
+        specialRequirements: event.specialRequirements,
+        plannerNotes: event.plannerNotes,
+        description: event.description,
+      },
+    };
   }
 
   addGuest(userId: string, dto: CreateGuestDto) {

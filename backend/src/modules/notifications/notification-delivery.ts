@@ -165,4 +165,27 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
     body: (p) => str(p, 'message', 'There is an update on a support case you are part of.'),
     whatsappTemplate: null,
   },
+
+  [NotificationType.EVENT_CHANGED_BY_COUPLE]: {
+    title: 'A client updated an event',
+    body: (p) => {
+      const name = str(p, 'eventName', 'an event');
+      const changed = str(p, 'changed');
+      return changed
+        ? `The couple updated ${changed} on ${name}.`
+        : `The couple made changes to ${name}.`;
+    },
+    whatsappTemplate: null,
+  },
+  [NotificationType.EVENT_CHANGED_BY_PLANNER]: {
+    title: 'Your planner updated an event',
+    body: (p) => {
+      const name = str(p, 'eventName', 'an event');
+      const changed = str(p, 'changed');
+      return changed
+        ? `Your planner updated ${changed} on ${name}.`
+        : `Your planner made changes to ${name}.`;
+    },
+    whatsappTemplate: null,
+  },
 };

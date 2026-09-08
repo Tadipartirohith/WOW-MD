@@ -159,6 +159,18 @@ export enum NotificationType {
    */
   VERIFICATION_REQUESTED = 'verification_requested',
   DISPUTE_UPDATE = 'dispute_update',
+
+  /**
+   * The two sides of one shared wedding event kept in step (EZ1-I84).
+   *
+   * A wedding function is a single record the couple own and an engaged planner
+   * works on. When one side changes it, the other is told rather than left to
+   * notice: the couple move a date or raise a guest count and the planner hears
+   * (BY_COUPLE); the planner changes the running of the day and the couple hear
+   * (BY_PLANNER). Split by direction so the sentence can name who changed what.
+   */
+  EVENT_CHANGED_BY_COUPLE = 'event_changed_by_couple',
+  EVENT_CHANGED_BY_PLANNER = 'event_changed_by_planner',
 }
 
 /**
