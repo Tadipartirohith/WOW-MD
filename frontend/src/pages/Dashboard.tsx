@@ -8,6 +8,7 @@ import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from '../li
 import { ReactNode } from 'react';
 import ClaimRequests from '../components/ClaimRequests';
 import GetStarted from '../components/GetStarted';
+import VendorDashboard from '../components/VendorDashboard';
 import { motion, useReducedMotion } from 'motion/react';
 import { ArrowRight } from '@phosphor-icons/react';
 
@@ -359,6 +360,11 @@ export default function Dashboard() {
       !(user && navDenied(t, user.role)) &&
       (t.requires.length === 0 || canAny(permissions, t.requires)),
   );
+
+  // The vendor's home is a dedicated, backend-driven dashboard (EZ1-I147). All
+  // the hooks above still run so the hook order is stable across a role change;
+  // the branch is here, after them, rather than as an early return.
+  if (isVendor) return <VendorDashboard />;
 
   return (
     <div className="space-y-10">

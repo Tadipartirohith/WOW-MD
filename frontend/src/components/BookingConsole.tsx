@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarBlank, MapPin, UsersThree } from '@phosphor-icons/react';
 import { api } from '../lib/api';
@@ -115,7 +116,13 @@ export default function BookingConsole({
    *  depends on rules that live with the booking, not with this list. */
   renderActions?: (booking: IncomingBooking) => React.ReactNode;
 }) {
-  const [tab, setTab] = useState('all');
+  // A dashboard card can deep-link a tab (e.g. /bookings?tab=requests). Unknown
+  // or absent falls back to "all", so existing links keep working (EZ1-I147).
+  const [params] = useSearchParams();
+  const wantedTab = params.get('tab');
+  const [tab, setTab] = useState(
+    TABS.some((t) => t.key === wantedTab) ? (wantedTab as string) : 'all',
+  );
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'event'>('newest');
 
