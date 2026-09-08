@@ -7,7 +7,7 @@ import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { PostProposalNoteDto } from './dto/sharing.dto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
-import { UserRole } from '../../common/enums';
+import { InterestStatus, UserRole } from '../../common/enums';
 import { toPublicProfile, PublicProfileView } from '../users/dto/public-profile.dto';
 
 export interface ProposalThread {
@@ -123,7 +123,16 @@ export class ProposalsService {
   }
 
   async post(actor: AuthUser, interestId: string, dto: PostProposalNoteDto): Promise<ProposalNote> {
-    const { mine } = await this.loadSides(actor, interestId);
+    const { interest, mine } = await this.loadSides(actor, interestId);
+
+    // A proposal conversation closes once the interest is withdrawn or declined
+    // (EZ1-I130): the two agents were negotiating a live proposal, and there is
+    // nothing left to negotiate on one that has been taken back or turned down.
+    if (interest.status === InterestStatus.WITHDRAWN || interest.status === InterestStatus.REJECTED) {
+      throw new ForbiddenException(
+        'This proposal is closed — the interest was withdrawn or declined, so no more messages can be sent.',
+      );
+    }
 
     // Normally the caller controls exactly one side and it is unambiguous; an
     // agent holding both sides (or an admin) has to say which they mean.

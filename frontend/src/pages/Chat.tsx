@@ -631,17 +631,25 @@ function ProposalPane({
         <div ref={bottom} />
       </div>
 
-      <form onSubmit={post} className="flex gap-2 border-t pt-2">
-        <input
-          className="input flex-1"
-          placeholder="A note to the other side"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-        />
-        <button className="btn" disabled={busy || !body.trim()}>
-          Send
-        </button>
-      </form>
+      {/* A withdrawn or declined proposal is closed — no more notes (EZ1-I130). */}
+      {thread.status === 'withdrawn' || thread.status === 'rejected' ? (
+        <p className="border-t pt-2 text-sm text-gray-500">
+          This proposal is closed ({thread.status === 'withdrawn' ? 'withdrawn' : 'declined'}). No
+          further messages can be sent.
+        </p>
+      ) : (
+        <form onSubmit={post} className="flex gap-2 border-t pt-2">
+          <input
+            className="input flex-1"
+            placeholder="A note to the other side"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+          />
+          <button className="btn" disabled={busy || !body.trim()}>
+            Send
+          </button>
+        </form>
+      )}
     </>
   );
 }
