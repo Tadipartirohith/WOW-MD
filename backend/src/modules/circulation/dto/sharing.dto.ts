@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -100,4 +101,24 @@ export class PostProposalNoteDto {
   @IsOptional()
   @IsUUID('4')
   profileId?: string;
+}
+
+/**
+ * Reporting the other agent on a proposal thread (EZ1-I130).
+ *
+ * The same fixed reasons as a direct-chat report, so both feed one queue an
+ * administrator can triage without reading free text first.
+ */
+export class ProposalReportDto {
+  @ApiProperty({
+    enum: ['harassment', 'fake_profile', 'asking_for_money', 'abusive_language', 'spam', 'other'],
+  })
+  @IsIn(['harassment', 'fake_profile', 'asking_for_money', 'abusive_language', 'spam', 'other'])
+  reason: string;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  detail?: string;
 }

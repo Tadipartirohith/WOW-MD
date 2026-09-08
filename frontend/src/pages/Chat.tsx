@@ -585,6 +585,15 @@ export default function Chat() {
  * match, and dressing it up as the couple's own conversation would be the same
  * mistake as merging the two stores.
  */
+const PROPOSAL_REPORT_REASONS: { value: string; label: string }[] = [
+  { value: 'harassment', label: 'Harassment or threats' },
+  { value: 'fake_profile', label: 'This is not who they say they are' },
+  { value: 'asking_for_money', label: 'Asking for money' },
+  { value: 'abusive_language', label: 'Abusive language' },
+  { value: 'spam', label: 'Spam or advertising' },
+  { value: 'other', label: 'Something else' },
+];
+
 function ProposalPane({
   thread,
   onPosted,
@@ -594,9 +603,39 @@ function ProposalPane({
   onPosted: () => void;
   onError: (message: string) => void;
 }) {
+  const qc = useQueryClient();
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [view, setView] = useState<'menu' | 'report'>('menu');
+  const [reason, setReason] = useState('harassment');
+  const [detail, setDetail] = useState('');
+  const [notice, setNotice] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
+
+  const closed = thread.status === 'withdrawn' || thread.status === 'rejected';
+
+  const mine = thread.sides.find((s) => s.isMine);
+  const theirs = thread.sides.find((s) => !s.isMine);
+  const otherName = theirs?.profile.displayName ?? 'the other side';
+
+  // Whether the other side can be acted on at all: an agency holding both
+  // sides has no far side to block or report. Mirrors the backend's refusal.
+  const hasOther = Boolean(theirs);
+
+  // Only your own block is ever reported — knowing you have been blocked is the
+  // thing this is designed not to tell you.
+  const { data: blockState, refetch: refetchBlock } = useQuery<{
+    blocked: boolean;
+    since: string | null;
+  }>({
+    queryKey: ['proposal-block', thread.interestId],
+    queryFn: async () =>
+      (await api.get(`/circulation/proposals/${thread.interestId}/block`)).data,
+    enabled: hasOther,
+    retry: false,
+  });
+  const blocked = Boolean(blockState?.blocked);
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth' });
@@ -617,20 +656,159 @@ function ProposalPane({
     }
   }
 
-  const mine = thread.sides.find((s) => s.isMine);
-  const theirs = thread.sides.find((s) => !s.isMine);
+  async function block() {
+    try {
+      await api.post(`/circulation/proposals/${thread.interestId}/block`);
+      setNotice(`${otherName} can no longer message this proposal.`);
+      void refetchBlock();
+    } catch (err) {
+      onError(apiMessage(err, 'That did not work.'));
+    }
+  }
+
+  async function unblock() {
+    try {
+      await api.delete(`/circulation/proposals/${thread.interestId}/block`);
+      setNotice('Unblocked.');
+      void refetchBlock();
+    } catch (err) {
+      onError(apiMessage(err, 'That did not work.'));
+    }
+  }
+
+  async function report(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api.post(`/circulation/proposals/${thread.interestId}/report`, {
+        reason,
+        detail: detail || undefined,
+      });
+      setView('menu');
+      setMenuOpen(false);
+      setNotice('Reported. Somebody will look at it, and they can no longer message you here.');
+      void refetchBlock();
+      void qc.invalidateQueries({ queryKey: ['proposal-thread', thread.interestId] });
+    } catch (err) {
+      onError(apiMessage(err, 'That report did not go through.'));
+    }
+  }
 
   return (
     <>
-      <div className="border-b pb-2">
-        <p className="font-semibold text-gray-900">
-          {mine?.profile.displayName ?? 'Your side'} &amp;{' '}
-          {theirs?.profile.displayName ?? 'the other side'}
-        </p>
-        <p className="text-xs text-gray-500">
-          Between the two people handling this pairing · {thread.status.replace(/_/g, ' ')}
-        </p>
+      <div className="flex items-start justify-between gap-2 border-b pb-2">
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900">
+            {mine?.profile.displayName ?? 'Your side'} &amp;{' '}
+            {theirs?.profile.displayName ?? 'the other side'}
+          </p>
+          <p className="text-xs text-gray-500">
+            Between the two people handling this pairing · {thread.status.replace(/_/g, ' ')}
+          </p>
+        </div>
+        {/*
+          Report and block live here, where somebody looks when a proposal
+          conversation has gone wrong. Only shown when there is a far side to
+          act on — an agency handling both sides has nobody to report.
+        */}
+        {hasOther && (
+          <div className="relative shrink-0">
+            <button
+              className="rounded-sm px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-100"
+              aria-label="More options"
+              onClick={() => {
+                setView('menu');
+                setMenuOpen((o) => !o);
+              }}
+            >
+              ⋮
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 z-30 mt-1 w-72 rounded-sm border border-gray-200 bg-surface p-2 shadow-pop">
+                {view === 'menu' && (
+                  <div className="space-y-1 text-sm">
+                    {blocked ? (
+                      <>
+                        <p className="px-2 py-1 text-xs text-gray-500">
+                          You blocked {otherName}. They cannot message this proposal and are not
+                          told why.
+                        </p>
+                        <button
+                          type="button"
+                          className="block w-full rounded-sm px-2 py-1.5 text-left text-gray-700 hover:bg-gray-50"
+                          onClick={() => unblock()}
+                        >
+                          Unblock {otherName}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="block w-full rounded-sm px-2 py-1.5 text-left text-gray-700 hover:bg-gray-50"
+                        onClick={() => block()}
+                      >
+                        Block {otherName}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="block w-full rounded-sm px-2 py-1.5 text-left text-red-600 hover:bg-gray-50"
+                      onClick={() => setView('report')}
+                    >
+                      Report {otherName}
+                    </button>
+                    <div className="my-1 border-t" />
+                    <button
+                      type="button"
+                      className="block w-full rounded-sm px-2 py-1.5 text-left text-gray-700 hover:bg-gray-50"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
+                )}
+                {view === 'report' && (
+                  <form className="space-y-2" onSubmit={report}>
+                    <p className="text-sm font-medium text-gray-900">What has happened?</p>
+                    <select
+                      className="input text-sm"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    >
+                      {PROPOSAL_REPORT_REASONS.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                    <textarea
+                      className="input text-sm"
+                      rows={3}
+                      placeholder="Anything you want to add (optional)"
+                      value={detail}
+                      onChange={(e) => setDetail(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">
+                      {otherName} will also be blocked from this proposal.
+                    </p>
+                    <div className="flex gap-2">
+                      <button className="btn text-sm">Send report</button>
+                      <button
+                        type="button"
+                        className="btn-outline text-sm"
+                        onClick={() => setView('menu')}
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {notice && <p className="mt-2 alert-positive text-xs">{notice}</p>}
 
       <div className="flex-1 space-y-2 overflow-y-auto py-3">
         {thread.notes.map((n) => (
@@ -656,10 +834,15 @@ function ProposalPane({
       </div>
 
       {/* A withdrawn or declined proposal is closed — no more notes (EZ1-I130). */}
-      {thread.status === 'withdrawn' || thread.status === 'rejected' ? (
+      {closed ? (
         <p className="border-t pt-2 text-sm text-gray-500">
           This proposal is closed ({thread.status === 'withdrawn' ? 'withdrawn' : 'declined'}). No
           further messages can be sent.
+        </p>
+      ) : blocked ? (
+        <p className="border-t pt-2 text-sm text-gray-500">
+          You blocked {otherName}. No further messages can be sent here. Unblock from the menu to
+          reopen it.
         </p>
       ) : (
         <form onSubmit={post} className="flex gap-2 border-t pt-2">

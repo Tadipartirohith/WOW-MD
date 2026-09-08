@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -20,6 +21,7 @@ import {
   AgentDirectoryDto,
   PoolSearchDto,
   PostProposalNoteDto,
+  ProposalReportDto,
   SetPoolVisibilityDto,
   ShareLinkDto,
   ShareToAgentDto,
@@ -278,5 +280,48 @@ export class CirculationController {
   @Get('proposals')
   myThreads(@CurrentUser() actor: AuthUser) {
     return this.proposals.myThreads(actor);
+  }
+
+  // ------------------------------------- report / block on a proposal thread
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Whether you have blocked the other side of this proposal',
+    description: 'Reports only your own block, never theirs — as the direct chat does.',
+  })
+  @Get('proposals/:interestId/block')
+  proposalBlockState(
+    @CurrentUser() actor: AuthUser,
+    @Param('interestId', ParseUUIDPipe) id: string,
+  ) {
+    return this.proposals.blockState(actor, id);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Block the other side of this proposal; closes the thread' })
+  @HttpCode(200)
+  @Post('proposals/:interestId/block')
+  blockProposal(@CurrentUser() actor: AuthUser, @Param('interestId', ParseUUIDPipe) id: string) {
+    return this.proposals.block(actor, id);
+  }
+
+  @ApiBearerAuth()
+  @Delete('proposals/:interestId/block')
+  unblockProposal(@CurrentUser() actor: AuthUser, @Param('interestId', ParseUUIDPipe) id: string) {
+    return this.proposals.unblock(actor, id);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Report the other side of this proposal, and stop hearing from them',
+    description: 'Records a report tagged with this pairing and blocks the other side.',
+  })
+  @Post('proposals/:interestId/report')
+  reportProposal(
+    @CurrentUser() actor: AuthUser,
+    @Param('interestId', ParseUUIDPipe) id: string,
+    @Body() dto: ProposalReportDto,
+  ) {
+    return this.proposals.report(actor, id, dto.reason, dto.detail);
   }
 }

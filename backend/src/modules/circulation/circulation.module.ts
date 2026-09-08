@@ -13,6 +13,7 @@ import { ProposalsService } from './proposals.service';
 import { AgentDirectoryService } from './agent-directory.service';
 import { CirculationController } from './circulation.controller';
 import { ProfileDetailsModule } from '../profile-details/profile-details.module';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
@@ -26,6 +27,9 @@ import { ProfileDetailsModule } from '../profile-details/profile-details.module'
       Interest,
     ]),
     ProfileDetailsModule,
+    // Blocking and reporting on a proposal thread reuse the direct chat's block
+    // and report infrastructure rather than inventing a parallel one (EZ1-I130).
+    ChatModule,
   ],
   providers: [ConsentService, SharingService, ProposalsService, AgentDirectoryService],
   controllers: [CirculationController],

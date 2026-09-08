@@ -650,7 +650,7 @@ export class ChatService {
    * argument, and telling them nothing at all leaves them typing into a void —
    * so it reads as the conversation being closed, which is true.
    */
-  private async assertNotBlocked(senderId: string, recipientId: string): Promise<void> {
+  async assertNotBlocked(senderId: string, recipientId: string): Promise<void> {
     const block = await this.blocks.findOne({
       where: [
         { blockerUserId: recipientId, blockedUserId: senderId },
@@ -793,7 +793,13 @@ export class ChatService {
    * evidence, and a reported message the platform later redacts would leave an
    * investigator with nothing to look at.
    */
-  async report(userId: string, otherUserId: string, reason: string, detail?: string) {
+  async report(
+    userId: string,
+    otherUserId: string,
+    reason: string,
+    detail?: string,
+    interestId?: string,
+  ) {
     if (userId === otherUserId) {
       throw new BadRequestException('You cannot report yourself');
     }
@@ -826,6 +832,7 @@ export class ChatService {
         reason,
         detail: detail ?? null,
         evidence,
+        interestId: interestId ?? null,
       }),
     );
 

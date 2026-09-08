@@ -9,6 +9,7 @@ import { PostProposalNoteDto } from './dto/sharing.dto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { InterestStatus, UserRole } from '../../common/enums';
 import { toPublicProfile, PublicProfileView } from '../users/dto/public-profile.dto';
+import { ChatService } from '../chat/chat.service';
 
 export interface ProposalThread {
   interestId: string;
@@ -54,6 +55,7 @@ export class ProposalsService {
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly chat: ChatService,
   ) {}
 
   private controls(actor: AuthUser, profile: Profile): boolean {
@@ -123,7 +125,7 @@ export class ProposalsService {
   }
 
   async post(actor: AuthUser, interestId: string, dto: PostProposalNoteDto): Promise<ProposalNote> {
-    const { interest, mine } = await this.loadSides(actor, interestId);
+    const { interest, from, to, mine } = await this.loadSides(actor, interestId);
 
     // A proposal conversation closes once the interest is withdrawn or declined
     // (EZ1-I130): the two agents were negotiating a live proposal, and there is
@@ -133,6 +135,13 @@ export class ProposalsService {
         'This proposal is closed — the interest was withdrawn or declined, so no more messages can be sent.',
       );
     }
+
+    // A block on either side closes this thread the same way it closes a direct
+    // chat (EZ1-I130). Reusing the chat block keeps one notion of "closed" and
+    // the same quiet wording, rather than telling a blocked agent they were
+    // blocked.
+    const otherUserId = this.otherHandler(from, to, mine);
+    if (otherUserId) await this.chat.assertNotBlocked(actor.userId, otherUserId);
 
     // Normally the caller controls exactly one side and it is unambiguous; an
     // agent holding both sides (or an admin) has to say which they mean.
@@ -155,6 +164,63 @@ export class ProposalsService {
         body: dto.body,
       }),
     );
+  }
+
+  // --------------------------------------------------- report / block
+
+  /**
+   * The account handling the side the caller is not.
+   *
+   * Blocking and reporting act on this account — the agent (or the person
+   * themselves) on the far side of the thread. Returns null when the caller
+   * handles both sides (an agency holding the pair, or an admin), where there
+   * is no far side to act on, or when that side has no account yet.
+   */
+  private otherHandler(from: Profile, to: Profile, mine: Profile[]): string | null {
+    const mineIds = new Set(mine.map((p) => p.id));
+    const other = [from, to].find((p) => !mineIds.has(p.id));
+    if (!other) return null;
+    return other.managedByUserId ?? other.userId ?? null;
+  }
+
+  /** Resolves the far-side account, refusing when there is none to act on. */
+  private async otherParty(actor: AuthUser, interestId: string): Promise<string> {
+    const { from, to, mine } = await this.loadSides(actor, interestId);
+    const otherUserId = this.otherHandler(from, to, mine);
+    if (!otherUserId) {
+      throw new ForbiddenException('There is no other side on this thread to act on');
+    }
+    return otherUserId;
+  }
+
+  /** Whether the caller has blocked the far side of this thread. */
+  async blockState(actor: AuthUser, interestId: string) {
+    const otherUserId = await this.otherParty(actor, interestId);
+    return this.chat.blockState(actor.userId, otherUserId);
+  }
+
+  /** Stop the far side messaging this thread, and stop messaging them. */
+  async block(actor: AuthUser, interestId: string) {
+    const otherUserId = await this.otherParty(actor, interestId);
+    return this.chat.block(actor.userId, otherUserId);
+  }
+
+  async unblock(actor: AuthUser, interestId: string) {
+    const otherUserId = await this.otherParty(actor, interestId);
+    return this.chat.unblock(actor.userId, otherUserId);
+  }
+
+  /**
+   * Report the far side, tagged with this pairing, and block them.
+   *
+   * Reuses the direct chat's report so there is one queue an administrator
+   * works from; the interest id is carried through so a proposal report says
+   * which pairing it was about. Reporting blocks as well, which the chat report
+   * already does — somebody who reports almost always wants it to stop too.
+   */
+  async report(actor: AuthUser, interestId: string, reason: string, detail?: string) {
+    const otherUserId = await this.otherParty(actor, interestId);
+    return this.chat.report(actor.userId, otherUserId, reason, detail, interestId);
   }
 
   /** Every pairing the caller is handling that has an open conversation. */

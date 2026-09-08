@@ -70,6 +70,17 @@ export class ChatReport {
   detail: string | null;
 
   /**
+   * The proposal thread this report was raised from, when it was (EZ1-I130).
+   *
+   * A report made from an agent-to-agent proposal conversation records which
+   * pairing it concerns; null for a report raised from a direct chat, which is
+   * identified by the reporter/reported pair alone.
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  interestId: string | null;
+
+  /**
    * The last few messages as they stood when the report was made.
    *
    * Copied rather than referenced: the point of evidence is that it does not
