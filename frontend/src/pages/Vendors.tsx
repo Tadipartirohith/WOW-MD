@@ -6,7 +6,7 @@ import { Permission, VENDOR_CATEGORIES, can } from '../lib/permissions';
 import { useAuth } from '../store/auth';
 import DynamicForm, { Answers, FieldSpec, cleanAnswers, validateAnswers } from '../components/DynamicForm';
 import { EmptyState, Loading } from '../components/ui/Feedback';
-import { Star, Storefront } from '@phosphor-icons/react';
+import { SealCheck, Star, Storefront } from '@phosphor-icons/react';
 
 interface Vendor {
   id: string;
@@ -23,6 +23,37 @@ interface Vendor {
    * nobody browses. The first portfolio image is the cover.
    */
   portfolio?: string[];
+  /** The cheapest published offering, for a "From ₹X" line (EZ1-I164). */
+  startingPrice?: number | null;
+  /** Set once an officer has verified the business, for the badge (EZ1-I164). */
+  verifiedAt?: string | null;
+}
+
+/** The sort options the grid offers, mirrored server-side (EZ1-I164). */
+const SORTS: { value: string; label: string }[] = [
+  { value: '', label: 'Recommended' },
+  { value: 'rating', label: 'Highest rated' },
+  { value: 'reviews', label: 'Most reviewed' },
+  { value: 'price_asc', label: 'Price: low to high' },
+  { value: 'price_desc', label: 'Price: high to low' },
+  { value: 'recent', label: 'Recently added' },
+];
+
+/** A removable active-filter pill (EZ1-I164). */
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-sunken px-2.5 py-1 text-xs text-gray-700">
+      {label}
+      <button
+        type="button"
+        className="text-gray-400 hover:text-gray-700"
+        onClick={onClear}
+        aria-label={`Clear ${label}`}
+      >
+        ×
+      </button>
+    </span>
+  );
 }
 
 interface Slot {
@@ -64,6 +95,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 export default function Vendors() {
   const [category, setCategory] = useState('');
   const [city, setCity] = useState('');
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('');
   const [requesting, setRequesting] = useState<Vendor | null>(null);
   // Only buyers place bookings. A planner browses this page to find and
   // recommend vendors for the weddings they run, but the couple (or their
@@ -75,19 +108,27 @@ export default function Vendors() {
   const [params, setParams] = useSearchParams();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['vendors', category, city],
+    queryKey: ['vendors', category, city, search, sort],
     queryFn: async () =>
       (
         await api.get('/vendors/search', {
           params: {
             ...(category ? { category } : {}),
             ...(city ? { city } : {}),
+            ...(search ? { search } : {}),
+            ...(sort ? { sort } : {}),
           },
         })
       ).data,
   });
 
   const vendors: Vendor[] = data?.data ?? [];
+  const hasFilters = Boolean(category || city || search);
+  const clearFilters = () => {
+    setCategory('');
+    setCity('');
+    setSearch('');
+  };
 
   // Arriving from the vendor detail page's "Check availability" (EZ1-I76),
   // open that vendor's request dialog straight away. The detail page is a
@@ -105,46 +146,93 @@ export default function Vendors() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="page-title">Vendors</h1>
-          <p className="page-subtitle">
-            Pick a window that suits you and tell them what you need. They come back with a price.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="text-gray-700">City</span>
-            <input
-              className="input mt-1 max-w-[12rem]"
-              value={city}
-              placeholder="Any"
-              onChange={(e) => setCity(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            <span className="text-gray-700">Category</span>
-            <select
-              className="input mt-1 max-w-xs"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <option value="">All categories</option>
-              {VENDOR_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABEL[c]}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+      <div>
+        <h1 className="page-title">Vendors</h1>
+        <p className="page-subtitle">
+          Pick a window that suits you and tell them what you need. They come back with a price.
+        </p>
       </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="text-gray-700">Search</span>
+          <input
+            className="input mt-1 max-w-[14rem]"
+            value={search}
+            placeholder="Vendor name"
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="text-gray-700">City</span>
+          <input
+            className="input mt-1 max-w-[12rem]"
+            value={city}
+            placeholder="Any"
+            onChange={(e) => setCity(e.target.value)}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="text-gray-700">Category</span>
+          <select
+            className="input mt-1 max-w-xs"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="">All categories</option>
+            {VENDOR_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="text-gray-700">Sort</span>
+          <select
+            className="input mt-1 max-w-xs"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            {SORTS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Active filters, each removable on its own, with one control to clear
+          the lot — so it is always visible what the grid is narrowed by. */}
+      {hasFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {search && <FilterChip label={`Name: ${search}`} onClear={() => setSearch('')} />}
+          {city && <FilterChip label={`City: ${city}`} onClear={() => setCity('')} />}
+          {category && (
+            <FilterChip
+              label={CATEGORY_LABEL[category] ?? category}
+              onClear={() => setCategory('')}
+            />
+          )}
+          <button className="text-sm text-brand-dark underline" onClick={clearFilters}>
+            Clear filters
+          </button>
+        </div>
+      )}
 
       {isLoading && <Loading rows={3} />}
       {!isLoading && vendors.length === 0 && (
         <div className="card">
-          <EmptyState icon={Storefront} title="No vendors match that search">
+          <EmptyState icon={Storefront} title="No vendors found">
             Try a different city, or clear the category and see everything that is available.
+            {hasFilters && (
+              <span className="mt-3 block">
+                <button className="btn-outline btn-sm" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              </span>
+            )}
           </EmptyState>
         </div>
       )}
@@ -203,36 +291,54 @@ export default function Vendors() {
               <p className="mt-0.5 text-sm text-gray-500">
                 {[CATEGORY_LABEL[v.category] ?? v.category, v.city].filter(Boolean).join(' \u00b7 ')}
               </p>
+              {/* Only approved listings reach search, but a verified badge says
+                  an officer actually visited — worth surfacing (EZ1-I164). */}
+              {v.verifiedAt && (
+                <span className="mt-1.5 inline-flex w-fit items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-strong">
+                  <SealCheck size={12} weight="fill" aria-hidden /> Verified
+                </span>
+              )}
               {v.description && (
                 <p className="mt-2 line-clamp-2 flex-1 text-sm text-gray-600">{v.description}</p>
               )}
               {/*
+                The footer is pinned to the bottom (mt-auto) so a card with no
+                description keeps the same height as one with two lines, and the
+                price sits directly above the actions on every tile.
+
                 Quiet by default, accented on hover. Twelve filled buttons in a
                 grid is the accent shouting from every tile at once; the action
                 is still obvious, and the card that the pointer is actually on
                 is the one that looks pressable.
+
+                View vendor opens the full profile — services, portfolio and
+                availability (EZ1-I117). A buyer also gets Request quote, which
+                opens the availability-and-request dialog straight from the card.
               */}
-              {/*
-                One way in from the card — View details (EZ1-I117): availability
-                is chosen inside the details page, after picking a service, not
-                straight off the card. The details page hands the booking flow
-                back here through ?request=, so the availability dialog is one
-                click deeper rather than gone.
-              */}
-              <div className="mt-4">
+              <div className="mt-auto flex flex-col gap-2 pt-4">
+                {typeof v.startingPrice === 'number' && (
+                  <p className="text-sm text-gray-700">
+                    From{' '}
+                    <span className="font-medium">₹{v.startingPrice.toLocaleString('en-IN')}</span>
+                  </p>
+                )}
                 <button
                   className="btn-outline btn-sm w-full transition-colors
                     group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
                   onClick={() => navigate(`/vendors/${v.id}`)}
                 >
-                  View details
+                  View vendor
                 </button>
+                {canBook ? (
+                  <button className="btn btn-sm w-full" onClick={() => setRequesting(v)}>
+                    Request quote
+                  </button>
+                ) : (
+                  <p className="rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
+                    Browse to recommend — the couple places the booking.
+                  </p>
+                )}
               </div>
-              {!canBook && (
-                <p className="mt-2 rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
-                  Browse to recommend — the couple places the booking.
-                </p>
-              )}
             </div>
           </div>
         ))}

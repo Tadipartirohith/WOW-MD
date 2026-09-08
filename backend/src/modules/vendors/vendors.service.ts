@@ -20,6 +20,7 @@ import {
   CreateVendorDto,
   UpdateVendorDto,
   VendorSearchDto,
+  VendorSort,
 } from './dto/vendor.dto';
 import { RedisService } from '../../platform/redis/redis.service';
 import {
@@ -68,9 +69,16 @@ export interface PublicVendor {
   isApproved: boolean;
   verifiedAt: Date | null;
   createdAt: Date;
+  /**
+   * The cheapest published offering across the vendor's active services, so a
+   * card can say "From ₹X" and the grid can be sorted by price (EZ1-I164). Null
+   * where the vendor only quotes on request — computed by search, absent
+   * (null) on the single-listing view where the full catalogue is shown.
+   */
+  startingPrice: number | null;
 }
 
-export function publicVendor(v: Vendor): PublicVendor {
+export function publicVendor(v: Vendor, startingPrice: number | null = null): PublicVendor {
   return {
     id: v.id,
     name: v.name,
@@ -87,6 +95,7 @@ export function publicVendor(v: Vendor): PublicVendor {
     isApproved: v.isApproved,
     verifiedAt: v.verifiedAt,
     createdAt: v.createdAt,
+    startingPrice,
   };
 }
 
@@ -201,7 +210,9 @@ export class VendorsService {
   }
 
   async search(q: VendorSearchDto): Promise<PaginatedResult<PublicVendor>> {
-    const cacheKey = `vendors:search:${q.category ?? 'all'}:${q.city ?? 'all'}:${q.minRating ?? 0}:${q.page}:${q.limit}`;
+    const cacheKey =
+      `vendors:search:${q.category ?? 'all'}:${q.city ?? 'all'}:${q.search ?? 'all'}:` +
+      `${q.minRating ?? 0}:${q.sort ?? 'recommended'}:${q.page}:${q.limit}`;
     return this.redis.wrap(cacheKey, 60, async () => {
       const qb = this.vendors
         .createQueryBuilder('v')
@@ -223,14 +234,61 @@ export class VendorsService {
       if (q.city) {
         qb.andWhere('v.city ILIKE :city', { city: `%${likeEscape(q.city)}%` });
       }
+      // A name search, escaped the same way, so the grid narrows as you type
+      // (EZ1-I164).
+      if (q.search) {
+        qb.andWhere('v.name ILIKE :search', { search: `%${likeEscape(q.search)}%` });
+      }
       if (q.minRating !== undefined) {
         qb.andWhere('v."ratingAvg" >= :minRating', { minRating: q.minRating });
       }
-      qb.orderBy('v.ratingAvg', 'DESC')
-        .skip((q.page - 1) * q.limit)
-        .take(q.limit);
-      const [data, total] = await qb.getManyAndCount();
-      return paginate(data.map(publicVendor), total, q.page, q.limit);
+
+      // Count against the filters alone, before the price select and ordering
+      // that only matter to the page itself.
+      const total = await qb.clone().getCount();
+
+      /*
+       * The cheapest published offering a vendor has, as a correlated subquery
+       * so a vendor with no catalogue still appears (with a null price) rather
+       * than being joined out of the grid. Powers the "From ₹X" line and the
+       * two price sorts (EZ1-I164).
+       */
+      const priceExpr =
+        '(SELECT MIN(o.price) FROM service_offerings o ' +
+        'JOIN vendor_services vs ON vs.id = o."vendorServiceId" ' +
+        'WHERE vs."vendorId" = v.id AND vs.active = true AND o.active = true AND o.price IS NOT NULL)';
+      qb.addSelect(priceExpr, 'sp_price');
+
+      switch (q.sort) {
+        case VendorSort.RATING:
+          qb.orderBy('v.ratingAvg', 'DESC');
+          break;
+        case VendorSort.REVIEWS:
+          qb.orderBy('v.ratingCount', 'DESC');
+          break;
+        // A vendor who only quotes on request has no price to sort on; those
+        // sink to the end of either direction rather than jumping to the top.
+        case VendorSort.PRICE_ASC:
+          qb.orderBy('"sp_price"', 'ASC', 'NULLS LAST');
+          break;
+        case VendorSort.PRICE_DESC:
+          qb.orderBy('"sp_price"', 'DESC', 'NULLS LAST');
+          break;
+        case VendorSort.RECENT:
+          qb.orderBy('v.createdAt', 'DESC');
+          break;
+        default:
+          // Recommended: best rated first, the busier of two equal ratings ahead.
+          qb.orderBy('v.ratingAvg', 'DESC').addOrderBy('v.ratingCount', 'DESC');
+      }
+
+      qb.offset((q.page - 1) * q.limit).limit(q.limit);
+      const { entities, raw } = await qb.getRawAndEntities();
+      const data = entities.map((v, i) => {
+        const p = (raw[i] as { sp_price?: string | null } | undefined)?.sp_price;
+        return publicVendor(v, p === null || p === undefined ? null : Number(p));
+      });
+      return paginate(data, total, q.page, q.limit);
     });
   }
 

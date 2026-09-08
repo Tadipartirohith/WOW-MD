@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -108,6 +109,30 @@ export default function VendorDetail() {
     retry: false,
   });
 
+  // Check availability for one required date (EZ1-I131). Mirrors the Hire a
+  // Planner flow: name a date, ask, and see whether the vendor is free before
+  // proceeding — the piece a planner needs, since a planner cannot open the
+  // buyer-only request dialog. On demand rather than on load; the same public
+  // endpoint, narrowed to that single day.
+  const [checkDate, setCheckDate] = useState('');
+  const [checkedDate, setCheckedDate] = useState('');
+  const {
+    data: dayCheck,
+    isFetching: checking,
+    refetch: runCheck,
+  } = useQuery({
+    queryKey: ['vendor-availability-check', id, checkDate],
+    enabled: false,
+    queryFn: async () =>
+      (
+        await api.get(`/vendors/${id}/availability`, {
+          params: { from: checkDate, to: checkDate },
+        })
+      ).data as { id: string; date: string; remaining: number }[],
+  });
+  const dayOpen = (dayCheck ?? []).filter((s) => s.date === checkedDate && s.remaining > 0);
+  const dayOpenings = dayOpen.reduce((n, s) => n + s.remaining, 0);
+
   if (isLoading) return <Loading rows={4} />;
   if (!vendor) {
     return (
@@ -178,6 +203,46 @@ export default function VendorDetail() {
           dates, so a buyer or planner sees when the vendor is free before asking. */}
       <div>
         <h2 className="section-title mb-2">Upcoming availability</h2>
+
+        {/* Check a required date before proceeding (EZ1-I131). */}
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            <span className="block text-gray-600">Check a date</span>
+            <input
+              className="input mt-1"
+              type="date"
+              min={iso(today)}
+              value={checkDate}
+              onChange={(e) => setCheckDate(e.target.value)}
+            />
+          </label>
+          <button
+            className="btn-outline btn-sm"
+            disabled={!checkDate || checking}
+            onClick={async () => {
+              await runCheck();
+              setCheckedDate(checkDate);
+            }}
+          >
+            {checking ? 'Checking…' : 'Check availability'}
+          </button>
+        </div>
+        {checkedDate && !checking && (
+          <p
+            className={`mb-3 rounded-sm p-3 text-sm ${
+              dayOpen.length > 0 ? 'bg-brand-light text-brand-dark' : 'bg-surface-sunken text-gray-600'
+            }`}
+          >
+            {dayOpen.length > 0
+              ? `Free on ${new Date(checkedDate).toLocaleDateString()} — ${dayOpenings} opening${
+                  dayOpenings === 1 ? '' : 's'
+                } left.`
+              : `No published opening on ${new Date(
+                  checkedDate,
+                ).toLocaleDateString()}. You can still send a request and the vendor will confirm.`}
+          </p>
+        )}
+
         {slots.length === 0 ? (
           <p className="card text-sm text-gray-500">
             No open dates published for the next two months. You can still send a request and the

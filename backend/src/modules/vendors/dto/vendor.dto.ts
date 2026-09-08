@@ -214,6 +214,20 @@ export class CreateVendorDto extends VendorComplianceDto {
  */
 export class UpdateVendorDto extends PartialType(CreateVendorDto) {}
 
+/**
+ * How the vendor grid is ordered (EZ1-I164). "Recommended" is the default and
+ * unchanged — highest rated first — so an unsorted search still lands on the
+ * page that used to be hard-coded.
+ */
+export enum VendorSort {
+  RECOMMENDED = 'recommended',
+  RATING = 'rating',
+  REVIEWS = 'reviews',
+  PRICE_ASC = 'price_asc',
+  PRICE_DESC = 'price_desc',
+  RECENT = 'recent',
+}
+
 export class VendorSearchDto extends PaginationDto {
   @ApiPropertyOptional({ enum: VendorCategory })
   @IsOptional()
@@ -225,6 +239,18 @@ export class VendorSearchDto extends PaginationDto {
   @IsString()
   @MaxLength(80)
   city?: string;
+
+  /** Substring match on the business name, so the grid narrows as you type. */
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
+  @ApiPropertyOptional({ enum: VendorSort })
+  @IsOptional()
+  @IsEnum(VendorSort)
+  sort?: VendorSort;
 
   @ApiPropertyOptional({ minimum: 0, maximum: 5 })
   @IsOptional()
