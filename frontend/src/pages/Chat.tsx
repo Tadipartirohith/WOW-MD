@@ -402,16 +402,15 @@ export default function Chat() {
                     </button>
                   )}
                   {/*
-                    Always shown, disabled when they are not there.
-                    
-                    Hiding the buttons while the other side was offline meant
-                    that for most people, most of the time, the chat had no
-                    calling in it at all — and "call is not visible in chat"
-                    is exactly how that gets reported. A control that explains
-                    why it cannot be used teaches the feature; a control that
-                    vanishes teaches that there isn't one.
+                    Calling is offered only once the interest is accepted
+                    (EZ1-I125): `context` is present exactly for an accepted or
+                    fixed match, and absent for a proposal that has not been
+                    accepted, so the audio/video controls stay locked until then.
+                    When shown they are always enabled — a call to somebody
+                    offline is answered with "they are not online right now"
+                    rather than a greyed-out button (EZ1-I38, EZ1-I89).
                   */}
-                  {call.state === 'idle' && (
+                  {call.state === 'idle' && active?.context && (
                     <>
                       {/* Always enabled (EZ1-I38, EZ1-I89): a call to somebody
                           offline is answered by the server with "they are not
