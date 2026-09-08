@@ -1539,11 +1539,17 @@ function SubjectDetails({
 
   const subject = data?.subject as Record<string, unknown> | null;
   const applicant = data?.applicant as Record<string, unknown> | null;
+  // The stored history entries are { at, byUserId, status, remarks } (see the
+  // VerificationRequest entity). Reading them as { action, note } left
+  // entry.action undefined, and entry.action.replace(...) below then threw —
+  // which the page's error boundary caught as "This page could not be shown"
+  // the moment an officer or admin opened any request that had history
+  // (EZ1-I86 / I87 / I156 / I157).
   const history = (data?.history ?? []) as {
     at: string;
-    action: string;
+    status?: string;
     byUserId?: string;
-    note?: string;
+    remarks?: string;
   }[];
 
   const text = (value: unknown) =>
@@ -1700,8 +1706,8 @@ function SubjectDetails({
                 <span className="text-gray-400">
                   {new Date(entry.at).toLocaleString()} ·{' '}
                 </span>
-                <span className="capitalize">{entry.action.replace(/_/g, ' ')}</span>
-                {entry.note ? `: ${entry.note}` : ''}
+                <span className="capitalize">{(entry.status ?? 'updated').replace(/_/g, ' ')}</span>
+                {entry.remarks ? `: ${entry.remarks}` : ''}
               </li>
             ))}
           </ol>
