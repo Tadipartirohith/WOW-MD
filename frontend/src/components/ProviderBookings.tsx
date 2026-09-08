@@ -4,7 +4,8 @@ import { AxiosError } from 'axios';
 import { api, apiMessage } from '../lib/api';
 import BookingChat from './BookingChat';
 import BookingConsole from './BookingConsole';
-import { BOOKING_STATUS_LABEL } from '../lib/permissions';
+import { BOOKING_STATUS_LABEL, Permission, can } from '../lib/permissions';
+import { useAuth } from '../store/auth';
 import { FieldSpec, formatAnswer } from './DynamicForm';
 
 interface IncomingBooking {
@@ -195,10 +196,14 @@ function ServiceAnswers({ booking }: { booking: IncomingBooking }) {
 }
 
 function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () => void }) {
+  const isPlanner = can(useAuth((s) => s.user?.permissions ?? []), Permission.PLANNER_LISTING_MANAGE);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  // A planner quotes with or without arranging vendors (EZ1-I143); the choice
+  // is recorded so the client sees which offer this is.
+  const [vendorsIncluded, setVendorsIncluded] = useState(false);
   const [lines, setLines] = useState<{ description: string; amount: string }[]>([
     { description: '', amount: '' },
   ]);
@@ -217,6 +222,7 @@ function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () =>
         notes: notes || undefined,
         terms: terms || undefined,
         validUntil: validUntil || undefined,
+        vendorsIncluded: isPlanner ? vendorsIncluded : undefined,
         lines: filled.length
           ? filled.map((l) => ({ description: l.description.trim(), amount: Number(l.amount) }))
           : undefined,
@@ -230,6 +236,21 @@ function QuotationForm({ bookingId, onDone }: { bookingId: string; onDone: () =>
   return (
     <form onSubmit={submit} className="mt-3 w-full space-y-3 rounded-sm bg-gray-50 p-3">
       {msg && <p className="alert-critical">{msg}</p>}
+      {isPlanner && (
+        <label className="flex items-start gap-2 rounded-sm bg-white p-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={vendorsIncluded}
+            onChange={(e) => setVendorsIncluded(e.target.checked)}
+          />
+          <span className="text-gray-700">
+            This quotation includes arranging the couple's vendors. Add the vendor/service costs
+            and your coordination fee to the total and itemise them below; leave it unticked to
+            quote your own services only (EZ1-I143).
+          </span>
+        </label>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-sm">
           <span className="text-gray-700">Total</span>

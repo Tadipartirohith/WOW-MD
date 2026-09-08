@@ -82,6 +82,7 @@ export class QuotationsService {
         amount: dto.amount.toFixed(2),
         currency: booking.currency || this.cfg.payments.currency,
         lines: dto.lines ?? [],
+        vendorsIncluded: dto.vendorsIncluded ?? null,
         notes: dto.notes ?? null,
         terms: dto.terms ?? null,
         validUntil,

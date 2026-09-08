@@ -44,6 +44,15 @@ export class Quotation {
   @Column({ type: 'jsonb', default: [] })
   lines: QuotationLine[];
 
+  /**
+   * Whether this planner quotation includes arranging the couple's vendors
+   * (EZ1-I143). True adds the vendor/coordination cost into the amount and the
+   * lines; false is the planner's own services only. Null for a vendor's own
+   * quotation, where the question does not arise.
+   */
+  @Column({ type: 'boolean', nullable: true })
+  vendorsIncluded: boolean | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 

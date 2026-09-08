@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -40,6 +41,12 @@ export class SendQuotationDto {
   @ValidateNested({ each: true })
   @Type(() => QuotationLineDto)
   lines?: QuotationLineDto[];
+
+  /** Planner quotations only: does this include arranging vendors? (EZ1-I143) */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  vendorsIncluded?: boolean;
 
   @ApiPropertyOptional({ maxLength: 2000 })
   @IsOptional()
