@@ -72,7 +72,22 @@ import Genie from './pages/Genie';
 import Events from './pages/Events';
 import Travel from './pages/Travel';
 import Media from './pages/Media';
-import Admin from './pages/Admin';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import {
+  AdminAgents,
+  AdminApprovals,
+  AdminAuditLogs,
+  AdminBookings,
+  AdminCatalog,
+  AdminComingSoon,
+  AdminOfficers,
+  AdminPayments,
+  AdminPlanners,
+  AdminReports,
+  AdminUsers,
+  AdminVendors,
+} from './pages/admin/AdminPages';
 import SharedAlbum from './pages/SharedAlbum';
 import AgentClients from './pages/AgentClients';
 import ManagedProfiles from './pages/ManagedProfiles';
@@ -1021,14 +1036,79 @@ export default function App() {
           </Protected>
         }
       />
+      {/*
+        The Admin Portal is a page per module, not a tabbed console (EZ1-I153).
+        The parent guard covers every child, so access follows the same admin
+        permission the child endpoints require; the module nav lives in
+        AdminLayout. Modules with no backend yet are honest "coming soon" routes
+        rather than fabricated data.
+      */}
       <Route
         path="/admin"
         element={
           <Protected requires={[Permission.ADMIN_ANALYTICS_READ]}>
-            <Admin />
+            <AdminLayout />
           </Protected>
         }
-      />
+      >
+        <Route index element={<AdminDashboard />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="agents" element={<AdminAgents />} />
+        <Route path="vendors" element={<AdminVendors />} />
+        <Route path="officers" element={<AdminOfficers />} />
+        <Route path="planners" element={<AdminPlanners />} />
+        <Route path="bookings" element={<AdminBookings />} />
+        <Route path="payments" element={<AdminPayments />} />
+        <Route path="catalog" element={<AdminCatalog />} />
+        <Route path="approvals" element={<AdminApprovals />} />
+        <Route path="reports" element={<AdminReports />} />
+        <Route path="audit" element={<AdminAuditLogs />} />
+        <Route
+          path="services"
+          element={
+            <AdminComingSoon
+              title="Services"
+              note="A catalogue-wide view of the services vendors offer. The data lives on each business today; a cross-platform services module is not built yet."
+            />
+          }
+        />
+        <Route
+          path="support"
+          element={
+            <AdminComingSoon
+              title="Support"
+              note="Disputes and support cases are worked on the Verification screen for now. A dedicated admin support inbox is not built yet."
+            />
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <AdminComingSoon
+              title="Notifications"
+              note="Platform-wide notification management (broadcasts, templates) is not built yet. Your own notifications live under Notifications in the main navigation."
+            />
+          }
+        />
+        <Route
+          path="security"
+          element={
+            <AdminComingSoon
+              title="Security"
+              note="Platform security controls (access policy, key rotation) are not built yet. Your own sessions and two-factor live under Security in the main navigation."
+            />
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <AdminComingSoon
+              title="Settings"
+              note="Platform configuration is not built yet. Per-agency fees are managed from the agency's own screen today."
+            />
+          }
+        />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

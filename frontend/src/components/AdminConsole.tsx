@@ -327,8 +327,8 @@ export function Businesses() {
   );
 }
 
-export function AllBookings() {
-  const [status, setStatus] = useState('');
+export function AllBookings({ initialStatus = '' }: { initialStatus?: string } = {}) {
+  const [status, setStatus] = useState(initialStatus);
 
   const { data } = useQuery<{
     data: {
