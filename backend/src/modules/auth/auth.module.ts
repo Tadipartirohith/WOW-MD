@@ -6,6 +6,7 @@ import { User } from './entities/user.entity';
 import { RefreshSession } from './entities/refresh-session.entity';
 import { EmailToken } from './entities/email-token.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { InvitationsModule } from '../invitations/invitations.module';
 import { AuthService } from './auth.service';
 import { SessionsService } from './sessions.service';
@@ -17,7 +18,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, RefreshSession, EmailToken, Profile, PhoneVerification, MfaRecoveryCode]),
+    TypeOrmModule.forFeature([User, RefreshSession, EmailToken, Profile, AgentProfile, PhoneVerification, MfaRecoveryCode]),
     PassportModule,
     JwtModule.register({}),
     InvitationsModule,

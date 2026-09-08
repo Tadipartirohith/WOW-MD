@@ -73,6 +73,8 @@ interface AgencyStatus {
   approved: boolean;
   rejectionReason: string | null;
   agencyName: string | null;
+  /** Whether a shareable client sign-up link is currently live (EZ1-I166). */
+  shareLinkActive?: boolean;
 }
 
 /** The categories, in the order a family would think of them. */
@@ -149,7 +151,9 @@ export default function ManagedProfiles() {
       setError('');
       setNotice(
         inviteNow
-          ? `Profile created and an invitation emailed to ${profile.contactEmail}.`
+          ? profile.contactEmail
+            ? `Profile created and an invitation sent to ${profile.contactEmail}.`
+            : 'Profile created and an invitation sent by SMS to their mobile. They add an email when they claim it.'
           : 'Profile saved. It is matchable now: circulate it, or invite them to claim it later.',
       );
       qc.invalidateQueries({ queryKey: ['managed-profiles'] });
@@ -262,6 +266,10 @@ export default function ManagedProfiles() {
 
       {notice && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
       {error && <p className="alert-critical">{error}</p>}
+
+      {isAgent && agency?.approved && (
+        <ClientSignupLink active={Boolean(agency.shareLinkActive)} />
+      )}
 
       <form onSubmit={submit} className="card space-y-4">
         <h2 className="section-title">New profile</h2>
@@ -403,15 +411,27 @@ export default function ManagedProfiles() {
           <button className="btn" disabled={create.isPending || !isValidMobile(draft.contactPhone)}>
             {create.isPending ? 'Saving...' : 'Save profile'}
           </button>
+          {/*
+            A mobile number alone is enough to invite (EZ1-I170): the invitation
+            goes out by SMS and the client supplies an email when they claim it.
+            This button used to be disabled without an email — silently, so an
+            agent with a phone-first walk-in family could not tell why — which
+            contradicted the backend, where email is optional. Email is genuinely
+            optional here, so the note beside it says as much rather than blocking.
+          */}
           <button
             type="button"
             className="btn-outline"
-            disabled={create.isPending || !draft.contactEmail || !isValidMobile(draft.contactPhone)}
-            title={draft.contactEmail ? undefined : 'An email address is needed to send an invitation'}
+            disabled={create.isPending || !isValidMobile(draft.contactPhone)}
             onClick={() => create.mutate(true)}
           >
             Save and invite now
           </button>
+          <p className="w-full text-xs text-gray-500">
+            {draft.contactEmail
+              ? 'The invitation goes to their email and mobile.'
+              : 'With no email, the invitation goes by SMS. They add an email when they claim it.'}
+          </p>
         </div>
       </form>
 
@@ -650,6 +670,123 @@ export default function ManagedProfiles() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A standing sign-up link the agency hands out to bring on new clients
+ * (EZ1-I166).
+ *
+ * Different from inviting: there is no profile to build first. Anybody the link
+ * reaches creates their own account — choosing their own password, which the
+ * agent never sees — and it lands in the agency's book. The token is shown once
+ * here, because it is stored scrambled and cannot be shown again; re-minting
+ * rotates it and withdrawing stops it working.
+ */
+function ClientSignupLink({ active }: { active: boolean }) {
+  const qc = useQueryClient();
+  const [token, setToken] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
+
+  const link = token ? `${window.location.origin}/join/${token}` : '';
+
+  const mint = useMutation({
+    mutationFn: async () => (await api.post('/agents/agency/share-link', {})).data as { token: string },
+    onSuccess: (d) => {
+      setToken(d.token);
+      setError('');
+      qc.invalidateQueries({ queryKey: ['agency-status'] });
+    },
+    onError: (e) => setError(apiMessage(e, 'The link could not be created.')),
+  });
+
+  const revoke = useMutation({
+    mutationFn: async () => api.delete('/agents/agency/share-link'),
+    onSuccess: () => {
+      setToken('');
+      setError('');
+      qc.invalidateQueries({ queryKey: ['agency-status'] });
+    },
+    onError: (e) => setError(apiMessage(e, 'The link could not be withdrawn.')),
+  });
+
+  return (
+    <div className="card space-y-3">
+      <div>
+        <h2 className="section-title">Add clients by sharing a link</h2>
+        <p className="text-sm text-gray-500">
+          One link anybody can open to create their own account. It lands in your book, and they
+          set their own password — you never see it.
+        </p>
+      </div>
+
+      {error && <p className="alert-critical">{error}</p>}
+
+      {!token ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-outline" disabled={mint.isPending} onClick={() => mint.mutate()}>
+            {mint.isPending ? 'Creating…' : active ? 'Replace the sign-up link' : 'Create a sign-up link'}
+          </button>
+          {active && (
+            <>
+              <button
+                className="btn-outline text-red-700"
+                disabled={revoke.isPending}
+                onClick={() => revoke.mutate()}
+              >
+                Withdraw it
+              </button>
+              <p className="text-xs text-gray-500">
+                A link is already active. Replacing it makes a new one and stops the old one.
+              </p>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2 rounded-sm border border-gray-200 bg-gray-50 p-3">
+          <p className="text-sm font-medium text-gray-800">Your client sign-up link</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input className="input min-w-0 flex-1 font-mono text-xs" readOnly value={link} />
+            <button
+              className="btn-outline"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 2000);
+                } catch {
+                  setError('Copying was blocked. Select the link above instead.');
+                }
+              }}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <a
+              className="btn-outline"
+              href={`https://wa.me/?text=${encodeURIComponent(
+                `Create your WOW profile with us: ${link}`,
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              WhatsApp
+            </a>
+          </div>
+          <p className="text-xs text-gray-500">
+            Save it somewhere — it is stored scrambled, so it cannot be shown again. Anybody with
+            this link can sign up into your book.
+          </p>
+          <button
+            className="btn-ghost text-red-700"
+            disabled={revoke.isPending}
+            onClick={() => revoke.mutate()}
+          >
+            Withdraw it
+          </button>
+        </div>
+      )}
     </div>
   );
 }

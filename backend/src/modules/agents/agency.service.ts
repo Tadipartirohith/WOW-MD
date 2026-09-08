@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AgentProfile } from './entities/agent-profile.entity';
@@ -9,6 +9,7 @@ import { MailService } from '../../platform/mail/mail.service';
 import { VerificationService } from '../verification/verification.service';
 import { ApplicantType } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { generateToken } from '../../common/util/tokens';
 
 /**
  * The agency registration record that gates an agent's ability to act for
@@ -69,6 +70,43 @@ export class AgencyService {
   /** Null rather than throwing, for status banners on the client. */
   async findOwn(ownerUserId: string): Promise<AgentProfile | null> {
     return this.agencies.findOne({ where: { ownerUserId } });
+  }
+
+  /**
+   * Mints (or rotates) the agency's standing client sign-up link (EZ1-I166).
+   *
+   * The token is returned exactly once — it is stored hashed, so it can never
+   * be shown again — and re-minting invalidates the previous one, which is how
+   * a link that spread further than intended is withdrawn. Gated on approval:
+   * an unapproved agency cannot build profiles or invite, and must not be able
+   * to onboard accounts through a link either.
+   */
+  async createShareLink(ownerUserId: string): Promise<{ token: string }> {
+    const agency = await this.assertApprovedAgency(ownerUserId);
+    const { token, tokenHash } = generateToken();
+    agency.shareTokenHash = tokenHash;
+    agency.shareTokenCreatedAt = new Date();
+    await this.agencies.save(agency);
+    return { token };
+  }
+
+  /** Stops the link working, without touching the clients who already used it. */
+  async revokeShareLink(ownerUserId: string): Promise<{ success: true }> {
+    const agency = await this.getOwn(ownerUserId);
+    agency.shareTokenHash = null;
+    agency.shareTokenCreatedAt = null;
+    await this.agencies.save(agency);
+    return { success: true };
+  }
+
+  private async assertApprovedAgency(ownerUserId: string): Promise<AgentProfile> {
+    const agency = await this.getOwn(ownerUserId);
+    if (!agency.isApproved) {
+      throw new ForbiddenException(
+        'Your agency is awaiting approval by an administrator before you can onboard clients.',
+      );
+    }
+    return agency;
   }
 
   listPending(): Promise<AgentProfile[]> {

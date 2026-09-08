@@ -16,10 +16,12 @@ import { User } from './entities/user.entity';
 import { EmailToken } from './entities/email-token.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { MfaRecoveryCode } from './entities/mfa-recovery-code.entity';
+import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import {
   ChangePasswordDto,
   LoginDto,
   RegisterDto,
+  RegisterViaAgentLinkDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
 import { AppConfigService } from '../../config/app-config.service';
@@ -103,6 +105,7 @@ export class AuthService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(MfaRecoveryCode) private readonly recoveryCodes: Repository<MfaRecoveryCode>,
     @InjectRepository(EmailToken) private readonly emailTokens: Repository<EmailToken>,
+    @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     private readonly jwt: JwtService,
     private readonly cfg: AppConfigService,
     private readonly sessions: SessionsService,
@@ -117,7 +120,7 @@ export class AuthService {
    * construction: INDIVIDUAL narrows to bride/groom/family, and every other
    * account type maps through ACCOUNT_TYPE_ROLE, which has no admin entry.
    */
-  private resolveRole(dto: RegisterDto): UserRole {
+  private resolveRole(dto: RegisterDto, agentBound = false): UserRole {
     // Every portal registers with a Gmail address (EZ1-I104). dto.email is
     // already trimmed and lower-cased by normaliseEmail on the DTO.
     if (!/@gmail\.com$/.test(dto.email)) {
@@ -127,7 +130,11 @@ export class AuthService {
       // The Individual User flow is a business switch, not a code path: with it
       // off the platform is an agent-only brokerage and the only way onto it is
       // through an agency. Accounts created while it was on keep working.
-      if (!this.cfg.features.individualUserEnabled) {
+      //
+      // An agency sign-up link is exactly that "through an agency" path — the
+      // one the closed-signup message points people to — so it is allowed even
+      // when open self-registration is not (EZ1-I166).
+      if (!agentBound && !this.cfg.features.individualUserEnabled) {
         throw new ForbiddenException(
           'Individual sign-up is closed at the moment. An agent can register you and send an invitation.',
         );
@@ -153,8 +160,12 @@ export class AuthService {
    * open: anyone can create their own account and sign in immediately, with or
    * without an agent ever being involved.
    */
-  async register(dto: RegisterDto, ctx: SessionContext = {}): Promise<AuthResult> {
-    const role = this.resolveRole(dto);
+  async register(
+    dto: RegisterDto,
+    ctx: SessionContext = {},
+    boundAgentId?: string,
+  ): Promise<AuthResult> {
+    const role = this.resolveRole(dto, Boolean(boundAgentId));
 
     const exists = await this.users.findOne({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email already registered');
@@ -166,7 +177,9 @@ export class AuthService {
         phone: dto.phone ?? null,
         passwordHash,
         role,
-        managedByAgentId: null,
+        // Bound to the agency's book when the account was created through an
+        // agency sign-up link — the same linkage an accepted invitation makes.
+        managedByAgentId: boundAgentId ?? null,
         isActive: true,
         isVerified: false,
       }),
@@ -177,7 +190,9 @@ export class AuthService {
         this.profiles.create({
           userId: user.id,
           displayName: dto.displayName,
-          // Self-registered: nobody else manages this profile.
+          // The client set their own password, so this is their own profile.
+          // The agency link is recorded on the account (managedByAgentId), not
+          // by making the agent the profile's steward.
           claimStatus: ProfileClaimStatus.SELF,
           managedByUserId: null,
           contactEmail: user.email,
@@ -188,6 +203,57 @@ export class AuthService {
 
     await this.sendVerificationEmail(user, dto.displayName ?? dto.email);
     return this.issueTokens(user, ctx);
+  }
+
+  // ------------------------------------------------- agency sign-up links
+
+  /**
+   * The agency behind a sign-up link, resolved from the plaintext token.
+   *
+   * Only a live link on an approved agency resolves; a rotated, withdrawn or
+   * unapproved-agency token is not a valid link.
+   */
+  private async agencyByShareToken(token: string): Promise<AgentProfile> {
+    const agency = await this.agencies.findOne({ where: { shareTokenHash: hashToken(token) } });
+    if (!agency || !agency.isApproved) {
+      throw new NotFoundException('That sign-up link is not valid or is no longer active.');
+    }
+    return agency;
+  }
+
+  /**
+   * Public: what the sign-up-link landing page shows before asking for
+   * details — which agency the new account will belong to.
+   */
+  async previewAgentLink(token: string): Promise<{ agencyName: string; city: string | null }> {
+    const agency = await this.agencyByShareToken(token);
+    return { agencyName: agency.agencyName, city: agency.city ?? null };
+  }
+
+  /**
+   * Public: a new client creates their own account through an agency's link
+   * (EZ1-I166). The account lands in that agency's book, but the client sets
+   * their own password here, so the agent never holds their credentials.
+   */
+  async registerViaAgentLink(
+    dto: RegisterViaAgentLinkDto,
+    ctx: SessionContext = {},
+  ): Promise<AuthResult> {
+    const agency = await this.agencyByShareToken(dto.token);
+
+    // A client is always an individual (bride/groom/family). Nobody mints an
+    // agent, vendor or planner through somebody else's client link.
+    if (dto.accountType !== AccountType.INDIVIDUAL) {
+      throw new BadRequestException('This link creates an individual account.');
+    }
+    // Mobile and email are both required, exactly as the invitation flow
+    // requires them: the email is the sign-in credential and the mobile is how
+    // the agency reaches the client.
+    if (!dto.phone) {
+      throw new BadRequestException('A mobile number is required to sign up.');
+    }
+
+    return this.register(dto, ctx, agency.ownerUserId);
   }
 
   // ------------------------------------------------------------------- login

@@ -100,6 +100,22 @@ export class RegisterDto {
 /** Roles a self-service registration may ever produce. Exported for tests. */
 export const REGISTERABLE = SELF_REGISTERABLE_ROLES;
 
+/**
+ * Registering through an agency's shared sign-up link (EZ1-I166).
+ *
+ * The same fields as an ordinary registration plus the link token, which is
+ * what binds the new account to the agency's book. It always creates an
+ * individual (bride/groom/family) account, so `accountType` and `role` carry
+ * the persona exactly as the public sign-up form does.
+ */
+export class RegisterViaAgentLinkDto extends RegisterDto {
+  @ApiProperty({ description: 'The agency sign-up link token' })
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  token: string;
+}
+
 export class LoginDto {
   @ApiProperty({ example: 'bride@example.com' })
   @IsEmail()

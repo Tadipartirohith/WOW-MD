@@ -73,7 +73,31 @@ export class AgentsController {
       approved: agency?.isApproved ?? false,
       rejectionReason: agency?.rejectionReason ?? null,
       agencyName: agency?.agencyName ?? null,
+      // Whether a client sign-up link is currently live (EZ1-I166). The token
+      // itself is never returned here — only whether one exists — since it is
+      // stored hashed and cannot be shown again after it is minted.
+      shareLinkActive: Boolean(agency?.shareTokenHash),
     };
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_INVITE)
+  @ApiOperation({
+    summary: 'Mint a shareable client sign-up link',
+    description:
+      'Returns a single-use-to-you token the agent copies and shares. A new client opening it ' +
+      'creates their own account — setting their own password — which lands in your book. The ' +
+      'token is shown once; re-minting rotates it and withdraws the previous one.',
+  })
+  @Post('agency/share-link')
+  createShareLink(@CurrentUser('userId') userId: string) {
+    return this.agency.createShareLink(userId);
+  }
+
+  @RequirePermissions(Permission.MANAGED_PROFILE_INVITE)
+  @ApiOperation({ summary: 'Withdraw the client sign-up link' })
+  @Delete('agency/share-link')
+  revokeShareLink(@CurrentUser('userId') userId: string) {
+    return this.agency.revokeShareLink(userId);
   }
 
   // ----------------------------------------------- profiles without accounts

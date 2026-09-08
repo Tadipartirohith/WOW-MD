@@ -9,6 +9,7 @@ import { MfaRecoveryCode } from './entities/mfa-recovery-code.entity';
 import { User } from './entities/user.entity';
 import { EmailToken } from './entities/email-token.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { AuditService } from '../../platform/audit/audit.service';
@@ -47,6 +48,12 @@ describe('AuthService', () => {
     find: jest.fn(async () => []),
     count: jest.fn(async () => 0),
     delete: jest.fn(async () => ({ affected: 0 })),
+  };
+  // Agency sign-up links (EZ1-I166). Nothing here exercises them, so the mock
+  // only needs the shape the service touches on the paths under test.
+  const agencyRepo = {
+    findOne: jest.fn(),
+    save: jest.fn(async (x) => x),
   };
   const jwt = {
     signAsync: jest.fn(async () => 'signed.jwt.token'),
@@ -91,6 +98,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(Profile), useValue: profileRepo },
         { provide: getRepositoryToken(EmailToken), useValue: emailTokenRepo },
         { provide: getRepositoryToken(MfaRecoveryCode), useValue: recoveryRepo },
+        { provide: getRepositoryToken(AgentProfile), useValue: agencyRepo },
         { provide: JwtService, useValue: jwt },
         { provide: AppConfigService, useValue: cfg },
         { provide: SessionsService, useValue: sessions },

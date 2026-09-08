@@ -467,7 +467,12 @@ export class ManagedProfilesService {
       canEdit: !claimed && !archived,
       canManagePhotos: !archived,
       canCirculate: !archived,
-      canInvite: !claimed && Boolean(profile.contactEmail),
+      // A mobile number alone is enough to invite: the invitation goes out by
+      // SMS and the client supplies an email when they claim (EZ1-I170). This
+      // used to require an email, which hid the button for the phone-first
+      // walk-in family that is the whole reason SMS invites exist. The invite
+      // service enforces the same rule — a profile with neither is refused.
+      canInvite: !claimed && Boolean(profile.contactEmail || profile.contactPhone),
       canPause: !archived,
       canClose: !archived,
       // Available after a claim too, but it means something different there:

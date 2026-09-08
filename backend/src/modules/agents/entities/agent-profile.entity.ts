@@ -77,6 +77,19 @@ export class AgentProfile {
   @Column({ type: 'text', nullable: true })
   rejectionReason: string | null;
 
+  /**
+   * A standing sign-up link the agency hands out to bring on new clients
+   * (EZ1-I166). Only the SHA-256 of the token is kept, so a leak cannot forge a
+   * working link; the plaintext exists once, in the moment it is minted. Null
+   * when no link is active — re-minting rotates it and withdrawing clears it.
+   */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  shareTokenHash: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  shareTokenCreatedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

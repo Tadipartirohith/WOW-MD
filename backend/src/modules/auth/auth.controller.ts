@@ -26,6 +26,7 @@ import {
   LoginDto,
   RefreshDto,
   RegisterDto,
+  RegisterViaAgentLinkDto,
   RequestPasswordResetDto,
   ResetPasswordDto,
   RegenerateRecoveryCodesDto,
@@ -240,6 +241,35 @@ export class AuthController {
   ) {
     const user = await this.invitations.accept(dto.token, dto.password, dto.email);
     return this.respond(req, res, await this.auth.issueTokens(user, this.ctx(req)));
+  }
+
+  // ---------------------------------------------------- agency sign-up links
+
+  /**
+   * Public preview of an agency's sign-up link, so the landing page can show
+   * which agency the new account will belong to before asking for details.
+   */
+  @Public()
+  @Throttle({ default: AUTH_THROTTLE })
+  @Get('agent-link/:token')
+  previewAgentLink(@Param('token') token: string) {
+    return this.auth.previewAgentLink(token);
+  }
+
+  /**
+   * Public: a new client creates their own account through an agency's link.
+   * The account lands in that agency's book, and they set their own password,
+   * so the agent never holds their credentials (EZ1-I166).
+   */
+  @Public()
+  @Throttle({ default: AUTH_THROTTLE })
+  @Post('agent-link/register')
+  async registerViaAgentLink(
+    @Body() dto: RegisterViaAgentLinkDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.respond(req, res, await this.auth.registerViaAgentLink(dto, this.ctx(req)));
   }
 
   @ApiOperation({

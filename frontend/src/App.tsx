@@ -52,6 +52,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AcceptInvite from './pages/AcceptInvite';
+import AgentSignup from './pages/AgentSignup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
@@ -769,6 +770,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/invite/:token" element={<AcceptInvite />} />
+      <Route path="/join/:token" element={<AgentSignup />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/verify-email/:token" element={<VerifyEmail />} />
