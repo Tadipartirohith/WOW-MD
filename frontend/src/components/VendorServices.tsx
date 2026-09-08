@@ -77,7 +77,9 @@ const QUOTE_ONLY = ['custom_quote', 'no_public_price'];
 /** Where a quantity is part of the price rather than decoration. */
 const QUANTITY_MODELS = ['per_person', 'per_item', 'per_hour', 'per_day', 'per_session'];
 
-export function priceLabel(o: Offering): string {
+export function priceLabel(
+  o: Pick<Offering, 'pricingModel' | 'price' | 'currency' | 'unitLabel'>,
+): string {
   if (QUOTE_ONLY.includes(o.pricingModel)) return PRICING_LABEL[o.pricingModel];
   const amount = `${o.currency} ${Number(o.price).toLocaleString()}`;
   if (o.pricingModel === 'starting_from') return `From ${amount}`;

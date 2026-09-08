@@ -8,7 +8,7 @@ import ChoiceField from '../components/ChoiceField';
 import { CITIES, STATES } from '../lib/reference';
 import { useAuth } from '../store/auth';
 import { useBusinesses } from '../store/business';
-import VendorServices from '../components/VendorServices';
+import VendorServices, { priceLabel } from '../components/VendorServices';
 import PhotoUploader from '../components/PhotoUploader';
 import {
   GSTIN_PATTERN,
@@ -324,14 +324,44 @@ function WizardNav({
   );
 }
 
+/** A vendor service and its priced offerings, as the review reads them (EZ1-I152). */
+interface ReviewService {
+  id: string;
+  displayName: string | null;
+  description: string | null;
+  definition: { name?: string } | null;
+  category: { name?: string } | null;
+  offerings: {
+    id: string;
+    name: string;
+    pricingModel: string;
+    price: string | null;
+    currency: string;
+    unitLabel: string | null;
+  }[];
+}
+
 /** The whole listing, read-only, before it is submitted for verification. */
 function ReviewSummary({ current }: { current: VendorListing }) {
   const category =
     current.category === 'other'
       ? (current.otherCategory ?? 'Other')
       : (CATEGORY_LABEL[current.category] ?? current.category);
+
+  // The catalog the vendor actually built, so Review is the complete submission
+  // rather than a count of it — no "2 Services" / "3 Documents" (EZ1-I152).
+  const { data: services = [] } = useQuery<ReviewService[]>({
+    queryKey: ['vendor-services', current.id],
+    queryFn: async () => (await api.get(`/vendors/${current.id}/services`)).data,
+    enabled: Boolean(current.id),
+    retry: false,
+  });
+
+  const portfolio = current.portfolio ?? [];
+  const documents = current.complianceDocuments ?? [];
+
   return (
-    <div className="card space-y-3">
+    <div className="card space-y-4">
       <div>
         <h2 className="section-title">Review</h2>
         <p className="text-sm text-gray-600">
@@ -339,6 +369,7 @@ function ReviewSummary({ current }: { current: VendorListing }) {
           verification below.
         </p>
       </div>
+
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <Detail label="Business name">{current.name}</Detail>
         <Detail label="Category">{category}</Detail>
@@ -353,18 +384,108 @@ function ReviewSummary({ current }: { current: VendorListing }) {
         </Detail>
         <Detail label="Registered address">{current.registeredAddress ?? 'Not provided'}</Detail>
         <Detail label="Contact number">{current.contactPhone ?? 'Not provided'}</Detail>
-        <Detail label="Portfolio photos">{String(current.portfolio?.length ?? 0)}</Detail>
-        <Detail label="Compliance documents">
-          {String(current.complianceDocuments?.length ?? 0)}
-        </Detail>
       </dl>
+
+      {current.description && (
+        <div className="border-t pt-3">
+          <p className="mb-1 text-sm font-medium text-gray-900">Description</p>
+          <p className="text-sm text-gray-700">{current.description}</p>
+        </div>
+      )}
+
+      {/* The actual portfolio images, not a count of them (EZ1-I152). */}
+      <div className="border-t pt-3">
+        <p className="mb-1 text-sm font-medium text-gray-900">
+          Portfolio ({portfolio.length})
+        </p>
+        {portfolio.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {portfolio.map((url) => (
+              <img
+                key={url}
+                src={url}
+                alt=""
+                className="h-20 w-28 rounded-sm object-cover"
+                loading="lazy"
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-amber-700">No photos added yet.</p>
+        )}
+      </div>
+
+      {/* Each compliance document by name, as a link (EZ1-I152). */}
+      <div className="border-t pt-3">
+        <p className="mb-1 text-sm font-medium text-gray-900">
+          Compliance documents ({documents.length})
+        </p>
+        {documents.length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {documents.map((url, i) => (
+              <li key={url}>
+                <a
+                  className="text-sm text-brand-strong underline"
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {decodeURIComponent(url.split('/').pop() ?? `Document ${i + 1}`)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-amber-700">No documents uploaded yet.</p>
+        )}
+      </div>
+
+      {/* Catalogs, services and their priced offerings in full (EZ1-I152). */}
+      {services.length > 0 && (
+        <div className="border-t pt-3">
+          <p className="mb-2 text-sm font-medium text-gray-900">
+            Catalog &amp; services ({services.length})
+          </p>
+          <div className="space-y-2">
+            {services.map((svc) => (
+              <div key={svc.id} className="rounded-sm bg-gray-50 p-2">
+                <p className="text-sm font-medium text-gray-800">
+                  {svc.displayName ?? svc.definition?.name ?? 'Service'}
+                  {svc.category?.name && (
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      {svc.category.name}
+                    </span>
+                  )}
+                </p>
+                {svc.description && (
+                  <p className="mt-0.5 text-xs text-gray-600">{svc.description}</p>
+                )}
+                {svc.offerings.length > 0 ? (
+                  <ul className="mt-1 space-y-0.5 text-sm text-gray-700">
+                    {svc.offerings.map((off) => (
+                      <li key={off.id} className="flex justify-between gap-3">
+                        <span>{off.name}</span>
+                        <span className="tabular-nums text-gray-600">{priceLabel(off)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-400">No offerings priced yet.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 const emptyListing = {
   name: '',
-  category: 'venue',
+  // No category is pre-selected — the vendor must choose one rather than have
+  // "Venue" default in on their behalf (EZ1-I152).
+  category: '',
   otherCategory: '',
   city: '',
   description: '',
@@ -421,7 +542,7 @@ function VendorListingForm({
     if (locked) setEditing(false);
     setForm({
       name: current.name ?? '',
-      category: current.category ?? 'venue',
+      category: current.category ?? '',
       otherCategory: current.otherCategory ?? '',
       city: current.city ?? '',
       description: current.description ?? '',
@@ -440,8 +561,23 @@ function VendorListingForm({
   function validate(): Record<string, string> {
     const errors: Record<string, string> = {};
     if (!form.name.trim()) errors.name = 'Your business needs a name';
+    // Category, city, registered address, a portfolio image and a compliance
+    // document are all mandatory to submit a listing for verification
+    // (EZ1-I152) — an officer cannot verify a business that has named none of
+    // them.
+    if (!form.category) errors.category = 'Choose a category';
     if (form.category === 'other' && !form.otherCategory.trim()) {
       errors.otherCategory = 'Say what you do, so clients can find you';
+    }
+    if (!form.city.trim()) errors.city = 'A city is required';
+    if (!form.registeredAddress.trim()) {
+      errors.registeredAddress = 'A registered address is required — it is where the officer visits';
+    }
+    if (portfolio.length === 0) {
+      errors.portfolio = 'Add at least one portfolio photo';
+    }
+    if (documents.length === 0) {
+      errors.complianceDocuments = 'Upload at least one compliance document';
     }
     if (form.gstNumber && !GSTIN_PATTERN.test(form.gstNumber.toUpperCase())) {
       errors.gstNumber = 'A GSTIN is 15 characters, like 29ABCDE1234F1Z5';
@@ -622,8 +758,9 @@ function VendorListingForm({
         <Field label="Business name" error={fieldErrors.name}>
           <input className="input" value={form.name} onChange={set('name')} />
         </Field>
-        <Field label="Category">
+        <Field label="Category" error={fieldErrors.category}>
           <select className="input" value={form.category} onChange={set('category')}>
+            <option value="">Select category</option>
             {VENDOR_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {CATEGORY_LABEL[c]}
@@ -641,7 +778,7 @@ function VendorListingForm({
             />
           </Field>
         )}
-        <Field label="City">
+        <Field label="City" error={fieldErrors.city}>
           <input className="input" value={form.city} onChange={set('city')} />
         </Field>
       </div>
@@ -666,9 +803,9 @@ function VendorListingForm({
       <div className="border-t pt-3">
         <h3 className="section-title">Portfolio</h3>
         <p className="mb-2 text-sm text-gray-600">
-          Optional. A listing saves perfectly well without photographs, though very few clients
-          book from one that has none.
+          At least one photo is required (EZ1-I152). Clients rarely book from a listing with none.
         </p>
+        {fieldErrors.portfolio && <p className="mb-2 alert-critical">{fieldErrors.portfolio}</p>}
         {portfolio.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {portfolio.map((url) => (
@@ -711,9 +848,12 @@ function VendorListingForm({
       <div className="border-t pt-3">
         <h3 className="section-title">Compliance documents</h3>
         <p className="mb-2 text-sm text-gray-600">
-          Your PAN document is what the officer checks first. GST and any trade licence are
-          useful if you have them. PDF, JPG or PNG.
+          At least one is required (EZ1-I152). Your PAN document is what the officer checks first.
+          GST and any trade licence are useful if you have them. PDF, JPG or PNG.
         </p>
+        {fieldErrors.complianceDocuments && (
+          <p className="mb-2 alert-critical">{fieldErrors.complianceDocuments}</p>
+        )}
         {documents.length > 0 && (
           <ul className="mb-2 divide-y divide-gray-200 rounded-sm border border-gray-200">
             {documents.map((url) => (
@@ -792,7 +932,7 @@ function VendorListingForm({
             />
           </Field>
           <div className="sm:col-span-2">
-            <Field label="Registered address">
+            <Field label="Registered address" error={fieldErrors.registeredAddress}>
               <input
                 className="input"
                 value={form.registeredAddress}

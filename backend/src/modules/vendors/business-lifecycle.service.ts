@@ -75,9 +75,14 @@ export class BusinessLifecycleService {
     // Mandatory: business name, category, PAN and a contact mobile. GST,
     // registration number and trading-since are optional (EZ1-I21) — plenty of
     // legitimate small businesses have no GST registration.
+    // Business name, category, city, registered address, PAN and a contact
+    // mobile are all mandatory to submit (EZ1-I152). GST, registration number
+    // and trading-since stay optional.
     const missingIdentity: string[] = [];
     if (!business.name) missingIdentity.push('business name');
     if (!business.category) missingIdentity.push('category');
+    if (!business.city) missingIdentity.push('city');
+    if (!business.registeredAddress) missingIdentity.push('registered address');
     if (!business.panNumber) missingIdentity.push('PAN number');
     if (!business.contactPhone) missingIdentity.push('contact mobile number');
 
@@ -106,18 +111,22 @@ export class BusinessLifecycleService {
       {
         key: 'documents',
         label: 'Documents',
-        // PAN is what payouts are made against, so it is required; GST is
-        // optional (EZ1-I21). Anything else an officer asks for on the visit.
-        complete: Boolean(business.panNumber),
-        missing: business.panNumber ? null : 'PAN is required',
+        // At least one compliance document is required (EZ1-I152) — an officer
+        // has nothing to check against without one. PAN is covered in the
+        // business details above.
+        complete: (business.complianceDocuments?.length ?? 0) > 0,
+        missing:
+          (business.complianceDocuments?.length ?? 0) > 0
+            ? null
+            : 'Upload at least one compliance document',
       },
       {
         key: 'portfolio',
         label: 'Portfolio',
-        // Genuinely optional, and said so — a vendor should not think they are
-        // blocked by something that is not blocking them.
-        complete: true,
-        missing: (business.portfolio?.length ?? 0) === 0 ? 'Optional, but it sells the work' : null,
+        // At least one portfolio image is required (EZ1-I152).
+        complete: (business.portfolio?.length ?? 0) > 0,
+        missing:
+          (business.portfolio?.length ?? 0) > 0 ? null : 'Add at least one portfolio photo',
       },
     ];
 
