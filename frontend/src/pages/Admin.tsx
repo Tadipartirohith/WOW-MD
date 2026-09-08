@@ -85,20 +85,22 @@ type Section =
   | 'agents'
   | 'vendors'
   | 'planners'
+  | 'officers'
   | 'bookings'
   | 'payments'
   | 'staff'
   | 'reports';
 
-// Dedicated management pages per entity (EZ1-I123): a Users page filtered to the
-// individual roles, and a page each for Agents, Vendors and Wedding Planners,
-// rather than one combined Accounts/Businesses view.
+// Dedicated management pages per user type (EZ1-I123, EZ1-I129): a page each for
+// Users (individuals), Agents, Vendors, Wedding Planners and Verification
+// Officers, rather than one combined Accounts/Businesses view.
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'users', label: 'Users' },
   { key: 'agents', label: 'Agents' },
   { key: 'vendors', label: 'Vendors' },
   { key: 'planners', label: 'Wedding Planners' },
+  { key: 'officers', label: 'Officers' },
   { key: 'bookings', label: 'Bookings' },
   { key: 'payments', label: 'Payments' },
   { key: 'staff', label: 'Staff' },
@@ -211,6 +213,9 @@ export default function Admin() {
       )}
       {section === 'planners' && (
         <Directory title="Wedding Planners" initialRole="planner" roles={['planner']} />
+      )}
+      {section === 'officers' && (
+        <Directory title="Verification Officers" initialRole="in_person" roles={['in_person']} />
       )}
       {section === 'bookings' && <AllBookings />}
       {section === 'payments' && <Payments escrow={analytics?.escrow?.bookings} />}

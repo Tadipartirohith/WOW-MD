@@ -91,6 +91,23 @@ export default function VendorDetail() {
     retry: false,
   });
 
+  // Available slots for the next two months, so the profile shows availability
+  // rather than only offering it inside the booking flow (EZ1-I131, EZ1-I142).
+  const today = new Date();
+  const to = new Date(today.getTime() + 60 * 86_400_000);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const { data: slots = [] } = useQuery({
+    queryKey: ['vendor-availability', id],
+    queryFn: async () =>
+      (
+        await api.get(`/vendors/${id}/availability`, {
+          params: { from: iso(today), to: iso(to) },
+        })
+      ).data as { id: string; date: string; startTime: string; endTime: string; remaining: number }[],
+    enabled: Boolean(id),
+    retry: false,
+  });
+
   if (isLoading) return <Loading rows={4} />;
   if (!vendor) {
     return (
@@ -155,6 +172,33 @@ export default function VendorDetail() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Availability on the profile itself (EZ1-I131, EZ1-I142): the next open
+          dates, so a buyer or planner sees when the vendor is free before asking. */}
+      <div>
+        <h2 className="section-title mb-2">Upcoming availability</h2>
+        {slots.length === 0 ? (
+          <p className="card text-sm text-gray-500">
+            No open dates published for the next two months. You can still send a request and the
+            vendor will confirm.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {slots.slice(0, 24).map((s) => (
+              <span
+                key={s.id}
+                className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700"
+                title={`${s.startTime.slice(0, 5)}–${s.endTime.slice(0, 5)} · ${s.remaining} open`}
+              >
+                {new Date(s.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                <span className="ml-1 text-gray-400">
+                  {s.startTime.slice(0, 5)}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Portfolio gallery beyond the cover */}
