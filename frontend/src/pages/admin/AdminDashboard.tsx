@@ -51,22 +51,31 @@ export default function AdminDashboard() {
     retry: false,
   });
 
-  const cards: { label: string; value: number | string; to: string }[] = analytics
+  /*
+   * Each card wears a different soft gradient (EZ1-I177), drawn from the WOW
+   * palette the design system actually holds — rose/pink, peach (the warm
+   * caution token) and mint (the positive token). The reference also names
+   * lavender, light blue and aqua; those are not tokens in this system, so
+   * they are approximated with the nearest rose/mint rather than hardcoding a
+   * hex that would not theme. Text stays dark for contrast on every one.
+   */
+  const cards: { label: string; value: number | string; to: string; gradient: string }[] = analytics
     ? [
-        { label: 'Users', value: analytics.totalUsers, to: '/admin/users' },
-        { label: 'Agents', value: analytics.totalAgents, to: '/admin/agents' },
-        { label: 'Vendors', value: analytics.totalVendors, to: '/admin/vendors' },
-        { label: 'Planners', value: analytics.totalPlanners, to: '/admin/planners' },
-        { label: 'Bookings', value: analytics.totalBookings, to: '/admin/bookings' },
-        { label: 'Awaiting verification', value: analytics.verification.awaitingAllocation, to: '/verification' },
-        { label: 'Open cases', value: analytics.verification.casesOpen, to: '/verification' },
-        { label: 'Open disputes', value: analytics.openDisputes, to: '/verification' },
+        { label: 'Users', value: analytics.totalUsers, to: '/admin/users', gradient: 'from-brand-100 to-brand-50' },
+        { label: 'Agents', value: analytics.totalAgents, to: '/admin/agents', gradient: 'from-brand-soft to-surface' },
+        { label: 'Vendors', value: analytics.totalVendors, to: '/admin/vendors', gradient: 'from-caution-bg to-surface' },
+        { label: 'Planners', value: analytics.totalPlanners, to: '/admin/planners', gradient: 'from-brand-100 to-surface' },
+        { label: 'Bookings', value: analytics.totalBookings, to: '/admin/bookings', gradient: 'from-brand-soft to-brand-50' },
+        { label: 'Awaiting verification', value: analytics.verification.awaitingAllocation, to: '/verification', gradient: 'from-positive-bg to-surface' },
+        { label: 'Open cases', value: analytics.verification.casesOpen, to: '/verification', gradient: 'from-caution-bg to-brand-50' },
+        { label: 'Open disputes', value: analytics.openDisputes, to: '/verification', gradient: 'from-brand-50 to-surface' },
         {
           label: 'Held in escrow',
           value: `₹${Number(analytics.escrow?.bookings?.held ?? 0).toLocaleString('en-IN')}`,
           to: '/admin/payments?status=held_in_escrow',
+          gradient: 'from-positive-bg to-brand-50',
         },
-        { label: 'Payments', value: analytics.totalBookings, to: '/admin/payments' },
+        { label: 'Payments', value: analytics.totalBookings, to: '/admin/payments', gradient: 'from-positive-bg to-caution-bg' },
       ]
     : [];
 
@@ -79,10 +88,10 @@ export default function AdminDashboard() {
           <Link
             key={c.label}
             to={c.to}
-            className="card text-center transition-colors hover:border-gray-300"
+            className={`card bg-gradient-to-br ${c.gradient} text-center shadow-card transition-shadow duration-150 hover:shadow-lifted`}
           >
             <p className="page-title">{c.value}</p>
-            <p className="text-xs text-gray-500">{c.label}</p>
+            <p className="text-xs text-gray-600">{c.label}</p>
           </Link>
         ))}
       </div>
@@ -144,7 +153,7 @@ export default function AdminDashboard() {
                 <Link
                   key={status}
                   to={`/admin/bookings?status=${status}`}
-                  className="rounded-full bg-gray-100 px-3 py-1 text-sm transition-colors hover:bg-gray-200"
+                  className="rounded-full bg-brand-soft px-3 py-1 text-sm text-brand-strong transition-colors hover:bg-brand-100"
                 >
                   {BOOKING_STATUS_LABEL[status] ?? status}: <strong>{count}</strong>
                 </Link>

@@ -564,7 +564,7 @@ function Layout({ children }: { children: ReactNode }) {
         <aside className="sticky top-0 hidden h-[100dvh] w-[15.5rem] shrink-0 flex-col gap-5 py-5 lg:flex">
           <Wordmark />
           <div className="-mr-2 flex-1 overflow-y-auto pr-2">
-            <Sidebar entries={entries} groups={groups} />
+            <Sidebar entries={entries} groups={groups} gradient={isAdmin} />
           </div>
         </aside>
 
@@ -651,7 +651,12 @@ function Layout({ children }: { children: ReactNode }) {
               border-r border-gray-200 bg-surface p-5"
           >
             <Wordmark />
-            <Sidebar entries={entries} groups={groups} onNavigate={() => setDrawer(false)} />
+            <Sidebar
+              entries={entries}
+              groups={groups}
+              gradient={isAdmin}
+              onNavigate={() => setDrawer(false)}
+            />
           </motion.div>
         </div>
       )}

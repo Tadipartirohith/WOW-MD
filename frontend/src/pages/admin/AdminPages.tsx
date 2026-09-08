@@ -381,7 +381,7 @@ export function AdminPayments() {
         {!isLoading && (
           <table className="w-full min-w-[820px] text-sm">
             <thead>
-              <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+              <tr className="border-b bg-surface-sunken text-left text-xs uppercase tracking-wide text-gray-500 [&>th]:px-2 [&>th]:py-2.5">
                 <th className="pb-2">Date</th>
                 <th className="pb-2">Booking</th>
                 <th className="pb-2">Customer</th>

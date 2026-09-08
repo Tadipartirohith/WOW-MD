@@ -28,11 +28,18 @@ export default function Sidebar({
   entries,
   groups,
   onNavigate,
+  gradient = false,
 }: {
   entries: SidebarEntry[];
   groups: { key: string; title: string | null }[];
   /** Closes the drawer on mobile. Absent on desktop, where nothing closes. */
   onNavigate?: () => void;
+  /**
+   * The WOW rose→peach gradient active state, opt-in per caller (EZ1-I177).
+   * Only the Admin Portal turns it on; every other role keeps the soft flat
+   * highlight, so this stays a presentation change scoped to one surface.
+   */
+  gradient?: boolean;
 }) {
   const { pathname } = useLocation();
   const reduce = useReducedMotion();
@@ -64,7 +71,9 @@ export default function Sidebar({
                       className={`group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm
                         transition-colors duration-150 ${
                           active
-                            ? 'text-brand-strong'
+                            ? gradient
+                              ? 'text-brand-fg'
+                              : 'text-brand-strong'
                             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                     >
@@ -79,7 +88,11 @@ export default function Sidebar({
                       {active && (
                         <motion.span
                           layoutId="nav-active"
-                          className="absolute inset-0 -z-10 rounded-md bg-brand-soft"
+                          className={`absolute inset-0 -z-10 rounded-md ${
+                            gradient
+                              ? 'bg-gradient-to-r from-brand to-brand-strong shadow-btn'
+                              : 'bg-brand-soft'
+                          }`}
                           transition={
                             reduce
                               ? { duration: 0 }
