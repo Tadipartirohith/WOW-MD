@@ -57,7 +57,15 @@ export function AdminBookings() {
   return <AllBookings initialStatus={params.get('status') ?? ''} />;
 }
 
-export function AdminCatalog() {
+/**
+ * Services and catalog, on one screen (EZ1-I174).
+ *
+ * They were two nav items for one job: a service and the packages under it are
+ * created and managed together. CatalogAdmin already holds the whole hierarchy
+ * — categories, the services in each, and every service's booking attributes —
+ * so the merge is a single nav entry pointing at it, not a new component.
+ */
+export function AdminServicesCatalog() {
   return <CatalogAdmin />;
 }
 

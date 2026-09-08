@@ -77,15 +77,14 @@ import AdminLayout, { ADMIN_NAV as ADMIN_PORTAL_NAV } from './pages/admin/AdminL
 import AdminDashboard from './pages/admin/AdminDashboard';
 import {
   AdminAgents,
-  AdminApprovals,
   AdminAuditLogs,
   AdminBookings,
-  AdminCatalog,
   AdminComingSoon,
   AdminOfficers,
   AdminPayments,
   AdminPlanners,
   AdminReports,
+  AdminServicesCatalog,
   AdminUsers,
   AdminVendors,
 } from './pages/admin/AdminPages';
@@ -1073,19 +1072,17 @@ export default function App() {
         <Route path="planners" element={<AdminPlanners />} />
         <Route path="bookings" element={<AdminBookings />} />
         <Route path="payments" element={<AdminPayments />} />
-        <Route path="catalog" element={<AdminCatalog />} />
-        <Route path="approvals" element={<AdminApprovals />} />
+        {/*
+          Services and Catalog are one screen now (EZ1-I174): a service and its
+          packages are managed together, so they are a single nav item. The old
+          /admin/services and /admin/catalog paths redirect here so existing
+          bookmarks keep working.
+        */}
+        <Route path="services-catalog" element={<AdminServicesCatalog />} />
+        <Route path="services" element={<Navigate to="/admin/services-catalog" replace />} />
+        <Route path="catalog" element={<Navigate to="/admin/services-catalog" replace />} />
         <Route path="reports" element={<AdminReports />} />
         <Route path="audit" element={<AdminAuditLogs />} />
-        <Route
-          path="services"
-          element={
-            <AdminComingSoon
-              title="Services"
-              note="A catalogue-wide view of the services vendors offer. The data lives on each business today; a cross-platform services module is not built yet."
-            />
-          }
-        />
         <Route
           path="support"
           element={
@@ -1095,24 +1092,15 @@ export default function App() {
             />
           }
         />
-        <Route
-          path="notifications"
-          element={
-            <AdminComingSoon
-              title="Notifications"
-              note="Platform-wide notification management (broadcasts, templates) is not built yet. Your own notifications live under Notifications in the main navigation."
-            />
-          }
-        />
-        <Route
-          path="security"
-          element={
-            <AdminComingSoon
-              title="Security"
-              note="Platform security controls (access policy, key rotation) are not built yet. Your own sessions and two-factor live under Security in the main navigation."
-            />
-          }
-        />
+        {/*
+          Notifications and Security are the real modules, not placeholders
+          (EZ1-I176). For an administrator the portal nav is the only nav
+          (EZ1-I169), so these routes are how an admin reaches their own
+          notifications and their sessions/two-factor — the same screens the
+          standalone /notifications and /security routes render.
+        */}
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="security" element={<Security />} />
         <Route
           path="settings"
           element={
