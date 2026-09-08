@@ -901,30 +901,41 @@ export class MatchmakingService {
     const existing = await this.interests.findOne({
       where: { fromProfileId: from.id, toProfileId },
     });
-    if (existing) {
-      // A withdrawn or unmatched interest is re-opened rather than duplicated:
-      // the row is the unique pairing, and its history is worth keeping.
-      if (
-        existing.status === InterestStatus.WITHDRAWN ||
-        existing.status === InterestStatus.REJECTED
-      ) {
-        existing.status = InterestStatus.PENDING;
-        existing.endedByUserId = null;
-        existing.endedReason = null;
-        existing.sentByUserId = actor.userId;
-        return this.interests.save(existing);
-      }
+    // An interest that is still live (pending or accepted) needs nothing done —
+    // and, crucially, no cache-busting or re-notification either.
+    if (
+      existing &&
+      existing.status !== InterestStatus.WITHDRAWN &&
+      existing.status !== InterestStatus.REJECTED
+    ) {
       return existing;
     }
 
-    const interest = await this.interests.save(
-      this.interests.create({
-        fromProfileId: from.id,
-        toProfileId,
-        sentByUserId: actor.userId,
-        status: InterestStatus.PENDING,
-      }),
-    );
+    let interest: Interest;
+    if (existing) {
+      // A withdrawn or declined interest is re-opened rather than duplicated:
+      // the row is the unique pairing, and its history is worth keeping. It
+      // then runs through exactly the same side effects as a first-time send
+      // below — the outbox event, the graph edge and the suggestion-cache
+      // invalidation. Skipping those on a resend was the whole of EZ1-I145: the
+      // second interest saved, but the cached cards still read "none", so the
+      // button never moved to "Interest sent" and the recipient was not
+      // re-notified.
+      existing.status = InterestStatus.PENDING;
+      existing.endedByUserId = null;
+      existing.endedReason = null;
+      existing.sentByUserId = actor.userId;
+      interest = await this.interests.save(existing);
+    } else {
+      interest = await this.interests.save(
+        this.interests.create({
+          fromProfileId: from.id,
+          toProfileId,
+          sentByUserId: actor.userId,
+          status: InterestStatus.PENDING,
+        }),
+      );
+    }
     await this.outbox.record({
       eventType: 'match.interest_sent',
       aggregateType: 'interest',
