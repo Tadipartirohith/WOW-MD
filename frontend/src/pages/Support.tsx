@@ -4,6 +4,8 @@ import { api, apiMessage } from '../lib/api';
 import PhotoUploader from '../components/PhotoUploader';
 import { formatDateTime } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
+import { useAuth } from '../store/auth';
+import { isProvider } from '../lib/permissions';
 
 interface SupportCase {
   id: string;
@@ -242,20 +244,42 @@ function Section({
   );
 }
 
-const SUBJECTS: { value: string; label: string; hint?: string }[] = [
+/**
+ * What a case can be raised about, and who it is offered to (EZ1-I149).
+ *
+ * `audience` narrows a category to the people it makes sense for: a vendor's
+ * complaints are about their listing, availability and payouts, never about a
+ * match or a matchmaking profile — those belong to the couples and agents on
+ * the other side of the marketplace. `undefined` means everyone sees it.
+ * Staff (officers, admins) see the full list so they can raise on any subject.
+ */
+type Audience = 'provider' | 'seeker';
+const SUBJECTS: { value: string; label: string; hint?: string; audience?: Audience[] }[] = [
   {
     value: 'booking',
     label: 'A booking',
     hint: 'Any money held on it is frozen until this is settled.',
   },
   { value: 'payment', label: 'A payment or payout' },
-  { value: 'vendor', label: 'My business listing' },
-  { value: 'availability', label: 'Availability' },
-  { value: 'profile', label: 'A profile' },
-  { value: 'match', label: 'A match' },
+  { value: 'vendor', label: 'My business listing', audience: ['provider'] },
+  { value: 'availability', label: 'Availability', audience: ['provider'] },
+  { value: 'profile', label: 'A profile', audience: ['seeker'] },
+  { value: 'match', label: 'A match', audience: ['seeker'] },
   { value: 'account', label: 'My account' },
   { value: 'other', label: 'Something else' },
 ];
+
+function subjectsFor(role?: string) {
+  const provider = isProvider(role);
+  const seeker = role === 'bride' || role === 'groom' || role === 'family' || role === 'agent';
+  return SUBJECTS.filter((s) => {
+    if (!s.audience) return true;
+    if (provider) return s.audience.includes('provider');
+    if (seeker) return s.audience.includes('seeker');
+    // Staff and anyone unclassified see everything.
+    return true;
+  });
+}
 
 function RaiseCase({
   onDone,
@@ -264,6 +288,8 @@ function RaiseCase({
   onDone: (message: string) => void;
   onError: (message: string) => void;
 }) {
+  const role = useAuth((s) => s.user?.role);
+  const subjects = subjectsFor(role);
   const [subjectType, setSubjectType] = useState('other');
   const [subjectId, setSubjectId] = useState('');
   const [title, setTitle] = useState('');
@@ -271,7 +297,7 @@ function RaiseCase({
   const [evidence, setEvidence] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const subject = SUBJECTS.find((s) => s.value === subjectType);
+  const subject = subjects.find((s) => s.value === subjectType);
   const needsSubject = subjectType === 'booking' || subjectType === 'payment';
 
   async function submit(e: FormEvent) {
@@ -310,7 +336,7 @@ function RaiseCase({
               setSubjectId('');
             }}
           >
-            {SUBJECTS.map((s) => (
+            {subjects.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>

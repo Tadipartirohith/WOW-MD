@@ -6,6 +6,7 @@ import { SupportCase } from './entities/support-case.entity';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { VendorAvailabilitySlot } from '../vendors/entities/vendor-availability-slot.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
@@ -28,6 +29,7 @@ import { CatalogModule } from '../catalog/catalog.module';
       User,
       AgentProfile,
       Vendor,
+      VendorAvailabilitySlot,
       Payment,
       Booking,
       PlannerProfile,

@@ -76,6 +76,46 @@ interface SupportCase {
     buyerName: string | null;
     providerName: string | null;
   } | null;
+  /** Case-type-specific investigation context (EZ1-I149). */
+  payments?: {
+    milestone: string;
+    status: string;
+    amount: string;
+    payoutAmount: string;
+    payoutNote: string | null;
+  }[] | null;
+  business?: {
+    id: string;
+    name: string;
+    category: string;
+    city: string | null;
+    status: string;
+    isApproved: boolean;
+    gstNumber: string | null;
+    panNumber: string | null;
+    tradingSince: string | null;
+    verifiedAt: string | null;
+    decisionReason: string | null;
+    revisionCount: number;
+  } | null;
+  account?: {
+    email: string | null;
+    role: string | null;
+    isActive: boolean;
+  } | null;
+  availability?: {
+    upcoming: number;
+    conflicts: number;
+    slots: {
+      date: string;
+      startTime: string;
+      endTime: string;
+      capacity: number;
+      confirmed: number;
+      pending: number;
+      status: string;
+    }[];
+  } | null;
 }
 
 interface Officer {
@@ -1075,6 +1115,83 @@ function CaseRow({
             {item.booking.providerName ? ` · Provider: ${item.booking.providerName}` : ''}
           </p>
         </div>
+      )}
+
+      {/* The escrow behind a booking or payout case, so the officer sees the
+          money it is actually about and not just the booking total (EZ1-I149). */}
+      {item.payments && item.payments.length > 0 && (
+        <div className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">Escrow</p>
+          <ul className="mt-1 space-y-0.5">
+            {item.payments.map((p, i) => (
+              <li key={i} className="text-gray-600">
+                <span className="capitalize">{p.milestone.replace(/_/g, ' ')}</span> ·{' '}
+                <span className="capitalize">{p.status.replace(/_/g, ' ')}</span> ·{' '}
+                {Number(p.amount).toLocaleString('en-IN')}
+                {Number(p.payoutAmount) > 0
+                  ? ` · payout ${Number(p.payoutAmount).toLocaleString('en-IN')}`
+                  : ''}
+                {p.payoutNote ? ` · ${p.payoutNote}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* The business's own row for a listing complaint — its standing and the
+          compliance details an officer would otherwise open Verification for
+          (EZ1-I149). */}
+      {item.business && (
+        <div className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">
+            {item.business.name} · <span className="capitalize">{item.business.category.replace(/_/g, ' ')}</span>
+          </p>
+          <p className="text-gray-600">
+            <span className="capitalize">{item.business.status.replace(/_/g, ' ')}</span>
+            {item.business.isApproved ? ' · approved' : ' · not approved'}
+            {item.business.city ? ` · ${item.business.city}` : ''}
+            {item.business.revisionCount > 0 ? ` · ${item.business.revisionCount} revisions` : ''}
+          </p>
+          <p className="text-gray-600">
+            {item.business.gstNumber ? `GST ${item.business.gstNumber}` : 'No GST'}
+            {item.business.panNumber ? ` · PAN ${item.business.panNumber}` : ''}
+            {item.business.tradingSince ? ` · trading since ${item.business.tradingSince}` : ''}
+          </p>
+          {item.business.decisionReason && (
+            <p className="text-gray-600">Last decision: {item.business.decisionReason}</p>
+          )}
+        </div>
+      )}
+
+      {/* The vendor's upcoming windows and any overbooked ones, for an
+          availability complaint (EZ1-I149). */}
+      {item.availability && (
+        <div className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">
+            Availability · {item.availability.upcoming} upcoming
+            {item.availability.conflicts > 0 ? ` · ${item.availability.conflicts} overbooked` : ''}
+          </p>
+          {item.availability.slots.length > 0 && (
+            <ul className="mt-1 space-y-0.5">
+              {item.availability.slots.map((s, i) => (
+                <li key={i} className="text-gray-600">
+                  {s.date} {s.startTime}–{s.endTime} · {s.confirmed}/{s.capacity} booked
+                  {s.pending > 0 ? ` · ${s.pending} pending` : ''} ·{' '}
+                  <span className="capitalize">{s.status.replace(/_/g, ' ')}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* The account's standing for an account complaint (EZ1-I149). */}
+      {item.account && (
+        <p className="rounded-sm bg-gray-50 p-2 text-sm text-gray-700">
+          Account {item.account.email ?? ''}
+          {item.account.role ? ` · ${item.account.role}` : ''} ·{' '}
+          {item.account.isActive ? 'active' : 'suspended'}
+        </p>
       )}
 
       {item.milestone && (

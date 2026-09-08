@@ -152,4 +152,53 @@ export class SupportCase {
     buyerName: string | null;
     providerName: string | null;
   } | null;
+
+  /**
+   * Case-type-specific investigation context, filled in on read (EZ1-I149).
+   *
+   * An officer investigating a payout needs the escrow breakdown, one looking at
+   * a listing needs the business's compliance row, an availability complaint
+   * needs the slots and their conflicts, and an account complaint needs the
+   * account's standing. None are columns — they are resolved from the subject so
+   * the officer has the whole picture without opening four other screens.
+   */
+  payments?: {
+    milestone: string;
+    status: string;
+    amount: string;
+    payoutAmount: string;
+    payoutNote: string | null;
+  }[] | null;
+  business?: {
+    id: string;
+    name: string;
+    category: string;
+    city: string | null;
+    status: string;
+    isApproved: boolean;
+    gstNumber: string | null;
+    panNumber: string | null;
+    tradingSince: string | null;
+    verifiedAt: Date | null;
+    decisionReason: string | null;
+    revisionCount: number;
+  } | null;
+  account?: {
+    email: string | null;
+    role: string | null;
+    isActive: boolean;
+  } | null;
+  availability?: {
+    upcoming: number;
+    conflicts: number;
+    slots: {
+      date: string;
+      startTime: string;
+      endTime: string;
+      capacity: number;
+      confirmed: number;
+      pending: number;
+      status: string;
+    }[];
+  } | null;
 }

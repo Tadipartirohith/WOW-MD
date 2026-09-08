@@ -11,6 +11,7 @@ import { User } from '../auth/entities/user.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
+import { VendorAvailabilitySlot } from '../vendors/entities/vendor-availability-slot.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Profile } from '../users/entities/profile.entity';
 import {
@@ -79,6 +80,8 @@ export class SupportCasesService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(VendorAvailabilitySlot)
+    private readonly slots: Repository<VendorAvailabilitySlot>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     private readonly audit: AuditService,
@@ -97,32 +100,50 @@ export class SupportCasesService {
     const raiserIds = [...new Set(rows.map((r) => r.raisedByUserId).filter(Boolean))] as string[];
     const [raiserUsers, raiserProfiles] = await Promise.all([
       raiserIds.length
-        ? this.users.find({ where: { id: In(raiserIds) }, select: ['id', 'email', 'role'] })
+        ? this.users.find({
+            where: { id: In(raiserIds) },
+            select: ['id', 'email', 'role', 'isActive'],
+          })
         : [],
       raiserIds.length ? this.profiles.find({ where: { userId: In(raiserIds) } }) : [],
     ]);
     const userById = new Map(raiserUsers.map((u) => [u.id, u]));
     const nameByUser = new Map(raiserProfiles.map((p) => [p.userId, p.displayName]));
 
-    // Bookings behind BOOKING cases (subjectId is the booking) and PAYMENT cases
-    // (subjectId is a payment, which points at a booking).
-    const bookingCaseIds = rows
-      .filter((r) => r.subjectType === CaseSubject.BOOKING && r.subjectId)
-      .map((r) => r.subjectId as string);
-    const paymentCaseIds = rows
-      .filter((r) => r.subjectType === CaseSubject.PAYMENT && r.subjectId)
-      .map((r) => r.subjectId as string);
-    const payments = paymentCaseIds.length
-      ? await this.payments.find({ where: { id: In(paymentCaseIds) } })
-      : [];
-    const bookingIdByPayment = new Map(payments.map((p) => [p.id, p.bookingId]));
+    // BOOKING and PAYMENT cases both carry a booking id in subjectId: the
+    // support form asks for a booking reference, and the settlement-request flow
+    // stores the booking directly. (Previously PAYMENT subjectIds were looked up
+    // as payment ids and never matched, so payout cases showed no context —
+    // EZ1-I149.)
     const allBookingIds = [
-      ...new Set([...bookingCaseIds, ...payments.map((p) => p.bookingId)]),
+      ...new Set(
+        rows
+          .filter(
+            (r) =>
+              (r.subjectType === CaseSubject.BOOKING ||
+                r.subjectType === CaseSubject.PAYMENT) &&
+              r.subjectId,
+          )
+          .map((r) => r.subjectId as string),
+      ),
     ];
     const bookings = allBookingIds.length
       ? await this.bookings.find({ where: { id: In(allBookingIds) } })
       : [];
     const bookingById = new Map(bookings.map((b) => [b.id, b]));
+
+    // The escrow breakdown behind those bookings, so a payout case shows the
+    // officer the money it is actually about — held, released, refunded or stuck
+    // — and not just the booking total (EZ1-I149).
+    const bookingPayments = allBookingIds.length
+      ? await this.payments.find({ where: { bookingId: In(allBookingIds) } })
+      : [];
+    const paymentsByBooking = new Map<string, Payment[]>();
+    for (const p of bookingPayments) {
+      const list = paymentsByBooking.get(p.bookingId) ?? [];
+      list.push(p);
+      paymentsByBooking.set(p.bookingId, list);
+    }
 
     // Party names for those bookings: buyer display name, and the provider's
     // business name resolved per provider type.
@@ -151,11 +172,10 @@ export class SupportCasesService {
       row.raisedByRole = user?.role ?? null;
 
       const bookingId =
-        row.subjectType === CaseSubject.BOOKING
+        row.subjectType === CaseSubject.BOOKING ||
+        row.subjectType === CaseSubject.PAYMENT
           ? row.subjectId
-          : row.subjectType === CaseSubject.PAYMENT && row.subjectId
-            ? (bookingIdByPayment.get(row.subjectId) ?? null)
-            : null;
+          : null;
       const booking = bookingId ? bookingById.get(bookingId) : null;
       row.booking = booking
         ? {
@@ -170,8 +190,115 @@ export class SupportCasesService {
                 : (plannerNameById.get(booking.providerId) ?? null),
           }
         : null;
+
+      // Escrow breakdown for a booking or payout case.
+      const casePayments = bookingId ? paymentsByBooking.get(bookingId) : null;
+      row.payments =
+        casePayments && casePayments.length
+          ? casePayments.map((p) => ({
+              milestone: p.milestone,
+              status: p.status,
+              amount: p.amount,
+              payoutAmount: p.payoutAmount,
+              payoutNote: p.payoutNote,
+            }))
+          : null;
     }
+
+    await this.enrichSubjectContext(rows, userById);
     return rows;
+  }
+
+  /**
+   * Context for the cases that are not about a booking — a business listing, the
+   * vendor's availability, or their account (EZ1-I149). The support form does
+   * not collect a subject id for these, so each is resolved from the account
+   * that raised it: the officer opening an availability complaint sees the slots
+   * and their conflicts, a listing complaint sees the compliance row, and an
+   * account complaint sees whether the account is even still active.
+   */
+  private async enrichSubjectContext(
+    rows: SupportCase[],
+    userById: Map<string, User>,
+  ): Promise<void> {
+    const businessCases = rows.filter(
+      (r) =>
+        r.subjectType === CaseSubject.VENDOR ||
+        r.subjectType === CaseSubject.AVAILABILITY,
+    );
+    const ownerIds = [
+      ...new Set(businessCases.map((r) => r.raisedByUserId).filter(Boolean)),
+    ] as string[];
+    const ownedVendors = ownerIds.length
+      ? await this.vendors.find({ where: { ownerUserId: In(ownerIds) } })
+      : [];
+    const vendorByOwner = new Map(ownedVendors.map((v) => [v.ownerUserId, v]));
+
+    // Upcoming slots for those vendors, so an availability complaint can show
+    // the windows and any that are overbooked.
+    const today = new Date().toISOString().slice(0, 10);
+    const vendorIds = ownedVendors.map((v) => v.id);
+    const upcomingSlots = vendorIds.length
+      ? await this.slots.find({
+          where: {
+            providerType: ProviderType.VENDOR,
+            providerId: In(vendorIds),
+          },
+        })
+      : [];
+    const slotsByVendor = new Map<string, VendorAvailabilitySlot[]>();
+    for (const s of upcomingSlots) {
+      if (s.date < today) continue;
+      const list = slotsByVendor.get(s.providerId) ?? [];
+      list.push(s);
+      slotsByVendor.set(s.providerId, list);
+    }
+
+    for (const row of rows) {
+      if (row.subjectType === CaseSubject.ACCOUNT) {
+        const user = row.raisedByUserId ? userById.get(row.raisedByUserId) : null;
+        row.account = user
+          ? { email: user.email ?? null, role: user.role ?? null, isActive: user.isActive }
+          : null;
+        continue;
+      }
+
+      const vendor = row.raisedByUserId ? vendorByOwner.get(row.raisedByUserId) : null;
+      if (row.subjectType === CaseSubject.VENDOR) {
+        row.business = vendor
+          ? {
+              id: vendor.id,
+              name: vendor.name,
+              category: vendor.category,
+              city: vendor.city ?? null,
+              status: vendor.status,
+              isApproved: vendor.isApproved,
+              gstNumber: vendor.gstNumber,
+              panNumber: vendor.panNumber,
+              tradingSince: vendor.tradingSince,
+              verifiedAt: vendor.verifiedAt,
+              decisionReason: vendor.decisionReason,
+              revisionCount: vendor.revisionCount,
+            }
+          : null;
+      } else if (row.subjectType === CaseSubject.AVAILABILITY) {
+        const slots = vendor ? (slotsByVendor.get(vendor.id) ?? []) : [];
+        const ordered = [...slots].sort((a, b) => a.date.localeCompare(b.date));
+        row.availability = {
+          upcoming: ordered.length,
+          conflicts: ordered.filter((s) => s.confirmed > s.capacity).length,
+          slots: ordered.slice(0, 10).map((s) => ({
+            date: s.date,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            capacity: s.capacity,
+            confirmed: s.confirmed,
+            pending: s.pending,
+            status: s.status,
+          })),
+        };
+      }
+    }
   }
 
   async raise(actor: AuthUser, dto: RaiseCaseDto): Promise<SupportCase> {
@@ -478,7 +605,32 @@ export class SupportCasesService {
       caseId,
       message: `A ${item.subjectType} support case has been allocated to you: ${item.title}`,
     });
+    // And the vendor who raised it should see it move rather than sit on OPEN
+    // (EZ1-I149 — notify on every transition, not only at resolution).
+    await this.notifyRaiser(
+      saved,
+      returning
+        ? `Your ${item.subjectType} case is being looked at again: ${item.title}`
+        : `Your ${item.subjectType} case is now with an investigator: ${item.title}`,
+    );
     return saved;
+  }
+
+  /**
+   * Tell whoever raised a case that it moved (EZ1-I149).
+   *
+   * The lifecycle already told them at resolution; a vendor watching a case
+   * should also see it picked up, worked, parked on them for information, or
+   * escalated, rather than staring at a status word that never changes until
+   * the end. Silent when nobody raised it, and harmless when the raiser is the
+   * actor.
+   */
+  private async notifyRaiser(item: SupportCase, message: string): Promise<void> {
+    if (!item.raisedByUserId) return;
+    await this.notifications.create(item.raisedByUserId, NotificationType.DISPUTE_UPDATE, {
+      caseId: item.id,
+      message,
+    });
   }
 
   /**
@@ -517,7 +669,13 @@ export class SupportCasesService {
       ...item.history,
       { at: new Date().toISOString(), byUserId: actor.userId, status: item.status, note: dto.findings },
     ];
-    return this.cases.save(item);
+    const saved = await this.cases.save(item);
+    // The vendor sees it is actively being worked (EZ1-I149). The findings
+    // themselves stay internal until an outcome is recorded.
+    if (item.status === CaseStatus.IN_PROGRESS) {
+      await this.notifyRaiser(saved, `Your ${item.subjectType} case is being looked into: ${item.title}`);
+    }
+    return saved;
   }
 
   /**
@@ -560,6 +718,12 @@ export class SupportCasesService {
       resourceId: saved.id,
       metadata: { escalated: true, reason },
     });
+    // The vendor should know a visit is being arranged rather than that their
+    // case has gone quiet (EZ1-I149).
+    await this.notifyRaiser(
+      saved,
+      `Your ${saved.subjectType} case has been escalated for a visit: ${saved.title}`,
+    );
     return saved;
   }
 
@@ -586,7 +750,11 @@ export class SupportCasesService {
         note,
       },
     ];
-    return this.cases.save(supportCase);
+    const saved = await this.cases.save(supportCase);
+    // Parking a case on the vendor is worth nothing if they are not told they
+    // are the one holding it up (EZ1-I149).
+    await this.notifyRaiser(saved, `Your ${saved.subjectType} case needs more from you: ${note}`);
+    return saved;
   }
 
   /** Adds evidence to an open case — proof rarely all arrives at once. */
