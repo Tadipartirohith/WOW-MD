@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from '@phosphor-icons/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
@@ -17,12 +18,21 @@ import ChoiceField from '../components/ChoiceField';
 import {
   CASTES_BY_RELIGION,
   CITIES,
+  KUJA_DOSHAM,
   MOTHER_TONGUES,
+  NAKSHATRAS,
+  PADAMS,
   PROFESSIONS,
   QUALIFICATIONS,
+  RASHIS,
   RELIGIONS,
 } from '../lib/reference';
-import { MARITAL_LABEL, OCCUPATION_LABEL } from '../lib/permissions';
+import {
+  MARITAL_LABEL,
+  MaritalStatus,
+  OCCUPATION_LABEL,
+  OccupationStatus,
+} from '../lib/permissions';
 import { formatDate } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
 
@@ -70,6 +80,11 @@ interface Filters {
   maritalStatus: string;
   occupationStatus: string;
   minScore: string;
+  rashi: string;
+  star: string;
+  padam: string;
+  gothram: string;
+  kujaDosham: string;
   sort: string;
   addedWithinDays: string;
 }
@@ -89,6 +104,11 @@ const NO_FILTERS: Filters = {
   maritalStatus: '',
   occupationStatus: '',
   minScore: '',
+  rashi: '',
+  star: '',
+  padam: '',
+  gothram: '',
+  kujaDosham: '',
   /*
    * Newest first by default, because the middle panel is "recently added" and
    * the filters beside it are what shape it. Somebody who wants it scored
@@ -106,6 +126,35 @@ const SORTS: { value: string; label: string }[] = [
   { value: 'age', label: 'Youngest first' },
   { value: 'ageDesc', label: 'Oldest first' },
 ];
+
+/**
+ * How each active filter reads on its removable chip.
+ *
+ * `sort` is deliberately absent: it is always set to something and is not an
+ * applied filter (see activeFilterCount), so it never earns a chip.
+ */
+const FILTER_LABEL: Partial<Record<keyof Filters, string>> = {
+  q: 'Search',
+  ageMin: 'Age from',
+  ageMax: 'Age to',
+  heightMinCm: 'Height from',
+  heightMaxCm: 'Height to',
+  religion: 'Religion',
+  caste: 'Community',
+  motherTongue: 'Mother tongue',
+  city: 'City',
+  qualification: 'Education',
+  profession: 'Profession',
+  maritalStatus: 'Marital status',
+  occupationStatus: 'Occupation',
+  minScore: 'Min match',
+  rashi: 'Rashi',
+  star: 'Star',
+  padam: 'Padam',
+  gothram: 'Gothram',
+  kujaDosham: 'Kuja dosham',
+  addedWithinDays: 'Added within',
+};
 
 const PAGE_SIZE = 12;
 
@@ -235,11 +284,39 @@ export default function Matches() {
   const setField = (key: keyof Filters) => (value: string) =>
     setFilters((f) => ({ ...f, [key]: value }));
 
+  const clearField = (key: keyof Filters) =>
+    setFilters((f) => ({ ...f, [key]: NO_FILTERS[key] }));
+
   // The default sort is not something the user chose, so it does not count as
   // an applied filter — badging "1 applied" on an untouched page is noise.
-  const activeFilterCount = Object.entries(filters).filter(
+  const activeFilters = (Object.entries(filters) as [keyof Filters, string][]).filter(
     ([key, value]) => value !== '' && !(key === 'sort' && value === NO_FILTERS.sort),
-  ).length;
+  );
+  const activeFilterCount = activeFilters.length;
+
+  // A backwards range is a mistake worth catching before it silently returns an
+  // empty list. Both layers still work — the server just gets a floor above its
+  // ceiling — but saying so is kinder than a blank page.
+  const num = (v: string) => (v === '' ? null : Number(v));
+  const ageInverted =
+    num(filters.ageMin) !== null &&
+    num(filters.ageMax) !== null &&
+    (num(filters.ageMin) as number) > (num(filters.ageMax) as number);
+  const heightInverted =
+    num(filters.heightMinCm) !== null &&
+    num(filters.heightMaxCm) !== null &&
+    (num(filters.heightMinCm) as number) > (num(filters.heightMaxCm) as number);
+
+  // What a chip says after its label — codes read as their labels, and the two
+  // "within N days" and "N%" filters carry their unit so the chip stands alone.
+  const chipValue = (key: keyof Filters, value: string): string => {
+    if (key === 'maritalStatus') return MARITAL_LABEL[value as MaritalStatus] ?? value;
+    if (key === 'occupationStatus') return OCCUPATION_LABEL[value as OccupationStatus] ?? value;
+    if (key === 'minScore') return `${value}%`;
+    if (key === 'addedWithinDays') return `${value} days`;
+    if (key === 'heightMinCm' || key === 'heightMaxCm') return `${value} cm`;
+    return value;
+  };
 
   const suggestions: Suggestion[] = data?.data ?? [];
   const total: number = data?.meta?.total ?? suggestions.length;
@@ -334,7 +411,7 @@ export default function Matches() {
                         setPages(1);
                       }}
                     >
-                      Clear
+                      Clear all
                     </button>
                   )}
                   <button className="btn-outline text-xs" onClick={() => setShowFilters((f) => !f)}>
@@ -342,6 +419,31 @@ export default function Matches() {
                   </button>
                 </div>
               </div>
+
+              {/*
+                Each applied filter as a chip that removes itself. The count
+                above says how many are on; a chip says which, and takes it off
+                without opening the panel to hunt for the control that set it.
+              */}
+              {activeFilterCount > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {activeFilters.map(([key, value]) => (
+                    <button
+                      key={key}
+                      className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark hover:bg-brand-light/70"
+                      onClick={() => {
+                        clearField(key);
+                        setPages(1);
+                      }}
+                    >
+                      <span className="text-brand-dark/60">{FILTER_LABEL[key] ?? key}:</span>
+                      {chipValue(key, value)}
+                      <X size={11} weight="bold" aria-hidden />
+                      <span className="sr-only">Remove filter</span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/*
                 One box for name, profile code and keyword. The person typing
@@ -410,6 +512,9 @@ export default function Matches() {
                 >
                   <Filter label="Age from" value={filters.ageMin} onChange={setField('ageMin')} type="number" />
                   <Filter label="Age to" value={filters.ageMax} onChange={setField('ageMax')} type="number" />
+                  {ageInverted && (
+                    <p className="text-xs text-red-600">Age from must be less than or equal to age to.</p>
+                  )}
                   {/*
                     Searchable dropdowns off the same master data as the biodata
                     fills, not free text — so a filter for "Telugu" cannot miss
@@ -430,6 +535,11 @@ export default function Matches() {
                     onChange={setField('heightMaxCm')}
                     type="number"
                   />
+                  {heightInverted && (
+                    <p className="text-xs text-red-600">
+                      Height from must be less than or equal to height to.
+                    </p>
+                  )}
                   <ChoiceField
                     label="Religion"
                     value={filters.religion}
@@ -490,6 +600,47 @@ export default function Matches() {
                       ))}
                     </select>
                   </label>
+
+                  {/*
+                    Horoscope filters (EZ1-I163), off the same lists the biodata
+                    chart was filled from — so a filter matches the value a
+                    profile actually saved. Rashi, star and padam are closed
+                    lists; gothram runs to thousands, so it is a free box like
+                    it is on the biodata form.
+                  */}
+                  <ChoiceField
+                    label="Rashi"
+                    value={filters.rashi}
+                    onChange={setField('rashi')}
+                    options={RASHIS}
+                    allowOther={false}
+                    placeholder="Any"
+                  />
+                  <ChoiceField
+                    label="Star / Nakshatram"
+                    value={filters.star}
+                    onChange={setField('star')}
+                    options={NAKSHATRAS}
+                    allowOther={false}
+                    placeholder="Any"
+                  />
+                  <ChoiceField
+                    label="Padam"
+                    value={filters.padam}
+                    onChange={setField('padam')}
+                    options={PADAMS}
+                    allowOther={false}
+                    placeholder="Any"
+                  />
+                  <Filter label="Gothram" value={filters.gothram} onChange={setField('gothram')} />
+                  <ChoiceField
+                    label="Kuja Dosham"
+                    value={filters.kujaDosham}
+                    onChange={setField('kujaDosham')}
+                    options={KUJA_DOSHAM}
+                    allowOther={false}
+                    placeholder="Any"
+                  />
                 </div>
               )}
             </div>
@@ -692,6 +843,8 @@ export default function Matches() {
                 />
               </dl>
 
+              <ConfirmProgress match={m} />
+
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   className="btn-outline text-xs"
@@ -759,6 +912,43 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * The three steps from an accepted interest to a fixed match, as a strip.
+ *
+ * The dates above say when each thing happened; this says what is left. A
+ * family reading "You confirmed / Not yet" twice could not tell whose turn it
+ * was — the strip lights the step that is done and names the one that is next.
+ */
+function ConfirmProgress({ match }: { match: AcceptedMatch }) {
+  const youDone = Boolean(match.confirmedByYouAt);
+  const themDone = Boolean(match.confirmedByThemAt);
+  const complete = match.matchFixedState === 'confirmed';
+  const steps = [
+    { label: 'You confirmed', done: youDone },
+    { label: 'Waiting for them', done: themDone },
+    { label: 'Match complete', done: complete },
+  ];
+  return (
+    <ol className="mt-3 flex items-center gap-1 text-[0.6875rem]">
+      {steps.map((step, i) => (
+        <li key={step.label} className="flex flex-1 items-center gap-1">
+          <span
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[0.625rem] font-semibold ${
+              step.done ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-400'
+            }`}
+          >
+            {step.done ? '✓' : i + 1}
+          </span>
+          <span className={step.done ? 'text-gray-700' : 'text-gray-400'}>{step.label}</span>
+          {i < steps.length - 1 && (
+            <span className={`h-px flex-1 ${step.done ? 'bg-emerald-200' : 'bg-gray-200'}`} />
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function FixedBadge({ match }: { match: AcceptedMatch }) {
   if (match.matchFixedState === 'confirmed') {
     return (
@@ -799,14 +989,14 @@ function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
   if (hasFilters) {
     return (
       <div className="rounded-sm border border-dashed border-gray-300 p-4 text-sm">
-        <p className="font-medium text-gray-700">Nothing matches those filters.</p>
+        <p className="font-medium text-gray-700">No profiles match your current filters.</p>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-gray-600">
           <li>Widen the age or height range</li>
           <li>Clear the city, good matches are often one town over</li>
           <li>Drop the caste or mother-tongue filter and see what is there</li>
         </ul>
         <button className="btn-outline mt-3 text-xs" onClick={onClear}>
-          Clear all filters
+          Clear Filters
         </button>
       </div>
     );

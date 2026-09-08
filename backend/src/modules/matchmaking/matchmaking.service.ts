@@ -712,6 +712,11 @@ export class MatchmakingService {
     add('sort', q.sort);
     add('new', q.addedWithinDays);
     add('prof', q.profession);
+    add('rashi', q.rashi);
+    add('star', q.star);
+    add('padam', q.padam);
+    add('goth', q.gothram);
+    add('kuja', q.kujaDosham);
     add('q', q.q);
     add('short', q.shortlistedOnly);
     return parts.length ? parts.join('|') : 'none';
@@ -784,7 +789,12 @@ export class MatchmakingService {
       Boolean(q.qualification) ||
       Boolean(q.maritalStatus) ||
       Boolean(q.occupationStatus) ||
-      Boolean(q.profession);
+      Boolean(q.profession) ||
+      Boolean(q.rashi) ||
+      Boolean(q.star) ||
+      Boolean(q.padam) ||
+      Boolean(q.gothram) ||
+      Boolean(q.kujaDosham);
 
     if (!wantsBiodata || pool.length === 0) return pool;
 
@@ -819,6 +829,19 @@ export class MatchmakingService {
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(wanted)) return false;
+      }
+      // The chart is a JSON block gated by horoscopeAvailable (EZ1-I163): a
+      // profile that keeps no horoscope has an empty chart, so any horoscope
+      // filter drops it, exactly as the biodata filters drop a missing row.
+      if (q.rashi || q.star || q.padam || q.gothram || q.kujaDosham) {
+        const chart = (d.horoscopeAvailable ? (d.horoscope ?? {}) : {}) as Record<string, unknown>;
+        const chartText = (value: unknown): string | null =>
+          typeof value === 'string' && value.trim() ? value : null;
+        if (!same(chartText(chart.rashi), q.rashi)) return false;
+        if (!same(chartText(chart.star), q.star)) return false;
+        if (!same(chartText(chart.padam), q.padam)) return false;
+        if (!same(chartText(chart.gothram), q.gothram)) return false;
+        if (!same(chartText(chart.kujaDosham), q.kujaDosham)) return false;
       }
       return true;
     });

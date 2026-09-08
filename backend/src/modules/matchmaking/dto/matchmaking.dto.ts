@@ -111,6 +111,34 @@ export class SuggestionsQueryDto extends PaginationDto {
   @IsOptional() @IsString() @MaxLength(120)
   profession?: string;
 
+  /*
+   * The horoscope filters (EZ1-I163).
+   *
+   * Matched against the chart a profile saved in its biodata — the same rashi,
+   * star, padam, gothram and kuja dosham the card already shows. Like the other
+   * biodata filters, a profile with no chart is dropped once any of these is
+   * set: an unknown in a filtered list is how the filter loses its meaning.
+   */
+  @ApiPropertyOptional({ maxLength: 60, description: 'Rashi' })
+  @IsOptional() @IsString() @MaxLength(60)
+  rashi?: string;
+
+  @ApiPropertyOptional({ maxLength: 60, description: 'Star / Nakshatram' })
+  @IsOptional() @IsString() @MaxLength(60)
+  star?: string;
+
+  @ApiPropertyOptional({ maxLength: 20, description: 'Padam' })
+  @IsOptional() @IsString() @MaxLength(20)
+  padam?: string;
+
+  @ApiPropertyOptional({ maxLength: 60, description: 'Gothram' })
+  @IsOptional() @IsString() @MaxLength(60)
+  gothram?: string;
+
+  @ApiPropertyOptional({ maxLength: 20, description: 'Kuja Dosham' })
+  @IsOptional() @IsString() @MaxLength(20)
+  kujaDosham?: string;
+
   /**
    * Name, profile code, or a word from the biodata.
    *

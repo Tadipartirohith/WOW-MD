@@ -87,8 +87,8 @@ const DIMENSION_LABEL: Record<string, string> = {
 const INTERACTION_LABEL: Record<InteractionState, string | null> = {
   none: null,
   interest_sent: 'Interest sent',
-  interest_received: 'They are interested',
-  accepted: 'Matched',
+  interest_received: 'Interest received',
+  accepted: 'Accepted',
   declined_by_you: 'You declined',
   declined_by_them: 'They declined',
 };
