@@ -66,11 +66,22 @@ export const ADMIN_NAV: AdminNavEntry[] = [
 ];
 
 export default function AdminLayout() {
+  const role = useAuth((s) => s.user?.role);
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const entries = ADMIN_NAV.filter((e) => canAny(permissions, e.requires));
 
+  /*
+   * The administrator's portal nav lives in the application's left rail now
+   * (EZ1-I169), so rendering it a second time here would put two identical
+   * navigations on every admin screen. The inline nav stays only for the rare
+   * non-admin who reaches a module by capability alone, whose left rail carries
+   * the generic application nav rather than this one.
+   */
+  const showNav = role !== 'admin';
+
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
+      {showNav && (
       <nav
         aria-label="Admin"
         className="-mx-1 flex shrink-0 gap-1 overflow-x-auto pb-1 lg:mx-0 lg:w-56 lg:flex-col lg:overflow-visible lg:pb-0"
@@ -95,6 +106,7 @@ export default function AdminLayout() {
           </NavLink>
         ))}
       </nav>
+      )}
 
       <div className="min-w-0 flex-1">
         <Outlet />

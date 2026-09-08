@@ -45,7 +45,7 @@ import {
   UserCircle,
   Warning,
 } from '@phosphor-icons/react';
-import Sidebar from './components/Sidebar';
+import Sidebar, { SidebarEntry } from './components/Sidebar';
 import ErrorBoundary from './components/ErrorBoundary';
 import { useTheme } from './store/theme';
 import { motion, useReducedMotion } from 'motion/react';
@@ -72,7 +72,7 @@ import Genie from './pages/Genie';
 import Events from './pages/Events';
 import Travel from './pages/Travel';
 import Media from './pages/Media';
-import AdminLayout from './pages/admin/AdminLayout';
+import AdminLayout, { ADMIN_NAV as ADMIN_PORTAL_NAV } from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import {
   AdminAgents,
@@ -508,32 +508,44 @@ function Layout({ children }: { children: ReactNode }) {
   };
 
   const permissions = user?.permissions ?? [];
-  const visible = NAV.filter(
-    (n) =>
-      !(user && navDenied(n, user.role)) &&
-      (n.requires.length === 0 || canAny(permissions, n.requires)),
-  );
+  const isAdmin = user?.role === 'admin';
   const unread = useUnreadCount();
 
   /*
-   * An administrator gets no group headings.
+   * For an administrator the left rail *is* the admin portal navigation
+   * (EZ1-I169). The portal nav — Users, Agents, Vendors, Payments, Audit
+   * Logs — used to render a second time inside AdminLayout, so every admin
+   * screen carried two navigations: the generic application rail (Dashboard,
+   * Bookings, Verification, Admin, …) and the portal submenu, with the same
+   * destinations under different names. Making the portal nav the single rail
+   * removes the duplication; the generic nav no longer renders for an admin at
+   * all. Every other persona keeps its capability-filtered application nav.
    *
-   * The headings are the consumer's vocabulary — "The wedding", "Your
-   * business" — which is right for the twenty-odd destinations a couple or a
-   * vendor sees and reads as nonsense over an operations console: Bookings
-   * filed under somebody's wedding, Accounts under a business the
-   * administrator does not have. Eight entries do not need banding anyway;
-   * grouping earns its place at about fifteen.
+   * The admin's flat list of operations screens gets no group headings: the
+   * headings are the consumer's vocabulary — "The wedding", "Your business" —
+   * which reads as nonsense over an operations console, and grouping earns its
+   * place at about fifteen entries in one band, not eighteen across many.
    */
-  const groups =
-    user?.role === 'admin' ? NAV_GROUPS.map((g) => ({ ...g, title: null })) : NAV_GROUPS;
-  const entries = visible.map((n) => ({
-    to: n.to,
-    label: n.label,
-    icon: n.icon,
-    group: n.group,
-    badge: n.to === '/notifications' ? unread : undefined,
-  }));
+  const entries: SidebarEntry[] = isAdmin
+    ? ADMIN_PORTAL_NAV.filter((n) => canAny(permissions, n.requires)).map((n) => ({
+        to: n.to,
+        label: n.label,
+        icon: n.icon,
+        group: 'main',
+      }))
+    : NAV.filter(
+        (n) =>
+          !(user && navDenied(n, user.role)) &&
+          (n.requires.length === 0 || canAny(permissions, n.requires)),
+      ).map((n) => ({
+        to: n.to,
+        label: n.label,
+        icon: n.icon,
+        group: n.group,
+        badge: n.to === '/notifications' ? unread : undefined,
+      }));
+
+  const groups = isAdmin ? [{ key: 'main', title: null }] : NAV_GROUPS;
 
   // The drawer closes on navigation. Leaving it open over the page somebody
   // just asked for is the most common way a mobile menu goes wrong.
@@ -571,7 +583,7 @@ function Layout({ children }: { children: ReactNode }) {
                 <Wordmark compact />
               </span>
               <h1 className="hidden truncate text-sm font-medium text-gray-500 lg:block">
-                {visible.find((n) => n.to === loc.pathname)?.label ?? ''}
+                {entries.find((e) => e.to === loc.pathname)?.label ?? ''}
               </h1>
             </div>
 
