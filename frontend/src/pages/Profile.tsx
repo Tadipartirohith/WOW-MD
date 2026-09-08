@@ -498,7 +498,13 @@ function Saved({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex gap-3 py-2">
       <dt className="w-40 shrink-0 text-gray-500">{label}</dt>
-      <dd className={empty_ ? 'text-gray-400' : 'font-medium text-gray-900'}>
+      {/* min-w-0 + wrapping so a long "About you" (or an address with no spaces)
+          wraps onto the next line instead of overflowing the card (EZ1-I140). */}
+      <dd
+        className={`min-w-0 whitespace-pre-wrap break-words ${
+          empty_ ? 'text-gray-400' : 'font-medium text-gray-900'
+        }`}
+      >
         {empty_ ? 'Not set' : children}
       </dd>
     </div>

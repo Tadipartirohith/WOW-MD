@@ -51,6 +51,15 @@ export class PublicProfileView {
   managed: boolean;
 
   /**
+   * How the person running a managed profile relates to its subject — "parent",
+   * "guardian", "sibling", or "family" as a fallback — so the card can say
+   * "Managed by their parent" beneath the bride/groom's own name (EZ1-I132).
+   * Null for a self-run profile, and for an agency (whose name is sourceAgency).
+   */
+  @ApiPropertyOptional({ example: 'parent' })
+  managedByRelation?: string | null;
+
+  /**
    * Which agency put this profile on the platform.
    *
    * `managed` already said that somebody did, which answers a question nobody
@@ -290,6 +299,11 @@ export function toPublicProfile(
       : undefined,
     claimStatus: profile.claimStatus,
     managed: profile.managedByUserId !== null,
+    // A family steward's relation ("parent"/"guardian"/…). An agency sets no
+    // relation, so this stays null for them and sourceAgency names them instead
+    // (EZ1-I132).
+    managedByRelation:
+      profile.managedByUserId && profile.stewardRelation ? profile.stewardRelation : null,
     profileCode: profile.profileCode,
     verified: Boolean(profile.idVerifiedAt),
     lastActiveAt: profile.lastActiveAt ? profile.lastActiveAt.toISOString() : null,

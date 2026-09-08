@@ -923,6 +923,9 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
     retry: false,
   });
   const rejected = verification?.status === 'rejected';
+  // An approved listing is read-only (EZ1-I138): once couples can see it, the
+  // agency name, pricing and the rest cannot be quietly rewritten under them.
+  const approved = existing?.isApproved ?? false;
 
   useEffect(() => {
     if (!existing) return;
@@ -1069,6 +1072,15 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         </p>
       )}
       {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
+      {approved && (
+        <p className="rounded-sm bg-emerald-50 p-2 text-sm text-emerald-800">
+          This listing is approved and live for couples, so its details are read-only. To change
+          anything, contact Support and an administrator will reopen it for editing.
+        </p>
+      )}
+      {/* disabled disables every control inside, so an approved listing cannot be
+          edited or re-saved (EZ1-I138). */}
+      <fieldset disabled={approved} className="space-y-3 border-0 p-0">
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Agency name" error={fieldErrors.agencyName}>
           <input className="input" value={form.agencyName} onChange={set('agencyName')} required />
@@ -1229,6 +1241,7 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
       <button className="btn" disabled={rejected}>
         Save listing
       </button>
+      </fieldset>
     </form>
   );
 }

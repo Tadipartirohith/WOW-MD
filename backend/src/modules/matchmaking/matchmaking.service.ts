@@ -871,6 +871,14 @@ export class MatchmakingService {
     if (target.lifecycle !== ProfileLifecycle.ACTIVE) {
       throw new NotFoundException('That profile is unavailable');
     }
+    // Opposite genders only (EZ1-I134): a bride is matched to a groom and vice
+    // versa. The suggestions already filter on this, but an interest sent by
+    // profile code or a stale card must be refused here too.
+    if (from.gender && target.gender && from.gender === target.gender) {
+      throw new BadRequestException(
+        'You can only send an interest to a profile of the opposite gender.',
+      );
+    }
     if (target.visibility === ProfileVisibility.PRIVATE) {
       throw new ForbiddenException('That profile is not accepting interests');
     }

@@ -14,6 +14,8 @@ export interface PublicProfile {
   matched: boolean;
   claimStatus: string;
   managed: boolean;
+  /** A family steward's relation to the subject, for "Managed by …" (EZ1-I132). */
+  managedByRelation?: string | null;
   profileCode: string;
   verified: boolean;
   lastActiveAt: string | null;
@@ -249,6 +251,13 @@ export default function MatchCard({
               {!brief && (
                 <span className="block font-mono text-[0.6875rem] text-gray-400">
                   {p.profileCode}
+                </span>
+              )}
+              {/* The bride/groom's own name is above; this says who runs the
+                  profile for them, when a family member does (EZ1-I132). */}
+              {p.managedByRelation && (
+                <span className="block text-[0.6875rem] text-gray-500">
+                  Managed by their {p.managedByRelation}
                 </span>
               )}
             </button>
