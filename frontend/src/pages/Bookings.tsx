@@ -93,6 +93,62 @@ const OPEN_STATUSES = [
 ];
 
 /**
+ * The status filter, curated into the buckets a buyer actually thinks in
+ * (EZ1-I167). Each tab maps to one or more raw statuses; 'active' stays a
+ * client-side group for dashboard deep-links (EZ1-I75), and an exact-status
+ * link still falls through to a direct match.
+ */
+const TAB_DEFS: { key: string; label: string; statuses: string[] }[] = [
+  { key: '', label: 'All', statuses: [] },
+  { key: 'requested', label: 'Requests', statuses: ['requested'] },
+  { key: 'quotation', label: 'Quotation', statuses: ['quotation_sent', 'quotation_accepted'] },
+  { key: 'payment', label: 'Payment', statuses: ['payment_pending', 'pending'] },
+  { key: 'confirmed', label: 'Confirmed', statuses: ['confirmed'] },
+  { key: 'in_progress', label: 'In Progress', statuses: ['in_progress'] },
+  {
+    key: 'completed',
+    label: 'Completed',
+    statuses: ['completed', 'completed_pending_final_payment'],
+  },
+  { key: 'cancelled', label: 'Cancelled', statuses: ['cancelled'] },
+];
+
+/** A plain-English line under the technical status, per status (EZ1-I167). */
+const STATUS_HINT: Record<string, string> = {
+  requested: 'Request sent — waiting for the provider to send a quotation.',
+  quotation_sent: 'Quotation received — review it, then accept or decline.',
+  quotation_accepted: 'Quotation accepted — complete payment to confirm your booking.',
+  payment_pending: 'Payment pending — complete payment to confirm your booking.',
+  pending: 'Paid — waiting for the provider to confirm.',
+  confirmed: 'Confirmed — booking confirmed successfully.',
+  in_progress: 'In progress — your booking is currently being fulfilled.',
+  completed_pending_final_payment: 'Service delivered — pay the balance to close the booking.',
+  completed: 'Completed — service completed.',
+  disputed: 'Under investigation — an officer is reviewing this booking.',
+  cancelled: 'Cancelled — this booking was cancelled.',
+};
+
+/** The contextual empty state for a filter that has no bookings (EZ1-I167). */
+const EMPTY_HINT: Record<string, string> = {
+  '': 'No bookings yet — request one from the Vendors or Hire a Planner page.',
+  requested: 'No open requests — requests you send sit here until the provider quotes.',
+  quotation: 'No quotations yet — a provider’s price for your request will show up here.',
+  payment: 'Nothing awaiting payment — accepted quotations that need paying appear here.',
+  confirmed: 'No confirmed bookings yet.',
+  in_progress: 'Nothing in progress right now.',
+  completed: 'No completed bookings yet.',
+  cancelled: 'No cancelled bookings.',
+};
+
+/** The single prominent action per status; everything else stays secondary (EZ1-I167). */
+const PRIMARY_LABEL: Record<string, string> = {
+  quotation_sent: 'View quotation',
+  quotation_accepted: 'Complete payment',
+  payment_pending: 'Complete payment',
+  completed_pending_final_payment: 'Pay balance',
+};
+
+/**
  * The buyer's side of a booking.
  *
  * A wedding job is priced by quotation, not from a listing, so the flow reads:
@@ -189,18 +245,12 @@ export default function Bookings() {
   const matchesTab = (b: Booking, tab: string): boolean => {
     if (tab === '') return true;
     if (tab === 'active') return b.status !== 'cancelled' && b.status !== 'completed';
-    return b.status === tab;
+    // A curated tab matches its group of statuses; an exact-status deep link
+    // (EZ1-I75) still falls through to a direct match.
+    const def = TAB_DEFS.find((t) => t.key === tab);
+    return def ? def.statuses.includes(b.status) : b.status === tab;
   };
   const bookings: Booking[] = allBookings.filter((b) => matchesTab(b, status));
-
-  // The status tabs, each with a live count (EZ1-I141), replacing the dropdown.
-  const TABS: { key: string; label: string }[] = [
-    { key: '', label: 'All' },
-    { key: 'active', label: 'Active' },
-    ...OPEN_STATUSES.map((s) => ({ key: s, label: BOOKING_STATUS_LABEL[s] ?? s })),
-    { key: 'completed', label: 'Completed' },
-    { key: 'cancelled', label: 'Cancelled' },
-  ];
   const countFor = (tab: string) => allBookings.filter((b) => matchesTab(b, tab)).length;
 
   return (
@@ -214,16 +264,20 @@ export default function Bookings() {
         </p>
       </div>
 
-      {/* Clickable status tabs with live counts, not a dropdown (EZ1-I141). */}
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((t) => {
+      {/*
+        Curated status filter with live counts (EZ1-I141, EZ1-I167). Kept on one
+        line and horizontally scrollable so it never wraps into crowded rows on
+        mobile; the selected tab is highlighted.
+      */}
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {TAB_DEFS.map((t) => {
           const n = countFor(t.key);
           const activeTab = status === t.key;
           return (
             <button
               key={t.key || 'all'}
               onClick={() => setStatus(t.key)}
-              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-sm transition-colors ${
                 activeTab
                   ? 'border-brand bg-brand-light text-brand-dark'
                   : 'border-gray-200 text-gray-600 hover:border-gray-300'
@@ -243,43 +297,62 @@ export default function Bookings() {
 
       <div className="space-y-3">
         {!isLoading && bookings.length === 0 && (
-          <p className="card text-sm text-gray-400">No bookings yet.</p>
+          <p className="card text-sm text-gray-500">
+            {EMPTY_HINT[status] ?? 'No bookings here.'}
+          </p>
         )}
-        {bookings.map((b) => (
+        {bookings.map((b) => {
+          const priced = Number(b.amount) > 0;
+          // "Category · Location" — what was booked, and where the event is.
+          const category = b.serviceName ?? (b.providerType === 'planner' ? 'Planner' : 'Vendor');
+          const location = [b.eventVenue, b.eventCity].filter(Boolean).join(', ');
+          // Extra wedding facts, kept quiet under the headline (EZ1-I68).
+          const extras = [
+            b.offeringName,
+            b.eventName,
+            b.expectedGuests ? `${b.expectedGuests} guests` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          const isOpen = expanded === b.id;
+          const isActive =
+            b.status !== 'cancelled' && b.status !== 'completed' && b.status !== 'disputed';
+          // A review can only be written once a vendor job is done, and only
+          // once (EZ1-I30, EZ1-I114); a dispute only once escrow is in play.
+          const canReview = b.status === 'completed' && b.providerType === 'vendor' && !b.myReview;
+          const canDispute =
+            canRaiseCase &&
+            ['confirmed', 'in_progress', 'completed_pending_final_payment', 'completed'].includes(
+              b.status,
+            );
+          const primaryLabel = isOpen ? 'Hide details' : PRIMARY_LABEL[b.status] ?? 'View details';
+          return (
           <div
             key={b.id}
-            className={`card space-y-3 ${highlight === b.id ? 'ring-2 ring-brand' : ''}`}
+            className={`card space-y-4 ${highlight === b.id ? 'ring-2 ring-brand' : ''}`}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Who and what, with the amount and date held to the right (EZ1-I167). */}
+            <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-medium text-gray-900">
+                <p className="truncate text-base font-semibold text-gray-900">
                   {b.providerName ?? `${b.providerType} ${b.providerId.slice(0, 8)}`}
-                  {/* What was actually booked, not only from whom (EZ1-I68). */}
-                  {b.serviceName && (
-                    <span className="font-normal text-gray-500"> · {b.serviceName}</span>
-                  )}
-                  {b.offeringName && (
-                    <span className="font-normal text-gray-400"> · {b.offeringName}</span>
-                  )}
                 </p>
-                <p className="text-sm text-gray-500">
-                  <span className="uppercase tracking-wide text-gray-400">{b.providerType}</span>
-                  {Number(b.amount) > 0 ? ` · ${b.currency} ${b.amount}` : ' · not yet priced'}
-                  {b.eventDate ? ` · ${b.eventDate}` : ''}
+                <p className="mt-0.5 text-sm text-gray-500">
+                  <span className="capitalize">{category}</span>
+                  {location && ` · ${location}`}
                 </p>
-                {/* Wedding/event facts, already on the wire (EZ1-I68). */}
-                {(b.eventName || b.eventVenue || b.eventCity || b.expectedGuests) && (
-                  <p className="text-xs text-gray-400">
-                    {[
-                      b.eventName,
-                      [b.eventVenue, b.eventCity].filter(Boolean).join(', ') || null,
-                      b.expectedGuests ? `${b.expectedGuests} guests` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
-                )}
+                {extras && <p className="mt-0.5 text-xs text-gray-400">{extras}</p>}
               </div>
+              <div className="shrink-0 text-right">
+                <p className="text-base font-semibold text-gray-900">
+                  {priced ? `${b.currency} ${b.amount}` : 'Not yet priced'}
+                </p>
+                {b.eventDate && <p className="mt-0.5 text-xs text-gray-500">{b.eventDate}</p>}
+              </div>
+            </div>
+
+            {/* Current status in plain English, with the payment status beside it. */}
+            <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                   {BOOKING_STATUS_LABEL[b.status] ?? b.status}
@@ -289,44 +362,46 @@ export default function Bookings() {
                     {b.paymentStatus.replace(/_/g, ' ')}
                   </span>
                 )}
+              </div>
+              {STATUS_HINT[b.status] && (
+                <p className="mt-1 text-xs text-gray-500">{STATUS_HINT[b.status]}</p>
+              )}
+            </div>
+
+            {/* A glanceable progress bar while the booking is still moving (EZ1-I12, EZ1-I167). */}
+            {isActive && STAGE_INDEX[b.status] !== undefined && (
+              <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <BookingProgress status={b.status} />
+              </div>
+            )}
+
+            {/* One clear primary action; cancel/dispute/review stay quieter (EZ1-I167). */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="btn" onClick={() => setExpanded(isOpen ? null : b.id)}>
+                {primaryLabel}
+              </button>
+              {OPEN_STATUSES.includes(b.status) && (
+                <button className="btn-outline" onClick={() => setCancelling(b.id)}>
+                  Cancel
+                </button>
+              )}
+              {canDispute && (
+                <button
+                  className="btn-outline text-red-600"
+                  onClick={() => setDisputing(disputing === b.id ? null : b.id)}
+                >
+                  {disputing === b.id ? 'Never mind' : 'Raise an issue'}
+                </button>
+              )}
+              {/* Once reviewed, the button is gone and the review is shown below (EZ1-I114). */}
+              {canReview && (
                 <button
                   className="btn-outline"
-                  onClick={() => setExpanded(expanded === b.id ? null : b.id)}
+                  onClick={() => setReviewing(reviewing === b.id ? null : b.id)}
                 >
-                  {expanded === b.id ? 'Hide' : 'Details'}
+                  {reviewing === b.id ? 'Never mind' : 'Write a review'}
                 </button>
-                {OPEN_STATUSES.includes(b.status) && (
-                  <button className="btn-outline" onClick={() => setCancelling(b.id)}>
-                    Cancel
-                  </button>
-                )}
-                {canRaiseCase &&
-                  ['confirmed', 'in_progress', 'completed_pending_final_payment', 'completed'].includes(
-                    b.status,
-                  ) && (
-                    <button
-                      className="btn-outline text-red-600"
-                      onClick={() => setDisputing(disputing === b.id ? null : b.id)}
-                    >
-                      {disputing === b.id ? 'Never mind' : 'Raise an issue'}
-                    </button>
-                  )}
-                {/*
-                  A review can only be written after the job is done, and only
-                  once per booking — the server finds the completed, unreviewed
-                  booking for this vendor and refuses a second (EZ1-I30).
-                */}
-                {/* Once reviewed, the form is gone and the submitted review is
-                    shown instead — no second review field (EZ1-I114). */}
-                {b.status === 'completed' && b.providerType === 'vendor' && !b.myReview && (
-                  <button
-                    className="btn-outline"
-                    onClick={() => setReviewing(reviewing === b.id ? null : b.id)}
-                  >
-                    {reviewing === b.id ? 'Never mind' : 'Write a review'}
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
             {b.myReview ? (
@@ -414,7 +489,8 @@ export default function Bookings() {
               </ConfirmDialog>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
