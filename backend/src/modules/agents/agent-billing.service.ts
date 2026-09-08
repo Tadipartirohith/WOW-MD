@@ -8,7 +8,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { AgentCharge } from './entities/agent-charge.entity';
-import { AgentProfile } from './entities/agent-profile.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { PAYMENT_PROVIDER, PaymentProvider } from '../bookings/payment.provider';
@@ -33,7 +32,6 @@ import { AgentChargeType, PaymentStatus, UserRole } from '../../common/enums';
 export class AgentBillingService {
   constructor(
     @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
-    @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     private readonly cfg: AppConfigService,
     private readonly audit: AuditService,
@@ -48,37 +46,6 @@ export class AgentBillingService {
       commission: (commission / 100).toFixed(2),
       payout: ((gross - commission) / 100).toFixed(2),
     };
-  }
-
-  /**
-   * Raised when an agency takes on a profile.
-   *
-   * Idempotent per profile: an agency editing a client's details for the third
-   * time is not billing them three times.
-   */
-  async raiseProfileFee(agentUserId: string, profile: Profile): Promise<AgentCharge | null> {
-    // The agency's own agreed fee overrides the platform default (EZ1-I128).
-    const agency = await this.agencies.findOne({ where: { ownerUserId: agentUserId } });
-    const override = agency?.profileCreationFee ? Number(agency.profileCreationFee) : null;
-    const fee = override && override > 0 ? override : this.cfg.payments.agentProfileFee;
-    if (!fee || fee <= 0) return null;
-
-    const existing = await this.charges.findOne({
-      where: { profileId: profile.id, type: AgentChargeType.PROFILE_CREATION },
-    });
-    if (existing) return existing;
-
-    return this.charges.save(
-      this.charges.create({
-        agentUserId,
-        profileId: profile.id,
-        payerUserId: profile.userId,
-        type: AgentChargeType.PROFILE_CREATION,
-        amount: fee.toFixed(2),
-        currency: this.cfg.payments.currency,
-        status: PaymentStatus.INITIATED,
-      }),
-    );
   }
 
   /**
@@ -267,10 +234,15 @@ export class AgentBillingService {
 
   /** The agency's own ledger. */
   async listForAgent(actor: AuthUser): Promise<{ charges: AgentCharge[]; totals: Record<string, string> }> {
-    const charges = await this.charges.find({
+    const all = await this.charges.find({
       where: { agentUserId: actor.userId },
       order: { createdAt: 'DESC' },
     });
+    // Profile-creation fees no longer exist in the agent portal (EZ1-I146):
+    // agents arrange those directly with each client, so neither the ledger
+    // nor its totals surface any profile-creation charge, including legacy
+    // rows raised before the fee was removed. Only match-settlement fees show.
+    const charges = all.filter((c) => c.type !== AgentChargeType.PROFILE_CREATION);
     return { charges, totals: this.totals(charges) };
   }
 

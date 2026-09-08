@@ -153,12 +153,10 @@ export class ManagedProfilesService {
       metadata: { contactPhone: dto.contactPhone, hasEmail: Boolean(dto.contactEmail) },
     });
 
-    // Taking a client on is what raises the agency's fee. It is raised, not
-    // charged: nothing is collected until the client pays it, and nothing
-    // reaches the agency until the match is fixed.
-    if (actor.role === UserRole.AGENT) {
-      await this.billing.raiseProfileFee(actor.userId, profile);
-    }
+    // No profile-creation fee is raised. Agents collect whatever they arrange
+    // with each client directly and independently, so the platform neither
+    // charges nor records a profile-creation fee (EZ1-I146). The success-based
+    // match-settlement fee, raised when a match is fixed, is unaffected.
 
     if (inviteNow) await this.invitations.invite(actor, profile.id);
     return this.findOne(actor, profile.id);

@@ -376,8 +376,6 @@ export default () => ({
       final: toNumber(process.env.ESCROW_FINAL_PERCENT, 40),
     },
 
-    /** What an agency charges to build and run a client profile, in rupees. */
-    agentProfileFee: toNumber(process.env.AGENT_PROFILE_FEE, 2000),
     /** The agency's success fee, due once a match is fixed. */
     agentSettlementFee: toNumber(process.env.AGENT_SETTLEMENT_FEE, 25000),
   },

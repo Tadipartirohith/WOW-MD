@@ -13,7 +13,6 @@ interface Agency {
   about: string | null;
   address: string | null;
   startDate: string | null;
-  profileCreationFee: string | null;
   pictures: string[];
   isApproved: boolean;
   rejectionReason: string | null;
@@ -27,7 +26,6 @@ const empty = {
   address: '',
   startDate: '',
   about: '',
-  profileCreationFee: '',
 };
 
 /**
@@ -90,7 +88,6 @@ export default function Agency() {
         address: agency.address ?? '',
         startDate: agency.startDate ?? '',
         about: agency.about ?? '',
-        profileCreationFee: agency.profileCreationFee ?? '',
       });
       setPictures(agency.pictures ?? []);
     }
@@ -116,11 +113,6 @@ export default function Agency() {
         'about',
       ] as const) {
         if (form[key]) payload[key] = form[key];
-      }
-      // The agency's own profile-creation fee (EZ1-I128); a number, or omitted
-      // to fall back to the platform default.
-      if (form.profileCreationFee.trim() && Number(form.profileCreationFee) >= 0) {
-        payload.profileCreationFee = Number(form.profileCreationFee);
       }
       payload.pictures = pictures;
       await api.put('/agents/agency', payload);
@@ -205,15 +197,13 @@ export default function Agency() {
           <div>
             <h2 className="section-title">Your ledger</h2>
             {/*
-              The two fees settle differently, and saying so is the fix for a
-              ledger that read as if a profile creation fee were held in escrow
-              (EZ1-I10). Only a match settlement is held.
+              Only the success-based match-settlement fee appears here. The
+              platform does not charge a profile-creation fee — agents arrange
+              that with each client directly (EZ1-I146).
             */}
             <p className="text-sm text-gray-600">
               A <span className="font-medium">match settlement</span> fee is held in escrow and
-              reaches you when the match is fixed — you are paid for the outcome. A{' '}
-              <span className="font-medium">profile creation</span> fee is settled as soon as it is
-              paid; it is not held in escrow.
+              reaches you when the match is fixed — you are paid for the outcome.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-4">
@@ -283,21 +273,6 @@ export default function Agency() {
             <p className="mt-1 text-xs text-gray-500">
               Families ask how long you have been doing this. Answering it up front saves the
               question.
-            </p>
-          </div>
-          <div>
-            <label className="label">Profile creation fee (₹)</label>
-            <input
-              className="input"
-              type="number"
-              min={0}
-              placeholder="Platform default"
-              value={form.profileCreationFee}
-              onChange={set('profileCreationFee')}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Your agreed fee for creating and running a client's profile (EZ1-I128). Leave blank
-              to use the platform default.
             </p>
           </div>
         </div>
