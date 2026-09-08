@@ -75,6 +75,7 @@ import Travel from './pages/Travel';
 import Media from './pages/Media';
 import AdminLayout, { ADMIN_NAV as ADMIN_PORTAL_NAV } from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminBookingDetail from './pages/admin/AdminBookingDetail';
 import {
   AdminAgents,
   AdminAuditLogs,
@@ -1071,6 +1072,7 @@ export default function App() {
         <Route path="officers" element={<AdminOfficers />} />
         <Route path="planners" element={<AdminPlanners />} />
         <Route path="bookings" element={<AdminBookings />} />
+        <Route path="bookings/:id" element={<AdminBookingDetail />} />
         <Route path="payments" element={<AdminPayments />} />
         {/*
           Services and Catalog are one screen now (EZ1-I174): a service and its

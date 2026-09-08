@@ -7,6 +7,8 @@ import { Vendor } from '../vendors/entities/vendor.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { SupportCase } from '../verification/entities/support-case.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
 import { AgentCharge } from '../agents/entities/agent-charge.entity';
@@ -32,6 +34,14 @@ import {
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import { AppConfigService } from '../../config/app-config.service';
 
+/** The names hung on a booking row so a list answers who/whom/what (EZ1-I173). */
+export interface AdminBookingParties {
+  buyerName: string | null;
+  providerName: string | null;
+  serviceName: string | null;
+  amountPaid: string;
+}
+
 /** One line in the activity feed. Deliberately uniform across every source. */
 export interface ActivityItem {
   at: Date;
@@ -51,6 +61,8 @@ export class AdminConsoleService {
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
+    @InjectRepository(VendorService) private readonly vendorServices: Repository<VendorService>,
     @InjectRepository(SupportCase) private readonly cases: Repository<SupportCase>,
     @InjectRepository(VerificationRequest)
     private readonly verifications: Repository<VerificationRequest>,
@@ -339,7 +351,7 @@ export class AdminConsoleService {
     const booking = await this.bookings.findOne({ where: { id: bookingId } });
     if (!booking) throw new NotFoundException('Booking not found');
 
-    const [client, payments, cases, vendor] = await Promise.all([
+    const [client, payments, cases, vendor, planner, service] = await Promise.all([
       this.users.findOne({
         where: { id: booking.userId },
         select: ['id', 'email', 'phone', 'role', 'managedByAgentId'],
@@ -348,6 +360,12 @@ export class AdminConsoleService {
       this.cases.find({ where: { subjectId: bookingId }, order: { createdAt: 'DESC' } }),
       booking.providerType === ProviderType.VENDOR
         ? this.vendors.findOne({ where: { id: booking.providerId } })
+        : Promise.resolve(null),
+      booking.providerType === ProviderType.PLANNER
+        ? this.planners.findOne({ where: { id: booking.providerId } })
+        : Promise.resolve(null),
+      booking.vendorServiceId
+        ? this.vendorServices.findOne({ where: { id: booking.vendorServiceId } })
         : Promise.resolve(null),
     ]);
 
@@ -365,8 +383,25 @@ export class AdminConsoleService {
       // asking why a booking was made often has to ask who made it.
       agent,
       provider: vendor
-        ? { id: vendor.id, name: vendor.name, category: vendor.category, status: vendor.status }
-        : { id: booking.providerId, type: booking.providerType },
+        ? {
+            id: vendor.id,
+            ownerUserId: vendor.ownerUserId,
+            name: vendor.name,
+            category: vendor.category,
+            status: vendor.status,
+            type: booking.providerType,
+          }
+        : planner
+          ? {
+              id: planner.id,
+              ownerUserId: planner.ownerUserId,
+              name: planner.agencyName,
+              category: 'Wedding planner',
+              status: null,
+              type: booking.providerType,
+            }
+          : { id: booking.providerId, type: booking.providerType },
+      service: service ? { id: service.id, name: service.displayName } : null,
       payments,
       disputes: cases,
     };
@@ -401,7 +436,9 @@ export class AdminConsoleService {
    * else has this vendor got in flight" — and it is also the only way to notice
    * that forty bookings have been sitting in `payment_pending` for a fortnight.
    */
-  async allBookings(q: AdminBookingQueryDto): Promise<PaginatedResult<Booking>> {
+  async allBookings(
+    q: AdminBookingQueryDto,
+  ): Promise<PaginatedResult<Booking & AdminBookingParties>> {
     const qb = this.bookings.createQueryBuilder('b');
     if (q.status) qb.andWhere('b.status = :status', { status: q.status });
     if (q.providerId) qb.andWhere('b.providerId = :providerId', { providerId: q.providerId });
@@ -414,7 +451,65 @@ export class AdminConsoleService {
       .take(q.limit);
 
     const [data, total] = await qb.getManyAndCount();
-    return paginate(data, total, q.page, q.limit);
+    const enriched = await this.attachParties(data);
+    return paginate(enriched, total, q.page, q.limit);
+  }
+
+  /**
+   * Put a name on every side of a booking (EZ1-I173).
+   *
+   * The list row has to answer "who booked whom, for what" without the admin
+   * opening it: the buyer's display name, the provider's business name whether
+   * it is a vendor or a planner, the service, and how much of the money has
+   * actually been captured. Resolved in one batched read per kind rather than
+   * per row, the same shape `transactions` already uses.
+   */
+  private async attachParties(rows: Booking[]): Promise<(Booking & AdminBookingParties)[]> {
+    if (rows.length === 0) return [];
+
+    const buyerIds = [...new Set(rows.map((b) => b.userId))];
+    const vendorIds = [
+      ...new Set(rows.filter((b) => b.providerType === ProviderType.VENDOR).map((b) => b.providerId)),
+    ];
+    const plannerIds = [
+      ...new Set(rows.filter((b) => b.providerType === ProviderType.PLANNER).map((b) => b.providerId)),
+    ];
+    const serviceIds = [...new Set(rows.map((b) => b.vendorServiceId).filter(Boolean))] as string[];
+    const bookingIds = rows.map((b) => b.id);
+
+    const [profiles, vendors, planners, services, payments] = await Promise.all([
+      buyerIds.length ? this.profiles.find({ where: { userId: In(buyerIds) } }) : Promise.resolve([]),
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : Promise.resolve([]),
+      plannerIds.length ? this.planners.find({ where: { id: In(plannerIds) } }) : Promise.resolve([]),
+      serviceIds.length
+        ? this.vendorServices.find({ where: { id: In(serviceIds) } })
+        : Promise.resolve([]),
+      this.payments.find({ where: { bookingId: In(bookingIds) } }),
+    ]);
+
+    const buyerName = new Map(profiles.map((p) => [p.userId as string, p.displayName]));
+    const vendorName = new Map(vendors.map((v) => [v.id, v.name]));
+    const plannerName = new Map(planners.map((p) => [p.id, p.agencyName]));
+    const serviceName = new Map(services.map((s) => [s.id, s.displayName]));
+
+    // Money captured so far, per booking. INITIATED has not been taken and
+    // REFUNDED has gone back, so neither counts as paid.
+    const paidByBooking = new Map<string, number>();
+    for (const p of payments) {
+      if (p.status === PaymentStatus.INITIATED || p.status === PaymentStatus.REFUNDED) continue;
+      paidByBooking.set(p.bookingId, (paidByBooking.get(p.bookingId) ?? 0) + Number(p.amount ?? 0));
+    }
+
+    return rows.map((b) => ({
+      ...b,
+      buyerName: buyerName.get(b.userId) ?? null,
+      providerName:
+        b.providerType === ProviderType.VENDOR
+          ? (vendorName.get(b.providerId) ?? null)
+          : (plannerName.get(b.providerId) ?? null),
+      serviceName: b.vendorServiceId ? (serviceName.get(b.vendorServiceId) ?? null) : null,
+      amountPaid: (paidByBooking.get(b.id) ?? 0).toFixed(2),
+    }));
   }
 
   /**

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { BOOKING_STATUS_LABEL } from '../lib/permissions';
@@ -327,63 +328,179 @@ export function Businesses() {
   );
 }
 
-export function AllBookings({ initialStatus = '' }: { initialStatus?: string } = {}) {
-  const [status, setStatus] = useState(initialStatus);
+interface AdminBookingRow {
+  id: string;
+  status: string;
+  amount: string;
+  currency: string;
+  eventDate: string | null;
+  createdAt: string;
+  buyerName: string | null;
+  providerName: string | null;
+  providerType: string | null;
+  serviceName: string | null;
+  amountPaid: string;
+}
 
-  const { data } = useQuery<{
-    data: {
-      id: string;
-      status: string;
-      amount: string;
-      currency: string;
-      eventDate: string | null;
-      createdAt: string;
-    }[];
-    meta: { total: number };
+/** The colour a status pill wears. Kept subtle — a state, not an alarm (EZ1-I177). */
+const BOOKING_STATUS_TONE: Record<string, string> = {
+  requested: 'bg-brand-soft text-brand-strong',
+  quotation_sent: 'bg-brand-soft text-brand-strong',
+  quotation_accepted: 'bg-brand-soft text-brand-strong',
+  payment_pending: 'bg-caution-bg text-caution-fg',
+  pending: 'bg-caution-bg text-caution-fg',
+  confirmed: 'bg-positive-bg text-positive-fg',
+  in_progress: 'bg-positive-bg text-positive-fg',
+  completed: 'bg-positive-bg text-positive-fg',
+  disputed: 'bg-critical-bg text-critical-fg',
+  cancelled: 'bg-gray-100 text-gray-500',
+};
+
+/**
+ * Every booking, as status tabs each carrying a live count (EZ1-I173).
+ *
+ * The old "Any stage" dropdown hid the one thing an administrator opens this
+ * screen to learn — how much is stuck where. The counts are the platform's own
+ * `bookingsByStatus`, so they move when a booking does; nothing here is
+ * hardcoded. Each row names who booked whom for what, and opens the full
+ * booking on click.
+ */
+export function AllBookings({ initialStatus = '' }: { initialStatus?: string } = {}) {
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const status = params.get('status') ?? initialStatus;
+  const setStatus = (next: string) => {
+    const p = new URLSearchParams(params);
+    if (next) p.set('status', next);
+    else p.delete('status');
+    setParams(p, { replace: true });
+  };
+
+  // Counts come from the same analytics read the dashboard uses, so a status
+  // with no bookings still shows a 0 rather than vanishing from the tabs.
+  const { data: analytics } = useQuery<{
+    totalBookings: number;
+    bookingsByStatus: Record<string, number>;
   }>({
+    queryKey: ['analytics'],
+    queryFn: async () => (await api.get('/admin/analytics')).data,
+    retry: false,
+  });
+  const counts = analytics?.bookingsByStatus ?? {};
+
+  const { data, isLoading } = useQuery<{ data: AdminBookingRow[]; meta: { total: number } }>({
     queryKey: ['admin-bookings', status],
     queryFn: async () =>
-      (await api.get('/admin/bookings', { params: { limit: 25, status: status || undefined } }))
+      (await api.get('/admin/bookings', { params: { limit: 50, status: status || undefined } }))
         .data,
   });
 
+  const tabs: { value: string; label: string; count: number }[] = [
+    { value: '', label: 'All', count: analytics?.totalBookings ?? 0 },
+    ...Object.entries(BOOKING_STATUS_LABEL).map(([value, label]) => ({
+      value,
+      label,
+      count: counts[value] ?? 0,
+    })),
+  ];
+
+  const money = (v: string, ccy = 'INR') =>
+    `${ccy === 'INR' ? '₹' : `${ccy} `}${Number(v ?? 0).toLocaleString('en-IN')}`;
+
   return (
-    <div className="card">
-      <h2 className="section-title">Every booking</h2>
-      <p className="mb-3 text-xs text-gray-500">
-        A vendor sees their incoming work and a buyer their own. This is the whole book, which is
-        where a dispute starts and the only way to notice forty bookings sitting unpaid.{' '}
-        {data?.meta.total ?? 0} matching.
-      </p>
-      <select
-        className="input mb-3 w-64"
-        value={status}
-        onChange={(e) => setStatus(e.target.value)}
-      >
-        <option value="">Any stage</option>
-        {Object.entries(BOOKING_STATUS_LABEL).map(([value, label]) => (
-          <option key={value} value={value}>
-            {label}
-          </option>
-        ))}
-      </select>
-      <div className="divide-y">
-        {(data?.data ?? []).map((b) => (
-          <div key={b.id} className="flex items-center justify-between gap-3 py-2">
-            <div>
-              <p className="text-sm font-medium tabular-nums text-gray-900">
-                {b.currency} {b.amount}
-              </p>
-              <p className="text-xs text-gray-500">
-                {b.eventDate ?? 'no date set'} · #{b.id.slice(0, 8)}
-              </p>
-            </div>
-            <span className="whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
-              {BOOKING_STATUS_LABEL[b.status] ?? b.status}
-            </span>
-          </div>
-        ))}
-        {data?.data.length === 0 && <p className="py-3 text-sm text-gray-400">Nothing matches.</p>}
+    <div className="space-y-4">
+      <div>
+        <h1 className="page-title">Bookings</h1>
+        <p className="page-subtitle">
+          The whole book, by stage. This is where a dispute starts and the only way to notice
+          bookings sitting unpaid.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((t) => {
+          const active = t.value === status;
+          return (
+            <button
+              key={t.value || 'all'}
+              onClick={() => setStatus(t.value)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                active
+                  ? 'bg-gradient-to-r from-brand to-brand-strong text-brand-fg shadow-btn'
+                  : 'bg-surface text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <span>{t.label}</span>
+              <span
+                className={`rounded-full px-1.5 text-xs tabular-nums ${
+                  active ? 'bg-white/25 text-brand-fg' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {t.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="card overflow-x-auto p-0">
+        {isLoading && <Loading rows={5} className="p-5" />}
+        {!isLoading && (
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="border-b bg-surface-sunken text-left text-xs uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3">Booking</th>
+                <th className="px-4 py-3">Booked by</th>
+                <th className="px-4 py-3">Booked with</th>
+                <th className="px-4 py-3">Service</th>
+                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-right">Paid</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {(data?.data ?? []).map((b) => (
+                <tr
+                  key={b.id}
+                  onClick={() => navigate(`/admin/bookings/${b.id}`)}
+                  className="cursor-pointer transition-colors hover:bg-brand-soft/40"
+                >
+                  <td className="px-4 py-3">
+                    <span className="font-mono text-xs text-gray-500">#{b.id.slice(0, 8)}</span>
+                    <span className="block text-xs text-gray-400">
+                      {b.eventDate ?? new Date(b.createdAt).toLocaleDateString()}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-800">{b.buyerName ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-800">
+                    {b.providerName ?? '—'}
+                    {b.providerType && (
+                      <span className="block text-xs capitalize text-gray-400">{b.providerType}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{b.serviceName ?? '—'}</td>
+                  <td className="px-4 py-3 text-right text-gray-900">{money(b.amount, b.currency)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{money(b.amountPaid, b.currency)}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`pill ${BOOKING_STATUS_TONE[b.status] ?? 'bg-gray-100 text-gray-600'}`}
+                    >
+                      {BOOKING_STATUS_LABEL[b.status] ?? b.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {data?.data.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-gray-400">
+                    No bookings in this stage.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

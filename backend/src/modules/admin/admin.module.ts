@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Dispute } from './entities/dispute.entity';
 import { Profile } from '../users/entities/profile.entity';
@@ -24,6 +25,7 @@ import { AdminController } from './admin.controller';
       User,
       Vendor,
       PlannerProfile,
+      VendorService,
       Booking,
       Dispute,
       Profile,
