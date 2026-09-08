@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import BusinessSetup, { useCompletion } from '../components/BusinessSetup';
 import GetStarted from '../components/GetStarted';
+import ChoiceField from '../components/ChoiceField';
+import { CITIES, STATES } from '../lib/reference';
 import { useAuth } from '../store/auth';
 import { useBusinesses } from '../store/business';
 import VendorServices from '../components/VendorServices';
@@ -960,9 +962,6 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
     } else if (!/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
       errors.contactPhone = 'Enter a 10-digit Indian mobile number';
     }
-    if (form.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.contactEmail.trim())) {
-      errors.contactEmail = 'Enter a valid email address';
-    }
     if (form.pincode && !/^[1-9]\d{5}$/.test(form.pincode.trim())) {
       errors.pincode = 'Enter a valid 6-digit pincode';
     }
@@ -1085,9 +1084,16 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
         <Field label="Agency name" error={fieldErrors.agencyName}>
           <input className="input" value={form.agencyName} onChange={set('agencyName')} required />
         </Field>
-        <Field label="Base city" error={fieldErrors.city}>
-          <input className="input" value={form.city} onChange={set('city')} required />
-        </Field>
+        {/* City as a dropdown (EZ1-I127), with a free-text escape for anywhere
+            not on the list. */}
+        <ChoiceField
+          label="Base city"
+          value={form.city}
+          onChange={(v) => setForm((f) => ({ ...f, city: v }))}
+          options={CITIES}
+          required
+        />
+        {fieldErrors.city && <p className="-mt-2 text-xs text-red-600">{fieldErrors.city}</p>}
         <Field label="Years of experience" error={fieldErrors.yearsExperience}>
           <input
             className="input"
@@ -1113,17 +1119,15 @@ function PlannerListingForm({ existing }: { existing?: PlannerListing }) {
             onChange={set('contactPhone')}
           />
         </Field>
-        <Field label="Contact email" error={fieldErrors.contactEmail}>
-          <input
-            className="input"
-            type="email"
-            value={form.contactEmail}
-            onChange={set('contactEmail')}
-          />
-        </Field>
-        <Field label="State">
-          <input className="input" value={form.state} onChange={set('state')} />
-        </Field>
+        {/* Contact email removed from the planner listing form (EZ1-I127): the
+            business is reached through the platform, not a second inbox. */}
+        {/* State as a dropdown (EZ1-I127). */}
+        <ChoiceField
+          label="State"
+          value={form.state}
+          onChange={(v) => setForm((f) => ({ ...f, state: v }))}
+          options={STATES}
+        />
         <Field label="Pincode" error={fieldErrors.pincode}>
           <input
             className="input"
