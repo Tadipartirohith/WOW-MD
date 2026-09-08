@@ -40,6 +40,13 @@ interface Conversation {
   lastActiveAt: string | null;
   /** Why these two are talking: the accepted interest, and how it scored. */
   context: { interestId: string; score: number | null; standing: 'accepted' | 'fixed' } | null;
+  /**
+   * Why this thread is allowed to exist. A 'match' cannot be used until the
+   * interest is accepted (which is exactly when `context` appears), so the
+   * composer and call controls stay locked until then. Inquiry and
+   * representation threads carry no such gate.
+   */
+  kind: 'match' | 'inquiry' | 'representation' | null;
 }
 
 interface Message {
@@ -141,6 +148,10 @@ export default function Chat() {
   const call = useCall();
   const messages: Message[] = [...(history?.data ?? [])].reverse();
   const active = conversations.find((c) => c.withUserId === withUserId);
+  // A match thread is locked until the interest is accepted — which is exactly
+  // when `context` appears. Inquiry and representation threads are never gated
+  // this way, so they stay open regardless of `context`.
+  const locked = active?.kind === 'match' && !active.context;
 
   // Opening a thread clears its badge, and the URL carries the selection so a
   // notification can link straight into a conversation.
@@ -520,17 +531,30 @@ export default function Chat() {
                 <div ref={bottom} />
               </div>
 
-              <form onSubmit={send} className="flex gap-2 border-t pt-3">
-                <input
-                  className="input flex-1"
-                  placeholder="Type a message…"
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                />
-                <button className="btn" disabled={!body.trim()}>
-                  Send
-                </button>
-              </form>
+              {/*
+                A match cannot be talked into until the interest is accepted
+                (EZ1-I155). The composer is disabled outright rather than left
+                open to fail on send, and the reason is shown in the open — a
+                dead input with no explanation reads as a broken screen. Calls
+                are gated by the same acceptance above (they need `context`).
+              */}
+              {locked ? (
+                <p className="border-t pt-3 text-sm text-gray-500">
+                  Chat opens once the interest is accepted.
+                </p>
+              ) : (
+                <form onSubmit={send} className="flex gap-2 border-t pt-3">
+                  <input
+                    className="input flex-1"
+                    placeholder="Type a message…"
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                  />
+                  <button className="btn" disabled={!body.trim()}>
+                    Send
+                  </button>
+                </form>
+              )}
             </>
           )}
         </div>

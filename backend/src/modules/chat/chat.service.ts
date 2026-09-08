@@ -74,6 +74,13 @@ export interface ConversationSummary {
   city: string | null;
   lastActiveAt: Date | null;
   context: ConversationContext | null;
+  /**
+   * Why this thread is allowed to exist. A 'match' needs an accepted interest
+   * before it may be used, so the client locks its composer and call controls
+   * until `context` is present; 'inquiry' and 'representation' carry no such
+   * gate and stay open.
+   */
+  kind: ThreadKind | null;
 }
 
 @Injectable()
@@ -158,6 +165,29 @@ export class ChatService {
     if (senderId === recipientId) throw new ForbiddenException('You cannot message yourself');
     const [sender, recipient] = await this.loadPair(senderId, recipientId);
 
+    const kind = this.classifyThread(sender, recipient);
+
+    // Individual to individual: the thread is a match, but it may only be used
+    // once the interest has actually been accepted.
+    if (kind === ThreadKind.MATCH) {
+      if (await this.hasAcceptedMatch(senderId, recipientId)) return ThreadKind.MATCH;
+      throw new ForbiddenException('You can only chat with accepted matches');
+    }
+
+    if (!kind) throw new ForbiddenException('You are not permitted to message this account');
+    return kind;
+  }
+
+  /**
+   * Why a thread between two accounts is allowed to exist, without asserting
+   * that it may yet be used. `assertCanChat` layers the "an individual match
+   * needs an accepted interest" gate on top of this; the conversation list
+   * needs the kind even for a match whose acceptance was later revoked, so the
+   * client knows to lock it rather than dropping it from the list.
+   */
+  private classifyThread(sender: User, recipient: User): ThreadKind | null {
+    if (sender.id === recipient.id) return null;
+
     if (sender.role === UserRole.ADMIN || recipient.role === UserRole.ADMIN) {
       return ThreadKind.INQUIRY;
     }
@@ -167,10 +197,10 @@ export class ChatService {
       return ThreadKind.REPRESENTATION;
     }
 
-    // Individual to individual: only after a mutual match.
+    // Individual to individual is always a match thread; acceptance is a
+    // separate question the caller decides.
     if (isIndividual(sender.role) && isIndividual(recipient.role)) {
-      if (await this.hasAcceptedMatch(senderId, recipientId)) return ThreadKind.MATCH;
-      throw new ForbiddenException('You can only chat with accepted matches');
+      return ThreadKind.MATCH;
     }
 
     // A user or agent may approach any provider or agent, and be replied to.
@@ -182,7 +212,7 @@ export class ChatService {
       sender.role === UserRole.AGENT;
     if (inquiryPair) return ThreadKind.INQUIRY;
 
-    throw new ForbiddenException('You are not permitted to message this account');
+    return null;
   }
 
   private key(a: string, b: string): [string, string] {
@@ -460,11 +490,26 @@ export class ChatService {
     if (rows.length === 0 && pending.length === 0) return [];
     otherIds.push(...pending);
 
-    const [profiles, online] = await Promise.all([
+    const [profiles, online, accounts] = await Promise.all([
       this.profiles.find({ where: { userId: In(otherIds) } }),
       this.presence.onlineAmong(otherIds),
+      // Roles decide the thread kind, so the client can tell a match (locked
+      // until accepted) apart from an inquiry (always open).
+      this.users.find({
+        where: { id: In([userId, ...otherIds]) },
+        select: ['id', 'role', 'managedByAgentId'],
+      }),
     ]);
     const profileByUser = new Map(profiles.map((p) => [p.userId as string, p]));
+    const accountById = new Map(accounts.map((u) => [u.id, u]));
+    const me = accountById.get(userId);
+
+    // The thread kind for one of this reader's counterparts, or null when a
+    // record is missing (treated as ungated by the client).
+    const kindFor = (otherUserId: string): ThreadKind | null => {
+      const other = accountById.get(otherUserId);
+      return me && other ? this.classifyThread(me, other) : null;
+    };
 
     const myProfile = await this.profiles.findOne({ where: { userId } });
 
@@ -489,6 +534,7 @@ export class ChatService {
           city: profile?.city ?? null,
           lastActiveAt: profile?.lastActiveAt ?? null,
           context: await this.contextFor(myProfile ?? undefined, profile),
+          kind: kindFor(otherUserId),
         };
       }),
     );
@@ -541,6 +587,7 @@ export class ChatService {
           city: profile?.city ?? null,
           lastActiveAt: profile?.lastActiveAt ?? null,
           context: await this.contextFor(myProfile ?? undefined, profile),
+          kind: kindFor(otherUserId),
         };
       }),
     );
