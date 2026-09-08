@@ -105,6 +105,8 @@ export class VerificationService {
     applicantType: ApplicantType,
     applicantUserId: string,
     subjectId: string | null,
+    /** The applicant's trading name, so the admin notification can name who applied (EZ1-I159). */
+    subjectName?: string | null,
   ): Promise<VerificationRequest> {
     // Idempotent per *business*, not per applicant.
     //
@@ -178,6 +180,8 @@ export class VerificationService {
       .createForRole(UserRole.ADMIN, NotificationType.VERIFICATION_REQUESTED, {
         requestId: request.id,
         applicantType,
+        subjectId,
+        subjectName: subjectName ?? null,
         awaitingAllocation: true,
       })
       .catch(() => undefined);

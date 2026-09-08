@@ -201,6 +201,7 @@ export class BusinessLifecycleService {
       ApplicantType.VENDOR,
       business.ownerUserId,
       business.id,
+      business.name,
     );
     await this.verification.startSla(request.id);
 

@@ -54,7 +54,7 @@ export class AgencyService {
     // address on it, and their decision is what flips `isApproved`. The call is
     // idempotent, so editing details while a visit is pending does not queue a
     // second one.
-    await this.verification.raise(ApplicantType.AGENT, ownerUserId, saved.id);
+    await this.verification.raise(ApplicantType.AGENT, ownerUserId, saved.id, saved.agencyName);
     return saved;
   }
 

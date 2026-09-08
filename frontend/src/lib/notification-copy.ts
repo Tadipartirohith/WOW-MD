@@ -84,7 +84,7 @@ export function describe(n: Notification): string {
     case 'verification_assigned':
       return `A ${str('applicantType') ?? 'business'} verification is on your queue.`;
     case 'verification_requested':
-      return `A ${str('applicantType') ?? 'business'} has applied and is waiting to be allocated.`;
+      return `${str('subjectName') ?? `A ${str('applicantType') ?? 'business'}`} has applied for approval and is waiting to be allocated.`;
     case 'verification_submitted':
       return `An officer recommends ${str('recommendation') ?? 'a decision'}${
         typeof p.issues === 'number' && p.issues > 0 ? `, with ${p.issues} issue(s)` : ''

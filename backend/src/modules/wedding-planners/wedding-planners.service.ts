@@ -47,7 +47,7 @@ export class WeddingPlannersService {
      * asking to be verified again.
      */
     if (!saved.isApproved) {
-      await this.verification.raise(ApplicantType.PLANNER, ownerUserId, saved.id);
+      await this.verification.raise(ApplicantType.PLANNER, ownerUserId, saved.id, saved.agencyName);
     }
 
     await this.invalidateSearchCache();
