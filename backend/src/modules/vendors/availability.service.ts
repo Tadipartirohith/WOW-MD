@@ -663,12 +663,15 @@ export class AvailabilityService {
     if (actor.role !== UserRole.ADMIN && vendor.ownerUserId !== actor.userId) {
       throw new ForbiddenException('That business is not yours');
     }
-    // A rejected listing is locked: nothing on it may be changed until an
-    // administrator re-verifies it, so its owner cannot keep publishing
-    // availability against a business that has been turned down (EZ1-I119).
-    if (actor.role !== UserRole.ADMIN && vendor.status === BusinessStatus.REJECTED) {
+    // Availability is a verified-business action. A vendor that is still in
+    // verification — or was rejected — cannot publish or change slots until an
+    // administrator approves the listing (EZ1-I137, extending EZ1-I119). Only an
+    // approved listing may be managed here.
+    if (actor.role !== UserRole.ADMIN && !vendor.isApproved) {
       throw new ForbiddenException(
-        'This listing was rejected in verification and is locked. Raise a support case if you think this is a mistake.',
+        vendor.status === BusinessStatus.REJECTED
+          ? 'This listing was rejected in verification and is locked. Raise a support case if you think this is a mistake.'
+          : 'Your business is not verified yet. Availability opens once an administrator approves your listing.',
       );
     }
   }

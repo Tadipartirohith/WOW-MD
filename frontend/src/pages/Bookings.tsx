@@ -137,13 +137,11 @@ export default function Bookings() {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
 
-  // 'active' is a client-side group, so it is never sent as a status filter to
-  // the API; every other value is a real BookingStatus and passes through.
-  const apiStatus = status && status !== 'active' ? status : undefined;
+  // Every booking is fetched once and filtered on the client (EZ1-I141): that is
+  // what lets the status tabs carry live counts and switch without a round-trip.
   const { data, isLoading } = useQuery({
-    queryKey: ['bookings', status],
-    queryFn: async () =>
-      (await api.get('/bookings', { params: apiStatus ? { status: apiStatus } : {} })).data,
+    queryKey: ['bookings'],
+    queryFn: async () => (await api.get('/bookings')).data,
     enabled: canBuy,
   });
 
@@ -188,35 +186,57 @@ export default function Bookings() {
   }
 
   const allBookings: Booking[] = data?.data ?? [];
-  const bookings: Booking[] =
-    status === 'active'
-      ? allBookings.filter((b) => b.status !== 'cancelled' && b.status !== 'completed')
-      : allBookings;
+  const matchesTab = (b: Booking, tab: string): boolean => {
+    if (tab === '') return true;
+    if (tab === 'active') return b.status !== 'cancelled' && b.status !== 'completed';
+    return b.status === tab;
+  };
+  const bookings: Booking[] = allBookings.filter((b) => matchesTab(b, status));
+
+  // The status tabs, each with a live count (EZ1-I141), replacing the dropdown.
+  const TABS: { key: string; label: string }[] = [
+    { key: '', label: 'All' },
+    { key: 'active', label: 'Active' },
+    ...OPEN_STATUSES.map((s) => ({ key: s, label: BOOKING_STATUS_LABEL[s] ?? s })),
+    { key: 'completed', label: 'Completed' },
+    { key: 'cancelled', label: 'Cancelled' },
+  ];
+  const countFor = (tab: string) => allBookings.filter((b) => matchesTab(b, tab)).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="page-title">Bookings &amp; Escrow</h1>
-        <select
-          className="input max-w-xs"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active (in progress)</option>
-          {[...OPEN_STATUSES, 'completed', 'disputed', 'cancelled'].map((s) => (
-            <option key={s} value={s}>
-              {BOOKING_STATUS_LABEL[s] ?? s}
-            </option>
-          ))}
-        </select>
+      <div>
+        <h1 className="page-title">Bookings</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Ask for a booking from the <strong>Vendors</strong> or <strong>Hire a Planner</strong>{' '}
+          page. The provider quotes; once you accept, the price is fixed and payable in
+          instalments. Payments and escrow are on the <strong>Accounts</strong> page.
+        </p>
       </div>
 
-      <p className="text-sm text-gray-500">
-        Ask for a booking from the <strong>Vendors</strong> or <strong>Planners</strong> page. The
-        provider quotes; once you accept, the price is fixed and payable in three instalments held
-        in escrow. Money reaches the provider only when the work is marked delivered.
-      </p>
+      {/* Clickable status tabs with live counts, not a dropdown (EZ1-I141). */}
+      <div className="flex flex-wrap gap-2">
+        {TABS.map((t) => {
+          const n = countFor(t.key);
+          const activeTab = status === t.key;
+          return (
+            <button
+              key={t.key || 'all'}
+              onClick={() => setStatus(t.key)}
+              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                activeTab
+                  ? 'border-brand bg-brand-light text-brand-dark'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              {t.label}
+              <span className={`ml-1.5 tabular-nums ${activeTab ? 'text-brand-dark' : 'text-gray-400'}`}>
+                {n}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {error && <p className="alert-critical">{error}</p>}
       {isLoading && <Loading rows={3} />}

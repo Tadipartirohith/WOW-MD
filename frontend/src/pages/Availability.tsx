@@ -219,6 +219,20 @@ export default function Availability() {
     );
   }
 
+  // Availability opens only once the listing is approved (EZ1-I137). The server
+  // refuses slot changes before then; this explains why rather than erroring.
+  if (!listing.isApproved) {
+    return (
+      <div className="card">
+        <h1 className="page-title">Availability</h1>
+        <p className="page-subtitle">
+          Your business is still in verification. Availability opens once an administrator
+          approves your listing. Until then you can complete My Business and reach us on Support.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
