@@ -22,6 +22,15 @@ import { EventCategory, EventStatus, RsvpStatus } from '../../../common/enums';
 import { MOBILE_MESSAGE, MOBILE_PATTERN, normaliseMobile } from '../../../common/util/identity-fields';
 
 export class CreateEventDto {
+  /**
+   * The couple this event is for, when an engaged planner creates it (EZ1-I144).
+   * Omitted by the couple themselves. The server refuses a host the caller is
+   * not engaged on, so the event lands on the shared wedding either way.
+   */
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional() @IsUUID('4')
+  hostUserId?: string;
+
   @ApiProperty({ example: 'Mehendi', minLength: 1, maxLength: 120 })
   @IsStrictString() @MinLength(1) @MaxLength(120)
   name: string;

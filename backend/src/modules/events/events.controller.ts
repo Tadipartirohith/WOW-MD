@@ -36,8 +36,8 @@ export class EventsController {
   constructor(private readonly events: EventsService) {}
 
   @Post()
-  create(@CurrentUser('userId') userId: string, @Body() dto: CreateEventDto) {
-    return this.events.createEvent(userId, dto);
+  create(@CurrentUser() actor: AuthUser, @Body() dto: CreateEventDto) {
+    return this.events.createEvent(actor, dto);
   }
 
   /**

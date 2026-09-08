@@ -60,15 +60,23 @@ export class EventsService {
     private readonly moderation: ModerationService,
   ) {}
 
-  async createEvent(userId: string, dto: CreateEventDto) {
+  async createEvent(actor: AuthUser, dto: CreateEventDto) {
     this.assertTimeOrder(dto.startTime, dto.endTime);
+
+    // An engaged planner may create the event on the couple's shared wedding
+    // (EZ1-I144); resolveHost refuses a couple the planner is not engaged on.
+    const { hostUserId, ...fields } = dto;
+    const userId = await this.resolveHost(actor, hostUserId);
 
     // An event picture is shown to every guest who opens the invitation, so it
     // goes through the same check as a profile photograph.
-    if (dto.imageUrl) {
-      await this.moderation.assertGenuinePhoto(dto.imageUrl, { userId, kind: 'event' });
+    if (fields.imageUrl) {
+      await this.moderation.assertGenuinePhoto(fields.imageUrl, {
+        userId: actor.userId,
+        kind: 'event',
+      });
     }
-    return this.events.save(this.events.create({ userId, ...dto }));
+    return this.events.save(this.events.create({ userId, ...fields }));
   }
 
   /**
