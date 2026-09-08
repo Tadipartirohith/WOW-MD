@@ -23,30 +23,42 @@ import { Loading, EmptyState } from '../../components/ui/Feedback';
  */
 
 export function AdminUsers() {
-  return <Directory title="Users" roles={['', 'bride', 'groom', 'family']} />;
+  return <Directory title="Users" roles={['', 'bride', 'groom', 'family']} detailBase="/admin/clients" />;
 }
 
 export function AdminAgents() {
-  return <Directory title="Agents" initialRole="agent" roles={['agent']} />;
+  return <Directory title="Agents" initialRole="agent" roles={['agent']} detailBase="/admin/agents" />;
 }
 
 export function AdminVendors() {
   return (
     <div className="space-y-6">
-      <Directory title="Vendors" initialRole="vendor" roles={['vendor']} />
+      <Directory title="Vendors" initialRole="vendor" roles={['vendor']} detailBase="/admin/vendors" />
       <Businesses />
     </div>
   );
 }
 
 export function AdminPlanners() {
-  return <Directory title="Wedding Planners" initialRole="planner" roles={['planner']} />;
+  return (
+    <Directory
+      title="Wedding Planners"
+      initialRole="planner"
+      roles={['planner']}
+      detailBase="/admin/planners"
+    />
+  );
 }
 
 export function AdminOfficers() {
   return (
     <div className="space-y-6">
-      <Directory title="Verification Officers" initialRole="in_person" roles={['in_person']} />
+      <Directory
+        title="Verification Officers"
+        initialRole="in_person"
+        roles={['in_person']}
+        detailBase="/admin/officers"
+      />
       <Staff />
     </div>
   );

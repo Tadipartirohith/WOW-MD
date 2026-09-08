@@ -76,6 +76,7 @@ import Media from './pages/Media';
 import AdminLayout, { ADMIN_NAV as ADMIN_PORTAL_NAV } from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminBookingDetail from './pages/admin/AdminBookingDetail';
+import AdminAccountDetail from './pages/admin/AdminAccountDetail';
 import {
   AdminAgents,
   AdminAuditLogs,
@@ -1067,10 +1068,20 @@ export default function App() {
       >
         <Route index element={<AdminDashboard />} />
         <Route path="users" element={<AdminUsers />} />
+        {/*
+          The drill-down pages (EZ1-I171/I172). Agents, their clients, vendors,
+          planners and officers are all user accounts, so all five detail
+          routes render one component keyed by the account id.
+        */}
+        <Route path="clients/:id" element={<AdminAccountDetail kind="client" />} />
         <Route path="agents" element={<AdminAgents />} />
+        <Route path="agents/:id" element={<AdminAccountDetail kind="agent" />} />
         <Route path="vendors" element={<AdminVendors />} />
+        <Route path="vendors/:id" element={<AdminAccountDetail kind="vendor" />} />
         <Route path="officers" element={<AdminOfficers />} />
+        <Route path="officers/:id" element={<AdminAccountDetail kind="officer" />} />
         <Route path="planners" element={<AdminPlanners />} />
+        <Route path="planners/:id" element={<AdminAccountDetail kind="planner" />} />
         <Route path="bookings" element={<AdminBookings />} />
         <Route path="bookings/:id" element={<AdminBookingDetail />} />
         <Route path="payments" element={<AdminPayments />} />

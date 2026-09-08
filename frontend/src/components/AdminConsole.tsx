@@ -91,12 +91,19 @@ export function Directory({
   title = 'Accounts',
   initialRole = '',
   roles = ROLES,
+  detailBase,
 }: {
   title?: string;
   initialRole?: string;
   /** The roles offered in the filter — a dedicated page narrows this (EZ1-I123). */
   roles?: readonly string[];
+  /**
+   * When set, clicking a row opens `${detailBase}/${id}` — the account's own
+   * detail page (EZ1-I171/I172) — instead of expanding the summary inline.
+   */
+  detailBase?: string;
 } = {}) {
+  const navigate = useNavigate();
   const [role, setRole] = useState(initialRole);
   const [q, setQ] = useState('');
   const [active, setActive] = useState('');
@@ -150,8 +157,10 @@ export function Directory({
         {(data?.data ?? []).map((u) => (
           <div key={u.id}>
             <button
-              className="flex w-full items-center justify-between gap-3 py-2 text-left"
-              onClick={() => setOpenId(openId === u.id ? null : u.id)}
+              className="flex w-full items-center justify-between gap-3 py-2 text-left transition-colors hover:bg-brand-soft/40"
+              onClick={() =>
+                detailBase ? navigate(`${detailBase}/${u.id}`) : setOpenId(openId === u.id ? null : u.id)
+              }
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-gray-900">{u.email}</span>
@@ -168,7 +177,7 @@ export function Directory({
                 {u.isActive ? 'Active' : 'Suspended'}
               </span>
             </button>
-            {openId === u.id && <AccountDetail userId={u.id} />}
+            {!detailBase && openId === u.id && <AccountDetail userId={u.id} />}
           </div>
         ))}
         {data?.data.length === 0 && <p className="py-3 text-sm text-gray-400">Nobody matches.</p>}

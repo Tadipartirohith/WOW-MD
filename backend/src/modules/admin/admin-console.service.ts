@@ -230,6 +230,26 @@ export class AdminConsoleService {
     const profileIds = profiles.map((p) => p.id);
 
     /*
+     * The provider side (EZ1-I172).
+     *
+     * `placed` above is what this account booked as a buyer. A vendor or
+     * planner account also has bookings made *with* them — keyed by their
+     * business/profile id, not their user id — which is the list their detail
+     * page is actually about. Fetched here so the same read serves both.
+     */
+    const plannerBusinesses = await this.planners.find({ where: { ownerUserId: userId } });
+    const providerIds = [...listings.map((v) => v.id), ...plannerBusinesses.map((p) => p.id)];
+    const providerBookings = providerIds.length
+      ? await this.attachParties(
+          await this.bookings.find({
+            where: { providerId: In(providerIds) },
+            order: { createdAt: 'DESC' },
+            take: 20,
+          }),
+        )
+      : [];
+
+    /*
      * The parts that only make sense for some accounts.
      *
      * Asked conditionally rather than always, because the honest answer for an
@@ -291,6 +311,15 @@ export class AdminConsoleService {
         isApproved: v.isApproved,
       })),
       bookings: placed,
+      /** Bookings made *with* this account (vendor/planner), newest first. */
+      providerBookings,
+      /** A planner's own agency record(s) — the vendor equivalent is `businesses`. */
+      plannerBusinesses: plannerBusinesses.map((p) => ({
+        id: p.id,
+        name: p.agencyName,
+        city: p.city,
+        isApproved: p.isApproved,
+      })),
       casesRaised: raised,
       casesAssigned: against,
       verifications,
