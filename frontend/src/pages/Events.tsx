@@ -312,30 +312,16 @@ export default function Events() {
 
       {error && <p className="alert-critical">{error}</p>}
 
+      {/* The status counts live on the filter tabs below rather than being
+          repeated as their own tiles (EZ1-I126); this row keeps only the
+          summary numbers a tab cannot carry — days, and the two guest counts.
+          Expected is what the caterer was booked against; confirmed is what the
+          RSVPs actually say. */}
       {summary && summary.total > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Stat label="Days" value={summary.total} onClick={() => setStatusFilter('')} />
-          <Stat
-            label="Upcoming"
-            value={summary.upcoming}
-            tone="text-sky-700"
-            onClick={() => setStatusFilter('upcoming')}
-          />
-          <Stat
-            label="Done"
-            value={summary.completed}
-            onClick={() => setStatusFilter('completed')}
-          />
-          <Stat
-            label="Cancelled"
-            value={summary.cancelled}
-            tone={summary.cancelled > 0 ? 'text-red-700' : undefined}
-            onClick={() => setStatusFilter('cancelled')}
-          />
-          {/* Expected is what the caterer was booked against; confirmed is what
-              the RSVPs actually say. Both matter and they are not the same. */}
-          <Stat label="Expected" value={summary.expectedGuests} />
-          <Stat label="Confirmed" value={summary.confirmedGuests} tone="text-emerald-700" />
+          <Stat label="Expected guests" value={summary.expectedGuests} />
+          <Stat label="Confirmed guests" value={summary.confirmedGuests} tone="text-emerald-700" />
         </div>
       )}
 
@@ -346,19 +332,41 @@ export default function Events() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {(['', 'upcoming', 'ongoing', 'completed', 'cancelled'] as const).map((value) => (
-          <button
-            key={value || 'all'}
-            className={`rounded-full border px-3 py-1 text-xs ${
-              statusFilter === value
-                ? 'border-brand bg-brand text-brand-fg'
-                : 'border-gray-300 text-gray-700 hover:border-brand'
-            }`}
-            onClick={() => setStatusFilter(value)}
-          >
-            {value ? STATUS_LABEL[value] : 'All'}
-          </button>
-        ))}
+        {(['', 'upcoming', 'ongoing', 'completed', 'cancelled'] as const).map((value) => {
+          const count = !summary
+            ? null
+            : value === ''
+              ? summary.total
+              : value === 'upcoming'
+                ? summary.upcoming
+                : value === 'ongoing'
+                  ? summary.ongoing
+                  : value === 'completed'
+                    ? summary.completed
+                    : summary.cancelled;
+          return (
+            <button
+              key={value || 'all'}
+              className={`rounded-full border px-3 py-1 text-xs ${
+                statusFilter === value
+                  ? 'border-brand bg-brand text-brand-fg'
+                  : 'border-gray-300 text-gray-700 hover:border-brand'
+              }`}
+              onClick={() => setStatusFilter(value)}
+            >
+              {value ? STATUS_LABEL[value] : 'All'}
+              {count != null && (
+                <span
+                  className={`ml-1.5 tabular-nums ${
+                    statusFilter === value ? 'text-brand-fg' : 'text-gray-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
