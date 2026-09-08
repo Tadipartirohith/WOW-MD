@@ -198,6 +198,10 @@ export default function Events() {
     await act(
       () =>
         api.post('/events', {
+          // A planner working a client's wedding creates the day on that shared
+          // wedding, not their own empty Events page (EZ1-I144). The couple sends
+          // nothing and the server keys the event to them.
+          hostUserId: host || undefined,
           name,
           venue: venue || undefined,
           eventDate: date || undefined,

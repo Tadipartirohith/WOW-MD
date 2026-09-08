@@ -257,6 +257,134 @@ export class PlannerClientsService {
   }
 
   /**
+   * The wedding behind a booking request, so the planner quotes on the brief
+   * rather than on a name and a date (EZ1-I162).
+   *
+   * Before EZ1-I143 asks a planner whether their quotation arranges the vendors,
+   * they need to see what the wedding actually is: every function with its date,
+   * timing and venue, the guest count, and — the part that decides the quote —
+   * which vendors the couple has already booked against which day, so the
+   * planner can tell what is left to source. All of it is assembled read-only
+   * from the events and bookings that already exist for the couple; nothing here
+   * writes, and it never touches the booking sync paths.
+   */
+  async requestBrief(actor: AuthUser, bookingId: string) {
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('That request could not be found');
+    await this.assertMayReviewRequest(actor, booking);
+
+    const clientUserId = booking.userId;
+    const [plan, events, clientBookings, profiles, user] = await Promise.all([
+      this.plans.findOne({ where: { userId: clientUserId }, order: { createdAt: 'DESC' } }),
+      this.events.find({ where: { userId: clientUserId }, order: { eventDate: 'ASC' } }),
+      this.bookings.find({ where: { userId: clientUserId }, order: { createdAt: 'DESC' } }),
+      this.profiles.find({ where: { userId: clientUserId } }),
+      this.users.findOne({ where: { id: clientUserId }, select: ['id', 'email', 'role'] }),
+    ]);
+
+    // What the couple has already arranged for themselves: the vendor bookings,
+    // named and resolved to the service booked, so the planner sees per day what
+    // is covered and what they must still source. A cancelled booking is not an
+    // arrangement.
+    const vendorBookings = clientBookings.filter(
+      (b) => b.providerType === ProviderType.VENDOR && b.status !== BookingStatus.CANCELLED,
+    );
+    const vendorIds = vendorBookings.map((b) => b.providerId);
+    const serviceIds = [
+      ...new Set(vendorBookings.map((b) => b.vendorServiceId).filter(Boolean)),
+    ] as string[];
+    const [listings, serviceRows] = await Promise.all([
+      vendorIds.length ? this.vendors.find({ where: { id: In(vendorIds) } }) : Promise.resolve([]),
+      serviceIds.length
+        ? this.vendorServices.find({ where: { id: In(serviceIds) } })
+        : Promise.resolve([]),
+    ]);
+    const vendorById = new Map(listings.map((v) => [v.id, v]));
+    const serviceNameById = new Map(serviceRows.map((s) => [s.id, s.displayName]));
+
+    const arranged = vendorBookings.map((b) => ({
+      eventId: b.eventId,
+      eventDate: b.eventDate ?? null,
+      name: vendorById.get(b.providerId)?.name ?? 'Vendor',
+      category: vendorById.get(b.providerId)?.category ?? null,
+      service: b.vendorServiceId ? (serviceNameById.get(b.vendorServiceId) ?? null) : null,
+      status: b.status,
+    }));
+    const forDisplay = (v: (typeof arranged)[number]) => ({
+      name: v.name,
+      category: v.category,
+      service: v.service,
+      status: v.status,
+      eventDate: v.eventDate,
+    });
+
+    return {
+      client: { name: profiles[0]?.displayName ?? user?.email ?? 'The couple' },
+      /** What the couple asked this planner for, before any quote. */
+      request: {
+        requirements: booking.requirements ?? null,
+        expectedBudget: booking.expectedBudget ?? null,
+        currency: booking.currency,
+        notes: booking.notes ?? null,
+        forEvent: booking.eventId
+          ? (events.find((e) => e.id === booking.eventId)?.name ?? null)
+          : null,
+      },
+      wedding: {
+        weddingDate: plan?.weddingDate ?? null,
+        // The largest function is the wedding's headline guest count; summing the
+        // functions would double-count guests invited to more than one day.
+        guestCount: events.reduce((n, e) => Math.max(n, e.expectedGuests ?? 0), 0) || null,
+        venues: [...new Set(events.map((e) => e.venue).filter(Boolean))],
+        cities: [...new Set(events.map((e) => e.city).filter(Boolean))],
+        functions: events.length,
+      },
+      events: events.map((e) => ({
+        id: e.id,
+        name: e.name,
+        date: e.eventDate,
+        startTime: e.startTime,
+        endTime: e.endTime,
+        venue: e.venue ?? null,
+        city: e.city,
+        expectedGuests: e.expectedGuests,
+        budget: e.budget,
+        category: e.category,
+        theme: e.theme,
+        specialRequirements: e.specialRequirements,
+        description: e.description,
+        arrangedVendors: arranged.filter((v) => v.eventId === e.id).map(forDisplay),
+      })),
+      // Vendors the couple booked without tying them to a specific function.
+      otherVendors: arranged
+        .filter((v) => !v.eventId || !events.some((e) => e.id === v.eventId))
+        .map(forDisplay),
+    };
+  }
+
+  /**
+   * Who may read a request's brief: the planner it was sent to (the request's
+   * providerId is their planner profile, not their user), a planner already
+   * engaged on the wedding, or an administrator. Anyone else is refused — the
+   * brief is the couple's private planning, not a public listing.
+   */
+  private async assertMayReviewRequest(actor: AuthUser, booking: Booking): Promise<void> {
+    if (actor.role === UserRole.ADMIN) return;
+    if (booking.providerType === ProviderType.PLANNER) {
+      const mine = await this.plannerProfiles.find({
+        where: { ownerUserId: actor.userId },
+        select: ['id'],
+      });
+      if (mine.some((p) => p.id === booking.providerId)) return;
+    }
+    const engaged = await this.plans.findOne({
+      where: { userId: booking.userId, plannerUserId: actor.userId },
+    });
+    if (engaged) return;
+    throw new ForbiddenException('That request was not sent to you');
+  }
+
+  /**
    * Everything about one client, on one screen.
    *
    * The budget, guest counts and planning progress are not recomputed here:

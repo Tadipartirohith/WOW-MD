@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { api, apiMessage } from '../lib/api';
+import { formatDate } from '../lib/dates';
 import BookingChat from './BookingChat';
 import BookingConsole from './BookingConsole';
 import { BOOKING_STATUS_LABEL, Permission, can } from '../lib/permissions';
@@ -75,6 +76,9 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
   const qc = useQueryClient();
   const [error, setError] = useState('');
   const [quoting, setQuoting] = useState<string | null>(null);
+  // A planner reviews the couple's whole wedding before quoting (EZ1-I162); a
+  // vendor quotes on their one service and does not see the brief.
+  const isPlanner = can(useAuth((s) => s.user?.permissions ?? []), Permission.PLANNER_LISTING_MANAGE);
 
 
   const act = useMutation({
@@ -113,7 +117,12 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
       */}
       <BookingConsole
         statusLabels={BOOKING_STATUS_LABEL}
-        renderDetail={(b) => <ServiceAnswers booking={b as never} />}
+        renderDetail={(b) => (
+          <>
+            <ServiceAnswers booking={b as never} />
+            {isPlanner && <WeddingBrief bookingId={b.id} />}
+          </>
+        )}
         renderActions={(b) => (
           <>
             {(ACTIONS[b.status] ?? []).map((a) => (
@@ -192,6 +201,179 @@ function ServiceAnswers({ booking }: { booking: IncomingBooking }) {
           </div>
         ))}
     </dl>
+  );
+}
+
+interface BriefVendor {
+  name: string;
+  category: string | null;
+  service: string | null;
+  status: string;
+  eventDate?: string | null;
+}
+
+interface RequestBrief {
+  client: { name: string };
+  request: {
+    requirements: string | null;
+    expectedBudget: string | null;
+    currency: string;
+    notes: string | null;
+    forEvent: string | null;
+  };
+  wedding: {
+    weddingDate: string | null;
+    guestCount: number | null;
+    venues: string[];
+    cities: string[];
+    functions: number;
+  };
+  events: {
+    id: string;
+    name: string;
+    date: string | null;
+    startTime: string | null;
+    endTime: string | null;
+    venue: string | null;
+    city: string | null;
+    expectedGuests: number | null;
+    budget: string | null;
+    category: string | null;
+    theme: string | null;
+    specialRequirements: string | null;
+    description: string | null;
+    arrangedVendors: BriefVendor[];
+  }[];
+  otherVendors: BriefVendor[];
+}
+
+/**
+ * The couple's whole wedding, for the planner deciding what to quote (EZ1-I162).
+ *
+ * The request row alone says who and when; a planner pricing the job needs the
+ * shape of the wedding — every function, its guests and venue, and which
+ * vendors the couple has already arranged against which day, so they can tell
+ * what is left to source. Fetched only when opened, because a planner's queue
+ * is many rows and the brief is a screen's worth each.
+ */
+function WeddingBrief({ bookingId }: { bookingId: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isPending } = useQuery<RequestBrief>({
+    queryKey: ['request-brief', bookingId],
+    queryFn: async () => (await api.get(`/planner/requests/${bookingId}/brief`)).data,
+    enabled: open,
+    retry: false,
+  });
+
+  const money = (v: string | number, ccy = 'INR') =>
+    `${ccy} ${Number(v || 0).toLocaleString('en-IN')}`;
+  const vendorLine = (v: BriefVendor) =>
+    [v.name, v.service, v.category].filter(Boolean).join(' · ');
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        className="text-xs font-medium text-brand-strong underline underline-offset-2"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? 'Hide wedding brief' : 'View wedding brief'}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-3 rounded-sm bg-surface-sunken p-3 text-xs text-gray-700">
+          {isPending && <p className="text-gray-500">Loading the brief…</p>}
+          {data && (
+            <>
+              <dl className="flex flex-wrap gap-x-4 gap-y-1">
+                <div className="flex gap-1.5">
+                  <dt className="text-gray-400">Wedding</dt>
+                  <dd className="font-medium">
+                    {data.wedding.weddingDate ? formatDate(data.wedding.weddingDate) : 'Not set'}
+                  </dd>
+                </div>
+                {data.wedding.guestCount ? (
+                  <div className="flex gap-1.5">
+                    <dt className="text-gray-400">Guests</dt>
+                    <dd className="font-medium">up to {data.wedding.guestCount}</dd>
+                  </div>
+                ) : null}
+                {data.wedding.venues.length > 0 && (
+                  <div className="flex gap-1.5">
+                    <dt className="text-gray-400">Venues</dt>
+                    <dd className="font-medium">
+                      {[...data.wedding.venues, ...data.wedding.cities].slice(0, 4).join(', ')}
+                    </dd>
+                  </div>
+                )}
+                {data.request.expectedBudget && Number(data.request.expectedBudget) > 0 && (
+                  <div className="flex gap-1.5">
+                    <dt className="text-gray-400">Their budget</dt>
+                    <dd className="font-mono font-medium">
+                      {money(data.request.expectedBudget, data.request.currency)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+
+              {data.request.requirements && (
+                <p className="rounded-sm bg-surface p-2">
+                  <span className="text-gray-400">What they asked for: </span>
+                  {data.request.requirements}
+                </p>
+              )}
+
+              {data.events.length === 0 ? (
+                <p className="text-gray-500">The couple has not added their functions yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="font-medium text-gray-800">
+                    Functions ({data.wedding.functions})
+                  </p>
+                  {data.events.map((e) => (
+                    <div key={e.id} className="rounded-sm bg-surface p-2">
+                      <p className="font-medium text-gray-900">
+                        {e.name}
+                        <span className="ml-1 font-normal text-gray-500">
+                          {e.date ? formatDate(e.date) : 'Date not set'}
+                          {e.startTime ? ` · ${e.startTime.slice(0, 5)}` : ''}
+                          {e.endTime ? `–${e.endTime.slice(0, 5)}` : ''}
+                        </span>
+                      </p>
+                      <p className="text-gray-500">
+                        {[e.venue, e.city].filter(Boolean).join(', ') || 'Venue not set'}
+                        {e.expectedGuests ? ` · ${e.expectedGuests} guests` : ''}
+                        {e.budget && Number(e.budget) > 0 ? ` · ${money(e.budget)}` : ''}
+                      </p>
+                      {(e.theme || e.specialRequirements || e.description) && (
+                        <p className="mt-1 text-gray-600">
+                          {[e.theme, e.specialRequirements, e.description].filter(Boolean).join(' — ')}
+                        </p>
+                      )}
+                      {e.arrangedVendors.length > 0 ? (
+                        <p className="mt-1 text-gray-600">
+                          <span className="text-gray-400">Already booked: </span>
+                          {e.arrangedVendors.map(vendorLine).join('; ')}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-gray-400">No vendors arranged for this day yet.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {data.otherVendors.length > 0 && (
+                <p className="text-gray-600">
+                  <span className="text-gray-400">Other vendors already booked: </span>
+                  {data.otherVendors.map(vendorLine).join('; ')}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

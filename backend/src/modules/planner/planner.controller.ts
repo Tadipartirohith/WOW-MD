@@ -44,6 +44,22 @@ export class PlannerController {
     return this.clients.clientDetail(actor, userId);
   }
 
+  @RequirePermissions(Permission.PLAN_MANAGE_ENGAGED)
+  @ApiOperation({
+    summary: "A booking request's wedding brief",
+    description:
+      "The couple's functions with dates and timings, guest count, venues, and the vendors " +
+      'already arranged per day — so the planner reviews the full requirement before quoting ' +
+      '(EZ1-I162). Read-only; assembled from the events and bookings that already exist.',
+  })
+  @Get('requests/:bookingId/brief')
+  requestBrief(
+    @CurrentUser() actor: AuthUser,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    return this.clients.requestBrief(actor, bookingId);
+  }
+
   @RequirePermissions(Permission.PLAN_MANAGE_OWN)
   @Post('plan')
   create(@CurrentUser() actor: AuthUser, @Body() dto: CreatePlanDto) {
