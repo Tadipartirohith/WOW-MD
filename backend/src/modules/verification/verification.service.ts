@@ -10,6 +10,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThan, Repository } from 'typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { OfficerServiceArea } from './entities/officer-service-area.entity';
+import {
+  AvailabilityView,
+  OfficerAvailability,
+  availabilityView,
+} from './entities/officer-availability.entity';
 import { canonicalCity, normalisePlace, stateOf } from './service-area';
 import { NotificationsService } from '../notifications/notifications.service';
 import { User } from '../auth/entities/user.entity';
@@ -63,6 +68,8 @@ export class VerificationService {
     private readonly requests: Repository<VerificationRequest>,
     @InjectRepository(OfficerServiceArea)
     private readonly areas: Repository<OfficerServiceArea>,
+    @InjectRepository(OfficerAvailability)
+    private readonly availability: Repository<OfficerAvailability>,
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
@@ -911,6 +918,14 @@ export class VerificationService {
       inProgress: number;
       completed: number;
       total: number;
+      /**
+       * Availability, carried so the same list feeds two callers: the admin
+       * allocation surface still shows an on-leave officer (a named manual
+       * allocation to them is allowed), while auto-suggest reads `onLeave` and
+       * skips them.
+       */
+      availability: AvailabilityView;
+      onLeave: boolean;
     }[]
   > {
     const officers = await this.users.find({
@@ -918,6 +933,11 @@ export class VerificationService {
       select: ['id'],
     });
     if (officers.length === 0) return [];
+
+    const avail = await this.availability.find({
+      where: officers.map((o) => ({ officerUserId: o.id })),
+    });
+    const availByUser = new Map(avail.map((a) => [a.officerUserId, a]));
 
     const rows = await this.requests
       .createQueryBuilder('r')
@@ -944,10 +964,13 @@ export class VerificationService {
 
       const open = count(OPEN);
       const inProgress = count([VerificationStatus.IN_PROGRESS]);
+      const availability = availabilityView(availByUser.get(officer.id));
       return {
         officerUserId: officer.id,
         open,
         inProgress,
+        availability,
+        onLeave: availability.onLeaveNow,
         // Written up and waiting on an administrator. Reported, but deliberately
         // not counted below: the officer's part is finished, and holding it
         // against them would starve the busiest officer of new work while an
@@ -991,7 +1014,10 @@ export class VerificationService {
     basis: 'primary_area' | 'secondary_area' | 'state' | 'workload_only';
     city: string | null;
   }> {
-    const ranked = await this.workload();
+    // On-leave officers stay in `workload()` so the admin still sees them and
+    // can name them manually, but auto-suggest must not land new work on
+    // someone who is away — so they are dropped here, before ranking (EZ1-I210).
+    const ranked = (await this.workload()).filter((r) => !r.onLeave);
     if (ranked.length === 0) return { officerUserId: null, basis: 'workload_only', city: null };
 
     const city = canonicalCity(applicantCity);

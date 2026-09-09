@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VerificationRequest } from './entities/verification-request.entity';
 import { OfficerServiceArea } from './entities/officer-service-area.entity';
+import { OfficerAvailability } from './entities/officer-availability.entity';
 import { SupportCase } from './entities/support-case.entity';
 import { User } from '../auth/entities/user.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
@@ -25,6 +26,7 @@ import { CatalogModule } from '../catalog/catalog.module';
     TypeOrmModule.forFeature([
       VerificationRequest,
       OfficerServiceArea,
+      OfficerAvailability,
       SupportCase,
       User,
       AgentProfile,

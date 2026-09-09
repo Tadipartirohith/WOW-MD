@@ -2,13 +2,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
+  IsEnum,
   IsOptional,
   IsString,
   Length,
   Matches,
   MaxLength,
 } from 'class-validator';
+import { OfficerAvailabilityStatus } from '../../../common/enums';
 
 /** Trim and lowercase so the same address is not stored two ways. */
 const normaliseEmail = ({ value }: { value: unknown }) =>
@@ -50,6 +53,35 @@ export class SetOfficerStatusDto {
   @ApiProperty()
   @IsBoolean()
   isActive: boolean;
+}
+
+/**
+ * An officer setting their own availability.
+ *
+ * The dates are validated as dates here; the "both dates when on leave, and
+ * end not before start" rule lives in the service, because it is a rule about
+ * the combination rather than any one field.
+ */
+export class SetAvailabilityDto {
+  @ApiProperty({ enum: OfficerAvailabilityStatus, example: OfficerAvailabilityStatus.ON_LEAVE })
+  @IsEnum(OfficerAvailabilityStatus)
+  status: OfficerAvailabilityStatus;
+
+  @ApiPropertyOptional({ example: '2026-09-15', description: 'First day of leave (on_leave only).' })
+  @IsOptional()
+  @IsDateString({}, { message: 'leaveFrom must be a date, e.g. 2026-09-15' })
+  leaveFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-22', description: 'Last day of leave (on_leave only).' })
+  @IsOptional()
+  @IsDateString({}, { message: 'leaveTo must be a date, e.g. 2026-09-22' })
+  leaveTo?: string;
+
+  @ApiPropertyOptional({ example: 'Annual leave', maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  leaveReason?: string;
 }
 
 /**

@@ -21,7 +21,12 @@ import {
   SubmitFindingsDto,
   VerificationQueryDto,
 } from './dto/verification.dto';
-import { CreateOfficerDto, ServiceAreaDto, SetOfficerStatusDto } from './dto/officer.dto';
+import {
+  CreateOfficerDto,
+  ServiceAreaDto,
+  SetAvailabilityDto,
+  SetOfficerStatusDto,
+} from './dto/officer.dto';
 import {
   AddEvidenceDto,
   AllocateCaseDto,
@@ -103,6 +108,27 @@ export class VerificationController {
     @Body() dto: SetOfficerStatusDto,
   ) {
     return this.officers.setActive(actor, id, dto.isActive);
+  }
+
+  // ------------------------------------------------------- own availability
+
+  @RequirePermissions(Permission.VERIFICATION_FIELDWORK)
+  @ApiOperation({
+    summary: 'Your own availability for fieldwork',
+    description:
+      'Available, on leave (with dates), or unavailable. Auto-allocation skips you while you ' +
+      'are on leave or unavailable; an administrator can still name you directly.',
+  })
+  @Get('officers/me/availability')
+  myAvailability(@CurrentUser('userId') userId: string) {
+    return this.officers.getAvailability(userId);
+  }
+
+  @RequirePermissions(Permission.VERIFICATION_FIELDWORK)
+  @ApiOperation({ summary: 'Set your own availability' })
+  @Put('officers/me/availability')
+  setMyAvailability(@CurrentUser() actor: AuthUser, @Body() dto: SetAvailabilityDto) {
+    return this.officers.setAvailability(actor, dto);
   }
 
   // ------------------------------------------------------- the applicant

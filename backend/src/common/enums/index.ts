@@ -672,6 +672,21 @@ export enum VerificationStatus {
   ADDITIONAL_REVIEW = 'additional_review',
 }
 
+/**
+ * Whether a verification officer is taking new fieldwork.
+ *
+ * Set by the officer in their own portal. AVAILABLE is the working default;
+ * ON_LEAVE carries a start/end date so a leave booked for next week does not
+ * pull the officer out of allocation today; UNAVAILABLE is an open-ended stand
+ * down with no dates. Auto-allocation skips anyone not available now — a named
+ * manual allocation by an administrator still gets through.
+ */
+export enum OfficerAvailabilityStatus {
+  AVAILABLE = 'available',
+  ON_LEAVE = 'on_leave',
+  UNAVAILABLE = 'unavailable',
+}
+
 /** What a support or investigation case is attached to. */
 export enum CaseSubject {
   AGENT = 'agent',

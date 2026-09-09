@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
@@ -414,6 +414,13 @@ export default function Verification() {
 
       {error && <p className="alert-critical">{error}</p>}
       {notice && <p className="alert-positive">{notice}</p>}
+
+      {/*
+        An officer sets whether they are taking fieldwork. Auto-allocation skips
+        them while on leave or unavailable; an admin can still name them (I210).
+        Admins do not hold fieldwork, so this is officers only.
+      */}
+      {canFieldwork && <MyAvailability />}
 
       {metrics && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1759,6 +1766,168 @@ function OfficersPanel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+type AvailabilityStatus = 'available' | 'on_leave' | 'unavailable';
+
+interface Availability {
+  status: AvailabilityStatus;
+  leaveFrom: string | null;
+  leaveTo: string | null;
+  leaveReason: string | null;
+  /** Whether allocation is skipping the officer right now. */
+  onLeaveNow: boolean;
+}
+
+const AVAILABILITY_LABEL: Record<AvailabilityStatus, string> = {
+  available: 'Available',
+  on_leave: 'On leave',
+  unavailable: 'Unavailable',
+};
+
+/**
+ * An officer setting whether they are taking fieldwork.
+ *
+ * Available is the working default. On leave carries a start and end date, so a
+ * leave booked for next week does not pull the officer out of allocation today;
+ * unavailable is an open-ended stand down. Auto-allocation skips anyone who is
+ * not available now — an administrator can still name them directly, which is
+ * why this only sets a preference rather than blocking work outright.
+ */
+function MyAvailability() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['my-availability'],
+    queryFn: async () =>
+      (await api.get('/verification/officers/me/availability')).data as Availability,
+    retry: false,
+  });
+
+  const [status, setStatus] = useState<AvailabilityStatus>('available');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [reason, setReason] = useState('');
+  const [seeded, setSeeded] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  // Seed the form from the server once, then leave the officer's edits alone.
+  useEffect(() => {
+    if (data && !seeded) {
+      setStatus(data.status);
+      setFrom(data.leaveFrom ?? '');
+      setTo(data.leaveTo ?? '');
+      setReason(data.leaveReason ?? '');
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+
+  const onLeave = status === 'on_leave';
+  const datesOk = !onLeave || (from !== '' && to !== '' && to >= from);
+
+  async function save() {
+    setError('');
+    setNotice('');
+    try {
+      await api.put('/verification/officers/me/availability', {
+        status,
+        leaveFrom: onLeave ? from : undefined,
+        leaveTo: onLeave ? to : undefined,
+        leaveReason: onLeave && reason ? reason : undefined,
+      });
+      setNotice('Availability updated.');
+      qc.invalidateQueries({ queryKey: ['my-availability'] });
+      // So the admin roster and the allocation workload reflect it at once.
+      qc.invalidateQueries({ queryKey: ['verification-officers'] });
+      qc.invalidateQueries({ queryKey: ['verification-workload'] });
+    } catch (err) {
+      setError(apiMessage(err, 'Could not update availability.'));
+    }
+  }
+
+  const badgeTone =
+    data?.status === 'available'
+      ? 'bg-positive-bg text-positive-fg'
+      : 'bg-caution-bg text-caution-fg';
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-title">My availability</h2>
+        {data && (
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeTone}`}>
+            {AVAILABILITY_LABEL[data.status]}
+            {data.status === 'on_leave' && data.leaveFrom && data.leaveTo
+              ? ` · ${data.leaveFrom} to ${data.leaveTo}`
+              : ''}
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-gray-600">
+        New verifications are not auto-allocated to you while you are on leave or unavailable. An
+        administrator can still assign one to you by name.
+      </p>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="text-sm">
+          <span className="mb-1 block text-gray-600">Status</span>
+          <select
+            className="input"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as AvailabilityStatus)}
+          >
+            {(Object.keys(AVAILABILITY_LABEL) as AvailabilityStatus[]).map((s) => (
+              <option key={s} value={s}>
+                {AVAILABILITY_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {onLeave && (
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-gray-600">From</span>
+            <input
+              className="input"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-gray-600">To</span>
+            <input
+              className="input"
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-gray-600">Reason (optional)</span>
+            <input
+              className="input"
+              placeholder="e.g. Annual leave"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
+
+      {onLeave && !datesOk && from !== '' && to !== '' && (
+        <p className="text-xs text-critical-fg">End date cannot be before the start date.</p>
+      )}
+      {error && <p className="alert-critical">{error}</p>}
+      {notice && <p className="alert-positive">{notice}</p>}
+
+      <button className="btn" disabled={!datesOk} onClick={save}>
+        Save availability
+      </button>
     </div>
   );
 }

@@ -4,13 +4,18 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
-import { CreateOfficerDto } from './dto/officer.dto';
+import { CreateOfficerDto, SetAvailabilityDto } from './dto/officer.dto';
+import {
+  AvailabilityView,
+  OfficerAvailability,
+  availabilityView,
+} from './entities/officer-availability.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { generateTemporaryPassword } from '../../common/util/passwords';
-import { ProfileClaimStatus, UserRole } from '../../common/enums';
+import { OfficerAvailabilityStatus, ProfileClaimStatus, UserRole } from '../../common/enums';
 
 export interface OfficerView {
   id: string;
@@ -28,6 +33,12 @@ export interface OfficerView {
    * be able to see which one they are making.
    */
   kind: 'officer' | 'agent';
+  /**
+   * Whether the officer is taking new fieldwork. Exposed on the roster so the
+   * admin console can show it and auto-allocation can skip anyone on leave —
+   * `onLeaveNow` is the flag that decides the latter.
+   */
+  availability: AvailabilityView;
 }
 
 /**
@@ -43,6 +54,8 @@ export class OfficersService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(OfficerAvailability)
+    private readonly availability: Repository<OfficerAvailability>,
     private readonly cfg: AppConfigService,
     private readonly mail: MailService,
     private readonly audit: AuditService,
@@ -137,7 +150,15 @@ export class OfficersService {
       select: ['userId', 'displayName'],
     });
     const byUser = new Map(names.map((p) => [p.userId as string, p.displayName]));
-    return people.map((o) => this.view(o, byUser.get(o.id) ?? o.email));
+
+    // One read for every officer's availability, mapped by id — the roster is
+    // where the admin console reads on-leave from (EZ1-I212).
+    const avail = await this.availability.find({
+      where: people.map((o) => ({ officerUserId: o.id })),
+    });
+    const availByUser = new Map(avail.map((a) => [a.officerUserId, a]));
+
+    return people.map((o) => this.view(o, byUser.get(o.id) ?? o.email, availByUser.get(o.id)));
   }
 
   /**
@@ -162,10 +183,11 @@ export class OfficersService {
     });
 
     const profile = await this.profiles.findOne({ where: { userId: officerId } });
-    return this.view(officer, profile?.displayName ?? officer.email);
+    const availability = await this.availability.findOne({ where: { officerUserId: officerId } });
+    return this.view(officer, profile?.displayName ?? officer.email, availability);
   }
 
-  private view(user: User, name: string): OfficerView {
+  private view(user: User, name: string, availability?: OfficerAvailability | null): OfficerView {
     return {
       id: user.id,
       email: user.email,
@@ -174,6 +196,54 @@ export class OfficersService {
       isActive: user.isActive,
       createdAt: user.createdAt,
       kind: user.role === UserRole.AGENT ? 'agent' : 'officer',
+      availability: availabilityView(availability),
     };
+  }
+
+  // -------------------------------------------------------------- availability
+
+  /**
+   * An officer's own availability. Returns the AVAILABLE default rather than
+   * nothing when they have never set it, so the portal always has a state to
+   * show and the admin roster always has one to read.
+   */
+  async getAvailability(officerUserId: string): Promise<AvailabilityView> {
+    const row = await this.availability.findOne({ where: { officerUserId } });
+    return availabilityView(row);
+  }
+
+  /**
+   * An officer setting their own availability.
+   *
+   * The leave window is two dates or neither, and the end may not precede the
+   * start — a half-set window would leave the allocator guessing. Any status
+   * other than ON_LEAVE clears the window, so a stale one never reads as live.
+   */
+  async setAvailability(
+    actor: AuthUser,
+    dto: SetAvailabilityDto,
+  ): Promise<AvailabilityView> {
+    const onLeave = dto.status === OfficerAvailabilityStatus.ON_LEAVE;
+    if (onLeave) {
+      if (!dto.leaveFrom || !dto.leaveTo) {
+        throw new BadRequestException('On leave needs a start and an end date');
+      }
+      if (dto.leaveTo < dto.leaveFrom) {
+        throw new BadRequestException('Leave end date cannot be before the start date');
+      }
+    }
+
+    const row =
+      (await this.availability.findOne({ where: { officerUserId: actor.userId } })) ??
+      this.availability.create({ officerUserId: actor.userId });
+
+    row.status = dto.status;
+    row.leaveFrom = onLeave ? (dto.leaveFrom as string) : null;
+    row.leaveTo = onLeave ? (dto.leaveTo as string) : null;
+    // A reason is only meaningful while on leave; drop it otherwise.
+    row.leaveReason = onLeave ? dto.leaveReason?.trim() || null : null;
+
+    const saved = await this.availability.save(row);
+    return availabilityView(saved);
   }
 }
