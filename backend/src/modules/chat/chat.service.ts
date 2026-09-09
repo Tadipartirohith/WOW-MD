@@ -151,6 +151,79 @@ export class ChatService {
   }
 
   /**
+   * The matchmaking interest an agent is standing in for, if this pair is one.
+   *
+   * An agent runs their client's matchmaking, so a chat between the agent and
+   * the *other* family is a match thread even though neither account is on the
+   * interest — the interest is between the agent's client profile and the
+   * counterpart profile. Resolved by the profiles the agent stewards, most
+   * recent first, so a re-sent interest reads as the current one.
+   *
+   * Returns null when the two are not a matchmaking pair at all, which is what
+   * keeps a genuine enquiry (a self-registered person approaching an agent, or
+   * an agent approaching a vendor) out of this gate.
+   */
+  private async agentMatchThread(
+    agentUserId: string,
+    individualUserId: string,
+  ): Promise<{ interest: Interest; clientProfile: Profile } | null> {
+    const [managed, individual] = await Promise.all([
+      this.profiles.find({ where: { managedByUserId: agentUserId } }),
+      this.profiles.findOne({ where: { userId: individualUserId } }),
+    ]);
+    if (!individual || managed.length === 0) return null;
+
+    const managedIds = managed.map((p) => p.id);
+    const interest = await this.interests.findOne({
+      where: [
+        { fromProfileId: individual.id, toProfileId: In(managedIds) },
+        { fromProfileId: In(managedIds), toProfileId: individual.id },
+      ],
+      order: { createdAt: 'DESC' },
+    });
+    if (!interest) return null;
+
+    const clientProfileId =
+      interest.fromProfileId === individual.id ? interest.toProfileId : interest.fromProfileId;
+    const clientProfile = managed.find((p) => p.id === clientProfileId);
+    if (!clientProfile) return null;
+
+    return { interest, clientProfile };
+  }
+
+  /**
+   * The acceptance gate for an agent standing in for a managed client.
+   *
+   * `classifyThread` labels an agent-to-individual thread an INQUIRY, which is
+   * ungated — correct for a vendor enquiry, wrong for the other side of a
+   * client's match. When the pair *is* a matchmaking pair, the same rule as the
+   * couple's own chat applies: it may only be used while the interest is
+   * currently ACCEPTED, so a withdrawn or rejected one closes it again.
+   *
+   * Returns MATCH when the pair is an accepted match, throws when it is a match
+   * that is not accepted, and returns null when they are not a matchmaking pair
+   * (leaving the thread the INQUIRY it already was).
+   */
+  private async agentMatchKind(sender: User, recipient: User): Promise<ThreadKind | null> {
+    let agent: User;
+    let individual: User;
+    if (sender.role === UserRole.AGENT && isIndividual(recipient.role)) {
+      agent = sender;
+      individual = recipient;
+    } else if (recipient.role === UserRole.AGENT && isIndividual(sender.role)) {
+      agent = recipient;
+      individual = sender;
+    } else {
+      return null;
+    }
+
+    const thread = await this.agentMatchThread(agent.id, individual.id);
+    if (!thread) return null;
+    if (thread.interest.status === InterestStatus.ACCEPTED) return ThreadKind.MATCH;
+    throw new ForbiddenException('You can only chat with accepted matches');
+  }
+
+  /**
    * Who may talk to whom. Three legitimate reasons for a thread to exist:
    *
    *  MATCH          two individuals whose profiles have an accepted interest
@@ -172,6 +245,14 @@ export class ChatService {
     if (kind === ThreadKind.MATCH) {
       if (await this.hasAcceptedMatch(senderId, recipientId)) return ThreadKind.MATCH;
       throw new ForbiddenException('You can only chat with accepted matches');
+    }
+
+    // An agent-to-individual thread is an INQUIRY by default, but when it is the
+    // far side of a managed client's match it carries the same acceptance gate
+    // as the couple's own chat — before acceptance, and again once withdrawn.
+    if (kind === ThreadKind.INQUIRY) {
+      const gated = await this.agentMatchKind(sender, recipient);
+      if (gated) return gated;
     }
 
     if (!kind) throw new ForbiddenException('You are not permitted to message this account');
@@ -469,6 +550,46 @@ export class ChatService {
     };
   }
 
+  /**
+   * The kind and context of one row, from the reader's point of view.
+   *
+   * For the couple this is just the thread kind and the interest between the two
+   * profiles. For an agent it is more: an agent-to-individual thread that is the
+   * far side of a managed client's match is surfaced as a MATCH, with its
+   * context read from the *client's* profile rather than the agent's (an agent
+   * has no profile of their own on the interest). That makes `context` appear
+   * exactly when the interest is accepted, so the client locks the composer and
+   * call controls until then — the same signal the couple's chat already uses.
+   */
+  private async resolveKindContext(
+    me: User | undefined,
+    other: User | undefined,
+    myProfile: Profile | undefined,
+    otherProfile: Profile | undefined,
+  ): Promise<{ kind: ThreadKind | null; context: ConversationContext | null }> {
+    const kind = me && other ? this.classifyThread(me, other) : null;
+    const context = await this.contextFor(myProfile, otherProfile);
+
+    if (
+      kind === ThreadKind.INQUIRY &&
+      me &&
+      other &&
+      me.role === UserRole.AGENT &&
+      isIndividual(other.role) &&
+      otherProfile
+    ) {
+      const thread = await this.agentMatchThread(me.id, other.id);
+      if (thread) {
+        return {
+          kind: ThreadKind.MATCH,
+          context: await this.contextFor(thread.clientProfile, otherProfile),
+        };
+      }
+    }
+
+    return { kind, context };
+  }
+
   async listConversations(userId: string): Promise<ConversationSummary[]> {
     // Direct threads only. A booking's thread lives on the booking, where its
     // rules are — surfacing it here would offer a vendor a conversation the
@@ -504,18 +625,17 @@ export class ChatService {
     const accountById = new Map(accounts.map((u) => [u.id, u]));
     const me = accountById.get(userId);
 
-    // The thread kind for one of this reader's counterparts, or null when a
-    // record is missing (treated as ungated by the client).
-    const kindFor = (otherUserId: string): ThreadKind | null => {
-      const other = accountById.get(otherUserId);
-      return me && other ? this.classifyThread(me, other) : null;
-    };
-
     const myProfile = await this.profiles.findOne({ where: { userId } });
 
     const silent: ConversationSummary[] = await Promise.all(
       pending.map(async (otherUserId) => {
         const profile = profileByUser.get(otherUserId);
+        const { kind, context } = await this.resolveKindContext(
+          me,
+          accountById.get(otherUserId),
+          myProfile ?? undefined,
+          profile,
+        );
         return {
           conversationId: '',
           withUserId: otherUserId,
@@ -533,8 +653,8 @@ export class ChatService {
           ageRange: ageBand(profile?.dateOfBirth ?? null),
           city: profile?.city ?? null,
           lastActiveAt: profile?.lastActiveAt ?? null,
-          context: await this.contextFor(myProfile ?? undefined, profile),
-          kind: kindFor(otherUserId),
+          context,
+          kind,
         };
       }),
     );
@@ -566,6 +686,12 @@ export class ChatService {
           }),
         ]);
         const profile = profileByUser.get(otherUserId);
+        const { kind, context } = await this.resolveKindContext(
+          me,
+          accountById.get(otherUserId),
+          myProfile ?? undefined,
+          profile,
+        );
 
         return {
           conversationId: convo.id,
@@ -586,8 +712,8 @@ export class ChatService {
           ageRange: ageBand(profile?.dateOfBirth ?? null),
           city: profile?.city ?? null,
           lastActiveAt: profile?.lastActiveAt ?? null,
-          context: await this.contextFor(myProfile ?? undefined, profile),
-          kind: kindFor(otherUserId),
+          context,
+          kind,
         };
       }),
     );
