@@ -265,6 +265,7 @@ export default function Dashboard() {
       (await api.get('/planner/clients')).data as {
         clients: {
           userId: string;
+          planId: string;
           name: string;
           status: string;
           weddingDate: string | null;
@@ -273,6 +274,7 @@ export default function Dashboard() {
         requests: unknown[];
         upcomingTasks?: {
           id: string;
+          planId: string;
           clientName: string;
           title: string;
           dueDate: string | null;
@@ -282,9 +284,31 @@ export default function Dashboard() {
     retry: false,
     enabled: isPlanner,
   });
+  // The counters come off the same engagement My Clients is built from, so a
+  // wedding on the screen can never sit beside a zero count, and escrow reads
+  // zero when there is genuinely no book rather than borrowing a listing's
+  // figure (EZ1-I184).
+  const { data: plannerOverview } = useQuery({
+    queryKey: ['planner-overview'],
+    queryFn: async () =>
+      (await api.get('/planner/overview')).data as {
+        weddings: number;
+        active: number;
+        upcoming: number;
+        completed: number;
+        clients: number;
+        bookings: { total: number; confirmed: number; pending: number };
+        escrowHeld: string;
+        tasks: { total: number; done: number; overdue: number };
+        currency: string;
+      },
+    retry: false,
+    enabled: isPlanner,
+    refetchOnMount: 'always',
+  });
   const plannerClients = plannerBook?.clients ?? [];
-  const activeClients = plannerClients.filter((c) => c.status === 'active').length;
-  const upcomingClients = plannerClients.filter((c) => c.status === 'upcoming').length;
+  const activeClients = plannerOverview?.active ?? 0;
+  const upcomingClients = plannerOverview?.upcoming ?? 0;
   const plannerRequests = plannerBook?.requests?.length ?? 0;
   // The next few weddings by date, so the band leads with what is coming rather
   // than only how many there are (EZ1-I52).
@@ -292,7 +316,15 @@ export default function Dashboard() {
     .filter((c) => c.weddingDate)
     .sort((a, b) => new Date(a.weddingDate!).getTime() - new Date(b.weddingDate!).getTime())
     .slice(0, 4);
-  const upcomingTasks = plannerBook?.upcomingTasks ?? [];
+  // Drop tasks that belong to weddings that have already happened: their
+  // leftover to-dos are not the planner's live deadlines, and showing them as
+  // overdue was the stale-overdue noise EZ1-I184 set out to clear.
+  const completedPlanIds = new Set(
+    plannerClients.filter((c) => c.status === 'completed').map((c) => c.planId),
+  );
+  const upcomingTasks = (plannerBook?.upcomingTasks ?? []).filter(
+    (t) => !completedPlanIds.has(t.planId),
+  );
 
   // A marriage agent opens the app to see their book at a glance (EZ1-I79):
   // how many clients, how many are matched, how many are still open, and the
@@ -405,22 +437,20 @@ export default function Dashboard() {
           value={unread?.unread ?? 0}
           to="/notifications"
         />
-        {isProvider && (
+        {/*
+          A provider that is not a planner (there is one persona here now that
+          vendors have their own dashboard) keeps the listing-scoped counters.
+          A planner's headline numbers come from their engaged book instead, so
+          they agree with My Clients — see the planner block below.
+        */}
+        {isProvider && !isPlanner && (
           <>
-            {/*
-              A planner already has "Requests to answer" in the action band below,
-              off the same requested-booking count — so this generic card would be
-              the same number under a second name, which is the confusion reported
-              in EZ1-I52. It stays for a vendor, whose dashboard has no such band.
-            */}
-            {!isPlanner && (
-              <Counter
-                label="New requests"
-                value={newRequests?.total ?? 0}
-                to="/bookings"
-                tone={(newRequests?.total ?? 0) > 0 ? 'text-amber-700' : undefined}
-              />
-            )}
+            <Counter
+              label="New requests"
+              value={newRequests?.total ?? 0}
+              to="/bookings"
+              tone={(newRequests?.total ?? 0) > 0 ? 'text-amber-700' : undefined}
+            />
             <Counter
               label="Bookings in total"
               value={incoming?.total ?? 0}
@@ -528,6 +558,36 @@ export default function Dashboard() {
             label="Paid out"
             value={`₹${Number(earnings?.paidOut ?? 0).toLocaleString('en-IN')}`}
             to="/accounts"
+          />
+        </div>
+      )}
+
+      {/*
+        The planner's headline row. Every figure comes off the same engagement
+        My Clients is built from (EZ1-I184) — weddings they are running, bookings
+        across that book, the escrow they actually hold for it, and what is
+        genuinely overdue — so a wedding on screen can never sit beside a zero
+        count, and all of it reads zero when there is no book rather than
+        borrowing a number from an unrelated listing.
+      */}
+      {isPlanner && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Counter label="Weddings" value={plannerOverview?.weddings ?? 0} to="/my-clients" />
+          <Counter
+            label="Bookings"
+            value={plannerOverview?.bookings.total ?? 0}
+            to="/my-clients"
+          />
+          <Counter
+            label="Held in escrow"
+            value={`₹${Number(plannerOverview?.escrowHeld ?? 0).toLocaleString('en-IN')}`}
+            to="/accounts"
+          />
+          <Counter
+            label="Overdue tasks"
+            value={plannerOverview?.tasks.overdue ?? 0}
+            to="/my-clients"
+            tone={(plannerOverview?.tasks.overdue ?? 0) > 0 ? 'text-red-600' : undefined}
           />
         </div>
       )}

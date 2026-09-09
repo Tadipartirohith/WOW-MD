@@ -38,6 +38,19 @@ export class PlannerController {
   }
 
   @RequirePermissions(Permission.PLAN_MANAGE_ENGAGED)
+  @ApiOperation({
+    summary: "The planner's book at a glance",
+    description:
+      'Weddings, their active/upcoming split, bookings across the book, escrow the planner ' +
+      'holds, and tasks including what is genuinely overdue — every figure derived from the ' +
+      'plans this planner is engaged on, so the dashboard agrees with My Clients (EZ1-I184).',
+  })
+  @Get('overview')
+  overview(@CurrentUser('userId') userId: string) {
+    return this.weddingDashboard.plannerOverview(userId);
+  }
+
+  @RequirePermissions(Permission.PLAN_MANAGE_ENGAGED)
   @ApiOperation({ summary: 'One client: their wedding, progress, events, tasks, vendors, budget' })
   @Get('clients/:userId')
   clientDetail(@CurrentUser() actor: AuthUser, @Param('userId', ParseUUIDPipe) userId: string) {

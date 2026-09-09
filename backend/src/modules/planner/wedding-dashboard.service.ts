@@ -7,10 +7,13 @@ import { WeddingEvent } from '../events/entities/event.entity';
 import { Guest } from '../events/entities/guest.entity';
 import { EventInvite } from '../events/entities/event-invite.entity';
 import { Booking } from '../bookings/entities/booking.entity';
+import { Payment } from '../bookings/entities/payment.entity';
+import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import {
   BookingStatus,
   EventStatus,
+  PaymentStatus,
   ProviderType,
   RsvpStatus,
   TaskStatus,
@@ -24,6 +27,10 @@ function daysUntil(isoDate: string): number {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
+/** Escrow is summed in minor units so a column of paise cannot drift a rupee. */
+const toMinor = (amount: string): number => Math.round(parseFloat(amount || '0') * 100);
+const toMajor = (minor: number): string => (minor / 100).toFixed(2);
+
 @Injectable()
 export class WeddingDashboardService {
   constructor(
@@ -34,7 +41,122 @@ export class WeddingDashboardService {
     @InjectRepository(EventInvite) private readonly invites: Repository<EventInvite>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
+    @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(PlannerProfile)
+    private readonly plannerProfiles: Repository<PlannerProfile>,
   ) {}
+
+  /**
+   * A planner's whole book on one row of numbers, keyed to the same engagement
+   * My Clients uses.
+   *
+   * Every figure is derived from the plans this planner is engaged on
+   * (WeddingPlan.plannerUserId) and those clients' own bookings and tasks — the
+   * same rows PlannerClientsService.listClients builds its cards from, and the
+   * same lifecycle and "confirmed" rules — so the dashboard's counters cannot
+   * disagree with the list beneath them. It is zero across the board when the
+   * planner has no weddings, rather than borrowing an escrow figure from an
+   * unrelated listing that reads as data where there is none (EZ1-I184).
+   */
+  async plannerOverview(plannerUserId: string) {
+    const empty = {
+      weddings: 0,
+      active: 0,
+      upcoming: 0,
+      completed: 0,
+      clients: 0,
+      bookings: { total: 0, confirmed: 0, pending: 0 },
+      escrowHeld: '0.00',
+      tasks: { total: 0, done: 0, overdue: 0 },
+      currency: 'INR',
+    };
+
+    const plans = await this.plans.find({ where: { plannerUserId } });
+    if (plans.length === 0) return empty;
+
+    const hostIds = [...new Set(plans.map((p) => p.userId))];
+    const planIds = plans.map((p) => p.id);
+    const [tasks, bookings, profiles] = await Promise.all([
+      this.tasks.find({ where: { planId: In(planIds) } }),
+      this.bookings.find({ where: { userId: In(hostIds) } }),
+      this.plannerProfiles.find({ where: { ownerUserId: plannerUserId }, select: ['id'] }),
+    ]);
+
+    // Lifecycle mirrors PlannerClientsService.lifecycle exactly: a wedding is
+    // completed once its date has passed, active once any of its tasks has been
+    // started, and upcoming until then. Held identical so the two screens agree.
+    const now = new Date();
+    const startedPlans = new Set(
+      tasks.filter((t) => t.status !== TaskStatus.PENDING).map((t) => t.planId),
+    );
+    const completedPlans = new Set<string>();
+    let active = 0;
+    let upcoming = 0;
+    for (const plan of plans) {
+      if (plan.weddingDate && new Date(plan.weddingDate) < now) {
+        completedPlans.add(plan.id);
+      } else if (startedPlans.has(plan.id)) {
+        active += 1;
+      } else {
+        upcoming += 1;
+      }
+    }
+
+    // Bookings across the whole book — the clients' own bookings, confirmed once
+    // the provider has taken the job, the same split the My Clients card shows.
+    const confirmed = bookings.filter((b) =>
+      [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED].includes(
+        b.status,
+      ),
+    ).length;
+
+    // Escrow the planner actually holds for this book: money couples have paid
+    // *them* — their own planner bookings for these clients — that is still in
+    // escrow, summed on the payout figure exactly as the earnings ledger does.
+    const profileIds = new Set(profiles.map((p) => p.id));
+    const plannerBookingIds = bookings
+      .filter((b) => b.providerType === ProviderType.PLANNER && profileIds.has(b.providerId))
+      .map((b) => b.id);
+    const payments = plannerBookingIds.length
+      ? await this.payments.find({ where: { bookingId: In(plannerBookingIds) } })
+      : [];
+    let held = 0;
+    for (const p of payments) {
+      if (p.status === PaymentStatus.HELD_IN_ESCROW || p.status === PaymentStatus.DISPUTED) {
+        held += toMinor(p.payoutAmount ?? '0');
+      }
+    }
+
+    return {
+      weddings: plans.length,
+      active,
+      upcoming,
+      completed: completedPlans.size,
+      clients: hostIds.length,
+      bookings: {
+        total: bookings.length,
+        confirmed,
+        pending: bookings.length - confirmed,
+      },
+      escrowHeld: toMajor(held),
+      tasks: {
+        total: tasks.length,
+        done: tasks.filter((t) => t.status === TaskStatus.DONE).length,
+        // Only what is still actionable: an unfinished, past-due task on a
+        // wedding that has not already happened. A completed wedding's leftover
+        // tasks are not overdue work — surfacing them was the stale-overdue
+        // noise this dashboard used to carry (EZ1-I184).
+        overdue: tasks.filter(
+          (t) =>
+            !completedPlans.has(t.planId) &&
+            t.status !== TaskStatus.DONE &&
+            t.dueDate &&
+            new Date(t.dueDate) < now,
+        ).length,
+      },
+      currency: bookings[0]?.currency ?? 'INR',
+    };
+  }
 
   /**
    * One screen for the whole wedding.
