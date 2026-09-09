@@ -559,6 +559,7 @@ function Layout({ children }: { children: ReactNode }) {
         label: n.label,
         icon: n.icon,
         group: 'main',
+        badge: n.to === '/admin/notifications' ? unread : undefined,
       }))
     : NAV.filter(
         (n) =>
