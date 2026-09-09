@@ -16,6 +16,10 @@ import { OfficerServiceArea } from '../verification/entities/officer-service-are
 import { SupportCase } from '../verification/entities/support-case.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
 import { RefreshSession } from '../auth/entities/refresh-session.entity';
+import {
+  OfficerAvailability,
+  availabilityView,
+} from '../verification/entities/officer-availability.entity';
 import { AgentCharge } from '../agents/entities/agent-charge.entity';
 import {
   ActivityQueryDto,
@@ -83,6 +87,9 @@ export class AdminConsoleService {
     @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
     // Read-only, for the matchmaking half of an individual's history.
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
+    // Read-only, for an officer's leave state (EZ1-I210) on the roster.
+    @InjectRepository(OfficerAvailability)
+    private readonly availability: Repository<OfficerAvailability>,
     private readonly cfg: AppConfigService,
   ) {}
 
@@ -1343,7 +1350,7 @@ export class AdminConsoleService {
     // older one is a login they never signed out of. Presence, not history.
     const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
-    const [profiles, areas, verifRows, caseRows, sessions] = await Promise.all([
+    const [profiles, areas, verifRows, caseRows, sessions, availabilityRows] = await Promise.all([
       this.profiles.find({
         where: { userId: In(ids) },
         select: ['userId', 'displayName', 'city'],
@@ -1374,9 +1381,11 @@ export class AdminConsoleService {
         where: { userId: In(ids), revokedAt: IsNull() },
         select: ['userId', 'lastUsedAt', 'expiresAt', 'createdAt'],
       }),
+      this.availability.find({ where: { officerUserId: In(ids) } }),
     ]);
 
     const profileFor = new Map(profiles.map((p) => [p.userId as string, p]));
+    const availabilityFor = new Map(availabilityRows.map((a) => [a.officerUserId, a]));
 
     // A visit that is written up and on an administrator's desk is off the
     // officer's plate — counted as completed, not pending, exactly as the
@@ -1450,8 +1459,9 @@ export class AdminConsoleService {
         name: profileFor.get(u.id)?.displayName ?? null,
         city: profileFor.get(u.id)?.city ?? null,
         isActive: u.isActive,
-        /** Placeholder until EZ1-I210 adds the real leave state. */
-        availability: 'available' as 'available' | 'on_leave' | 'unavailable',
+        // Real leave state from EZ1-I210: an officer with no row has never set
+        // availability and is treated as available.
+        availability: availabilityView(availabilityFor.get(u.id)).status,
         online,
         lastActiveAt,
         serviceAreas: areas

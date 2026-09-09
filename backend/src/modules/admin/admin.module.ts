@@ -17,6 +17,7 @@ import { AgentCharge } from '../agents/entities/agent-charge.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
 import { SupportCase } from '../verification/entities/support-case.entity';
 import { RefreshSession } from '../auth/entities/refresh-session.entity';
+import { OfficerAvailability } from '../verification/entities/officer-availability.entity';
 import { AgentsModule } from '../agents/agents.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { CatalogModule } from '../catalog/catalog.module';
@@ -44,6 +45,7 @@ import { AdminController } from './admin.controller';
       VerificationRequest,
       SupportCase,
       RefreshSession,
+      OfficerAvailability,
     ]),
     AgentsModule,
     // For the on-demand payout sweep: the retry lives with the booking service
