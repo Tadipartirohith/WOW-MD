@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { MILESTONE_LABEL, Permission, can } from '../lib/permissions';
@@ -59,6 +60,7 @@ const STATUS_STYLE: Record<string, string> = {
  * and mislead somebody deciding whether they can pay their own suppliers.
  */
 export default function Accounts() {
+  const navigate = useNavigate();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const isVendor = can(permissions, Permission.VENDOR_LISTING_MANAGE);
   const { activeId } = useBusinesses();
@@ -140,7 +142,10 @@ export default function Accounts() {
           </div>
 
           <div className="card overflow-x-auto">
-            <h2 className="mb-3 font-semibold text-gray-900">Ledger</h2>
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 className="font-semibold text-gray-900">Ledger</h2>
+              <span className="text-xs text-gray-400">Select a row for full transaction details</span>
+            </div>
             <table className="w-full min-w-[720px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
@@ -155,11 +160,16 @@ export default function Accounts() {
               </thead>
               <tbody className="divide-y" style={{ fontVariantNumeric: 'tabular-nums' }}>
                 {data.ledger.map((row) => (
-                  <tr key={row.paymentId}>
+                  <tr
+                    key={row.paymentId}
+                    onClick={() => navigate(`/accounts/transactions/${row.paymentId}`)}
+                    className="cursor-pointer hover:bg-surface-sunken"
+                    title="Open transaction details"
+                  >
                     <td className="py-2 text-gray-600">
                       {new Date(row.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="py-2 font-mono text-xs text-gray-500">
+                    <td className="py-2 font-mono text-xs text-brand-strong hover:underline">
                       {row.bookingId.slice(0, 8)}
                     </td>
                     <td className="py-2">{MILESTONE_LABEL[row.milestone] ?? row.milestone}</td>
@@ -183,7 +193,9 @@ export default function Accounts() {
                         with requests that have no answer.
                       */}
                       {row.status === 'pending_payout' && (
-                        <SettleMyPayment bookingId={row.bookingId} />
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <SettleMyPayment bookingId={row.bookingId} />
+                        </div>
                       )}
                     </td>
                   </tr>

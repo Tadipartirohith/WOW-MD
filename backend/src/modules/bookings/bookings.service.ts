@@ -1541,6 +1541,109 @@ export class BookingsService {
   }
 
   /**
+   * One of the provider's own transactions in full, for the Accounts detail
+   * view (EZ1-I211).
+   *
+   * The mirror of the admin's `transactionDetail` for the seller's own money:
+   * the same booking/customer/service/event context and the same escrow
+   * position summed across the booking, but scoped so a provider only ever
+   * opens a payment that sits on one of their own bookings. A payment on
+   * somebody else's booking is answered with the same "not found" as one that
+   * does not exist, so the endpoint never confirms another provider's rows.
+   */
+  async transactionDetail(actor: AuthUser, paymentId: string) {
+    const providerIds = await this.ownedProviderIds(actor);
+    if (providerIds.length === 0) throw new NotFoundException('Payment not found');
+
+    const payment = await this.payments.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const booking = await this.bookings.findOne({ where: { id: payment.bookingId } });
+    if (!booking || !providerIds.includes(booking.providerId)) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    const [siblings, client, service, event, offeringNames] = await Promise.all([
+      this.payments.find({ where: { bookingId: booking.id }, order: { createdAt: 'ASC' } }),
+      this.users.findOne({
+        where: { id: booking.userId },
+        select: ['id', 'email', 'phone', 'role'],
+      }),
+      booking.vendorServiceId
+        ? this.serviceRows.findOne({ where: { id: booking.vendorServiceId } })
+        : Promise.resolve(null),
+      booking.eventId
+        ? this.events.findOne({ where: { id: booking.eventId } })
+        : Promise.resolve(null),
+      booking.offeringId
+        ? this.vendorServices.offeringNamesByIds([booking.offeringId])
+        : Promise.resolve(new Map<string, string>()),
+    ]);
+
+    const clientProfile = await this.profiles.findOne({ where: { userId: booking.userId } });
+
+    // The escrow position across the whole booking, summed the same way the
+    // Accounts cards are: held/refunded count `amount`, the provider's share and
+    // commission come off the released rows.
+    const sum = (predicate: (p: Payment) => boolean, column: keyof Payment) =>
+      siblings
+        .filter(predicate)
+        .reduce((t, p) => t + Number((p[column] as string) ?? 0), 0)
+        .toFixed(2);
+
+    return {
+      payment,
+      booking: {
+        id: booking.id,
+        status: booking.status,
+        amount: booking.amount,
+        currency: booking.currency,
+        eventDate: booking.eventDate,
+        createdAt: booking.createdAt,
+      },
+      customer: client
+        ? {
+            id: client.id,
+            name: clientProfile?.displayName ?? null,
+            email: client.email,
+            phone: client.phone,
+            city: clientProfile?.city ?? null,
+          }
+        : null,
+      // Selected service & catalog: the service, the package picked off it, how
+      // many units were booked, and the agreed booking total.
+      service: {
+        id: service?.id ?? booking.vendorServiceId,
+        name: service?.displayName ?? null,
+        offering: booking.offeringId ? (offeringNames.get(booking.offeringId) ?? null) : null,
+        quantity: booking.quantity,
+        total: booking.amount,
+      },
+      event: event
+        ? {
+            id: event.id,
+            name: event.name,
+            venue: event.venue ?? null,
+            city: event.city,
+            eventDate: event.eventDate,
+            startTime: event.startTime,
+          }
+        : null,
+      // Every instalment on the booking, oldest first: the milestone breakdown
+      // (advance/second/final) and the payment timeline are read off this list.
+      payments: siblings,
+      summary: {
+        total: booking.amount,
+        held: sum((p) => p.status === PaymentStatus.HELD_IN_ESCROW, 'amount'),
+        released: sum((p) => p.status === PaymentStatus.RELEASED, 'amount'),
+        refunded: sum((p) => p.status === PaymentStatus.REFUNDED, 'amount'),
+        commission: sum((p) => p.status === PaymentStatus.RELEASED, 'commissionAmount'),
+        payout: sum((p) => p.status === PaymentStatus.RELEASED, 'payoutAmount'),
+      },
+    };
+  }
+
+  /**
    * The buyer's escrow, grouped by booking (EZ1-I148).
    *
    * The mirror of {@link earnings} for the other side of the table: not what a

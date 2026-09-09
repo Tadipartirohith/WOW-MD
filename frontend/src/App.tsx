@@ -113,6 +113,7 @@ import CalendarPage from './pages/Calendar';
 import SetPassword from './pages/SetPassword';
 import Availability from './pages/Availability';
 import Accounts from './pages/Accounts';
+import AccountsTransaction from './pages/AccountsTransaction';
 import Escrow from './pages/Escrow';
 import MyReviews from './pages/MyReviews';
 import Notifications from './pages/Notifications';
@@ -1078,6 +1079,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.BOOKING_READ_INCOMING]}>
             <Accounts />
+          </Protected>
+        }
+      />
+      <Route
+        path="/accounts/transactions/:id"
+        element={
+          <Protected requires={[Permission.BOOKING_READ_INCOMING]}>
+            <AccountsTransaction />
           </Protected>
         }
       />

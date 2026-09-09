@@ -141,6 +141,19 @@ export class BookingsController {
     return this.bookings.earnings(actor);
   }
 
+  @RequirePermissions(Permission.BOOKING_READ_INCOMING)
+  @ApiOperation({
+    summary: 'One of your transactions in full: booking, service, escrow position and instalments',
+    description:
+      'The detail behind a single Accounts ledger row (EZ1-I211). Scoped to your own bookings — a ' +
+      "payment on another provider's booking is answered with the same not-found as one that does " +
+      'not exist. Mirrors the admin Payment Details read for the seller side.',
+  })
+  @Get('transactions/:id')
+  transactionDetail(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.transactionDetail(actor, id);
+  }
+
   @RequirePermissions(Permission.BOOKING_READ_OWN)
   @ApiOperation({
     summary: 'Your escrow: what you have paid into your bookings, and where it sits',
