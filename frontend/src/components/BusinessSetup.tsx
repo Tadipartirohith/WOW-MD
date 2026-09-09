@@ -44,6 +44,9 @@ export interface Completion {
   status: BusinessStatus;
   rules: {
     editIdentity: boolean;
+    /** Presentational fields (about, contact, portfolio) stay editable once
+        verified/live even though editIdentity is false (EZ1-I207). */
+    editPresentational: boolean;
     editCatalog: boolean;
     trade: boolean;
     submit: boolean;

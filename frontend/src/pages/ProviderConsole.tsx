@@ -186,9 +186,15 @@ function VendorBusinessWizard({
   const [pendingStep, setPendingStep] = useState<number | null>(null);
   const hasBusiness = Boolean(vendorId && current);
 
+  // Once the listing is verified or live there is nothing left to submit, so the
+  // Review & Submit step is dropped rather than shown with a stale "being
+  // verified" note over a listing that already is (EZ1-I207).
+  const isVerifiedLive = current?.status === 'verified' || current?.status === 'live';
+  const steps = isVerifiedLive ? WIZARD_STEPS.filter((s) => s.key !== 'review') : WIZARD_STEPS;
+
   useEffect(() => {
     if (pendingStep !== null && (pendingStep === 0 || hasBusiness)) {
-      setStep(Math.max(0, Math.min(WIZARD_STEPS.length - 1, pendingStep)));
+      setStep(Math.max(0, Math.min(steps.length - 1, pendingStep)));
       setPendingStep(null);
     }
   }, [pendingStep, hasBusiness]);
@@ -201,13 +207,13 @@ function VendorBusinessWizard({
       setPendingStep(n);
       return;
     }
-    setStep(Math.max(0, Math.min(WIZARD_STEPS.length - 1, n)));
+    setStep(Math.max(0, Math.min(steps.length - 1, n)));
   };
 
   return (
     <div className="space-y-4">
       <ol className="flex flex-wrap gap-2">
-        {WIZARD_STEPS.map((s, i) => {
+        {steps.map((s, i) => {
           const disabled = i > 0 && !hasBusiness;
           const tone =
             i === step
@@ -293,11 +299,17 @@ function VendorBusinessWizard({
             what a buyer sees and what a quotation is built from.
           </StepIntro>
           <VendorServices vendorId={vendorId} />
-          <WizardNav onBack={() => go(0)} onNext={() => go(2)} nextLabel="Review & Submit →" />
+          {/* No Review & Submit once verified/live — there is nothing left to
+              submit, so the step and its button are both gone (EZ1-I207). */}
+          <WizardNav
+            onBack={() => go(0)}
+            onNext={isVerifiedLive ? undefined : () => go(2)}
+            nextLabel="Review & Submit →"
+          />
         </div>
       )}
 
-      {step === 2 && vendorId && current && (
+      {step === 2 && !isVerifiedLive && vendorId && current && (
         <div className="space-y-3">
           <ReviewSummary current={current} />
           {/*
@@ -555,6 +567,10 @@ function VendorListingForm({
    */
   const { data: completion } = useCompletion(current?.id);
   const locked = completion ? !completion.rules.editIdentity : false;
+  // Verified/live: the legally-checked fields are locked, but about, contact and
+  // portfolio stay the vendor's to change (EZ1-I207). When this is true the Edit
+  // form shows only those and the locked fields get a Request a change route.
+  const presentationalOnly = locked && (completion?.rules.editPresentational ?? false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(emptyListing);
   const [portfolio, setPortfolio] = useState<string[]>([]);
@@ -635,43 +651,71 @@ function VendorListingForm({
     return errors;
   }
 
+  /**
+   * The lighter check for a verified/live listing (EZ1-I207): only the fields
+   * the backend still lets change are on screen, so only those are validated.
+   */
+  function validatePresentational(): Record<string, string> {
+    const errors: Record<string, string> = {};
+    if (portfolio.length === 0) errors.portfolio = 'Add at least one portfolio photo';
+    if (!form.contactPhone.trim()) {
+      errors.contactPhone = 'A contact mobile number is required';
+    } else if (!/^(\+91)?[6-9]\d{9}$/.test(form.contactPhone.replace(/\s|-/g, ''))) {
+      errors.contactPhone = 'Enter a 10-digit Indian mobile number';
+    }
+    return errors;
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setMsg('');
-    const errors = validate();
+    const errors = presentationalOnly ? validatePresentational() : validate();
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
     try {
-      const payload: Record<string, unknown> = {
-        name: form.name.trim(),
-        category: form.category,
-        // Portfolio is deliberately always sent, including empty: clearing the
-        // last photo has to be able to reach the server.
-        portfolio,
-        complianceDocuments: documents,
-      };
-      if (form.category === 'other') payload.otherCategory = form.otherCategory.trim();
-      for (const key of [
-        'city',
-        'description',
-        'gstNumber',
-        'panNumber',
-        'registrationNumber',
-        'tradingSince',
-        'registeredAddress',
-        'contactPhone',
-      ] as const) {
-        // An empty string is not "not provided" — sending one fails the format
-        // checks on GST and PAN, so blanks are dropped instead.
-        if (form[key]) payload[key] = form[key];
+      // A verified/live listing may only change the presentational fields, so
+      // the payload carries just those — the legal fields are not sent, not
+      // merely disabled (EZ1-I207).
+      const payload: Record<string, unknown> = presentationalOnly
+        ? {
+            description: form.description.trim(),
+            contactPhone: form.contactPhone.trim(),
+            portfolio,
+          }
+        : {
+            name: form.name.trim(),
+            category: form.category,
+            // Portfolio is deliberately always sent, including empty: clearing
+            // the last photo has to be able to reach the server.
+            portfolio,
+            complianceDocuments: documents,
+          };
+      if (!presentationalOnly) {
+        if (form.category === 'other') payload.otherCategory = form.otherCategory.trim();
+        for (const key of [
+          'city',
+          'description',
+          'gstNumber',
+          'panNumber',
+          'registrationNumber',
+          'tradingSince',
+          'registeredAddress',
+          'contactPhone',
+        ] as const) {
+          // An empty string is not "not provided" — sending one fails the format
+          // checks on GST and PAN, so blanks are dropped instead.
+          if (form[key]) payload[key] = form[key];
+        }
       }
 
       if (current) await api.put(`/vendors/${current.id}`, payload);
       else await api.post('/vendors', payload);
 
       setMsg(
-        'Saved. A verification officer visits the registered address before the listing goes live.',
+        presentationalOnly
+          ? 'Saved. Your listing stays live and the change is visible to couples now.'
+          : 'Saved. A verification officer visits the registered address before the listing goes live.',
       );
       setEditing(false);
       qc.invalidateQueries({ queryKey: ['my-listing'] });
@@ -721,17 +765,23 @@ function VendorListingForm({
             >
               {current.isApproved ? 'Live in search' : 'Awaiting verification'}
             </span>
-            {locked ? (
+            {!locked ? (
+              <button className="btn-outline" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            ) : presentationalOnly ? (
+              // Verified/live: the presentational fields are still editable, so
+              // offer that rather than a dead "locked" label (EZ1-I207).
+              <button className="btn-outline" onClick={() => setEditing(true)}>
+                Edit details
+              </button>
+            ) : (
               <span
                 className="text-xs text-gray-500"
                 title={completion?.rules.note}
               >
                 Locked while it is verified
               </span>
-            ) : (
-              <button className="btn-outline" onClick={() => setEditing(true)}>
-                Edit
-              </button>
             )}
           </div>
         </div>
@@ -772,7 +822,81 @@ function VendorListingForm({
             </div>
           </div>
         )}
+
+        {/*
+          The verified details are locked, but a business does move — a firm
+          re-registers, an address changes. Rather than a dead editable input,
+          the vendor raises the change and the team reopens the listing through
+          the same correction/reverification path an officer uses (EZ1-I207).
+        */}
+        {presentationalOnly && <RequestChange vendorId={current.id} />}
       </div>
+    );
+  }
+
+  if (current && editing && presentationalOnly) {
+    return (
+      <form onSubmit={submit} className="card space-y-3" noValidate>
+        <h2 className="section-title">Edit your listing</h2>
+        <p className="text-sm text-gray-600">
+          Your listing is verified. About, contact number and photos are yours to change and go
+          live straight away. The verified details — name, category, PAN, GST, registration and
+          address — are locked; use “Request a change” for those.
+        </p>
+        {msg && <p className="rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
+
+        <Field label="Description">
+          <textarea
+            className="input"
+            rows={3}
+            maxLength={2000}
+            value={form.description}
+            onChange={set('description')}
+          />
+        </Field>
+
+        <Field label="Contact number" error={fieldErrors.contactPhone}>
+          <input className="input" value={form.contactPhone} onChange={set('contactPhone')} />
+        </Field>
+
+        <div className="border-t pt-3">
+          <h3 className="section-title">Portfolio</h3>
+          {fieldErrors.portfolio && <p className="mb-2 alert-critical">{fieldErrors.portfolio}</p>}
+          {portfolio.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {portfolio.map((url) => (
+                <div key={url} className="relative">
+                  <img
+                    src={url}
+                    alt=""
+                    className="h-20 w-28 rounded-sm object-cover"
+                    loading="lazy"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1 rounded-sm bg-surface/90 px-1.5 text-xs text-gray-700"
+                    onClick={() => setPortfolio((p) => p.filter((u) => u !== url))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <PhotoUploader
+            kind="photo"
+            label="Upload photos"
+            onUploaded={(url: string) => setPortfolio((p) => [...p, url])}
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <button className="btn">Save changes</button>
+          <button type="button" className="btn-outline" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        </div>
+      </form>
     );
   }
 
@@ -1012,6 +1136,88 @@ function Field({
       <label className="label">{label}</label>
       {children}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * A verified listing's legal details are locked, so a genuine change to one goes
+ * through the same correction/reverification path an officer uses (EZ1-I207).
+ *
+ * The vendor has no endpoint to reopen their own listing — and shouldn't: the
+ * point of verification is that they cannot quietly rewrite what was checked. So
+ * this raises a `vendor` support case (the one channel they hold, CASE_RAISE)
+ * describing the change; the team then reopens the listing for editing through
+ * the existing unlock/correction flow.
+ */
+function RequestChange({ vendorId }: { vendorId: string }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg('');
+    try {
+      await api.post('/verification/cases', {
+        subjectType: 'vendor',
+        subjectId: vendorId,
+        title: 'Change request: verified business details',
+        description: detail.trim(),
+      });
+      setMsg('Sent. Our team will review it and reopen the listing if the change checks out.');
+      setDetail('');
+      setOpen(false);
+    } catch (err) {
+      setMsg(apiMessage(err, 'That could not be sent.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-600">
+          PAN, GST, registration and the other verified details are locked. Need one changed?
+        </p>
+        {!open && (
+          <button type="button" className="btn-outline" onClick={() => setOpen(true)}>
+            Request a change
+          </button>
+        )}
+      </div>
+      {msg && <p className="mt-2 rounded-sm bg-brand-light p-2 text-sm text-brand-dark">{msg}</p>}
+      {open && (
+        <form onSubmit={submit} className="mt-2 space-y-2">
+          <textarea
+            className="input"
+            rows={3}
+            minLength={10}
+            maxLength={2000}
+            placeholder="Which detail needs changing, what it should be, and why."
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button className="btn" disabled={busy || detail.trim().length < 10}>
+              {busy ? 'Sending…' : 'Send request'}
+            </button>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => {
+                setOpen(false);
+                setDetail('');
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

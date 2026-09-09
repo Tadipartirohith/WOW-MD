@@ -11,6 +11,15 @@ import { BusinessStatus } from '../../common/enums';
 export interface BusinessRules {
   /** Business identity: name, category, GST, PAN, registration, address. */
   editIdentity: boolean;
+  /**
+   * The presentational identity fields — about, contact number, portfolio —
+   * once the legally-checked ones are locked (EZ1-I207). True wherever editing
+   * is possible at all, but the point of it is the verified/live case: there
+   * `editIdentity` is false, yet a vendor still needs to fix a phone number or
+   * swap a photo without sending the whole listing back through verification.
+   * Which fields these are lives in `POST_VERIFICATION_EDITABLE_FIELDS`.
+   */
+  editPresentational: boolean;
   /** Services, packages, prices. Manageable for far longer than identity is. */
   editCatalog: boolean;
   /** Publish availability and take bookings. */
@@ -26,6 +35,7 @@ export interface BusinessRules {
 export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   [BusinessStatus.DRAFT]: {
     editIdentity: true,
+    editPresentational: true,
     editCatalog: true,
     trade: false,
     submit: true,
@@ -34,6 +44,7 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   },
   [BusinessStatus.READY_FOR_REVIEW]: {
     editIdentity: true,
+    editPresentational: true,
     editCatalog: true,
     trade: false,
     submit: true,
@@ -43,6 +54,7 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   [BusinessStatus.FIRST_REVIEW]: {
     // Still editable: the point of a review step is to find things to change.
     editIdentity: true,
+    editPresentational: true,
     editCatalog: true,
     trade: false,
     submit: true,
@@ -51,6 +63,7 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   },
   [BusinessStatus.PENDING_VERIFICATION]: {
     editIdentity: false,
+    editPresentational: false,
     editCatalog: false,
     trade: false,
     submit: false,
@@ -59,6 +72,7 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   },
   [BusinessStatus.VERIFICATION_IN_PROGRESS]: {
     editIdentity: false,
+    editPresentational: false,
     editCatalog: false,
     trade: false,
     submit: false,
@@ -67,6 +81,9 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   },
   [BusinessStatus.VERIFIED]: {
     editIdentity: false,
+    // The legally-checked details are locked, but the shop-window ones — about,
+    // contact, photos — stay the vendor's to change (EZ1-I207).
+    editPresentational: true,
     editCatalog: true,
     trade: true,
     submit: false,
@@ -77,6 +94,8 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
     // The verified identity is what was checked, so it stays locked. The
     // catalog is the shop floor and has to keep moving.
     editIdentity: false,
+    // Presentational fields stay editable while live, same as verified (EZ1-I207).
+    editPresentational: true,
     editCatalog: true,
     trade: true,
     visible: true,
@@ -86,6 +105,7 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   [BusinessStatus.REVERIFICATION_REQUIRED]: {
     // The whole point: edit access comes back so the problem can be fixed.
     editIdentity: true,
+    editPresentational: true,
     editCatalog: true,
     trade: false,
     submit: true,
@@ -94,6 +114,7 @@ export const BUSINESS_RULES: Record<BusinessStatus, BusinessRules> = {
   },
   [BusinessStatus.REJECTED]: {
     editIdentity: false,
+    editPresentational: false,
     editCatalog: false,
     trade: false,
     submit: false,
@@ -169,6 +190,24 @@ export const CORRECTABLE_BUSINESS_FIELDS = [
 ] as const;
 
 export type CorrectableBusinessField = (typeof CORRECTABLE_BUSINESS_FIELDS)[number];
+
+/**
+ * The identity fields a vendor may still change once the listing is verified or
+ * live (EZ1-I207).
+ *
+ * Deliberately only the presentational ones — the description, the contact
+ * number and the portfolio. None of these is what an officer verified on the
+ * visit, so changing one does not invalidate the verification. Everything an
+ * officer actually checked (name, category, PAN, GST, registration number,
+ * trading-since, registered address, compliance documents) stays locked and can
+ * only move through the correction/reverification path. Kept as data so the
+ * update-path guard and the client's read-only rendering read the same list.
+ */
+export const POST_VERIFICATION_EDITABLE_FIELDS = [
+  'description',
+  'contactPhone',
+  'portfolio',
+] as const;
 
 export function rulesFor(status: BusinessStatus): BusinessRules {
   return BUSINESS_RULES[status] ?? BUSINESS_RULES[BusinessStatus.DRAFT];

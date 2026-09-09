@@ -177,12 +177,11 @@ export class VendorsService {
     // Enforced here, not by hiding a button. A vendor who edits their GST
     // number after an officer has been sent to check it has verified nothing,
     // and a listing that changes after approval is a listing nobody checked.
-    this.lifecycle.assertEditable(vendor, 'identity');
-
-    // When the listing was sent back for a *targeted* correction, only the
-    // flagged fields may change. Enforced here, not by the form: a correction a
-    // vendor can post around is not a correction (EZ1-I205).
-    this.lifecycle.assertCorrectionScope(vendor, dto as Record<string, unknown>);
+    // One guard decides all three cases (EZ1-I207): a full identity edit while
+    // the state allows it (narrowed to the flagged fields under a targeted
+    // correction, EZ1-I205); the presentational-only edit a verified/live
+    // listing still permits; or a hard lock while it is pending or refused.
+    this.lifecycle.assertIdentityEditable(vendor, dto as Record<string, unknown>);
 
     Object.assign(vendor, dto);
     const saved = await this.saveListing(vendor);

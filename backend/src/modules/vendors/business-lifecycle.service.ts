@@ -15,6 +15,7 @@ import { VerificationService } from '../verification/verification.service';
 import {
   BUSINESS_RULES,
   CORRECTABLE_BUSINESS_FIELDS,
+  POST_VERIFICATION_EDITABLE_FIELDS,
   canTransition,
   rulesFor,
 } from './business-lifecycle';
@@ -432,16 +433,52 @@ export class BusinessLifecycleService {
   }
 
   /**
-   * Refuses an edit the current state does not allow.
+   * The one guard for a vendor identity update (EZ1-I207).
    *
-   * Called by the vendor update paths. Hiding the button is not enough: the
-   * whole point of a lock is that it holds when somebody posts anyway.
+   * Three cases, decided from the state rules alone so the update path cannot
+   * get them out of step:
+   *  - full identity edit (draft, review, reverification) — allowed, and
+   *    narrowed to the flagged fields when a targeted correction is out;
+   *  - verified or live — the legally-checked fields are locked, but the
+   *    presentational ones (about, contact, portfolio) stay editable;
+   *  - anything else (pending, in progress, rejected) — nothing is editable.
+   *
+   * A field the payload leaves at its current value always passes, so the client
+   * may send the whole record back; only an actual change to a locked field is
+   * refused.
    */
-  assertEditable(business: Vendor, what: 'identity' | 'catalog'): void {
+  assertIdentityEditable(business: Vendor, dto: Record<string, unknown>): void {
     const rules = rulesFor(business.status);
-    const allowed = what === 'identity' ? rules.editIdentity : rules.editCatalog;
-    if (!allowed) {
-      throw new ForbiddenException(rules.note);
+    if (rules.editIdentity) {
+      this.assertCorrectionScope(business, dto);
+      return;
+    }
+    if (rules.editPresentational) {
+      this.assertPresentationalScope(business, dto);
+      return;
+    }
+    throw new ForbiddenException(rules.note);
+  }
+
+  /**
+   * Refuses a change to anything but the presentational fields once a listing is
+   * verified or live (EZ1-I207).
+   *
+   * Same shape as `assertCorrectionScope`: an unchanged field passes whether or
+   * not it is presentational, so the existing form can post the whole record;
+   * only an actual edit to a locked, legally-checked field is refused.
+   */
+  private assertPresentationalScope(business: Vendor, dto: Record<string, unknown>): void {
+    const allow = new Set<string>(POST_VERIFICATION_EDITABLE_FIELDS);
+    const current = business as unknown as Record<string, unknown>;
+    for (const [key, value] of Object.entries(dto)) {
+      if (value === undefined || allow.has(key)) continue;
+      if (JSON.stringify(value) !== JSON.stringify(current[key] ?? null)) {
+        throw new ForbiddenException(
+          'This listing is verified. Only the description, contact number and portfolio can be ' +
+            'changed here — for the verified details, raise a change request.',
+        );
+      }
     }
   }
 }
