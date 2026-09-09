@@ -6,11 +6,11 @@ import {
   AllBookings,
   Businesses,
   Directory,
-  Reports,
   Staff,
 } from '../../components/AdminConsole';
 import ReviewModeration from '../../components/ReviewModeration';
 import CatalogAdmin from '../../components/CatalogAdmin';
+import AdminReportsDashboard from '../../components/AdminReportsDashboard';
 import { Loading, EmptyState } from '../../components/ui/Feedback';
 
 /*
@@ -82,7 +82,7 @@ export function AdminServicesCatalog() {
 }
 
 export function AdminReports() {
-  return <Reports />;
+  return <AdminReportsDashboard />;
 }
 
 /**

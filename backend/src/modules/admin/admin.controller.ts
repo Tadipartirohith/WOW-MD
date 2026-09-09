@@ -216,6 +216,18 @@ export class AdminController {
     return this.console.report(q);
   }
 
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({
+    summary: 'New users and new bookings per day over the window (EZ1-I198)',
+    description:
+      'The daily shape behind the report totals, for the Reports dashboard growth chart. ' +
+      'Every day in the window is present, so a quiet day is a zero rather than a gap.',
+  })
+  @Get('reports/timeseries')
+  reportTimeseries(@Query() q: AdminBookingQueryDto) {
+    return this.console.growthSeries(q);
+  }
+
   // -------------------------------------------------------- agency vetting
 
   /**

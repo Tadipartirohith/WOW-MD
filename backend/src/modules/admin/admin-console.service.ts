@@ -1071,6 +1071,52 @@ export class AdminConsoleService {
   }
 
   /**
+   * New users and new bookings per calendar day over the window (EZ1-I198).
+   *
+   * `report()` answers "how many in total"; a growth line needs the shape of
+   * that total over time, which no existing route gives. Bucketed in memory by
+   * UTC day rather than with a dialect-specific `date_trunc` — the same choice
+   * `activity()` makes — because the window is at most a month, so it is two
+   * indexed reads on `createdAt` and a group of a few dozen rows.
+   *
+   * Every day in the window gets a bucket, so a quiet day is a zero on the line
+   * rather than a gap the eye misreads as missing data.
+   */
+  async growthSeries(q: { from?: string; to?: string }) {
+    const to = q.to ? new Date(q.to) : new Date();
+    const from = q.from ? new Date(q.from) : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    to.setHours(23, 59, 59, 999);
+    const window = Between(from, to);
+
+    const [users, bookings] = await Promise.all([
+      this.users.find({ where: { createdAt: window }, select: ['createdAt'] }),
+      this.bookings.find({ where: { createdAt: window }, select: ['createdAt'] }),
+    ]);
+
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const points = new Map<string, { date: string; users: number; bookings: number }>();
+    // Iterate in UTC so the generated keys align exactly with the UTC keys the
+    // row timestamps produce; mixing local and UTC days drops a bucket at the edge.
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+    const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()));
+    while (cursor <= end) {
+      const key = dayKey(cursor);
+      points.set(key, { date: key, users: 0, bookings: 0 });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    for (const u of users) {
+      const bucket = points.get(dayKey(u.createdAt));
+      if (bucket) bucket.users += 1;
+    }
+    for (const b of bookings) {
+      const bucket = points.get(dayKey(b.createdAt));
+      if (bucket) bucket.bookings += 1;
+    }
+
+    return { from, to, points: [...points.values()] };
+  }
+
+  /**
    * The two staff directories, kept apart.
    *
    * An administrator and a field officer are not variants of one thing. One
