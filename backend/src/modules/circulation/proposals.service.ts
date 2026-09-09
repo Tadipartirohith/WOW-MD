@@ -127,12 +127,20 @@ export class ProposalsService {
   async post(actor: AuthUser, interestId: string, dto: PostProposalNoteDto): Promise<ProposalNote> {
     const { interest, from, to, mine } = await this.loadSides(actor, interestId);
 
-    // A proposal conversation closes once the interest is withdrawn or declined
-    // (EZ1-I130): the two agents were negotiating a live proposal, and there is
-    // nothing left to negotiate on one that has been taken back or turned down.
-    if (interest.status === InterestStatus.WITHDRAWN || interest.status === InterestStatus.REJECTED) {
+    // Messaging on a proposal is allowed only while the interest is ACCEPTED
+    // (EZ1-I130). Before acceptance there is nothing agreed to talk on, and once
+    // the interest is withdrawn or declined the conversation is closed for good.
+    // The gate is deliberately global — it holds for an agent handling a managed
+    // client and for a self-managed individual alike, so nobody can message
+    // before the other side has accepted, or keep messaging after it is undone.
+    if (interest.status !== InterestStatus.ACCEPTED) {
+      const closed =
+        interest.status === InterestStatus.WITHDRAWN ||
+        interest.status === InterestStatus.REJECTED;
       throw new ForbiddenException(
-        'This proposal is closed — the interest was withdrawn or declined, so no more messages can be sent.',
+        closed
+          ? 'This proposal is closed — the interest was withdrawn or declined, so no more messages can be sent.'
+          : 'This conversation opens once the interest is accepted.',
       );
     }
 

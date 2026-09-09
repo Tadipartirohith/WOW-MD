@@ -623,6 +623,9 @@ function ProposalPane({
   const bottom = useRef<HTMLDivElement>(null);
 
   const closed = thread.status === 'withdrawn' || thread.status === 'rejected';
+  // Messaging opens only once the interest is accepted (EZ1-I130), matching the
+  // backend gate — before that there is nothing agreed to talk on.
+  const notYetAccepted = thread.status !== 'accepted' && !closed;
 
   const mine = thread.sides.find((s) => s.isMine);
   const theirs = thread.sides.find((s) => !s.isMine);
@@ -847,6 +850,10 @@ function ProposalPane({
         <p className="border-t pt-2 text-sm text-gray-500">
           This proposal is closed ({thread.status === 'withdrawn' ? 'withdrawn' : 'declined'}). No
           further messages can be sent.
+        </p>
+      ) : notYetAccepted ? (
+        <p className="border-t pt-2 text-sm text-gray-500">
+          This conversation opens once the interest is accepted.
         </p>
       ) : blocked ? (
         <p className="border-t pt-2 text-sm text-gray-500">
