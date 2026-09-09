@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CaretLeft } from '@phosphor-icons/react';
+import { CaretLeft, CaretDown } from '@phosphor-icons/react';
 import { api, apiMessage } from '../../lib/api';
 import { formatDate } from '../../lib/dates';
 import { BOOKING_STATUS_LABEL } from '../../lib/permissions';
@@ -192,13 +192,36 @@ export default function AdminAccountDetail({ kind }: { kind: Kind }) {
                 {user.isVerified ? 'Verified' : 'Unverified'}
               </span>
             </div>
-            <button
-              className={user.isActive ? 'btn-outline btn-sm' : 'btn btn-sm'}
-              disabled={busy}
-              onClick={() => setActive(!user.isActive)}
-            >
-              {user.isActive ? 'Suspend account' : 'Reinstate account'}
-            </button>
+            <div className="flex items-center gap-2">
+              {data.profiles[0] && (
+                <Link className="btn btn-sm" to={`/admin/profiles/${data.profiles[0].id}`}>
+                  View full profile
+                </Link>
+              )}
+              <ActionsMenu>
+                <button
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-brand-soft/40 disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() => setActive(!user.isActive)}
+                >
+                  {user.isActive ? 'Suspend account' : 'Reinstate account'}
+                </button>
+                {/*
+                  Hard deletion is deliberately not offered (EZ1-I194): consent,
+                  circulation and agency records have to outlive the account, so
+                  suspend is the terminal action. Shown disabled to say so.
+                */}
+                <button
+                  role="menuitem"
+                  className="block w-full cursor-not-allowed px-3 py-2 text-left text-sm text-gray-400"
+                  disabled
+                  title="Deletion is not available; suspend the account instead."
+                >
+                  Delete account (unavailable)
+                </button>
+              </ActionsMenu>
+            </div>
           </div>
         </div>
         {actionError && <p className="alert-critical mt-3">{actionError}</p>}
@@ -527,6 +550,41 @@ export default function AdminAccountDetail({ kind }: { kind: Kind }) {
             </div>
           )}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A small actions dropdown for the account header (EZ1-I194).
+ *
+ * A full-screen transparent layer behind the panel closes it on an outside
+ * click, and any click inside a menu item closes it too — so choosing an action
+ * dismisses the menu.
+ */
+function ActionsMenu({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        className="btn-outline btn-sm"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Actions <CaretDown size={14} aria-hidden />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" aria-hidden onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-md border border-gray-200 bg-surface py-1 shadow-lg"
+            onClick={() => setOpen(false)}
+          >
+            {children}
+          </div>
+        </>
       )}
     </div>
   );

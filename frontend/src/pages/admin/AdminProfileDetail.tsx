@@ -69,7 +69,29 @@ interface ProfileDetail {
   owner: RelatedUser | null;
   steward: RelatedUser | null;
   verifiedBy: RelatedUser | null;
+  /** Personal facts kept on the biodata table, not the profile row (EZ1-I194). */
+  details: {
+    maritalStatus: string | null;
+    heightCm: number | null;
+    highestQualification: string | null;
+    occupationStatus: string | null;
+  } | null;
   matchmaking: { sent: number; received: number; accepted: number; fixed: number };
+}
+
+/** Enum-style values ('never_married') read better with the underscores gone. */
+const label = (v: string | null | undefined) => (v ? v.replace(/_/g, ' ') : '—');
+
+/** Whole years from a date of birth, or null when there is no date. */
+function ageFrom(dob: string | null): number | null {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let years = now.getFullYear() - d.getFullYear();
+  const monthDiff = now.getMonth() - d.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < d.getDate())) years -= 1;
+  return years >= 0 ? years : null;
 }
 
 const dash = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
@@ -102,6 +124,8 @@ export default function AdminProfileDetail() {
     );
 
   const p = data.profile;
+  const d = data.details;
+  const age = ageFrom(p.dateOfBirth);
   const prefs = p.preferences ?? {};
   const ageBand =
     prefs.preferredAgeMin || prefs.preferredAgeMax
@@ -134,6 +158,11 @@ export default function AdminProfileDetail() {
           <Row label="Display name">{p.displayName}</Row>
           <Row label="Gender">{dash(p.gender)}</Row>
           <Row label="Date of birth">{p.dateOfBirth ? formatDate(p.dateOfBirth) : '—'}</Row>
+          <Row label="Age">{age !== null ? `${age} yrs` : '—'}</Row>
+          <Row label="Marital status">{label(d?.maritalStatus)}</Row>
+          <Row label="Height">{d?.heightCm ? `${d.heightCm} cm` : '—'}</Row>
+          <Row label="Education">{dash(d?.highestQualification)}</Row>
+          <Row label="Occupation">{label(d?.occupationStatus)}</Row>
           <Row label="City">{dash(p.city)}</Row>
           <Row label="Address">{dash(p.address)}</Row>
         </Section>

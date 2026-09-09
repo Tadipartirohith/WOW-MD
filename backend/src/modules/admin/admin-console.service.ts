@@ -8,6 +8,7 @@ import { Booking } from '../bookings/entities/booking.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { ServiceOffering } from '../catalog/entities/service-offering.entity';
@@ -66,6 +67,7 @@ export class AdminConsoleService {
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     @InjectRepository(WeddingEvent) private readonly events: Repository<WeddingEvent>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    @InjectRepository(ProfileDetails) private readonly profileDetails: Repository<ProfileDetails>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(VendorService) private readonly vendorServices: Repository<VendorService>,
     @InjectRepository(ServiceOffering) private readonly offerings: Repository<ServiceOffering>,
@@ -434,7 +436,7 @@ export class AdminConsoleService {
     const profile = await this.profiles.findOne({ where: { id: profileId } });
     if (!profile) throw new NotFoundException('Profile not found');
 
-    const [owner, steward, interests, verifier] = await Promise.all([
+    const [owner, steward, interests, verifier, details] = await Promise.all([
       profile.userId
         ? this.users.findOne({
             where: { id: profile.userId },
@@ -458,6 +460,10 @@ export class AdminConsoleService {
             select: ['id', 'email'],
           })
         : Promise.resolve(null),
+      // The matrimonial biodata behind the profile, for the personal facts the
+      // profile row itself does not carry — marital status, height, education
+      // and occupation (EZ1-I194).
+      this.profileDetails.findOne({ where: { profileId } }),
     ]);
 
     return {
@@ -497,6 +503,15 @@ export class AdminConsoleService {
       owner,
       steward,
       verifiedBy: verifier,
+      // Personal facts kept on the biodata table, not the profile row (EZ1-I194).
+      details: details
+        ? {
+            maritalStatus: details.maritalStatus,
+            heightCm: details.heightCm,
+            highestQualification: details.highestQualification,
+            occupationStatus: details.occupationStatus,
+          }
+        : null,
       matchmaking: {
         sent: interests.filter((i) => i.fromProfileId === profileId).length,
         received: interests.filter((i) => i.toProfileId === profileId).length,

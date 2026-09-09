@@ -22,8 +22,101 @@ import { Loading, EmptyState } from '../../components/ui/Feedback';
  * reads the same /admin endpoints the old console did.
  */
 
+/**
+ * The matrimonial users — brides, grooms and family stewards — as one tab each
+ * (EZ1-I192).
+ *
+ * Vendors, planners, agents and officers are user accounts too, but each has
+ * its own page; this screen is only the people the platform matches. The old
+ * "Any role" dropdown let all of them leak in, so it is gone: the tab fixes the
+ * role, and its badge carries the live count for that role (unfiltered by the
+ * search below it). The list, its email search and its status filter are the
+ * shared Directory, told to hide its now-redundant role select.
+ */
+const USER_TABS = [
+  { role: 'bride', label: 'Brides' },
+  { role: 'groom', label: 'Grooms' },
+  { role: 'family', label: 'Family' },
+] as const;
+
 export function AdminUsers() {
-  return <Directory title="Users" roles={['', 'bride', 'groom', 'family']} detailBase="/admin/clients" />;
+  const [params, setParams] = useSearchParams();
+  const role = params.get('role') || USER_TABS[0].role;
+  const setRole = (r: string) => {
+    const p = new URLSearchParams(params);
+    p.set('role', r);
+    setParams(p, { replace: true });
+  };
+
+  // One badge count per role, straight from the directory's own total so a role
+  // that gains a user sees its tab move. Kept apart from the list query below,
+  // whose total narrows with the email and status filters.
+  const { data: counts } = useQuery<Record<string, number>>({
+    queryKey: ['admin-user-counts'],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        USER_TABS.map(
+          async (t) =>
+            [
+              t.role,
+              (await api.get('/admin/directory', { params: { limit: 1, role: t.role } })).data.meta
+                .total as number,
+            ] as const,
+        ),
+      );
+      return Object.fromEntries(entries);
+    },
+  });
+
+  const active = USER_TABS.find((t) => t.role === role) ?? USER_TABS[0];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="page-title">Users</h1>
+        <p className="page-subtitle">
+          Brides, grooms and families — the people the platform matches. Vendors, planners,
+          agents and officers each have their own page.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {USER_TABS.map((t) => {
+          const isActive = t.role === role;
+          return (
+            <button
+              key={t.role}
+              onClick={() => setRole(t.role)}
+              aria-pressed={isActive}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-gradient-to-r from-brand to-brand-strong text-brand-fg shadow-btn'
+                  : 'bg-surface text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <span>{t.label}</span>
+              <span
+                className={`rounded-full px-1.5 text-xs tabular-nums ${
+                  isActive ? 'bg-white/25 text-brand-fg' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {counts?.[t.role] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <Directory
+        key={role}
+        title={active.label}
+        initialRole={role}
+        roles={[role]}
+        hideRoleFilter
+        detailBase="/admin/clients"
+      />
+    </div>
+  );
 }
 
 export function AdminAgents() {

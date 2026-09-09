@@ -9,6 +9,7 @@ import { OfficerServiceArea } from '../verification/entities/officer-service-are
 import { Booking } from '../bookings/entities/booking.entity';
 import { Dispute } from './entities/dispute.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { ProfileDetails } from '../profile-details/entities/profile-details.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { WeddingEvent } from '../events/entities/event.entity';
@@ -34,6 +35,7 @@ import { AdminController } from './admin.controller';
       Booking,
       Dispute,
       Profile,
+      ProfileDetails,
       Interest,
       Payment,
       WeddingEvent,

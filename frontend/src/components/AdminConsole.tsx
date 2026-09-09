@@ -92,6 +92,7 @@ export function Directory({
   initialRole = '',
   roles = ROLES,
   detailBase,
+  hideRoleFilter = false,
 }: {
   title?: string;
   initialRole?: string;
@@ -102,6 +103,11 @@ export function Directory({
    * detail page (EZ1-I171/I172) — instead of expanding the summary inline.
    */
   detailBase?: string;
+  /**
+   * Hide the role dropdown. The Users page fixes the role with tabs instead, so
+   * the one-option select would be dead weight (EZ1-I192).
+   */
+  hideRoleFilter?: boolean;
 } = {}) {
   const navigate = useNavigate();
   const [role, setRole] = useState(initialRole);
@@ -139,13 +145,15 @@ export function Directory({
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select className="input w-40" value={role} onChange={(e) => setRole(e.target.value)}>
-          {roles.map((r) => (
-            <option key={r} value={r}>
-              {r === '' ? 'Any role' : r.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </select>
+        {!hideRoleFilter && (
+          <select className="input w-40" value={role} onChange={(e) => setRole(e.target.value)}>
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {r === '' ? 'Any role' : r.replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        )}
         <select className="input w-40" value={active} onChange={(e) => setActive(e.target.value)}>
           <option value="">Any state</option>
           <option value="true">Active</option>
