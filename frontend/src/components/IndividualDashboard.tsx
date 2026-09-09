@@ -6,6 +6,7 @@ import { Permission, PermissionValue, canAny } from '../lib/permissions';
 import { formatDate } from '../lib/dates';
 import { UNREAD_POLL_MS, type Notification } from '../lib/notification-copy';
 import { Progress, QuickAction, RecentNotifications, Stat } from './IndividualDashboardParts';
+import AgentReviewCard from './AgentReviewCard';
 
 /**
  * The individual couple's home screen.
@@ -238,6 +239,10 @@ export default function IndividualDashboard() {
           )}
         </div>
       )}
+
+      {/* The agent who represents this client — rate them (EZ1-I206). Renders
+          nothing for a client with no agent. */}
+      <AgentReviewCard />
 
       {/* What is actually coming: events and bookings, side by side. */}
       {(canEvents || canBookOwn) && (

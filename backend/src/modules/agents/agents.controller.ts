@@ -15,6 +15,8 @@ import { AgencyService } from './agency.service';
 import { ManagedProfilesService } from './managed-profiles.service';
 import { AgentBillingService } from './agent-billing.service';
 import { ProfileClaimsService } from './profile-claims.service';
+import { AgentReviewsService } from './agent-reviews.service';
+import { SubmitAgentReviewDto } from './dto/agent-review.dto';
 import { EndEngagementDto } from './dto/lifecycle.dto';
 import { InvitationsService } from '../invitations/invitations.service';
 import { ClientSearchDto, UpdateClientStatusDto } from './dto/agent.dto';
@@ -41,6 +43,7 @@ export class AgentsController {
     private readonly agentBilling: AgentBillingService,
     private readonly invitations: InvitationsService,
     private readonly claims: ProfileClaimsService,
+    private readonly agentReviews: AgentReviewsService,
   ) {}
 
   // ------------------------------------------------------------- the agency
@@ -317,5 +320,30 @@ export class AgentsController {
     @Body() dto: UpdateClientStatusDto,
   ) {
     return this.agents.setClientStatus(agentId, id, dto.isActive);
+  }
+
+  // -------------------------------------------------- the client rates the agent
+
+  /**
+   * The client's own view of their agent: who represents them, that agent's
+   * aggregate rating, and the client's own review if they have left one. No
+   * special permission — any signed-in user may ask, and a user with no agent
+   * simply gets `agent: null`.
+   */
+  @ApiOperation({ summary: 'The agent who represents you, their rating, and your review' })
+  @Get('my-agent')
+  myAgent(@CurrentUser('userId') userId: string) {
+    return this.agentReviews.getMyAgent(userId);
+  }
+
+  /**
+   * Leave or update your rating of the agent who manages your account. Guarded
+   * on `managedByAgentId`: you can only review the agent you are actually a
+   * client of. One standing review per client, editable in place.
+   */
+  @ApiOperation({ summary: 'Rate the agent who represents you' })
+  @Post('my-agent/review')
+  reviewMyAgent(@CurrentUser('userId') userId: string, @Body() dto: SubmitAgentReviewDto) {
+    return this.agentReviews.submitReview(userId, dto);
   }
 }
