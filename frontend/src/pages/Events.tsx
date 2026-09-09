@@ -382,80 +382,146 @@ export default function Events() {
                     <div
                       className={
                         view === 'cards'
-                          ? `flex flex-col gap-1 rounded-sm border p-3 ${
+                          ? `flex flex-col gap-3 rounded-sm border p-4 ${
                               selected === ev.id
                                 ? 'border-brand bg-brand-light'
                                 : 'border-gray-200 hover:bg-gray-50'
                             }`
-                          : `flex items-center justify-between rounded-sm px-3 py-2 ${
-                              selected === ev.id ? 'bg-brand-light' : 'hover:bg-gray-50'
+                          : `flex items-start justify-between gap-3 rounded-sm border px-3 py-2.5 ${
+                              selected === ev.id
+                                ? 'border-brand bg-brand-light'
+                                : 'border-transparent hover:bg-gray-50'
                             }`
                       }
                     >
-                      <button className="flex-1 text-left" onClick={() => setSelected(ev.id)}>
-                        <span className="block text-sm font-medium text-gray-900">{ev.name}</span>
-                        <span className="block text-xs text-gray-500">
+                      <button
+                        className="min-w-0 flex-1 space-y-2 text-left"
+                        onClick={() => setSelected(ev.id)}
+                      >
+                        {/* 1. Date — the card's anchor, above the name. */}
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-brand-dark">
                           {formatDate(ev.eventDate)}
-                          {ev.startTime ? ` · ${ev.startTime.slice(0, 5)}` : ''}
-                          {ev.endTime ? `–${ev.endTime.slice(0, 5)}` : ''}
-                          {ev.venue ? ` · ${ev.venue}` : ''}
-                          {ev.expectedGuests ? ` · ${ev.expectedGuests} expected` : ''}
-                          {/* Budget on the summary line, not only behind "More
-                              details" — a planner comparing days should see it
-                              without opening each one (EZ1-I17). */}
-                          {ev.budget && Number(ev.budget) > 0
-                            ? ` · ₹${Number(ev.budget).toLocaleString('en-IN')}`
-                            : ''}
-                          {/* Theme and special requirements travel with the
-                              shared event so a hired planner sees them (EZ1-I84). */}
-                          {ev.theme ? ` · ${ev.theme}` : ''}
                         </span>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                          {ev.status && (
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${STATUS_TONE[ev.status]}`}
-                            >
-                              {STATUS_LABEL[ev.status]}
+
+                        {/* 2. Event details — name, then its category and type. */}
+                        <span className="block">
+                          <span className="block text-sm font-semibold leading-snug text-gray-900">
+                            {ev.name}
+                          </span>
+                          {(ev.category ||
+                            (ev.eventType &&
+                              ev.eventType.trim().toLowerCase() !==
+                                ev.name.trim().toLowerCase())) && (
+                            <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-gray-400">
+                              {ev.category && (
+                                <span>{CATEGORY_LABEL[ev.category] ?? ev.category}</span>
+                              )}
+                              {/* The event type is shown only when it says something
+                                  the name does not — a "Mehendi" event typed as type
+                                  "Mehendi" printed the word twice on the card, which
+                                  is the reported duplication (EZ1-I91). */}
+                              {ev.eventType &&
+                                ev.eventType.trim().toLowerCase() !==
+                                  ev.name.trim().toLowerCase() && (
+                                  <span>
+                                    {ev.category && (
+                                      <span aria-hidden className="mr-1.5 text-gray-300">
+                                        ·
+                                      </span>
+                                    )}
+                                    {ev.eventType}
+                                  </span>
+                                )}
                             </span>
                           )}
-                          {ev.category && (
-                            <span className="text-[10px] text-gray-400">
-                              {CATEGORY_LABEL[ev.category] ?? ev.category}
-                            </span>
-                          )}
-                          {/* The event type is shown only when it says something
-                              the name does not — a "Mehendi" event typed as type
-                              "Mehendi" printed the word twice on the card, which
-                              is the reported duplication (EZ1-I91). */}
-                          {ev.eventType &&
-                            ev.eventType.trim().toLowerCase() !== ev.name.trim().toLowerCase() && (
-                              <span className="text-[10px] text-gray-400">· {ev.eventType}</span>
-                            )}
                         </span>
+
                         {/*
-                          Where this day stands, on the day itself.
+                          3. Status — where this day stands, on the day itself.
 
                           The RSVP panel only ever appeared for the one day you
                           had selected, so "how many are coming to the sangeet"
                           took a click per day and the page that was meant to
                           summarise the wedding summarised nothing.
                         */}
-                        {ev.rsvp &&
-                          ev.rsvp.coming + ev.rsvp.notComing + ev.rsvp.noReply > 0 && (
-                            <span className="mt-1 flex flex-wrap gap-1">
-                              <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-800">
-                                {ev.rsvp.coming} coming
+                        {(ev.status ||
+                          (ev.rsvp &&
+                            ev.rsvp.coming + ev.rsvp.notComing + ev.rsvp.noReply > 0)) && (
+                          <span className="flex flex-wrap items-center gap-1">
+                            {ev.status && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_TONE[ev.status]}`}
+                              >
+                                {STATUS_LABEL[ev.status]}
                               </span>
-                              <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
-                                {ev.rsvp.noReply} not answered
-                              </span>
-                              <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
-                                {ev.rsvp.notComing} not coming
-                              </span>
-                            </span>
-                          )}
+                            )}
+                            {ev.rsvp &&
+                              ev.rsvp.coming + ev.rsvp.notComing + ev.rsvp.noReply > 0 && (
+                                <>
+                                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-800">
+                                    {ev.rsvp.coming} coming
+                                  </span>
+                                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800">
+                                    {ev.rsvp.noReply} not answered
+                                  </span>
+                                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600">
+                                    {ev.rsvp.notComing} not coming
+                                  </span>
+                                </>
+                              )}
+                          </span>
+                        )}
+
+                        {/*
+                          4. Location, time and guest facts on one aligned row,
+                          dot-separated. Budget sits here rather than only behind
+                          "More details" so a planner comparing days sees it
+                          without opening each one (EZ1-I17); theme travels with
+                          the shared event so a hired planner sees it (EZ1-I84).
+                        */}
+                        {(ev.venue ||
+                          ev.startTime ||
+                          ev.expectedGuests ||
+                          (ev.budget && Number(ev.budget) > 0) ||
+                          ev.theme) && (
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                            {[
+                              ev.venue ? ev.venue : null,
+                              ev.startTime
+                                ? `${ev.startTime.slice(0, 5)}${
+                                    ev.endTime ? `–${ev.endTime.slice(0, 5)}` : ''
+                                  }`
+                                : null,
+                              ev.expectedGuests ? `${ev.expectedGuests} expected` : null,
+                              ev.budget && Number(ev.budget) > 0
+                                ? `₹${Number(ev.budget).toLocaleString('en-IN')}`
+                                : null,
+                              ev.theme ? ev.theme : null,
+                            ]
+                              .filter((f): f is string => Boolean(f))
+                              .map((fact, i) => (
+                                <span key={i} className="inline-flex items-center gap-2">
+                                  {i > 0 && (
+                                    <span aria-hidden className="text-gray-300">
+                                      ·
+                                    </span>
+                                  )}
+                                  {fact}
+                                </span>
+                              ))}
+                          </span>
+                        )}
                       </button>
-                      <div className="flex gap-1">
+
+                      {/* 5. Actions — one consistent area, right in list view,
+                          a divided footer row in cards view. */}
+                      <div
+                        className={
+                          view === 'cards'
+                            ? 'flex flex-wrap items-center gap-1 border-t border-gray-100 pt-2'
+                            : 'flex shrink-0 items-center gap-1'
+                        }
+                      >
                         {/*
                           Straight to the vendors for this day. It was only
                           reachable after selecting the day and scrolling the
