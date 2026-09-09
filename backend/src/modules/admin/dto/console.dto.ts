@@ -13,7 +13,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { BookingStatus, BusinessStatus, UserRole } from '../../../common/enums';
+import { BookingStatus, BusinessStatus, PaymentStatus, UserRole } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 
@@ -83,6 +83,19 @@ export class AdminBookingQueryDto extends PaginationDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+}
+
+/**
+ * The Payments/Transactions list filter. A payment's status is a PaymentStatus
+ * (held_in_escrow, released, refunded, ...), not a BookingStatus — reusing the
+ * booking query DTO meant every value except `disputed` failed enum validation
+ * and the filter silently returned nothing (EZ1-I202).
+ */
+export class AdminTransactionQueryDto extends PaginationDto {
+  @ApiPropertyOptional({ enum: PaymentStatus })
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  status?: PaymentStatus;
 }
 
 export const REPORT_KINDS = [

@@ -32,6 +32,7 @@ import { DecidePriceChangeDto } from './dto/console.dto';
 import {
   ActivityQueryDto,
   AdminBookingQueryDto,
+  AdminTransactionQueryDto,
   DirectoryQueryDto,
   ReportQueryDto,
 } from './dto/console.dto';
@@ -171,8 +172,17 @@ export class AdminController {
   @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
   @ApiOperation({ summary: 'Every payment/transaction, with parties and escrow status (EZ1-I111)' })
   @Get('transactions')
-  transactions(@Query() q: AdminBookingQueryDto) {
+  transactions(@Query() q: AdminTransactionQueryDto) {
     return this.console.transactions(q);
+  }
+
+  @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
+  @ApiOperation({
+    summary: 'One payment in full: parties, service, event, escrow position and history (EZ1-I202)',
+  })
+  @Get('transactions/:id')
+  transactionDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.console.transactionDetail(id);
   }
 
   @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)

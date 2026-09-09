@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../../lib/api';
 import {
@@ -280,6 +280,7 @@ const TXN_STATUS_STYLE: Record<string, string> = {
  */
 export function AdminPayments() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const [status, setStatus] = useState(params.get('status') ?? '');
 
   const { data: analytics } = useQuery({
@@ -341,7 +342,11 @@ export function AdminPayments() {
             </thead>
             <tbody className="divide-y" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {rows.map((t) => (
-                <tr key={t.paymentId}>
+                <tr
+                  key={t.paymentId}
+                  onClick={() => navigate(`/admin/payments/${t.paymentId}`)}
+                  className="cursor-pointer hover:bg-surface-sunken"
+                >
                   <td className="py-2 text-gray-600">{new Date(t.createdAt).toLocaleDateString()}</td>
                   <td className="py-2 font-mono text-xs text-gray-500">{t.bookingId.slice(0, 8)}</td>
                   <td className="py-2">{t.buyerName ?? '—'}</td>

@@ -76,6 +76,7 @@ import Media from './pages/Media';
 import AdminLayout, { ADMIN_NAV as ADMIN_PORTAL_NAV } from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminBookingDetail from './pages/admin/AdminBookingDetail';
+import AdminPaymentDetail from './pages/admin/AdminPaymentDetail';
 import AdminAccountDetail from './pages/admin/AdminAccountDetail';
 import AdminProfileDetail from './pages/admin/AdminProfileDetail';
 import AdminBusinessDetail from './pages/admin/AdminBusinessDetail';
@@ -1104,6 +1105,7 @@ export default function App() {
         <Route path="bookings" element={<AdminBookings />} />
         <Route path="bookings/:id" element={<AdminBookingDetail />} />
         <Route path="payments" element={<AdminPayments />} />
+        <Route path="payments/:id" element={<AdminPaymentDetail />} />
         {/*
           Services and Catalog are one screen now (EZ1-I174): a service and its
           packages are managed together, so they are a single nav item. The old

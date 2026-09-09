@@ -11,6 +11,7 @@ import { Dispute } from './entities/dispute.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
 import { Payment } from '../bookings/entities/payment.entity';
+import { WeddingEvent } from '../events/entities/event.entity';
 import { AgentCharge } from '../agents/entities/agent-charge.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
 import { SupportCase } from '../verification/entities/support-case.entity';
@@ -35,6 +36,7 @@ import { AdminController } from './admin.controller';
       Profile,
       Interest,
       Payment,
+      WeddingEvent,
       AgentCharge,
       VerificationRequest,
       SupportCase,

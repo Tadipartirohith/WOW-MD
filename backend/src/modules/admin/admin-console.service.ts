@@ -6,6 +6,7 @@ import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Payment } from '../bookings/entities/payment.entity';
+import { WeddingEvent } from '../events/entities/event.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
@@ -17,6 +18,7 @@ import { AgentCharge } from '../agents/entities/agent-charge.entity';
 import {
   ActivityQueryDto,
   AdminBookingQueryDto,
+  AdminTransactionQueryDto,
   DirectoryQueryDto,
   ReportQueryDto,
 } from './dto/console.dto';
@@ -62,6 +64,7 @@ export class AdminConsoleService {
     @InjectRepository(Vendor) private readonly vendors: Repository<Vendor>,
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
+    @InjectRepository(WeddingEvent) private readonly events: Repository<WeddingEvent>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(VendorService) private readonly vendorServices: Repository<VendorService>,
@@ -790,7 +793,7 @@ export class AdminConsoleService {
    * (EZ1-I111): the booking it is on, the customer and provider, the instalment,
    * amount, escrow/payout status and date. One row per payment, newest first.
    */
-  async transactions(q: AdminBookingQueryDto): Promise<
+  async transactions(q: AdminTransactionQueryDto): Promise<
     PaginatedResult<{
       paymentId: string;
       bookingId: string;
@@ -847,6 +850,124 @@ export class AdminConsoleService {
       };
     });
     return paginate(data, total, q.page, q.limit);
+  }
+
+  /**
+   * One payment in full, for the admin Payment Details view (EZ1-I202).
+   *
+   * A single transaction row only makes sense against the whole booking it sits
+   * on: the customer and provider it is between, the service and event it paid
+   * for, and its sibling instalments — because "the advance released but the
+   * balance is still in escrow" is the sentence an administrator is actually
+   * reading. Gathered in one read the way `bookingDetail` already is, and the
+   * escrow position is summed across every payment on the booking so the
+   * numbers agree with the dashboard's cards.
+   */
+  async transactionDetail(paymentId: string) {
+    const payment = await this.payments.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const booking = await this.bookings.findOne({ where: { id: payment.bookingId } });
+
+    const [siblings, client, vendor, planner, service, event] = await Promise.all([
+      this.payments.find({ where: { bookingId: payment.bookingId }, order: { createdAt: 'ASC' } }),
+      booking
+        ? this.users.findOne({
+            where: { id: booking.userId },
+            select: ['id', 'email', 'phone', 'role'],
+          })
+        : Promise.resolve(null),
+      booking?.providerType === ProviderType.VENDOR
+        ? this.vendors.findOne({ where: { id: booking.providerId } })
+        : Promise.resolve(null),
+      booking?.providerType === ProviderType.PLANNER
+        ? this.planners.findOne({ where: { id: booking.providerId } })
+        : Promise.resolve(null),
+      booking?.vendorServiceId
+        ? this.vendorServices.findOne({ where: { id: booking.vendorServiceId } })
+        : Promise.resolve(null),
+      booking?.eventId
+        ? this.events.findOne({ where: { id: booking.eventId } })
+        : Promise.resolve(null),
+    ]);
+
+    const clientProfile = booking
+      ? await this.profiles.findOne({ where: { userId: booking.userId } })
+      : null;
+
+    // The escrow position across the whole booking, summed the same way the
+    // dashboard's cards are: held/released count `amount`, the provider's share
+    // and commission come off the released rows, refunded counts `amount`.
+    const sum = (predicate: (p: Payment) => boolean, column: keyof Payment) =>
+      siblings
+        .filter(predicate)
+        .reduce((t, p) => t + Number((p[column] as string) ?? 0), 0)
+        .toFixed(2);
+
+    return {
+      payment,
+      booking: booking
+        ? {
+            id: booking.id,
+            status: booking.status,
+            amount: booking.amount,
+            currency: booking.currency,
+            eventDate: booking.eventDate,
+            createdAt: booking.createdAt,
+          }
+        : null,
+      customer: client
+        ? {
+            id: client.id,
+            name: clientProfile?.displayName ?? null,
+            email: client.email,
+            phone: client.phone,
+            role: client.role,
+          }
+        : null,
+      provider: vendor
+        ? {
+            id: vendor.id,
+            ownerUserId: vendor.ownerUserId,
+            name: vendor.name,
+            category: vendor.category,
+            type: ProviderType.VENDOR,
+          }
+        : planner
+          ? {
+              id: planner.id,
+              ownerUserId: planner.ownerUserId,
+              name: planner.agencyName,
+              category: 'Wedding planner',
+              type: ProviderType.PLANNER,
+            }
+          : booking
+            ? { id: booking.providerId, type: booking.providerType }
+            : null,
+      service: service ? { id: service.id, name: service.displayName } : null,
+      event: event
+        ? {
+            id: event.id,
+            name: event.name,
+            venue: event.venue ?? null,
+            city: event.city,
+            eventDate: event.eventDate,
+            startTime: event.startTime,
+          }
+        : null,
+      // Every instalment on the booking, oldest first: the milestone breakdown
+      // (advance/second/final) and the payment history/timeline are both read
+      // off this list on the client.
+      payments: siblings,
+      summary: {
+        total: booking?.amount ?? payment.amount,
+        held: sum((p) => p.status === PaymentStatus.HELD_IN_ESCROW, 'amount'),
+        released: sum((p) => p.status === PaymentStatus.RELEASED, 'amount'),
+        refunded: sum((p) => p.status === PaymentStatus.REFUNDED, 'amount'),
+        commission: sum((p) => p.status === PaymentStatus.RELEASED, 'commissionAmount'),
+        payout: sum((p) => p.status === PaymentStatus.RELEASED, 'payoutAmount'),
+      },
+    };
   }
 
   /**
