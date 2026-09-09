@@ -231,15 +231,25 @@ function Section({
                 )}
                 {c.history && c.history.length > 0 && (
                   <ol className="space-y-1 border-l-2 border-gray-200 pl-3">
-                    {c.history.map((h, i) => (
-                      <li key={i} className="text-xs text-gray-600">
-                        <span className="font-medium text-gray-800">
-                          {STATUS_LABEL[h.status] ?? h.status.replace(/_/g, ' ')}
-                        </span>{' '}
-                        · {formatDateTime(h.at)}
-                        {h.remarks ? `: ${h.remarks}` : ''}
-                      </li>
-                    ))}
+                    {/* Collapse consecutive duplicates so an older case whose
+                        status was re-written without changing (same status and
+                        note) shows each step once, not six times (EZ1-I193). */}
+                    {c.history
+                      .filter(
+                        (h, i, all) =>
+                          i === 0 ||
+                          all[i - 1].status !== h.status ||
+                          (all[i - 1].remarks ?? '') !== (h.remarks ?? ''),
+                      )
+                      .map((h, i) => (
+                        <li key={i} className="text-xs text-gray-600">
+                          <span className="font-medium text-gray-800">
+                            {STATUS_LABEL[h.status] ?? h.status.replace(/_/g, ' ')}
+                          </span>{' '}
+                          · {formatDateTime(h.at)}
+                          {h.remarks ? `: ${h.remarks}` : ''}
+                        </li>
+                      ))}
                   </ol>
                 )}
               </div>

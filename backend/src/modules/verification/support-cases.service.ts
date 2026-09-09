@@ -107,6 +107,31 @@ export class SupportCasesService {
   ) {}
 
   /**
+   * Append a history entry, unless it would only repeat the last one (EZ1-I193).
+   *
+   * The timeline records an *actual* state change, not every write. A step that
+   * re-states the current status with nothing new to say — same status, same
+   * note — must be a no-op, or a case re-saved a few times ends up with the same
+   * line six times over with identical timestamps. A genuine transition, or the
+   * same status carrying a different note (a re-assignment to another officer,
+   * say), still records its own entry.
+   */
+  private pushHistory(
+    item: SupportCase,
+    entry: { at: string; byUserId: string; status: string; note?: string },
+  ): void {
+    const last = item.history[item.history.length - 1];
+    if (
+      last &&
+      last.status === entry.status &&
+      (last.note ?? null) === (entry.note ?? null)
+    ) {
+      return;
+    }
+    item.history = [...item.history, entry];
+  }
+
+  /**
    * Decorate cases with who raised them and, for a booking or payment case, the
    * booking and both parties (EZ1-I74). An administrator investigating a dispute
    * then has the who and the what in front of them instead of a bare complaint.
@@ -538,15 +563,12 @@ export class SupportCasesService {
     // back in the queue.
     if (item.status === CaseStatus.OPEN) item.status = CaseStatus.TRIAGED;
 
-    item.history = [
-      ...item.history,
-      {
-        at: new Date().toISOString(),
-        byUserId: actor.userId,
-        status: item.status,
-        note: dto.note ?? `${item.priority}${item.category ? ` · ${item.category}` : ''}`,
-      },
-    ];
+    this.pushHistory(item, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: item.status,
+      note: dto.note ?? `${item.priority}${item.category ? ` · ${item.category}` : ''}`,
+    });
     return this.cases.save(item);
   }
 
@@ -577,15 +599,12 @@ export class SupportCasesService {
     // through without being done.
     const wasUntriaged = item.status === CaseStatus.OPEN;
     if (wasUntriaged) {
-      item.history = [
-        ...item.history,
-        {
-          at: new Date().toISOString(),
-          byUserId: actor.userId,
-          status: CaseStatus.TRIAGED,
-          note: 'Triaged on allocation',
-        },
-      ];
+      this.pushHistory(item, {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: CaseStatus.TRIAGED,
+        note: 'Triaged on allocation',
+      });
     }
 
     // Round two or later. The second officer needs to know the case has been
@@ -599,15 +618,12 @@ export class SupportCasesService {
     item.assignedToUserId = officer.id;
     item.allocatedAt = new Date();
     item.status = returning ? CaseStatus.REASSIGNED : CaseStatus.ALLOCATED;
-    item.history = [
-      ...item.history,
-      {
-        at: new Date().toISOString(),
-        byUserId: actor.userId,
-        status: item.status,
-        note: dto.note,
-      },
-    ];
+    this.pushHistory(item, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: item.status,
+      note: dto.note,
+    });
     const saved = await this.cases.save(item);
 
     await this.audit.record({
@@ -683,10 +699,12 @@ export class SupportCasesService {
     const item = await this.assignedOrAdmin(actor, caseId);
     item.findings = dto.findings;
     item.status = dto.status ?? CaseStatus.IN_PROGRESS;
-    item.history = [
-      ...item.history,
-      { at: new Date().toISOString(), byUserId: actor.userId, status: item.status, note: dto.findings },
-    ];
+    this.pushHistory(item, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: item.status,
+      note: dto.findings,
+    });
     const saved = await this.cases.save(item);
     // The vendor sees it is actively being worked (EZ1-I149). The findings
     // themselves stay internal until an outcome is recorded.
@@ -721,15 +739,12 @@ export class SupportCasesService {
 
     supportCase.requiresPhysicalVerification = true;
     supportCase.status = CaseStatus.ESCALATED;
-    supportCase.history = [
-      ...supportCase.history,
-      {
-        at: new Date().toISOString(),
-        byUserId: actor.userId,
-        status: CaseStatus.ESCALATED,
-        note: reason,
-      },
-    ];
+    this.pushHistory(supportCase, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: CaseStatus.ESCALATED,
+      note: reason,
+    });
 
     const saved = await this.cases.save(supportCase);
     await this.audit.record({
@@ -762,15 +777,12 @@ export class SupportCasesService {
     }
 
     supportCase.status = CaseStatus.WAITING_FOR_INFORMATION;
-    supportCase.history = [
-      ...supportCase.history,
-      {
-        at: new Date().toISOString(),
-        byUserId: actor.userId,
-        status: CaseStatus.WAITING_FOR_INFORMATION,
-        note,
-      },
-    ];
+    this.pushHistory(supportCase, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: CaseStatus.WAITING_FOR_INFORMATION,
+      note,
+    });
     const saved = await this.cases.save(supportCase);
     // Parking a case on the vendor is worth nothing if they are not told they
     // are the one holding it up (EZ1-I149).
@@ -834,15 +846,12 @@ export class SupportCasesService {
     if (actor.role !== UserRole.ADMIN) {
       // A proposal. On somebody's desk, and the money has not moved.
       item.status = CaseStatus.RESOLUTION_SUBMITTED;
-      item.history = [
-        ...item.history,
-        {
-          at: new Date().toISOString(),
-          byUserId: actor.userId,
-          status: CaseStatus.RESOLUTION_SUBMITTED,
-          note: `${actionNote}Proposes ${dto.outcome}${dto.amount ? ` ${dto.amount}` : ''}`,
-        },
-      ];
+      this.pushHistory(item, {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: CaseStatus.RESOLUTION_SUBMITTED,
+        note: `${actionNote}Proposes ${dto.outcome}${dto.amount ? ` ${dto.amount}` : ''}`,
+      });
       const proposed = await this.cases.save(item);
       await this.audit.record({
         action: AuditAction.CASE_SETTLED,
@@ -932,15 +941,12 @@ export class SupportCasesService {
     // necessarily agreed, and that is a separate fact with its own timestamp.
     item.resolvedAt = new Date();
     item.resolvedByUserId = actor.userId;
-    item.history = [
-      ...item.history,
-      {
-        at: new Date().toISOString(),
-        byUserId: actor.userId,
-        status: CaseStatus.RESOLVED,
-        note: `${outcome}${amount !== null ? ` ${amount}` : ''}`,
-      },
-    ];
+    this.pushHistory(item, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: CaseStatus.RESOLVED,
+      note: `${outcome}${amount !== null ? ` ${amount}` : ''}`,
+    });
     const saved = await this.cases.save(item);
 
     if (item.subjectId && item.subjectType === CaseSubject.BOOKING) {
@@ -1081,15 +1087,12 @@ export class SupportCasesService {
     item.status = CaseStatus.CLOSED;
     item.closedAt = new Date();
     item.closedByUserId = actor.userId;
-    item.history = [
-      ...item.history,
-      {
-        at: new Date().toISOString(),
-        byUserId: actor.userId,
-        status: CaseStatus.CLOSED,
-        note: mine ? 'Closed by the person who raised it' : 'Closed by an administrator',
-      },
-    ];
+    this.pushHistory(item, {
+      at: new Date().toISOString(),
+      byUserId: actor.userId,
+      status: CaseStatus.CLOSED,
+      note: mine ? 'Closed by the person who raised it' : 'Closed by an administrator',
+    });
     return this.cases.save(item);
   }
 
