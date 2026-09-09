@@ -108,6 +108,8 @@ import ProviderConsole from './pages/ProviderConsole';
 import WeddingPlanners from './pages/WeddingPlanners';
 import Forbidden from './pages/Forbidden';
 import Verification from './pages/Verification';
+import Visits from './pages/Visits';
+import CalendarPage from './pages/Calendar';
 import SetPassword from './pages/SetPassword';
 import Availability from './pages/Availability';
 import Accounts from './pages/Accounts';
@@ -331,6 +333,24 @@ const NAV: NavEntry[] = [
     requires: [Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE],
     group: 'operations',
     icon: SealCheck,
+  },
+  // Visits and Calendar are the officer's own planning surfaces over the very
+  // same allocated requests the Verification queue works (EZ1-I201). Gated on
+  // fieldwork, which officers hold and administrators never do, so they sit in
+  // the officer's Operations band and stay off the admin console.
+  {
+    to: '/visits',
+    label: 'Visits',
+    requires: [Permission.VERIFICATION_FIELDWORK],
+    group: 'operations',
+    icon: IdentificationCard,
+  },
+  {
+    to: '/calendar',
+    label: 'Calendar',
+    requires: [Permission.VERIFICATION_FIELDWORK],
+    group: 'operations',
+    icon: CalendarBlank,
   },
   { to: '/notifications', label: 'Notifications', requires: [], group: 'account', icon: Bell },
   // Vendors had nowhere at all to say something had gone wrong outside a
@@ -834,6 +854,22 @@ export default function App() {
         element={
           <Protected requires={[Permission.VERIFICATION_PROCESS, Permission.VERIFICATION_ALLOCATE]}>
             <Verification />
+          </Protected>
+        }
+      />
+      <Route
+        path="/visits"
+        element={
+          <Protected requires={[Permission.VERIFICATION_FIELDWORK]}>
+            <Visits />
+          </Protected>
+        }
+      />
+      <Route
+        path="/calendar"
+        element={
+          <Protected requires={[Permission.VERIFICATION_FIELDWORK]}>
+            <CalendarPage />
           </Protected>
         }
       />

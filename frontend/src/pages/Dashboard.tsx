@@ -4,7 +4,15 @@ import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { navDenied } from '../lib/nav-access';
 import { useBusinesses } from '../store/business';
-import { Permission, PermissionValue, ROLE_LABEL, UserRole, canAny } from '../lib/permissions';
+import {
+  Permission,
+  PermissionValue,
+  ROLE_LABEL,
+  UserRole,
+  VERIFICATION_LABEL,
+  canAny,
+} from '../lib/permissions';
+import { Visit, VISIT_TONE, isTodayVisit, scheduledLabel } from '../lib/visits';
 import { ReactNode } from 'react';
 import ClaimRequests from '../components/ClaimRequests';
 import GetStarted from '../components/GetStarted';
@@ -352,19 +360,27 @@ export default function Dashboard() {
     queryKey: ['officer-queue'],
     queryFn: async () =>
       (await api.get('/verification/requests', { params: { limit: 100 } })).data as {
-        data: { id: string; status: string; deadlineAt?: string | null }[];
+        data: Visit[];
       },
     retry: false,
     enabled: isOfficer,
   });
-  const officerRequests = officerQueue?.data ?? [];
+  const officerRequests: Visit[] = officerQueue?.data ?? [];
   const officerCounts = {
     assigned: officerRequests.filter((r) => r.status === 'assigned').length,
     inProgress: officerRequests.filter((r) => r.status === 'in_progress').length,
     submitted: officerRequests.filter((r) => r.status === 'submitted').length,
     additional: officerRequests.filter((r) => r.status === 'additional_review').length,
+    today: officerRequests.filter(isTodayVisit).length,
   };
-  const officerOpen = officerCounts.assigned + officerCounts.inProgress + officerCounts.additional;
+  // Today's schedule, soonest first, for the section below the overview.
+  const todaysVisits = officerRequests
+    .filter(isTodayVisit)
+    .sort(
+      (a, b) =>
+        (a.slaDeadline ? new Date(a.slaDeadline).getTime() : Infinity) -
+        (b.slaDeadline ? new Date(b.slaDeadline).getTime() : Infinity),
+    );
 
   const reduce = useReducedMotion();
   const firstName = (profile?.displayName ?? '').trim().split(' ')[0];
@@ -463,40 +479,75 @@ export default function Dashboard() {
             />
           </>
         )}
-        {isOfficer && (
-          <>
-            <Counter
-              label="Verifications open"
-              value={officerOpen}
-              to="/verification"
-              tone={officerOpen > 0 ? 'text-amber-700' : undefined}
-            />
-            <Counter label="In progress" value={officerCounts.inProgress} to="/verification" />
-            <Counter label="Submitted" value={officerCounts.submitted} to="/verification" />
-          </>
-        )}
       </div>
 
       {/*
-        The officer's workload at a glance and the quick way into it (EZ1-I92):
-        the counts above break down here by stage, and the button opens the
-        queue those numbers belong to.
+        Verification Overview (EZ1-I200): the officer's workload as summary
+        cards, each a live count that opens the matching filtered visit list.
+        The stage counts that used to sit in a static row here (EZ1-I92) are
+        now the clickable way into the work, with Today's Visits added.
       */}
       {isOfficer && (
-        <div className="rounded-lg border border-gray-200 p-4">
+        <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-gray-500">Your verification workload</h2>
-            <Link className="btn-outline btn-sm" to="/verification">
-              Open the queue
+            <h2 className="section-title">Verification Overview</h2>
+            <Link className="btn-outline btn-sm" to="/visits">
+              All visits
             </Link>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-4">
-            <MiniStat label="Assigned" value={officerCounts.assigned} />
-            <MiniStat label="In progress" value={officerCounts.inProgress} />
-            <MiniStat label="Submitted" value={officerCounts.submitted} />
-            <MiniStat label="Needs another look" value={officerCounts.additional} />
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Counter
+              label="Assigned Visits"
+              value={officerCounts.assigned}
+              to="/visits?status=assigned"
+              tone={officerCounts.assigned > 0 ? 'text-amber-700' : undefined}
+            />
+            <Counter
+              label="Today's Visits"
+              value={officerCounts.today}
+              to="/visits?view=today"
+              tone={officerCounts.today > 0 ? 'text-amber-700' : undefined}
+            />
+            <Counter
+              label="In Progress"
+              value={officerCounts.inProgress}
+              to="/visits?status=in_progress"
+            />
+            <Counter
+              label="Submitted"
+              value={officerCounts.submitted}
+              to="/visits?status=submitted"
+            />
+            <Counter
+              label="Needs Another Look"
+              value={officerCounts.additional}
+              to="/visits?status=additional_review"
+            />
           </div>
-        </div>
+
+          {/*
+            Today's Verification: the visits scheduled for today, the thing an
+            officer opens the app to see. Each row carries who and where, the
+            scheduled time and status, and the way straight into it.
+          */}
+          <div className="rounded-lg border border-gray-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-gray-500">Today's Verification</h3>
+              <Link className="btn-outline btn-sm" to="/calendar">
+                Open calendar
+              </Link>
+            </div>
+            {todaysVisits.length === 0 ? (
+              <p className="mt-3 text-sm text-gray-500">Nothing scheduled for today.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {todaysVisits.map((v) => (
+                  <TodayVisit key={v.id} visit={v} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       {/*
@@ -730,12 +781,32 @@ function greeting(): string {
   return 'Good evening';
 }
 
-/** A small labelled figure inside a band, with no link of its own (EZ1-I92). */
-function MiniStat({ label, value }: { label: string; value: ReactNode }) {
+/** One of today's scheduled visits on the officer dashboard (EZ1-I200). */
+function TodayVisit({ visit }: { visit: Visit }) {
+  const canStart = visit.status === 'assigned' || visit.status === 'additional_review';
   return (
-    <div className="rounded-md bg-surface-sunken p-3">
-      <p className="truncate text-xs text-gray-500">{label}</p>
-      <p className="mt-1 font-mono text-xl font-medium leading-none text-gray-900">{value}</p>
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-surface-sunken p-3">
+      <div className="min-w-0">
+        <p className="truncate font-medium capitalize text-gray-900">
+          {visit.applicantType} verification
+          {visit.subjectName ? <span className="text-gray-500"> — {visit.subjectName}</span> : null}
+        </p>
+        <p className="text-xs text-gray-500">
+          {visit.applicantCity ?? 'Location not set'} · {scheduledLabel(visit.slaDeadline)}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            VISIT_TONE[visit.status] ?? 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {VERIFICATION_LABEL[visit.status] ?? visit.status.replace(/_/g, ' ')}
+        </span>
+        <Link className={canStart ? 'btn btn-sm' : 'btn-outline btn-sm'} to="/verification">
+          {canStart ? 'Start' : 'View'}
+        </Link>
+      </div>
     </div>
   );
 }
