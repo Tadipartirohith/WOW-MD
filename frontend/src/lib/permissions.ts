@@ -207,6 +207,30 @@ export const MILESTONE_LABEL: Record<string, string> = {
 };
 
 /**
+ * How the officer resolved a support case, as a readable label (EZ1-I181).
+ *
+ * The stored `resolutionAction` is a stable key so the backend can act on it;
+ * this turns it back into the words the officer clicked, for the vendor reading
+ * the outcome and the administrator reviewing the proposal.
+ */
+export const CASE_ACTION_LABEL: Record<string, string> = {
+  verify_booking: 'Verified booking',
+  update_booking_status: 'Updated booking status',
+  confirm_cancellation: 'Confirmed cancellation',
+  verify_payment: 'Verified payment',
+  verify_escrow: 'Verified escrow',
+  recommend_release: 'Recommend escrow release',
+  recommend_refund: 'Recommend refund',
+  partial_settlement: 'Partial settlement',
+  unlock_listing: 'Unlock business details',
+  request_correction: 'Requested correction',
+  review_changes: 'Reviewed changes',
+  review: 'Reviewed',
+  correct: 'Corrected',
+  resolve: 'Resolved',
+};
+
+/**
  * What a published window actually is, as the server reports it.
  *
  * Not the same as the vendor's own status. `booked` means the window has

@@ -4,6 +4,7 @@ import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Loading } from '../components/ui/Feedback';
 import {
+  CASE_ACTION_LABEL,
   CaseStatus,
   MILESTONE_LABEL,
   Permission,
@@ -58,6 +59,8 @@ interface SupportCase {
   findings: string | null;
   settlementOutcome: string | null;
   settlementNotes?: string | null;
+  /** The category-specific action the officer resolved with (EZ1-I181). */
+  resolutionAction?: string | null;
   /** Which instalment the argument is over; null when it is not about money. */
   milestone: string | null;
   evidence: string[];
@@ -1046,6 +1049,62 @@ function FindingsForm({
   );
 }
 
+/**
+ * What an officer can do to resolve a case, by what the case is about (EZ1-I181).
+ *
+ * A generic "Resolve" told an officer nothing about a payout dispute versus a
+ * locked listing. Each subject gets the actions that make sense for it. A
+ * `settle` action proposes an outcome the administrator approves before anything
+ * moves — `release`/`refund` are the ones that actually move escrow, `no_action`
+ * records what was done and closes it. `escalate` sends it for a physical visit.
+ * The `key` is stored so the resolution reads as the thing it was, and so
+ * `unlock_listing` can reopen the vendor's listing when it is approved.
+ */
+type CaseAction =
+  | {
+      key: string;
+      label: string;
+      kind: 'settle';
+      outcome: 'release' | 'refund' | 'no_action';
+      primary?: boolean;
+    }
+  | { key: string; label: string; kind: 'escalate' };
+
+const CASE_ACTIONS: Record<string, CaseAction[]> = {
+  booking: [
+    { key: 'verify_booking', label: 'Verify booking', kind: 'settle', outcome: 'release', primary: true },
+    { key: 'update_booking_status', label: 'Update booking status', kind: 'settle', outcome: 'no_action' },
+    { key: 'confirm_cancellation', label: 'Confirm cancellation', kind: 'settle', outcome: 'refund' },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+  payment: [
+    { key: 'verify_payment', label: 'Verify payment', kind: 'settle', outcome: 'no_action', primary: true },
+    { key: 'verify_escrow', label: 'Verify escrow', kind: 'settle', outcome: 'no_action' },
+    { key: 'recommend_release', label: 'Recommend escrow release', kind: 'settle', outcome: 'release' },
+    { key: 'recommend_refund', label: 'Recommend refund', kind: 'settle', outcome: 'refund' },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+  vendor: [
+    { key: 'unlock_listing', label: 'Unlock business details', kind: 'settle', outcome: 'no_action', primary: true },
+    { key: 'request_correction', label: 'Request correction', kind: 'settle', outcome: 'no_action' },
+    { key: 'review_changes', label: 'Approve or reject changes', kind: 'settle', outcome: 'no_action' },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+  availability: [
+    { key: 'review', label: 'Review', kind: 'settle', outcome: 'no_action', primary: true },
+    { key: 'correct', label: 'Correct', kind: 'settle', outcome: 'no_action' },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+  account: [
+    { key: 'review', label: 'Review', kind: 'settle', outcome: 'no_action', primary: true },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+  other: [
+    { key: 'resolve', label: 'Resolve', kind: 'settle', outcome: 'no_action', primary: true },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+};
+
 function CaseRow({
   item,
   officers,
@@ -1060,6 +1119,9 @@ function CaseRow({
   const [officerUserId, setOfficerUserId] = useState('');
   const [findings, setFindings] = useState(item.findings ?? '');
   const [amount, setAmount] = useState('');
+  // Notes the officer attaches to whichever resolution action they choose
+  // (EZ1-I181). Recorded as the settlement note the vendor reads.
+  const [resNotes, setResNotes] = useState('');
   const settled = item.status === 'resolved' || item.status === 'closed';
   // An officer has proposed a resolution and it is waiting on an administrator
   // to approve it or send it back (EZ1-I49) — a different screen from settling a
@@ -1233,6 +1295,9 @@ function CaseRow({
       {item.settlementOutcome && !inReview && (
         <p className="text-sm text-gray-600">
           Settled: <span className="font-medium">{item.settlementOutcome.replace(/_/g, ' ')}</span>
+          {item.resolutionAction
+            ? ` · ${CASE_ACTION_LABEL[item.resolutionAction] ?? item.resolutionAction.replace(/_/g, ' ')}`
+            : ''}
         </p>
       )}
 
@@ -1240,6 +1305,14 @@ function CaseRow({
       {inReview && (
         <div className="space-y-2 rounded-sm border border-sky-200 bg-sky-50 p-3">
           <p className="text-sm font-medium text-sky-900">Resolution submitted for review</p>
+          {item.resolutionAction && (
+            <p className="text-sm text-sky-900">
+              Action:{' '}
+              <span className="font-medium">
+                {CASE_ACTION_LABEL[item.resolutionAction] ?? item.resolutionAction.replace(/_/g, ' ')}
+              </span>
+            </p>
+          )}
           {item.settlementOutcome && (
             <p className="text-sm text-sky-900">
               Proposed: <span className="font-medium">{item.settlementOutcome.replace(/_/g, ' ')}</span>
@@ -1376,89 +1449,109 @@ function CaseRow({
           </button>
 
           {/*
-            Money settlement only when there is money to settle (EZ1-I94): a
-            case about an account, availability or a profile has no booking to
-            release or refund, so the officer proposes a plain resolution instead
-            of being shown release/refund/partial controls that do not apply.
+            Category-specific resolution actions (EZ1-I181). What an officer can
+            do depends on what the case is about — a payout is verified or
+            refunded, a locked listing is unlocked — instead of one generic
+            Resolve. Each action records what was done plus these notes and
+            proposes a resolution the administrator approves; release/refund and
+            the listing unlock are the ones that actually move something.
           */}
-          {item.booking || item.milestone ? (
-            <div className="rounded-sm bg-gray-50 p-3">
-              <p className="text-sm font-medium text-gray-800">Recommended resolution</p>
-              <p className="mb-2 text-xs text-gray-600">
-                Money on the disputed booking stays frozen. You recommend the outcome; an
-                administrator approves it before anything moves (EZ1-I94).
-              </p>
-              <div className="flex flex-wrap items-end gap-2">
-                <button
-                  className="btn"
-                  onClick={() =>
-                    onRun(
-                      () =>
-                        api.put(`/verification/cases/${item.id}/settle`, { outcome: 'release' }),
-                      'Recommendation submitted for review.',
-                    )
-                  }
-                >
-                  Recommend release to provider
-                </button>
-                <button
-                  className="btn-outline"
-                  onClick={() =>
-                    onRun(
-                      () => api.put(`/verification/cases/${item.id}/settle`, { outcome: 'refund' }),
-                      'Recommendation submitted for review.',
-                    )
-                  }
-                >
-                  Recommend refund to buyer
-                </button>
-                <label className="text-sm">
-                  <span className="text-gray-700">Partial amount</span>
-                  <input
-                    className="input mt-1 w-32"
-                    type="number"
-                    min={1}
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                  />
-                </label>
-                <button
-                  className="btn-outline"
-                  disabled={!amount}
-                  onClick={() =>
-                    onRun(() =>
-                      api.put(`/verification/cases/${item.id}/settle`, {
-                        outcome: 'partial',
-                        amount: Number(amount),
-                      }),
-                    )
-                  }
-                >
-                  Settle partially
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-sm bg-gray-50 p-3">
-              <p className="text-sm font-medium text-gray-800">Resolution</p>
-              <p className="mb-2 text-xs text-gray-600">
-                No money is involved on this case. Record what was done and submit it for the
-                administrator to approve.
-              </p>
-              <button
-                className="btn"
-                onClick={() =>
-                  onRun(
+          {(() => {
+            const actions = CASE_ACTIONS[item.subjectType] ?? CASE_ACTIONS.other;
+            const money = item.subjectType === 'booking' || item.subjectType === 'payment';
+            const notes = resNotes.trim();
+
+            const run = (a: CaseAction) => {
+              if (a.kind === 'escalate') {
+                const reason = window.prompt(
+                  'Why does this need somebody on the ground? The next officer reads this.',
+                );
+                if (reason && reason.trim().length >= 10) {
+                  void onRun(
                     () =>
-                      api.put(`/verification/cases/${item.id}/settle`, { outcome: 'no_action' }),
-                    'Resolution submitted for review.',
-                  )
+                      api.put(`/verification/cases/${item.id}/escalate`, {
+                        reason: reason.trim(),
+                      }),
+                    'Escalated. It now needs a physical visit before it can be settled.',
+                  );
                 }
-              >
-                Submit resolution
-              </button>
-            </div>
-          )}
+                return;
+              }
+              void onRun(
+                () =>
+                  api.put(`/verification/cases/${item.id}/settle`, {
+                    outcome: a.outcome,
+                    action: a.key,
+                    notes: notes || undefined,
+                  }),
+                'Recommendation submitted for review.',
+              );
+            };
+
+            return (
+              <div className="rounded-sm bg-gray-50 p-3">
+                <p className="text-sm font-medium text-gray-800">Resolution</p>
+                <p className="mb-2 text-xs text-gray-600">
+                  {money
+                    ? 'Money on the disputed booking stays frozen. You recommend the action; an administrator approves it before anything moves.'
+                    : 'You recommend the action; an administrator approves it before the case closes.'}
+                </p>
+                <textarea
+                  className="input mb-2"
+                  rows={2}
+                  placeholder="Notes on the resolution (optional)"
+                  value={resNotes}
+                  onChange={(e) => setResNotes(e.target.value)}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {actions.map((a) => (
+                    <button
+                      key={a.key}
+                      className={a.kind === 'settle' && a.primary ? 'btn' : 'btn-outline'}
+                      onClick={() => run(a)}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Partial settlement is kept for money cases: it needs an
+                    amount, so it sits apart from the one-click actions. */}
+                {money && (
+                  <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-gray-200 pt-2">
+                    <label className="text-sm">
+                      <span className="text-gray-700">Partial amount</span>
+                      <input
+                        className="input mt-1 w-32"
+                        type="number"
+                        min={1}
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      className="btn-outline"
+                      disabled={!amount}
+                      onClick={() =>
+                        onRun(
+                          () =>
+                            api.put(`/verification/cases/${item.id}/settle`, {
+                              outcome: 'partial',
+                              amount: Number(amount),
+                              action: 'partial_settlement',
+                              notes: resNotes.trim() || undefined,
+                            }),
+                          'Recommendation submitted for review.',
+                        )
+                      }
+                    >
+                      Recommend partial settlement
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

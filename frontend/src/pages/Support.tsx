@@ -5,7 +5,7 @@ import PhotoUploader from '../components/PhotoUploader';
 import { formatDateTime } from '../lib/dates';
 import { Loading } from '../components/ui/Feedback';
 import { useAuth } from '../store/auth';
-import { isProvider } from '../lib/permissions';
+import { CASE_ACTION_LABEL, isProvider } from '../lib/permissions';
 
 interface SupportCase {
   id: string;
@@ -21,6 +21,8 @@ interface SupportCase {
   findings?: string | null;
   settlementOutcome?: string | null;
   settlementNotes?: string | null;
+  /** The category-specific action the case was resolved with (EZ1-I181). */
+  resolutionAction?: string | null;
   resolvedAt?: string | null;
 }
 
@@ -185,11 +187,16 @@ function Section({
                 {/* The officer's findings and the resolution, once submitted, so
                     the vendor can see the answer rather than only the status
                     word (EZ1-I49). */}
-                {(c.findings || c.settlementOutcome || c.settlementNotes) && (
+                {(c.findings || c.settlementOutcome || c.settlementNotes || c.resolutionAction) && (
                   <div className="rounded-sm border border-emerald-200 bg-emerald-50 p-2">
                     <p className="text-xs font-medium text-emerald-900">
                       Resolution{c.resolvedAt ? ` · ${formatDateTime(c.resolvedAt)}` : ''}
                     </p>
+                    {c.resolutionAction && (
+                      <p className="mt-0.5 text-sm font-medium text-emerald-900">
+                        {CASE_ACTION_LABEL[c.resolutionAction] ?? c.resolutionAction.replace(/_/g, ' ')}
+                      </p>
+                    )}
                     {c.settlementOutcome && (
                       <p className="mt-0.5 text-sm text-emerald-900">
                         {OUTCOME_LABEL[c.settlementOutcome] ?? c.settlementOutcome.replace(/_/g, ' ')}

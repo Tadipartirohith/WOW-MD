@@ -1,12 +1,16 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { SupportCase } from './entities/support-case.entity';
+import { BusinessLifecycleService } from '../vendors/business-lifecycle.service';
+import { canTransition } from '../vendors/business-lifecycle';
 import { User } from '../auth/entities/user.entity';
 import { Payment } from '../bookings/entities/payment.entity';
 import { Booking } from '../bookings/entities/booking.entity';
@@ -29,6 +33,7 @@ import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
   BookingStatus,
+  BusinessStatus,
   CasePriority,
   CaseStatus,
   CaseSubject,
@@ -38,6 +43,13 @@ import {
   SettlementOutcome,
   UserRole,
 } from '../../common/enums';
+
+/**
+ * The one resolution action that does more than record itself: reopening a
+ * vendor's listing for editing (EZ1-I181). Kept as a constant because both the
+ * settle path and the side-effect in applyDecision have to agree on the string.
+ */
+const UNLOCK_LISTING = 'unlock_listing';
 
 /**
  * Issues and disputes, and the investigation that settles them.
@@ -86,6 +98,12 @@ export class SupportCasesService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    // Reopening a locked listing to resolve a "My Business Listing" case is a
+    // real state change, so it goes through the one writer for a business's
+    // status rather than being poked from here (EZ1-I181). forwardRef because
+    // the two modules already reference each other.
+    @Inject(forwardRef(() => BusinessLifecycleService))
+    private readonly lifecycle: BusinessLifecycleService,
   ) {}
 
   /**
@@ -693,7 +711,10 @@ export class SupportCasesService {
    * "escalated" with no explanation tells the next person nothing.
    */
   async escalate(actor: AuthUser, id: string, reason: string): Promise<SupportCase> {
-    const supportCase = await this.loadOrFail(id);
+    // The assigned officer or an administrator: escalation is now one of the
+    // officer's own resolution actions (EZ1-I181), so it is scoped the same way
+    // as recording findings rather than being an administrator-only step.
+    const supportCase = await this.assignedOrAdmin(actor, id);
     if (TERMINAL.includes(supportCase.status) || supportCase.status === CaseStatus.RESOLVED) {
       throw new BadRequestException('That case is already settled');
     }
@@ -805,6 +826,10 @@ export class SupportCasesService {
     item.settlementOutcome = dto.outcome;
     item.settlementAmount = dto.amount ? dto.amount.toFixed(2) : null;
     item.settlementNotes = dto.notes ?? null;
+    // The named action the officer chose, if any (EZ1-I181). Says what was done
+    // about the complaint, not only what happened to the money.
+    item.resolutionAction = dto.action ?? null;
+    const actionNote = dto.action ? `${dto.action} · ` : '';
 
     if (actor.role !== UserRole.ADMIN) {
       // A proposal. On somebody's desk, and the money has not moved.
@@ -815,7 +840,7 @@ export class SupportCasesService {
           at: new Date().toISOString(),
           byUserId: actor.userId,
           status: CaseStatus.RESOLUTION_SUBMITTED,
-          note: `Proposes ${dto.outcome}${dto.amount ? ` ${dto.amount}` : ''}`,
+          note: `${actionNote}Proposes ${dto.outcome}${dto.amount ? ` ${dto.amount}` : ''}`,
         },
       ];
       const proposed = await this.cases.save(item);
@@ -866,6 +891,7 @@ export class SupportCasesService {
       item.settlementOutcome = null;
       item.settlementAmount = null;
       item.settlementNotes = null;
+      item.resolutionAction = null;
       item.status = CaseStatus.ADMIN_REVIEW;
       await this.cases.save(item);
 
@@ -930,6 +956,17 @@ export class SupportCasesService {
       await this.markBooking(item.subjectId, restored);
     }
 
+    // "Unlock business details" is the one resolution action with a real effect
+    // beyond the record: it reopens the vendor's listing for editing so they can
+    // fix whatever the case was about (EZ1-I181). Everything else is recorded
+    // and the case simply closes.
+    if (
+      item.subjectType === CaseSubject.VENDOR &&
+      item.resolutionAction === UNLOCK_LISTING
+    ) {
+      await this.unlockListingFor(item, actor);
+    }
+
     await this.audit.record({
       action: AuditAction.CASE_SETTLED,
       actor,
@@ -948,6 +985,34 @@ export class SupportCasesService {
       });
     }
     return saved;
+  }
+
+  /**
+   * Reopen the raiser's listing for editing (EZ1-I181).
+   *
+   * A "My Business Listing" case is raised by the vendor whose listing it is, so
+   * the business is resolved from the raiser — these cases carry no subject id.
+   * Only a listing the state machine can actually move to REVERIFICATION_REQUIRED
+   * is touched; one already editable or rejected is left as it is, and the
+   * resolution is still recorded either way.
+   */
+  private async unlockListingFor(item: SupportCase, actor: AuthUser): Promise<void> {
+    if (!item.raisedByUserId) return;
+    const vendor = await this.vendors.findOne({
+      where: { ownerUserId: item.raisedByUserId },
+    });
+    if (!vendor) return;
+    if (
+      !canTransition(vendor.status as BusinessStatus, BusinessStatus.REVERIFICATION_REQUIRED)
+    ) {
+      return;
+    }
+    await this.lifecycle.requireReverification(
+      vendor.id,
+      item.settlementNotes?.trim() ||
+        `Listing reopened to resolve support case ${item.id.slice(0, 8)}`,
+      actor,
+    );
   }
 
   private async applySettlement(bookingId: string, outcome: SettlementOutcome): Promise<void> {

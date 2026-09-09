@@ -101,6 +101,17 @@ export class SupportCase {
   @Column({ type: 'text', nullable: true })
   settlementNotes: string | null;
 
+  /**
+   * The named, category-specific action the officer resolved with (EZ1-I181) —
+   * "verify_booking", "unlock_listing", "recommend_refund", and so on. The
+   * settlement outcome says what happened to any money; this says what was
+   * actually done about the complaint, and lets a resolution drive a real
+   * side-effect (`unlock_listing` reopens the listing for editing) rather than
+   * only recording a decision. Null on older cases and admin-direct settlements.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  resolutionAction: string | null;
+
   /** Set at triage. Drives the queue order, not the complainant's adjectives. */
   @Column({ type: 'enum', enum: CasePriority, default: CasePriority.NORMAL })
   priority: CasePriority;

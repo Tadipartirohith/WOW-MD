@@ -160,6 +160,18 @@ export class SettleCaseDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  /**
+   * The named, category-specific action the officer chose (EZ1-I181), e.g.
+   * `verify_booking`, `recommend_refund`, `unlock_listing`. Recorded on the
+   * case; `unlock_listing` additionally reopens the vendor's listing for editing
+   * when the resolution is applied.
+   */
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  action?: string;
 }
 
 /** Reading a case and deciding what kind of thing it is. */

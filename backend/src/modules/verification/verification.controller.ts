@@ -309,7 +309,10 @@ export class VerificationController {
     return this.cases.recordFindings(actor, id, dto);
   }
 
-  @RequirePermissions(Permission.CASE_ALLOCATE)
+  // CASE_INVESTIGATE, not CASE_ALLOCATE: escalating is one of the assigned
+  // officer's own resolution actions now (EZ1-I181), not an administrator-only
+  // step. The service still scopes it to the assigned officer or an admin.
+  @RequirePermissions(Permission.CASE_INVESTIGATE)
   @ApiOperation({
     summary: 'Escalate a case to a physical visit',
     description:
