@@ -183,8 +183,23 @@ export default function Matches() {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [previewId, setPreviewId] = useState('');
+  // The score and activity of whichever card opened the preview, so the modal
+  // can show the same match figure the list did (EZ1-I190). Empty for a preview
+  // opened from a notification link, which carries no score.
+  const [previewMeta, setPreviewMeta] = useState<{ score?: number; lastActiveAt?: string | null }>(
+    {},
+  );
   const [pages, setPages] = useState(1);
   const [showShortlist, setShowShortlist] = useState(false);
+
+  const openPreview = (id: string, score?: number, lastActiveAt?: string | null) => {
+    setPreviewId(id);
+    setPreviewMeta({ score, lastActiveAt });
+  };
+  const closePreview = () => {
+    setPreviewId('');
+    setPreviewMeta({});
+  };
 
   // Arriving from an "accepted your interest" notification, open that exact
   // profile straight away instead of dropping the agent on the list to hunt for
@@ -323,6 +338,27 @@ export default function Matches() {
   const acceptedMatches: AcceptedMatch[] = accepted ?? [];
   const fixed = status?.matchFixedState === 'confirmed';
   const shortlistRows: Suggestion[] = shortlist ?? [];
+  const recommendedRows = (recommended?.data as Suggestion[] | undefined) ?? [];
+
+  // The one-line summary at the top. Every figure comes off data already
+  // loaded — the browse total, the profiles active in the last day, the
+  // engine's own 50%+ list, and the private shortlist (EZ1-I189).
+  const newToday = suggestions.filter((s) => {
+    const la = s.profile.lastActiveAt;
+    return la ? (Date.now() - new Date(la).getTime()) / 86_400_000 < 1 : false;
+  }).length;
+  const summary = [
+    { label: 'Total matches', value: total },
+    { label: 'Active today', value: newToday },
+    { label: 'High compatibility', value: recommendedRows.length },
+    { label: 'Shortlisted', value: shortlistRows.length },
+  ];
+
+  // The search box, sort, quick pills and clear-all live on the compact bar;
+  // everything else opens in the "More filters" panel. This counts only the
+  // panel's filters, so the button can say how many are hidden behind it.
+  const barKeys = new Set(['q', 'sort', 'minScore', 'addedWithinDays']);
+  const advancedCount = activeFilters.filter(([key]) => !barKeys.has(key)).length;
 
   /*
    * Why the committing buttons are off, said once and reused.
@@ -373,87 +409,56 @@ export default function Matches() {
         </p>
       )}
 
+      {/* At-a-glance counts, all off data already loaded (EZ1-I189). */}
+      {ready && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {summary.map((s) => (
+            <div
+              key={s.label}
+              className="rounded-[--radius-lg] border border-gray-200 bg-surface p-4 shadow-card"
+            >
+              <p className="text-2xl font-semibold tracking-[-0.02em] text-gray-900">{s.value}</p>
+              <p className="mt-0.5 text-xs text-gray-500">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && <p className="alert-critical">{error}</p>}
 
       {previewId && (
         <ProfilePreview
           profileId={previewId}
-          onClose={() => setPreviewId('')}
+          onClose={closePreview}
           onSendInterest={interestHandler ? () => sendInterest(previewId) : undefined}
+          score={previewMeta.score}
+          lastActiveAt={previewMeta.lastActiveAt}
         />
       )}
 
       {/*
-        Three panels: what you are filtering by on the left, what is new in the
-        middle, what the engine recommends on the right. Below `lg` they stack
-        in the same order, because three columns on a phone is one column with
-        the words squeezed.
+        A compact filter bar rather than the tall column the filters used to
+        stand in (EZ1-I189): the search box, the sort, the two everyday pills
+        and a "More filters" button, with the fourteen advanced filters folded
+        into the panel that button opens. Below it, two columns — what fits the
+        filters, and what the engine recommends.
       */}
       {ready && (
-        <div className="grid gap-4 lg:grid-cols-[19rem_1fr_1fr] lg:items-start">
-          <div className="space-y-4 lg:sticky lg:top-4">
-            <div className="card space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <h2 className="section-title">Narrow the list</h2>
-                  {activeFilterCount > 0 && (
-                    <span className="rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark">
-                      {activeFilterCount} applied
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {activeFilterCount > 0 && (
-                    <button
-                      className="btn-outline text-xs"
-                      onClick={() => {
-                        setFilters(NO_FILTERS);
-                        setPages(1);
-                      }}
-                    >
-                      Clear all
-                    </button>
-                  )}
-                  <button className="btn-outline text-xs" onClick={() => setShowFilters((f) => !f)}>
-                    {showFilters ? 'Fewer' : 'More filters'}
-                  </button>
-                </div>
-              </div>
-
-              {/*
-                Each applied filter as a chip that removes itself. The count
-                above says how many are on; a chip says which, and takes it off
-                without opening the panel to hunt for the control that set it.
-              */}
-              {activeFilterCount > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {activeFilters.map(([key, value]) => (
-                    <button
-                      key={key}
-                      className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark hover:bg-brand-light/70"
-                      onClick={() => {
-                        clearField(key);
-                        setPages(1);
-                      }}
-                    >
-                      <span className="text-brand-dark/60">{FILTER_LABEL[key] ?? key}:</span>
-                      {chipValue(key, value)}
-                      <X size={11} weight="bold" aria-hidden />
-                      <span className="sr-only">Remove filter</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
+        <div className="space-y-4">
+          <div className="card space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
               {/*
                 One box for name, profile code and keyword. The person typing
                 does not think of those as three different searches — they think
                 of whichever one they happen to remember.
               */}
-              <label className="block text-sm">
-                <span className="text-gray-700">Search</span>
+              <div className="min-w-[14rem] flex-1">
+                <label className="sr-only" htmlFor="match-search">
+                  Search
+                </label>
                 <input
-                  className="input mt-1"
+                  id="match-search"
+                  className="input"
                   placeholder="Name, profile ID (WOW10231), or a keyword"
                   value={filters.q}
                   onChange={(e) => {
@@ -461,12 +466,12 @@ export default function Matches() {
                     setPages(1);
                   }}
                 />
-              </label>
+              </div>
 
-              <label className="block text-sm">
-                <span className="text-gray-700">Sort by</span>
+              <label className="w-full sm:w-48">
+                <span className="sr-only">Sort by</span>
                 <select
-                  className="input mt-1"
+                  className="input"
                   value={filters.sort}
                   onChange={(e) => {
                     setField('sort')(e.target.value);
@@ -481,35 +486,79 @@ export default function Matches() {
                 </select>
               </label>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className={pill(filters.minScore === '50')}
-                  onClick={() =>
-                    setFilters((f) => ({ ...f, minScore: f.minScore === '50' ? '' : '50' }))
-                  }
-                >
-                  50%+ match
-                </button>
-                <button
-                  className={pill(filters.addedWithinDays === '30')}
-                  onClick={() =>
-                    setFilters((f) => ({
-                      ...f,
-                      addedWithinDays: f.addedWithinDays === '30' ? '' : '30',
-                    }))
-                  }
-                >
-                  Added this month
-                </button>
-              </div>
+              <button
+                className={pill(filters.minScore === '50')}
+                onClick={() =>
+                  setFilters((f) => ({ ...f, minScore: f.minScore === '50' ? '' : '50' }))
+                }
+              >
+                50%+ match
+              </button>
+              <button
+                className={pill(filters.addedWithinDays === '30')}
+                onClick={() =>
+                  setFilters((f) => ({
+                    ...f,
+                    addedWithinDays: f.addedWithinDays === '30' ? '' : '30',
+                  }))
+                }
+              >
+                Added this month
+              </button>
 
-              {showFilters && (
-                <div
-                  // One field per row on a wide screen: the panel is a sidebar,
-                  // and three columns inside nineteen rems is three columns of
-                  // truncated labels.
-                  className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-1"
+              <button
+                className="btn-outline text-xs"
+                onClick={() => setShowFilters((f) => !f)}
+                aria-expanded={showFilters}
+              >
+                {showFilters ? 'Fewer filters' : 'More filters'}
+                {advancedCount > 0 && ` (${advancedCount})`}
+              </button>
+              {activeFilterCount > 0 && (
+                <button
+                  className="btn-ghost text-xs"
+                  onClick={() => {
+                    setFilters(NO_FILTERS);
+                    setPages(1);
+                  }}
                 >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            {/*
+              Each applied filter as a chip that removes itself. The bar says
+              how many advanced filters are folded away; a chip says which are
+              on, and takes one off without reopening the panel.
+            */}
+            {activeFilterCount > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {activeFilters.map(([key, value]) => (
+                  <button
+                    key={key}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2 py-0.5 text-xs text-brand-dark hover:bg-brand-light/70"
+                    onClick={() => {
+                      clearField(key);
+                      setPages(1);
+                    }}
+                  >
+                    <span className="text-brand-dark/60">{FILTER_LABEL[key] ?? key}:</span>
+                    {chipValue(key, value)}
+                    <X size={11} weight="bold" aria-hidden />
+                    <span className="sr-only">Remove filter</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {showFilters && (
+              <div
+                // Full width now, so the panel breathes across two or three
+                // columns instead of the single truncated column a sidebar
+                // could give it.
+                className="grid gap-3 border-t pt-3 sm:grid-cols-2 lg:grid-cols-3"
+              >
                   <Filter label="Age from" value={filters.ageMin} onChange={setField('ageMin')} type="number" />
                   <Filter label="Age to" value={filters.ageMax} onChange={setField('ageMax')} type="number" />
                   {ageInverted && (
@@ -656,12 +705,12 @@ export default function Matches() {
                 </span>
               </button>
               {showShortlist && (
-                <div className="space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {shortlistRows.map((s) => (
                     <MatchCard
                       key={s.profile.id}
                       suggestion={{ ...s, shortlisted: true }}
-                      onOpen={() => setPreviewId(s.profile.id)}
+                      onOpen={() => openPreview(s.profile.id, s.score, s.profile.lastActiveAt)}
                       onSendInterest={
                         interestHandler ? () => sendInterest(s.profile.id) : undefined
                       }
@@ -677,73 +726,82 @@ export default function Matches() {
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="card space-y-3">
-            <div>
-              <h2 className="section-title">
-                {SORTS.find((s) => s.value === filters.sort)?.label ?? 'Browse'}
-              </h2>
-              <p className="text-sm text-gray-600">
-                Everyone who fits the filters beside this, whatever the match score. This is
-                browsing, not recommending.
-              </p>
-            </div>
-            <div className="space-y-2">
-              {suggestions.map((s) => (
-                <MatchCard
-                  key={s.profile.id}
-                  suggestion={s}
-                  showScore={filters.sort === 'score'}
-                  // Browsing, not recommending: name, age and profession, and
-                  // the profile itself for anything more.
-                  detail="brief"
-                  onOpen={() => setPreviewId(s.profile.id)}
-                  onSendInterest={interestHandler ? () => sendInterest(s.profile.id) : undefined}
-                  onToggleShortlist={() => toggleShortlist(s)}
-                  disabledReason={gate}
-                />
-              ))}
-              {isLoading && <Loading rows={3} />}
-              {!isLoading && suggestions.length === 0 && (
-                <EmptyState hasFilters={activeFilterCount > 0} onClear={() => setFilters(NO_FILTERS)} />
-              )}
-              {suggestions.length < total && (
-                <button className="btn-outline w-full" onClick={() => setPages((p) => p + 1)}>
-                  Load more ({total - suggestions.length} more)
-                </button>
-              )}
-            </div>
-          </div>
+            <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+              <div className="card space-y-3">
+                <div>
+                  <h2 className="section-title">
+                    {SORTS.find((s) => s.value === filters.sort)?.label ?? 'Browse'}
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Everyone who fits the filters above, whatever the match score. This is
+                    browsing, not recommending.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {suggestions.map((s) => (
+                    <MatchCard
+                      key={s.profile.id}
+                      suggestion={s}
+                      // The score families compare across a list, shown on the
+                      // browse cards too (EZ1-I189), not only when sorted by it.
+                      showScore
+                      detail="brief"
+                      onOpen={() => openPreview(s.profile.id, s.score, s.profile.lastActiveAt)}
+                      onSendInterest={
+                        interestHandler ? () => sendInterest(s.profile.id) : undefined
+                      }
+                      onToggleShortlist={() => toggleShortlist(s)}
+                      disabledReason={gate}
+                    />
+                  ))}
+                  {isLoading && <Loading rows={3} />}
+                  {!isLoading && suggestions.length === 0 && (
+                    <EmptyState
+                      hasFilters={activeFilterCount > 0}
+                      onClear={() => setFilters(NO_FILTERS)}
+                    />
+                  )}
+                  {suggestions.length < total && (
+                    <button className="btn-outline w-full" onClick={() => setPages((p) => p + 1)}>
+                      Load more ({total - suggestions.length} more)
+                    </button>
+                  )}
+                </div>
+              </div>
 
-          <div className="card space-y-3">
-            <div>
-              <h2 className="section-title">Recommended for you</h2>
-              <p className="text-sm text-gray-600">
-                Rated 50% or better by the matching engine, best first. Unaffected by the filters.
-              </p>
-            </div>
-            <div className="space-y-2">
-              {(recommended?.data as Suggestion[] | undefined)?.map((s) => (
-                <MatchCard
-                  key={s.profile.id}
-                  suggestion={s}
-                  showScore
-                  onOpen={() => setPreviewId(s.profile.id)}
-                  onSendInterest={interestHandler ? () => sendInterest(s.profile.id) : undefined}
-                  onToggleShortlist={() => toggleShortlist(s)}
-                  disabledReason={gate}
-                />
-              ))}
-              {(recommended?.data?.length ?? 0) === 0 && (
-                <p className="text-sm text-gray-400">
-                  Nothing over 50% yet. Filling in more of your preferences gives the engine more
-                  to go on.
-                </p>
-              )}
+              <div className="card space-y-3">
+                <div>
+                  <h2 className="section-title">Recommended for you</h2>
+                  <p className="text-sm text-gray-600">
+                    Rated 50% or better by the matching engine, best first. Unaffected by the
+                    filters.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {recommendedRows.map((s) => (
+                    <MatchCard
+                      key={s.profile.id}
+                      suggestion={s}
+                      showScore
+                      onOpen={() => openPreview(s.profile.id, s.score, s.profile.lastActiveAt)}
+                      onSendInterest={
+                        interestHandler ? () => sendInterest(s.profile.id) : undefined
+                      }
+                      onToggleShortlist={() => toggleShortlist(s)}
+                      disabledReason={gate}
+                    />
+                  ))}
+                  {recommendedRows.length === 0 && (
+                    <p className="text-sm text-gray-400">
+                      Nothing over 50% yet. Filling in more of your preferences gives the engine
+                      more to go on.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
       )}
 
       {ready && status && (
@@ -795,17 +853,15 @@ export default function Matches() {
             <div key={m.id} className="rounded-lg border border-gray-200 p-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 gap-3">
-                  {m.counterpart.photos?.[0] && (
-                    <img
-                      src={m.counterpart.photos[0]}
-                      alt=""
-                      className="h-14 w-14 shrink-0 rounded-sm object-cover"
-                    />
-                  )}
+                  <Thumb
+                    url={m.counterpart.photos?.[0]}
+                    name={m.counterpart.displayName}
+                    className="h-14 w-14 shrink-0 rounded-sm object-cover text-lg"
+                  />
                   <div className="min-w-0">
                     <button
                       className="truncate font-medium text-gray-900 hover:underline"
-                      onClick={() => setPreviewId(m.counterpart.id)}
+                      onClick={() => openPreview(m.counterpart.id, m.score, m.counterpart.lastActiveAt)}
                     >
                       {m.counterpart.displayName}
                     </button>
@@ -848,7 +904,7 @@ export default function Matches() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   className="btn-outline text-xs"
-                  onClick={() => setPreviewId(m.counterpart.id)}
+                  onClick={() => openPreview(m.counterpart.id, m.score, m.counterpart.lastActiveAt)}
                 >
                   View profile
                 </button>
@@ -901,6 +957,24 @@ function pill(active: boolean): string {
   return active
     ? 'rounded-full border border-brand bg-brand-light px-3 py-1 text-sm text-brand-dark'
     : 'rounded-full border border-gray-200 px-3 py-1 text-sm text-gray-600 hover:bg-gray-50';
+}
+
+/**
+ * A small profile photo that falls back to an initial rather than the browser's
+ * broken-image icon when the photo is missing or fails to load (EZ1-I190).
+ */
+function Thumb({ url, name, className }: { url?: string | null; name: string; className: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <span
+        className={`flex items-center justify-center bg-surface-sunken font-medium text-gray-500 ${className}`}
+      >
+        {(name || '?').trim().slice(0, 1).toUpperCase()}
+      </span>
+    );
+  }
+  return <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} className={className} />;
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

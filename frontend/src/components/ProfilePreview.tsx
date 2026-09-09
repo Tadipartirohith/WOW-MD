@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CheckCircle } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
@@ -55,10 +56,21 @@ export default function ProfilePreview({
   profileId,
   onClose,
   onSendInterest,
+  score,
+  lastActiveAt,
 }: {
   profileId: string;
   onClose: () => void;
   onSendInterest?: () => void;
+  /**
+   * The match score, surfaced from the card that opened this (EZ1-I190). The
+   * same value the list shows, so a family does not lose it on opening the
+   * profile. Absent when the profile was opened from a link that carried no
+   * score (a notification), in which case the badge is simply not drawn.
+   */
+  score?: number;
+  /** For the "Active …" line, carried from the same card. */
+  lastActiveAt?: string | null;
 }) {
   const { data, isLoading, isError, error } = useQuery<Viewable>({
     queryKey: ['viewable-profile', profileId],
@@ -92,16 +104,83 @@ export default function ProfilePreview({
     return years > 0 ? years : null;
   })();
 
+  // "Active today / this week / this month", or nothing rather than a stale
+  // claim. The same reading the card gives, kept at the top of the profile.
+  const active = (() => {
+    if (!lastActiveAt) return null;
+    const days = (Date.now() - new Date(lastActiveAt).getTime()) / 86_400_000;
+    if (Number.isNaN(days)) return null;
+    if (days < 1) return 'Active today';
+    if (days < 7) return 'Active this week';
+    if (days < 30) return 'Active this month';
+    return null;
+  })();
+
+  const name = data?.profile.displayName ?? 'Profile';
+  const heightCm = str('heightCm');
+  const facts = [
+    age ? `${age} years` : data?.profile.ageRange || null,
+    heightCm ? `${heightCm} cm` : null,
+    data?.profile.city || null,
+  ].filter(Boolean) as string[];
+
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="my-8 w-full max-w-2xl rounded-lg bg-surface p-6">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 className="section-title">
-            {data?.profile.displayName ?? 'Profile'}
-          </h2>
-          <button className="text-2xl leading-none text-gray-400" onClick={onClose} aria-label="Close">
-            ×
-          </button>
+      <div className="my-8 w-full max-w-lg rounded-lg bg-surface p-6">
+        {/*
+          The identity, said once and clearly at the top: a lead photo (or an
+          initials avatar, never a broken image), the name, the profile code,
+          the age/height/city on one line, and the two badges families read
+          first — identity and activity. The match score sits beside the name,
+          the same figure the card carried in (EZ1-I190).
+        */}
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 gap-3">
+            <ProfileImage
+              url={data?.profile.photos[0]}
+              name={name}
+              className="h-16 w-16 shrink-0 rounded-md object-cover text-xl ring-1 ring-inset ring-gray-900/5"
+            />
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold tracking-[-0.014em] text-gray-900">
+                {name}
+              </h2>
+              {data?.profile.profileCode && (
+                <p className="font-mono text-xs text-gray-400">{data.profile.profileCode}</p>
+              )}
+              {facts.length > 0 && (
+                <p className="mt-0.5 text-sm text-gray-600">{facts.join(' · ')}</p>
+              )}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {data?.profile.identityVerified && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                    <CheckCircle size={13} weight="fill" aria-hidden />
+                    Identity verified
+                  </span>
+                )}
+                {active && (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                    {active}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <button
+              className="text-2xl leading-none text-gray-400 hover:text-gray-600"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            {typeof score === 'number' && (
+              <span className="flex items-baseline gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-brand-strong">
+                <span className="font-mono text-sm font-semibold leading-none">{score}%</span>
+                <span className="text-[0.6875rem] opacity-70">match</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {isLoading && <Loading rows={3} />}
@@ -123,32 +202,15 @@ export default function ProfilePreview({
                     aria-label="Open photo full size"
                     className="cursor-zoom-in"
                   >
-                    <img
-                      src={url}
-                      alt=""
-                      loading="lazy"
-                      className="h-32 w-32 rounded-sm object-cover ring-1 ring-gray-200"
+                    <ProfileImage
+                      url={url}
+                      name={name}
+                      className="h-28 w-28 rounded-sm object-cover text-2xl ring-1 ring-gray-200"
                     />
                   </button>
                 ))}
               </div>
             )}
-
-            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-              {age ? (
-                <span>{age} years</span>
-              ) : (
-                data.profile.ageRange && <span>{data.profile.ageRange}</span>
-              )}
-              {str('heightCm') && <span>· {str('heightCm')} cm</span>}
-              {data.profile.city && <span>· {data.profile.city}</span>}
-              {/* The thing families ask about before anything else. */}
-              {data.profile.identityVerified && (
-                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">
-                  Identity verified
-                </span>
-              )}
-            </div>
 
             {data.profile.bio && (
               <p className="whitespace-pre-wrap text-sm text-gray-700">{data.profile.bio}</p>
@@ -315,15 +377,57 @@ export default function ProfilePreview({
           >
             ×
           </button>
-          <img
-            src={preview}
-            alt=""
-            className="max-h-full max-w-full rounded-sm object-contain"
+          <ProfileImage
+            url={preview}
+            name={data?.profile.displayName ?? 'Profile'}
             onClick={(e) => e.stopPropagation()}
+            className="max-h-full max-w-full rounded-sm object-contain p-16 text-6xl"
           />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A profile photo that never renders the browser's broken-image icon.
+ *
+ * A missing URL, or one that 404s, falls back to an initials avatar — the same
+ * treatment a card gives an unfilled profile. `object-cover`/`object-contain`
+ * and any sizing come from `className`, so one component serves the header
+ * avatar, the gallery thumbs and the full-size overlay (EZ1-I190).
+ */
+function ProfileImage({
+  url,
+  name,
+  className,
+  onClick,
+}: {
+  url?: string | null;
+  name: string;
+  className: string;
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <span
+        onClick={onClick}
+        className={`flex items-center justify-center bg-surface-sunken font-medium text-gray-500 ${className}`}
+      >
+        {(name || '?').trim().slice(0, 1).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      onClick={onClick}
+      onError={() => setFailed(true)}
+      className={className}
+    />
   );
 }
 

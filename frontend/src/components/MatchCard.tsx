@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { MARITAL_LABEL, MaritalStatus, OCCUPATION_LABEL, OccupationStatus } from '../lib/permissions';
 import { BookmarkSimple, CheckCircle } from '@phosphor-icons/react';
 
@@ -156,6 +157,10 @@ export default function MatchCard({
   const card = p.card;
   const interaction = suggestion.interaction ?? 'none';
   const interactionLabel = INTERACTION_LABEL[interaction];
+  // A photo that 404s must fall back to the initials avatar rather than the
+  // browser's broken-image icon (EZ1-I190).
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const hasPhoto = Boolean(p.photos?.[0]) && !photoFailed;
 
   // Only the dimensions that actually contributed. Listing "Location ✗"
   // alongside the rest reads as a fault report on a person.
@@ -171,6 +176,7 @@ export default function MatchCard({
     brief
       ? [
           p.ageRange ? `${p.ageRange} yrs` : null,
+          p.city,
           card?.profession ??
             (card?.occupationStatus
               ? (OCCUPATION_LABEL[card.occupationStatus as OccupationStatus] ??
@@ -219,12 +225,13 @@ export default function MatchCard({
         transition-[border-color,box-shadow] duration-200 hover:border-gray-300 hover:shadow-card"
     >
       <div className="flex gap-4">
-        {p.photos?.[0] ? (
+        {hasPhoto ? (
           <img
             src={p.photos[0]}
             alt=""
             className="h-24 w-24 shrink-0 rounded-md object-cover ring-1 ring-inset ring-gray-900/5"
             loading="lazy"
+            onError={() => setPhotoFailed(true)}
           />
         ) : (
           <span className="flex h-24 w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-md bg-surface-sunken text-center text-[0.6875rem] leading-tight text-gray-400">
@@ -233,10 +240,10 @@ export default function MatchCard({
             </span>
             {/*
               Said plainly rather than shown as a broken image. "No photo yet"
-              is information — it tells a family the biodata is unfinished,
-              which is worth knowing before they spend an interest on it.
+              tells a family the biodata is unfinished; a photo that fails to
+              load falls back to the same initials without that claim.
             */}
-            No photo yet
+            {!p.photos?.[0] && 'No photo yet'}
           </span>
         )}
 
@@ -246,13 +253,11 @@ export default function MatchCard({
               <span className="block truncate text-[0.9375rem] font-semibold tracking-[-0.012em] text-gray-900 underline-offset-2 group-hover/card:underline">
                 {p.displayName}
               </span>
-              {/* An internal handle: useful when quoting one profile to support,
-                  noise on a card somebody is skimming. */}
-              {!brief && (
-                <span className="block font-mono text-[0.6875rem] text-gray-400">
-                  {p.profileCode}
-                </span>
-              )}
+              {/* The profile code a family reads out — shown on every card so
+                  the id the modal repeats is already here (EZ1-I189). */}
+              <span className="block font-mono text-[0.6875rem] text-gray-400">
+                {p.profileCode}
+              </span>
               {/* The bride/groom's own name is above; this says who runs the
                   profile for them, when a family member does (EZ1-I132). */}
               {p.managedByRelation && (
