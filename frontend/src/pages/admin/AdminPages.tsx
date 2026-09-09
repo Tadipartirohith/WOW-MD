@@ -248,61 +248,8 @@ export function AdminApprovals() {
   );
 }
 
-interface AuditEvent {
-  id: string;
-  action: string;
-  actorRole: string | null;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-}
-
-/** The append-only record of privileged and money-moving actions (EZ1-I153). */
-export function AdminAuditLogs() {
-  const { data } = useQuery({
-    queryKey: ['audit'],
-    queryFn: async () => (await api.get('/admin/audit', { params: { limit: 100 } })).data,
-    retry: false,
-  });
-  const events: AuditEvent[] = data?.data ?? [];
-
-  return (
-    <div className="card">
-      <h1 className="section-title mb-1">Audit trail</h1>
-      <p className="mb-3 text-sm text-gray-500">
-        Append-only record of privileged and money-moving actions. Most recent 100.
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-gray-400">
-            <tr>
-              <th className="py-2 pr-3">When</th>
-              <th className="py-2 pr-3">Action</th>
-              <th className="py-2 pr-3">Actor</th>
-              <th className="py-2">Detail</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {events.map((e) => (
-              <tr key={e.id}>
-                <td className="whitespace-nowrap py-2 pr-3 text-gray-500">
-                  {new Date(e.createdAt).toLocaleString()}
-                </td>
-                <td className="whitespace-nowrap py-2 pr-3 font-medium">{e.action}</td>
-                <td className="whitespace-nowrap py-2 pr-3 text-gray-500">
-                  {e.actorRole ?? 'system'}
-                </td>
-                <td className="py-2 text-gray-500">
-                  {Object.keys(e.metadata ?? {}).length > 0 ? JSON.stringify(e.metadata) : '-'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {events.length === 0 && <p className="text-sm text-gray-400">No events recorded yet.</p>}
-    </div>
-  );
-}
+/** The audit trail page, made readable (EZ1-I204). Lives in its own file. */
+export { default as AdminAuditLogs } from './AdminAuditLogs';
 
 interface Transaction {
   paymentId: string;
