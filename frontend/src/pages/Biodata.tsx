@@ -286,7 +286,18 @@ export default function Biodata() {
 
       <Accordion title="Personal details" name="personal" open={open} setOpen={setOpen}>
         <PersonalForm
-          initial={{ ...details, dateOfBirth: me?.dateOfBirth ?? '' }}
+          // The bride/groom's date of birth belongs to this managed profile and
+          // must never be inherited from the logged-in family member's own
+          // account DOB (EZ1-I182). `me.dateOfBirth` is the account holder's, so
+          // it is not used here. Seed from the managed profile's own saved DOB —
+          // the value `savePersonal` writes from this very form — but only once
+          // the personal section has been filled in; before that the field
+          // starts empty so the family enters the bride/groom's date
+          // deliberately rather than carrying the parent's over.
+          initial={{
+            ...details,
+            dateOfBirth: details.firstName ? (data?.dateOfBirth ?? '') : '',
+          }}
           contact={contact}
           onSave={(b) => save('personal', b)}
           storageKey={`biodata:${targetId}:personal`}

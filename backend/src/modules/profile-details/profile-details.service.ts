@@ -600,6 +600,11 @@ export class ProfileDetailsService {
       assets,
       contact: await this.contactFor(profile),
       completion: this.report(profileId, profile, details, siblings),
+      // The managed profile's *own* date of birth, so the biodata form can seed
+      // the field from what this profile has saved rather than from the logged-in
+      // family member's account DOB (EZ1-I182). This is the same column
+      // `savePersonal` writes the bride/groom's date into.
+      dateOfBirth: profile.dateOfBirth,
     };
   }
 
