@@ -15,6 +15,7 @@ import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { OfficerServiceArea } from '../verification/entities/officer-service-area.entity';
 import { SupportCase } from '../verification/entities/support-case.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
+import { RefreshSession } from '../auth/entities/refresh-session.entity';
 import { AgentCharge } from '../agents/entities/agent-charge.entity';
 import {
   ActivityQueryDto,
@@ -76,6 +77,9 @@ export class AdminConsoleService {
     @InjectRepository(SupportCase) private readonly cases: Repository<SupportCase>,
     @InjectRepository(VerificationRequest)
     private readonly verifications: Repository<VerificationRequest>,
+    // Read-only, for whether an officer is reachable right now and when they
+    // were last seen — the roster question a bare account row cannot answer.
+    @InjectRepository(RefreshSession) private readonly sessions: Repository<RefreshSession>,
     @InjectRepository(AgentCharge) private readonly charges: Repository<AgentCharge>,
     // Read-only, for the matchmaking half of an individual's history.
     @InjectRepository(Interest) private readonly interests: Repository<Interest>,
@@ -1306,5 +1310,159 @@ export class AdminConsoleService {
       openCases: openCases.filter((c) => c.assignedToUserId === u.id).length,
       openVisits: openVisits.filter((v) => v.assignedToUserId === u.id).length,
     }));
+  }
+
+  /**
+   * The verification officers as a roster an administrator can actually run
+   * (EZ1-I212).
+   *
+   * `staff()` above answers "who is carrying what" in one line each; this
+   * answers the question before it — "is this a person I can send a visit to
+   * right now": their coverage, whether the account is live, whether they are
+   * online, and the shape of their queue split into verifications and cases.
+   * Built from the aggregates allocation already trusts — the same verification
+   * status counts and `officer_service_areas` rows the allocator ranks on — so
+   * a number here can never disagree with a number the allocator saw.
+   *
+   * Availability (Available / On Leave / Unavailable) is a separate change
+   * (EZ1-I210) that introduces the field. Until it lands every officer reads as
+   * `available`, so the column and its filter exist now and start telling the
+   * truth the day the field arrives — no second pass on this screen.
+   */
+  async officers() {
+    const rows = await this.users.find({
+      where: { role: UserRole.IN_PERSON },
+      select: ['id', 'email', 'isActive', 'createdAt'],
+      order: { createdAt: 'DESC' },
+    });
+    const ids = rows.map((u) => u.id);
+    if (ids.length === 0) return [];
+
+    const now = Date.now();
+    // A live session touched inside this window is somebody at their desk; an
+    // older one is a login they never signed out of. Presence, not history.
+    const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+    const [profiles, areas, verifRows, caseRows, sessions] = await Promise.all([
+      this.profiles.find({
+        where: { userId: In(ids) },
+        select: ['userId', 'displayName', 'city'],
+      }),
+      this.serviceAreas.find({
+        where: { officerUserId: In(ids) },
+        order: { primary: 'DESC', createdAt: 'ASC' },
+      }),
+      this.verifications
+        .createQueryBuilder('r')
+        .select('r."assignedToUserId"', 'officerUserId')
+        .addSelect('r.status', 'status')
+        .addSelect('COUNT(r.id)', 'count')
+        .where('r."assignedToUserId" IN (:...ids)', { ids })
+        .groupBy('r."assignedToUserId"')
+        .addGroupBy('r.status')
+        .getRawMany<{ officerUserId: string; status: string; count: string }>(),
+      this.cases
+        .createQueryBuilder('c')
+        .select('c."assignedToUserId"', 'officerUserId')
+        .addSelect('c.status', 'status')
+        .addSelect('COUNT(c.id)', 'count')
+        .where('c."assignedToUserId" IN (:...ids)', { ids })
+        .groupBy('c."assignedToUserId"')
+        .addGroupBy('c.status')
+        .getRawMany<{ officerUserId: string; status: string; count: string }>(),
+      this.sessions.find({
+        where: { userId: In(ids), revokedAt: IsNull() },
+        select: ['userId', 'lastUsedAt', 'expiresAt', 'createdAt'],
+      }),
+    ]);
+
+    const profileFor = new Map(profiles.map((p) => [p.userId as string, p]));
+
+    // A visit that is written up and on an administrator's desk is off the
+    // officer's plate — counted as completed, not pending, exactly as the
+    // allocator's workload() treats it.
+    const V_PENDING: string[] = [
+      VerificationStatus.ASSIGNED,
+      VerificationStatus.ADDITIONAL_REVIEW,
+      VerificationStatus.ISSUE,
+    ];
+    const V_PROGRESS: string[] = [VerificationStatus.IN_PROGRESS];
+    const V_DONE: string[] = [
+      VerificationStatus.SUBMITTED,
+      VerificationStatus.ADMIN_REVIEW,
+      VerificationStatus.APPROVED,
+      VerificationStatus.REJECTED,
+    ];
+
+    const C_PENDING: string[] = [
+      CaseStatus.OPEN,
+      CaseStatus.TRIAGED,
+      CaseStatus.ALLOCATED,
+      CaseStatus.REASSIGNED,
+      CaseStatus.ESCALATED,
+      CaseStatus.WAITING_FOR_INFORMATION,
+    ];
+    const C_PROGRESS: string[] = [CaseStatus.IN_PROGRESS];
+    const C_DONE: string[] = [
+      CaseStatus.RESOLUTION_SUBMITTED,
+      CaseStatus.ADMIN_REVIEW,
+      CaseStatus.RESOLVED,
+      CaseStatus.REJECTED,
+      CaseStatus.CLOSED,
+    ];
+
+    const tally = (
+      list: { officerUserId: string; status: string; count: string }[],
+      id: string,
+      statuses: string[],
+    ) =>
+      list
+        .filter((r) => r.officerUserId === id && statuses.includes(r.status))
+        .reduce((n, r) => n + Number(r.count), 0);
+
+    return rows.map((u) => {
+      const mine = sessions.filter((s) => s.userId === u.id);
+      const lastActiveAt = mine.reduce<Date | null>((latest, s) => {
+        const at = s.lastUsedAt ?? s.createdAt;
+        return !latest || at > latest ? at : latest;
+      }, null);
+      const online = mine.some(
+        (s) =>
+          s.lastUsedAt &&
+          new Date(s.expiresAt).getTime() > now &&
+          now - new Date(s.lastUsedAt).getTime() < ONLINE_WINDOW_MS,
+      );
+
+      const verifications = {
+        pending: tally(verifRows, u.id, V_PENDING),
+        inProgress: tally(verifRows, u.id, V_PROGRESS),
+        completed: tally(verifRows, u.id, V_DONE),
+      };
+      const supportCases = {
+        pending: tally(caseRows, u.id, C_PENDING),
+        inProgress: tally(caseRows, u.id, C_PROGRESS),
+        completed: tally(caseRows, u.id, C_DONE),
+      };
+
+      return {
+        id: u.id,
+        email: u.email,
+        name: profileFor.get(u.id)?.displayName ?? null,
+        city: profileFor.get(u.id)?.city ?? null,
+        isActive: u.isActive,
+        /** Placeholder until EZ1-I210 adds the real leave state. */
+        availability: 'available' as 'available' | 'on_leave' | 'unavailable',
+        online,
+        lastActiveAt,
+        serviceAreas: areas
+          .filter((a) => a.officerUserId === u.id)
+          .map((a) => ({ label: a.label, primary: a.primary })),
+        verifications,
+        cases: supportCases,
+        /** Visits closed out on the ground — the completed half of the queue. */
+        visitsCompleted: verifications.completed,
+        joinedAt: u.createdAt,
+      };
+    });
   }
 }

@@ -6,7 +6,6 @@ import {
   AllBookings,
   Businesses,
   Directory,
-  Staff,
 } from '../../components/AdminConsole';
 import ReviewModeration from '../../components/ReviewModeration';
 import CatalogAdmin from '../../components/CatalogAdmin';
@@ -143,16 +142,293 @@ export function AdminPlanners() {
   );
 }
 
-export function AdminOfficers() {
+/**
+ * The verification officers, as a roster an administrator can run (EZ1-I212).
+ *
+ * The old page was the generic account directory plus a two-line staff card —
+ * enough to find an officer, not enough to manage one. This is the management
+ * view the role needs: who covers where, whose account is live, who is online,
+ * and the shape of each queue split into verifications and cases, with suspend
+ * and reinstate on the row so a decision does not need a detour through the
+ * detail page. Every number is the backend's own aggregate — the same ones the
+ * allocator ranks on — so nothing here can quietly disagree with a visit that
+ * was actually handed out.
+ *
+ * Availability (Available / On Leave / Unavailable) is a separate change
+ * (EZ1-I210). Until its field lands the column reads "Available" for everyone
+ * and its two other filters simply match nobody; both start working the day
+ * the field arrives, with no further edit here.
+ */
+interface OfficerRow {
+  id: string;
+  email: string;
+  name: string | null;
+  city: string | null;
+  isActive: boolean;
+  availability: 'available' | 'on_leave' | 'unavailable';
+  online: boolean;
+  lastActiveAt: string | null;
+  serviceAreas: { label: string; primary: boolean }[];
+  verifications: { pending: number; inProgress: number; completed: number };
+  cases: { pending: number; inProgress: number; completed: number };
+  visitsCompleted: number;
+  joinedAt: string;
+}
+
+const OFFICER_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active' },
+  { key: 'suspended', label: 'Suspended' },
+  { key: 'available', label: 'Available' },
+  { key: 'on_leave', label: 'On Leave' },
+  { key: 'unavailable', label: 'Unavailable' },
+] as const;
+
+type OfficerFilter = (typeof OFFICER_FILTERS)[number]['key'];
+
+const officerMatches = (o: OfficerRow, f: OfficerFilter): boolean => {
+  switch (f) {
+    case 'active':
+      return o.isActive;
+    case 'suspended':
+      return !o.isActive;
+    case 'available':
+      return o.availability === 'available';
+    case 'on_leave':
+      return o.availability === 'on_leave';
+    case 'unavailable':
+      return o.availability === 'unavailable';
+    default:
+      return true;
+  }
+};
+
+const AVAILABILITY_META: Record<OfficerRow['availability'], { label: string; tone: string }> = {
+  available: { label: 'Available', tone: 'bg-positive-bg text-positive-fg' },
+  on_leave: { label: 'On Leave', tone: 'bg-caution-bg text-caution-fg' },
+  unavailable: { label: 'Unavailable', tone: 'bg-gray-100 text-gray-500' },
+};
+
+/** Compact "when were they last seen" — the question presence answers. */
+function lastActiveLabel(iso: string | null): string {
+  if (!iso) return 'Never';
+  const then = new Date(iso).getTime();
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/** verifications/cases as one "pending · in progress · done" cluster. */
+function QueueCounts({ q }: { q: OfficerRow['verifications'] }) {
   return (
-    <div className="space-y-6">
-      <Directory
-        title="Verification Officers"
-        initialRole="in_person"
-        roles={['in_person']}
-        detailBase="/admin/officers"
-      />
-      <Staff />
+    <span className="whitespace-nowrap text-xs tabular-nums text-gray-600">
+      <span className="text-caution-fg" title="Pending">
+        {q.pending}
+      </span>
+      {' · '}
+      <span className="text-brand-strong" title="In progress">
+        {q.inProgress}
+      </span>
+      {' · '}
+      <span className="text-positive-fg" title="Completed">
+        {q.completed}
+      </span>
+    </span>
+  );
+}
+
+export function AdminOfficers() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState<OfficerFilter>('all');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const { data, isLoading } = useQuery<OfficerRow[]>({
+    queryKey: ['admin-officers'],
+    queryFn: async () => (await api.get('/admin/officers')).data,
+  });
+
+  const officers = data ?? [];
+  const count = (f: OfficerFilter) => officers.filter((o) => officerMatches(o, f)).length;
+  const shown = officers.filter((o) => officerMatches(o, filter));
+
+  async function setActive(id: string, active: boolean) {
+    if (!window.confirm(active ? 'Reinstate this officer?' : 'Suspend this officer?')) return;
+    setError('');
+    setBusyId(id);
+    try {
+      await api.put(`/admin/users/${id}/status`, { isActive: active });
+      for (const k of ['admin-officers', 'analytics', 'audit']) qc.invalidateQueries({ queryKey: [k] });
+    } catch (err) {
+      setError(apiMessage(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="page-title">Verification Officers</h1>
+        <p className="page-subtitle">
+          The field team that goes to an address and writes down what they saw. Who covers where,
+          who is free, and what each is carrying — open the row for the full record.
+        </p>
+      </div>
+
+      {error && <p className="alert-critical">{error}</p>}
+
+      <div className="flex flex-wrap gap-2">
+        {OFFICER_FILTERS.map((f) => {
+          const isActive = f.key === filter;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              aria-pressed={isActive}
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-gradient-to-r from-brand to-brand-strong text-brand-fg shadow-btn'
+                  : 'bg-surface text-gray-600 ring-1 ring-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <span>{f.label}</span>
+              <span
+                className={`rounded-full px-1.5 text-xs tabular-nums ${
+                  isActive ? 'bg-white/25 text-brand-fg' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {count(f.key)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="card overflow-x-auto p-0">
+        {isLoading && <Loading rows={5} className="p-5" />}
+        {!isLoading && shown.length === 0 && (
+          <EmptyState title="No officers here">
+            No verification officer matches this filter.
+          </EmptyState>
+        )}
+        {!isLoading && shown.length > 0 && (
+          <table className="w-full min-w-[960px] text-sm">
+            <thead>
+              <tr className="border-b bg-surface-sunken text-left text-xs uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3">Officer</th>
+                <th className="px-4 py-3">Coverage</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Availability</th>
+                <th className="px-4 py-3">Presence</th>
+                <th className="px-4 py-3">Verifications</th>
+                <th className="px-4 py-3">Cases</th>
+                <th className="px-4 py-3 text-right">Visits</th>
+                <th className="px-4 py-3 text-right">Manage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {shown.map((o) => {
+                const avail = AVAILABILITY_META[o.availability];
+                return (
+                  <tr
+                    key={o.id}
+                    onClick={() => navigate(`/admin/officers/${o.id}`)}
+                    className="cursor-pointer transition-colors hover:bg-brand-soft/40"
+                  >
+                    <td className="px-4 py-3">
+                      <span className="block font-medium text-gray-900">{o.name ?? o.email}</span>
+                      <span className="block truncate text-xs text-gray-500">{o.email}</span>
+                      <span className="block font-mono text-[11px] text-gray-400">
+                        #{o.id.slice(0, 8)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {o.serviceAreas.length === 0 ? (
+                        <span className="text-xs text-gray-400">No areas set</span>
+                      ) : (
+                        <span className="flex flex-wrap gap-1">
+                          {o.serviceAreas.slice(0, 3).map((a, i) => (
+                            <span
+                              key={`${a.label}-${i}`}
+                              className={`rounded-full px-2 py-0.5 text-xs ${
+                                a.primary
+                                  ? 'bg-brand-soft text-brand-strong'
+                                  : 'bg-gray-100 text-gray-500'
+                              }`}
+                            >
+                              {a.label}
+                            </span>
+                          ))}
+                          {o.serviceAreas.length > 3 && (
+                            <span className="text-xs text-gray-400">
+                              +{o.serviceAreas.length - 3}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`pill ${
+                          o.isActive
+                            ? 'bg-positive-bg text-positive-fg'
+                            : 'bg-critical-bg text-critical-fg'
+                        }`}
+                      >
+                        {o.isActive ? 'Active' : 'Suspended'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`pill ${avail.tone}`}>{avail.label}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-600">
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            o.online ? 'bg-emerald-500' : 'bg-gray-300'
+                          }`}
+                          aria-hidden
+                        />
+                        {o.online ? 'Online' : lastActiveLabel(o.lastActiveAt)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <QueueCounts q={o.verifications} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <QueueCounts q={o.cases} />
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                      {o.visitsCompleted}
+                    </td>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="btn-ghost btn-sm"
+                        disabled={busyId === o.id}
+                        onClick={() => setActive(o.id, !o.isActive)}
+                      >
+                        {o.isActive ? 'Suspend' : 'Reinstate'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <p className="text-xs text-gray-400">
+        Queue counts read pending · in progress · completed. Availability arrives with the officer
+        leave feature (EZ1-I210); until then every officer shows as Available.
+      </p>
     </div>
   );
 }

@@ -144,6 +144,19 @@ export class AdminController {
     return this.console.staff(kind === 'admin' ? 'admin' : 'in_person');
   }
 
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
+    summary: 'Verification officers as a management roster (EZ1-I212)',
+    description:
+      'Every officer with their coverage, account status, presence and the shape of their ' +
+      'queue — verifications and cases split into pending, in progress and completed — so an ' +
+      'administrator can see who to send the next visit to. Availability lands with EZ1-I210.',
+  })
+  @Get('officers')
+  officers() {
+    return this.console.officers();
+  }
+
   @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
   @ApiOperation({
     summary: 'Every business on the platform, by lifecycle state',
