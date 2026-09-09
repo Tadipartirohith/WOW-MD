@@ -6,7 +6,8 @@ import { useAuth } from '../store/auth';
 
 interface InvitationPreview {
   displayName: string;
-  email: string;
+  /** Null when the invitation went out by SMS alone; the claim form asks for one. */
+  email: string | null;
   invitedBy: string;
   city: string | null;
   photoCount: number;
@@ -26,6 +27,7 @@ export default function AcceptInvite() {
   const nav = useNavigate();
   const setAuth = useAuth((s) => s.setAuth);
 
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -47,7 +49,10 @@ export default function AcceptInvite() {
     }
     setLoading(true);
     try {
-      const res = await api.post('/auth/invitations/accept', { token, password });
+      // A mobile-only invitation carries no address, so the person supplies one
+      // here; when the invitation already has an email it is fixed and read-only.
+      const body = data?.email ? { token, password } : { token, password, email };
+      const res = await api.post('/auth/invitations/accept', body);
       setAuth(res.data);
       nav('/profile');
     } catch (err) {
@@ -109,13 +114,33 @@ export default function AcceptInvite() {
 
         {error && <p className="alert-critical">{error}</p>}
 
-        <div>
-          <label className="label">Your email</label>
-          <input className="input bg-gray-50" value={data.email} readOnly disabled />
-          <p className="mt-1 text-xs text-gray-500">
-            You will sign in with this address. It is confirmed automatically by using this link.
-          </p>
-        </div>
+        {data.email ? (
+          <div>
+            <label className="label">Your email</label>
+            <input className="input bg-gray-50" value={data.email} readOnly disabled />
+            <p className="mt-1 text-xs text-gray-500">
+              You will sign in with this address. It is confirmed automatically by using this link.
+            </p>
+          </div>
+        ) : (
+          <div>
+            <label className="label" htmlFor="email">
+              Your email
+            </label>
+            <input
+              id="email"
+              className="input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              You were invited by text message, so we need an email address. You will sign in with
+              it, and we will use it to help you reset your password.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="label" htmlFor="password">
