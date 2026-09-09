@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
@@ -117,6 +117,19 @@ export default function Events() {
     retry: false,
   });
   const clients = engaged ?? [];
+  // A planner is not the one getting married, so "Your own" is always an empty
+  // Events page for them. When they are engaged on a wedding, land them on the
+  // first client's functions automatically so the couple's days appear without
+  // a manual pick (EZ1-I196) — read from the couple's own events, never a copy.
+  // Fires once; a deliberate switch back to "Your own" afterwards is respected.
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (!autoSelected.current && host === '' && clients.length > 0) {
+      autoSelected.current = true;
+      setHost(clients[0].userId);
+      setSelected(null);
+    }
+  }, [clients, host]);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<EventStatus | ''>('');

@@ -1339,6 +1339,12 @@ export class BookingsService {
       booking.eventVenue = event?.venue ?? null;
       booking.eventCity = event?.city ?? null;
       booking.expectedGuests = event?.expectedGuests ?? null;
+      // When the booking is tied to a wedding function, that function's own date
+      // is the single source of truth — the same date the Events page and the
+      // planner's wedding brief show — so a couple moving the day is reflected
+      // here rather than leaving a stale copy on the booking to diverge from it
+      // (EZ1-I195). A booking with no linked event keeps its own date.
+      if (event) booking.eventDate = event.eventDate ?? null;
       booking.serviceName = booking.vendorServiceId
         ? (byService.get(booking.vendorServiceId)?.displayName ?? null)
         : null;
