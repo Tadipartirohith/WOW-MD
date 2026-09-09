@@ -112,6 +112,7 @@ import MyReviews from './pages/MyReviews';
 import Notifications from './pages/Notifications';
 import Biodata from './pages/Biodata';
 import BusinessSwitcher from './components/BusinessSwitcher';
+import PlannerRejectionModal from './components/PlannerRejectionModal';
 import { Loading } from './components/ui/Feedback';
 
 /**
@@ -608,6 +609,13 @@ function Layout({ children }: { children: ReactNode }) {
               </p>
             </div>
           )}
+
+          {/*
+            A rejected planner is told plainly the moment they are in the app,
+            not only if they happen to open My Business (EZ1-I110). Gated on the
+            planner capability so the check runs for no one else.
+          */}
+          {canAny(permissions, [Permission.PLANNER_LISTING_MANAGE]) && <PlannerRejectionModal />}
 
           {/*
             A short rise on route change. Long enough to register as a change of

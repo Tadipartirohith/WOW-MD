@@ -92,8 +92,17 @@ export function describe(n: Notification): string {
       return `An officer recommends ${str('recommendation') ?? 'a decision'}${
         typeof p.issues === 'number' && p.issues > 0 ? `, with ${p.issues} issue(s)` : ''
       }.`;
-    case 'verification_decided':
-      return status ? `Your verification was ${status}.` : 'Your verification was decided.';
+    case 'verification_decided': {
+      if (!status) return 'Your verification was decided.';
+      // The administrator's reason, when the outcome was not an approval. The
+      // SLA sweep sets a machine sentinel rather than prose, so that one is left
+      // to the sentence alone (EZ1-I110).
+      const reason = str('reason');
+      const base = `Your verification was ${status}.`;
+      return reason && reason !== 'sla_breach' && status !== 'approved'
+        ? `${base} Reason: ${reason}`
+        : base;
+    }
     case 'booking_update':
       return status ? `A booking moved to ${status}.` : 'One of your bookings changed.';
     case 'new_message':
