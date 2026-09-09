@@ -22,7 +22,14 @@ export default function ShareInvitation({ eventId, eventName }: { eventId: strin
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
-  const link = token ? `${window.location.origin}/invitation/${token}` : '';
+  // The link is forwarded to a family group and opened on other phones, so it
+  // must point at the app's public address — not at wherever the host happens
+  // to be viewing the portal. On the dev machine that origin is
+  // `http://localhost:8080`, which is unreachable from a guest's phone and is
+  // exactly why a shared invitation came up "not available". Deployments set
+  // VITE_APP_BASE_URL to the public SPA URL; local dev falls back to the origin.
+  const baseUrl = import.meta.env.VITE_APP_BASE_URL || window.location.origin;
+  const link = token ? `${baseUrl}/invitation/${token}` : '';
 
   const mint = useMutation({
     mutationFn: async () => (await api.post(`/events/${eventId}/share-link`, {})).data,
