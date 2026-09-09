@@ -54,6 +54,7 @@ export default function ShareProfileDialog({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [link, setLink] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const [agentSearch, setAgentSearch] = useState('');
   const [agentUserId, setAgentUserId] = useState('');
@@ -124,6 +125,47 @@ export default function ShareProfileDialog({
       'Consent recorded. You can circulate this profile now.',
     );
     setRecording(false);
+  }
+
+  /**
+   * Copy the biodata link to the clipboard.
+   *
+   * The old handler was `navigator.clipboard?.writeText(link)`: over plain HTTP
+   * or in an older browser `navigator.clipboard` is undefined, so the optional
+   * chain made the button a no-op with no feedback. This copies the complete
+   * absolute URL — deriving the origin when the server hands back a relative
+   * path — via the async Clipboard API, falling back to a hidden textarea and
+   * `execCommand('copy')` when that API is missing or blocked.
+   */
+  async function copyLink() {
+    const url = /^https?:\/\//i.test(link)
+      ? link
+      : `${window.location.origin}${link.startsWith('/') ? '' : '/'}${link}`;
+    const done = () => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    };
+    try {
+      await navigator.clipboard.writeText(url);
+      done();
+      return;
+    } catch {
+      /* No async Clipboard API (older browser / non-secure context) — fall back. */
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) done();
+      else setError('Copying was blocked. Select the link above instead.');
+    } catch {
+      setError('Copying was blocked. Select the link above instead.');
+    }
   }
 
   async function submit(e: FormEvent) {
@@ -314,11 +356,8 @@ export default function ShareProfileDialog({
             <div className="mt-3 rounded-sm bg-surface p-3">
               <p className="text-sm font-medium text-gray-700">Biodata link</p>
               <code className="mt-1 block break-all text-xs text-gray-600">{link}</code>
-              <button
-                className="btn-outline mt-2"
-                onClick={() => navigator.clipboard?.writeText(link)}
-              >
-                Copy link
+              <button className="btn-outline mt-2" onClick={copyLink}>
+                {copied ? 'Copied' : 'Copy link'}
               </button>
             </div>
           )}

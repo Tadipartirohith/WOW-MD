@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface Biodata {
   id: string;
@@ -57,6 +57,15 @@ export default function BiodataCard({
   // Which photo is open full size, if any (EZ1-I23). Only interactive off the
   // printed sheet — a print has no click.
   const [preview, setPreview] = useState<string | null>(null);
+  // The lightbox closes on a backdrop click and on Escape (EZ1-I187).
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreview(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview]);
   // The person's own basic biodata takes precedence over the search
   // preferences, so a shared link shows religion/caste/etc. and not just
   // name/age/city (EZ1-I135). Native place is deliberately absent here.
@@ -92,38 +101,28 @@ export default function BiodataCard({
 
       {profile.photos.length > 0 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
-          {/* Every photo, clickable to full size in the interactive view (EZ1-I23).
-              The printed sheet stays bounded so it does not run off the page. */}
-          {(print ? profile.photos.slice(0, 4) : profile.photos).map((src) =>
-            print ? (
+          {/* Every photo, clickable to full size — on the shared link too, which
+              renders the print sheet on screen (EZ1-I23, EZ1-I187). The printed
+              sheet stays bounded to four so it does not run off the page; the
+              button prints as its image, so clickability costs nothing on paper. */}
+          {(print ? profile.photos.slice(0, 4) : profile.photos).map((src) => (
+            <button
+              key={src}
+              type="button"
+              className="flex-none"
+              onClick={() => setPreview(src)}
+              aria-label="Open photo full size"
+            >
               <img
-                key={src}
                 src={src}
                 alt=""
-                className="h-32 w-28 flex-none rounded-sm object-cover"
+                className="h-32 w-28 rounded-sm object-cover"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
                 }}
               />
-            ) : (
-              <button
-                key={src}
-                type="button"
-                className="flex-none"
-                onClick={() => setPreview(src)}
-                aria-label="Open photo full size"
-              >
-                <img
-                  src={src}
-                  alt=""
-                  className="h-32 w-28 rounded-sm object-cover"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
-                  }}
-                />
-              </button>
-            ),
-          )}
+            </button>
+          ))}
         </div>
       )}
 
