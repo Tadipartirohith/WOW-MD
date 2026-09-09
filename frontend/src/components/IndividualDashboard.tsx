@@ -7,6 +7,7 @@ import { formatDate } from '../lib/dates';
 import { UNREAD_POLL_MS, type Notification } from '../lib/notification-copy';
 import { Progress, QuickAction, RecentNotifications, Stat } from './IndividualDashboardParts';
 import AgentReviewCard from './AgentReviewCard';
+import AgencyFeeCard from './AgencyFeeCard';
 
 /**
  * The individual couple's home screen.
@@ -243,6 +244,10 @@ export default function IndividualDashboard() {
       {/* The agent who represents this client — rate them (EZ1-I206). Renders
           nothing for a client with no agent. */}
       <AgentReviewCard />
+
+      {/* The settlement fee this client owes their agency, with a pay-into-escrow
+          action (EZ1-I209). Renders nothing when there is no agency fee. */}
+      <AgencyFeeCard />
 
       {/* What is actually coming: events and bookings, side by side. */}
       {(canEvents || canBookOwn) && (

@@ -219,6 +219,19 @@ export class AgentsController {
     return this.agentBilling.listForProfile(actor, id);
   }
 
+  /**
+   * A client's own agency fees. No special permission — any signed-in user may
+   * ask, and a client with no managed profile simply gets an empty list. This is
+   * how a client sees the settlement fee they owe and gets the charge id to pay
+   * it, since the per-profile ledger above is gated on an agent permission they
+   * do not hold.
+   */
+  @ApiOperation({ summary: 'The agency fees raised against your own profile' })
+  @Get('my-charges')
+  myCharges(@CurrentUser() actor: AuthUser) {
+    return this.agentBilling.listForClient(actor);
+  }
+
   @RequirePermissions(Permission.AGENCY_FEE_PAY)
   @ApiOperation({
     summary: 'Pay an agency charge',

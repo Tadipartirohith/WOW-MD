@@ -246,6 +246,50 @@ export class AgentBillingService {
     return { charges, totals: this.totals(charges) };
   }
 
+  /**
+   * The client's own view of what they owe the agency and its status.
+   *
+   * A client has no agent portal and no `managed_profile:manage` permission, so
+   * they cannot reach `listForProfile`; this is the one endpoint a signed-in
+   * client can call to see the settlement fee raised on the profile they own and
+   * to obtain the charge id needed to pay it. Only the success-based match
+   * settlement fee is surfaced — profile-creation fees are gone (EZ1-I146) — and
+   * the agency's internal commission/payout split is not exposed to the payer.
+   */
+  async listForClient(actor: AuthUser): Promise<
+    Array<{
+      id: string;
+      amount: string;
+      currency: string;
+      status: PaymentStatus;
+      createdAt: Date;
+      paidAt: Date | null;
+    }>
+  > {
+    const owned = await this.profiles.find({
+      where: { userId: actor.userId },
+      select: ['id'],
+    });
+    if (owned.length === 0) return [];
+
+    const charges = await this.charges.find({
+      where: {
+        profileId: In(owned.map((p) => p.id)),
+        type: AgentChargeType.MATCH_SETTLEMENT,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    return charges.map((c) => ({
+      id: c.id,
+      amount: c.amount,
+      currency: c.currency,
+      status: c.status,
+      createdAt: c.createdAt,
+      paidAt: c.paidAt,
+    }));
+  }
+
   /** What a client owes or has paid. Agents may read it for their own clients. */
   async listForProfile(actor: AuthUser, profileId: string): Promise<AgentCharge[]> {
     const profile = await this.profiles.findOne({ where: { id: profileId } });
