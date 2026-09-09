@@ -128,6 +128,29 @@ export class Vendor {
   archivedAt: Date | null;
 
   /**
+   * The fields an administrator has asked the vendor to correct, when a listing
+   * was sent back for a *targeted* fix rather than a free reopen (EZ1-I205).
+   *
+   * Null (the default, and what a plain reverification leaves it) means no
+   * restriction: everything the state allows is editable. A non-empty list means
+   * the vendor may change only these while the listing sits in
+   * REVERIFICATION_REQUIRED — enforced on the update path, not by hiding inputs,
+   * so a listing under a correction cannot be edited around it.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  correctionFields: string[] | null;
+
+  /**
+   * What those flagged fields held when the correction was raised.
+   *
+   * Kept so the officer re-reviewing the resubmission can see previous against
+   * updated rather than only the new values, which is the difference between
+   * checking a change and taking the vendor's word for it.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  correctionSnapshot: Record<string, unknown> | null;
+
+  /**
    * The gateway's linked account for this business, once payout onboarding is done.
    *
    * Null is a normal state, not a missing value: a provider can take bookings

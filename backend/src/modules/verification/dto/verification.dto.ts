@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -13,6 +14,7 @@ import {
 } from 'class-validator';
 import { ApplicantType, VerificationStatus } from '../../../common/enums';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { CORRECTABLE_BUSINESS_FIELDS } from '../../vendors/business-lifecycle';
 
 export class AllocateRequestDto {
   /**
@@ -57,6 +59,37 @@ export class DecideVerificationDto {
   @MinLength(5)
   @MaxLength(2000)
   remarks?: string;
+}
+
+/**
+ * An administrator asks the vendor to correct specific business fields and
+ * resubmit (EZ1-I205). The listing reopens for exactly these fields; everything
+ * else stays locked.
+ */
+export class RequestCorrectionDto {
+  @ApiProperty({
+    type: [String],
+    enum: CORRECTABLE_BUSINESS_FIELDS,
+    description: 'Which business fields the vendor may change before resubmitting.',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Flag at least one field to correct' })
+  @ArrayMaxSize(CORRECTABLE_BUSINESS_FIELDS.length)
+  @IsIn(CORRECTABLE_BUSINESS_FIELDS as unknown as string[], {
+    each: true,
+    message: 'That is not a correctable business field',
+  })
+  fields: string[];
+
+  @ApiProperty({
+    minLength: 5,
+    maxLength: 2000,
+    description: 'What is wrong and what the vendor should change. The vendor sees this verbatim.',
+  })
+  @IsString()
+  @MinLength(5, { message: 'Say what needs correcting' })
+  @MaxLength(2000)
+  reason: string;
 }
 
 export class VerificationQueryDto extends PaginationDto {

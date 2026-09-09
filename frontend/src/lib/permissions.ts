@@ -207,6 +207,30 @@ export const MILESTONE_LABEL: Record<string, string> = {
 };
 
 /**
+ * The business-detail fields an administrator can single out for correction
+ * (EZ1-I205), as readable labels. The keys mirror the backend's
+ * CORRECTABLE_BUSINESS_FIELDS, so a field the server flags always has a label.
+ */
+export const CORRECTION_FIELD_LABELS: Record<string, string> = {
+  name: 'Business name',
+  category: 'Category',
+  otherCategory: 'Other category',
+  description: 'Description',
+  city: 'City',
+  gstNumber: 'GST number',
+  panNumber: 'PAN number',
+  registrationNumber: 'Registration number',
+  tradingSince: 'Trading since',
+  registeredAddress: 'Registered address',
+  contactPhone: 'Contact mobile',
+  complianceDocuments: 'Compliance documents',
+  portfolio: 'Portfolio',
+};
+
+/** The keys above, for a correction picker to iterate. */
+export const CORRECTABLE_FIELD_KEYS = Object.keys(CORRECTION_FIELD_LABELS);
+
+/**
  * How the officer resolved a support case, as a readable label (EZ1-I181).
  *
  * The stored `resolutionAction` is a stable key so the backend can act on it;

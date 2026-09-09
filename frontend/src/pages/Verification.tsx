@@ -5,6 +5,8 @@ import { useAuth } from '../store/auth';
 import { Loading } from '../components/ui/Feedback';
 import {
   CASE_ACTION_LABEL,
+  CORRECTABLE_FIELD_KEYS,
+  CORRECTION_FIELD_LABELS,
   CaseStatus,
   MILESTONE_LABEL,
   Permission,
@@ -948,6 +950,19 @@ function RequestRow({
           </p>
         </div>
       )}
+
+      {/*
+        The targeted alternative to "Needs another look" (EZ1-I205): reopen only
+        the fields that are wrong, so the vendor fixes those and nothing else.
+        Vendor businesses only, and only while the request is still live.
+      */}
+      {canDecide &&
+        request.applicantType === 'vendor' &&
+        request.subjectId &&
+        !decided &&
+        request.status !== 'new' && (
+          <RequestCorrection requestId={request.id} onRun={onRun} />
+        )}
     </div>
   );
 }
@@ -957,6 +972,92 @@ const RECOMMENDATION_LABEL: Record<string, string> = {
   reject: 'rejection',
   revisit: 'another visit',
 };
+
+/**
+ * Ask the vendor to correct specific business fields and resubmit (EZ1-I205).
+ *
+ * A tighter send-back than "Needs another look": the administrator picks exactly
+ * which fields are wrong, and the listing reopens for only those. The server
+ * keeps the flagged fields and a snapshot of their values, so the resubmission
+ * shows up as previous-vs-updated on the next review.
+ */
+function RequestCorrection({
+  requestId,
+  onRun,
+}: {
+  requestId: string;
+  onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState<string[]>([]);
+  const [reason, setReason] = useState('');
+
+  const toggle = (key: string) =>
+    setFields((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]));
+
+  if (!open) {
+    return (
+      <div className="border-t pt-3">
+        <button className="btn-outline" onClick={() => setOpen(true)}>
+          Request correction
+        </button>
+      </div>
+    );
+  }
+
+  const ready = fields.length > 0 && reason.trim().length >= 5;
+
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <p className="text-sm font-medium text-gray-900">Which fields need correcting?</p>
+      <div className="grid gap-1 sm:grid-cols-2">
+        {CORRECTABLE_FIELD_KEYS.map((key) => (
+          <label key={key} className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={fields.includes(key)}
+              onChange={() => toggle(key)}
+            />
+            {CORRECTION_FIELD_LABELS[key]}
+          </label>
+        ))}
+      </div>
+      <textarea
+        className="input"
+        rows={2}
+        placeholder="What is wrong and what the vendor should change. They see this verbatim."
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="btn"
+          disabled={!ready}
+          onClick={() =>
+            onRun(async () => {
+              await api.put(`/verification/requests/${requestId}/request-correction`, {
+                fields,
+                reason: reason.trim(),
+              });
+              setOpen(false);
+              setFields([]);
+              setReason('');
+            }, 'Correction requested. The vendor can edit only those fields and resubmit.')
+          }
+        >
+          Send correction request
+        </button>
+        <button className="btn-outline" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+      <p className="text-xs text-gray-500">
+        The listing reopens for only these fields; everything else stays locked until it is
+        resubmitted and re-verified.
+      </p>
+    </div>
+  );
+}
 
 /**
  * What the officer writes up after attending.
@@ -1909,6 +2010,48 @@ function SubjectDetails({
         </div>
       )}
 
+      {/*
+        When the listing was sent back for a targeted correction (EZ1-I205), the
+        fields the vendor was allowed to change — previous against updated — so
+        the officer checks the change rather than taking the resubmission on
+        trust. `correctionSnapshot` is what each field held when the correction
+        was raised; the value on `subject` is what it holds now.
+      */}
+      {Array.isArray(subject?.correctionFields) &&
+        (subject!.correctionFields as string[]).length > 0 && (
+          <div className="border-t pt-2">
+            <p className="mb-1 text-sm font-medium text-amber-800">
+              Correction requested — previous vs updated
+            </p>
+            <div className="space-y-1">
+              {(subject!.correctionFields as string[]).map((field) => {
+                const snapshot =
+                  (subject!.correctionSnapshot as Record<string, unknown> | null | undefined) ?? {};
+                const before = snapshot[field];
+                const after = subject![field];
+                const changed = JSON.stringify(before ?? null) !== JSON.stringify(after ?? null);
+                return (
+                  <div
+                    key={field}
+                    className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-0.5 rounded-sm bg-amber-50 p-2 text-sm sm:grid-cols-[9rem_1fr_1fr]"
+                  >
+                    <span className="font-medium text-gray-800">
+                      {CORRECTION_FIELD_LABELS[field] ?? field}
+                    </span>
+                    <span className="text-gray-500 line-through">{correctionValue(before)}</span>
+                    <span className={changed ? 'font-medium text-gray-900' : 'text-gray-500'}>
+                      {correctionValue(after)}
+                      {!changed && (
+                        <span className="ml-1 text-xs font-normal text-amber-700">(unchanged)</span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
       {applicant && (
         <p className="border-t pt-2 text-sm text-gray-600">
           Applicant: {text(applicant.email)}
@@ -1937,6 +2080,15 @@ function SubjectDetails({
       )}
     </div>
   );
+}
+
+/** A correction field's value as a short string, for the previous-vs-updated diff. */
+function correctionValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.length === 0 ? '—' : `${value.length} item${value.length === 1 ? '' : 's'}`;
+  }
+  if (value === null || value === undefined || value === '') return '—';
+  return String(value);
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {

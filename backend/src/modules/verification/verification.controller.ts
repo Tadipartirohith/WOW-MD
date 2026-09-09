@@ -17,6 +17,7 @@ import { IdentityService } from '../users/identity.service';
 import {
   AllocateRequestDto,
   DecideVerificationDto,
+  RequestCorrectionDto,
   SubmitFindingsDto,
   VerificationQueryDto,
 } from './dto/verification.dto';
@@ -213,6 +214,24 @@ export class VerificationController {
     @Body() dto: DecideVerificationDto,
   ) {
     return this.verification.decide(actor, id, dto);
+  }
+
+  @RequirePermissions(Permission.VERIFICATION_DECIDE)
+  @ApiOperation({
+    summary: 'Ask the vendor to correct specific business fields',
+    description:
+      'A targeted send-back: the listing reopens for exactly the flagged fields and nothing ' +
+      'else, and the values they held now are kept so the officer sees previous against updated ' +
+      'when it comes back. The vendor edits only those fields and resubmits, re-entering ' +
+      'verification.',
+  })
+  @Put('requests/:id/request-correction')
+  requestCorrection(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RequestCorrectionDto,
+  ) {
+    return this.verification.requestCorrection(actor, id, dto);
   }
 
   @RequirePermissions(Permission.VERIFICATION_ALLOCATE)

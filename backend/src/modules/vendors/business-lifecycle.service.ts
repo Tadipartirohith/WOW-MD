@@ -12,7 +12,12 @@ import { Vendor } from './entities/vendor.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { VerificationService } from '../verification/verification.service';
-import { BUSINESS_RULES, canTransition, rulesFor } from './business-lifecycle';
+import {
+  BUSINESS_RULES,
+  CORRECTABLE_BUSINESS_FIELDS,
+  canTransition,
+  rulesFor,
+} from './business-lifecycle';
 import { ApplicantType, BusinessStatus, UserRole } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
@@ -220,6 +225,10 @@ export class BusinessLifecycleService {
 
     business.decisionReason = reason;
     business.revisionCount += 1;
+    // A free reopen, not a targeted correction: the vendor may edit anything the
+    // state allows, so any earlier field restriction is lifted here.
+    business.correctionFields = null;
+    business.correctionSnapshot = null;
     await this.move(business, BusinessStatus.REVERIFICATION_REQUIRED, actor);
 
     await this.notifications.create(business.ownerUserId, NotificationType.VERIFICATION_DECIDED, {
@@ -231,6 +240,80 @@ export class BusinessLifecycleService {
     return business;
   }
 
+  /**
+   * Sends the listing back for a fix to *named* fields only (EZ1-I205).
+   *
+   * The difference from `requireReverification` is the whole feature: the vendor
+   * gets edit access to exactly the flagged fields and nothing else, and the
+   * values those fields held now are kept so the officer can see previous
+   * against updated when it comes back. Enforced on the update path — see
+   * `assertCorrectionScope` — because a correction the vendor can edit around is
+   * not a correction.
+   */
+  async requireCorrection(
+    businessId: string,
+    reason: string,
+    fields: string[],
+    actor?: AuthUser,
+  ) {
+    const business = await this.vendors.findOne({ where: { id: businessId } });
+    if (!business) return null;
+
+    const allowed = fields.filter((f) =>
+      (CORRECTABLE_BUSINESS_FIELDS as readonly string[]).includes(f),
+    );
+    if (allowed.length === 0) {
+      throw new BadRequestException('Name at least one business field to correct.');
+    }
+
+    // Snapshot what is there now, before the vendor touches it, so the re-review
+    // has a before to compare the after against.
+    const snapshot: Record<string, unknown> = {};
+    for (const field of allowed) {
+      snapshot[field] = (business as unknown as Record<string, unknown>)[field] ?? null;
+    }
+
+    business.decisionReason = reason;
+    business.revisionCount += 1;
+    business.correctionFields = allowed;
+    business.correctionSnapshot = snapshot;
+    await this.move(business, BusinessStatus.REVERIFICATION_REQUIRED, actor);
+
+    await this.notifications.create(business.ownerUserId, NotificationType.VERIFICATION_DECIDED, {
+      businessId,
+      status: BusinessStatus.REVERIFICATION_REQUIRED,
+      reason,
+      fields: allowed,
+      correction: true,
+      round: business.revisionCount,
+    });
+    return business;
+  }
+
+  /**
+   * Refuses an edit to a field the vendor was not asked to correct.
+   *
+   * Only bites while a targeted correction is outstanding (`correctionFields`
+   * set). A field the payload leaves at its current value passes whether or not
+   * it was flagged, so the client may send the whole record back; only an actual
+   * change to an unflagged field is refused.
+   */
+  assertCorrectionScope(business: Vendor, dto: Record<string, unknown>): void {
+    const allowed = business.correctionFields;
+    if (!allowed || allowed.length === 0) return;
+
+    const allow = new Set(allowed);
+    const current = business as unknown as Record<string, unknown>;
+    for (const [key, value] of Object.entries(dto)) {
+      if (value === undefined || allow.has(key)) continue;
+      if (JSON.stringify(value) !== JSON.stringify(current[key] ?? null)) {
+        throw new ForbiddenException(
+          `Only the fields flagged for correction can be changed right now: ${allowed.join(', ')}.`,
+        );
+      }
+    }
+  }
+
   /** Refused. Terminal: the listing is archived and a new one is the way on. */
   async reject(businessId: string, reason: string, actor?: AuthUser) {
     const business = await this.vendors.findOne({ where: { id: businessId } });
@@ -239,6 +322,8 @@ export class BusinessLifecycleService {
     business.decisionReason = reason;
     business.archivedAt = new Date();
     business.isApproved = false;
+    business.correctionFields = null;
+    business.correctionSnapshot = null;
     await this.move(business, BusinessStatus.REJECTED, actor);
 
     await this.notifications.create(business.ownerUserId, NotificationType.VERIFICATION_DECIDED, {
@@ -291,6 +376,10 @@ export class BusinessLifecycleService {
 
     business.verifiedAt = new Date();
     business.decisionReason = null;
+    // The correction, if there was one, has been checked and passed. Clear it so
+    // a later free edit is not silently held to a stale field restriction.
+    business.correctionFields = null;
+    business.correctionSnapshot = null;
     await this.move(business, BusinessStatus.VERIFIED, actor);
     await this.move(business, BusinessStatus.LIVE, actor);
 

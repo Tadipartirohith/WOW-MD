@@ -19,6 +19,7 @@ import { PlannerProfile } from '../wedding-planners/entities/planner-profile.ent
 import {
   AllocateRequestDto,
   DecideVerificationDto,
+  RequestCorrectionDto,
   SubmitFindingsDto,
   VerificationQueryDto,
 } from './dto/verification.dto';
@@ -362,6 +363,81 @@ export class VerificationService {
     });
 
     await this.notifyApplicant(request);
+    return saved;
+  }
+
+  /**
+   * Sends a vendor listing back for a correction to *named* fields (EZ1-I205).
+   *
+   * The targeted sibling of the ADDITIONAL_REVIEW send-back in `decide`. That one
+   * reopens the whole listing; this one reopens exactly the flagged fields and
+   * keeps a snapshot of what they held, so the officer re-reviewing sees previous
+   * against updated. Reuses ADDITIONAL_REVIEW as the request status — no new
+   * enum value, and the request goes back on the officer's queue the same way.
+   */
+  async requestCorrection(
+    actor: AuthUser,
+    requestId: string,
+    dto: RequestCorrectionDto,
+  ): Promise<VerificationRequest> {
+    const request = await this.loadOrFail(requestId);
+
+    if (actor.role !== UserRole.ADMIN && request.assignedToUserId !== actor.userId) {
+      throw new ForbiddenException('That request is not allocated to you');
+    }
+    if (request.applicantType !== ApplicantType.VENDOR || !request.subjectId) {
+      throw new BadRequestException('A field correction only applies to a vendor business.');
+    }
+    if (request.status === VerificationStatus.APPROVED) {
+      throw new BadRequestException('That request has already been approved');
+    }
+    if (request.status === VerificationStatus.NEW) {
+      throw new BadRequestException('Allocate this request before asking for a correction');
+    }
+
+    // Asked before anything is written, as `decide` does: the business must be
+    // in a state it can move back from, or the request and the listing disagree.
+    const check = await this.lifecycle.canDecide(request.subjectId, 'revisit');
+    if (!check.ok) throw new BadRequestException(check.reason ?? 'That listing cannot be sent back yet');
+
+    request.status = VerificationStatus.ADDITIONAL_REVIEW;
+    request.remarks = dto.reason;
+    request.revisitCount += 1;
+    // The visit that justified this correction is done with; the resubmission
+    // earns a fresh write-up, exactly as the ADDITIONAL_REVIEW decision does.
+    request.findings = null;
+    request.decidedAt = new Date();
+    request.decidedByUserId = actor.userId;
+    request.reviewedByUserId = actor.userId;
+    request.history = [
+      ...request.history,
+      {
+        at: new Date().toISOString(),
+        byUserId: actor.userId,
+        status: VerificationStatus.ADDITIONAL_REVIEW,
+        remarks: `Correction requested (${dto.fields.join(', ')}): ${dto.reason}`.slice(0, 500),
+      },
+    ];
+    const saved = await this.requests.save(request);
+
+    // Reopens only the flagged fields and snapshots their current values.
+    await this.lifecycle.requireCorrection(request.subjectId, dto.reason, dto.fields, actor);
+
+    await this.audit.record({
+      action: AuditAction.VERIFICATION_REJECTED,
+      actor,
+      resourceType: 'verification_request',
+      resourceId: request.id,
+      metadata: {
+        status: VerificationStatus.ADDITIONAL_REVIEW,
+        correction: true,
+        fields: dto.fields,
+      },
+    });
+
+    // Email the outcome too, so it reaches the vendor's inbox and not only the
+    // in-app feed that `requireCorrection` already wrote.
+    await this.notifyApplicant(saved);
     return saved;
   }
 

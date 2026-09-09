@@ -142,6 +142,34 @@ export function canTransition(from: BusinessStatus, to: BusinessStatus): boolean
   return ALLOWED[from]?.includes(to) ?? false;
 }
 
+/**
+ * The business-detail fields an administrator may single out for correction
+ * (EZ1-I205).
+ *
+ * These are exactly the identity and compliance fields an officer checks on the
+ * visit — the ones worth sending a listing back over. Pricing, catalog and
+ * bookings are not here: they have their own edit paths and are never what a
+ * verification turns on. Kept as data so the correction DTO and the update-path
+ * guard read the same list and cannot drift.
+ */
+export const CORRECTABLE_BUSINESS_FIELDS = [
+  'name',
+  'category',
+  'otherCategory',
+  'description',
+  'city',
+  'gstNumber',
+  'panNumber',
+  'registrationNumber',
+  'tradingSince',
+  'registeredAddress',
+  'contactPhone',
+  'complianceDocuments',
+  'portfolio',
+] as const;
+
+export type CorrectableBusinessField = (typeof CORRECTABLE_BUSINESS_FIELDS)[number];
+
 export function rulesFor(status: BusinessStatus): BusinessRules {
   return BUSINESS_RULES[status] ?? BUSINESS_RULES[BusinessStatus.DRAFT];
 }

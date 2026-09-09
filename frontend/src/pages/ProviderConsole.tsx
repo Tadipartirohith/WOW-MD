@@ -11,6 +11,7 @@ import { useBusinesses } from '../store/business';
 import VendorServices, { priceLabel } from '../components/VendorServices';
 import PhotoUploader from '../components/PhotoUploader';
 import {
+  CORRECTION_FIELD_LABELS,
   GSTIN_PATTERN,
   PAN_PATTERN,
   Permission,
@@ -144,6 +145,12 @@ interface VendorListing {
   /** Where this business is in its life, from draft to live. */
   status: string;
   decisionReason: string | null;
+  /**
+   * When an administrator asked for a targeted correction (EZ1-I205), exactly
+   * which fields the vendor may change before resubmitting. Null/empty means the
+   * listing was reopened in full, or is not under a correction at all.
+   */
+  correctionFields?: string[] | null;
 }
 
 const WIZARD_STEPS = [
@@ -233,9 +240,31 @@ function VendorBusinessWizard({
       {current?.decisionReason && (
         <div className="rounded-sm border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-            What needs fixing
+            {current.correctionFields && current.correctionFields.length > 0
+              ? 'Correction required'
+              : 'What needs fixing'}
           </p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{current.decisionReason}</p>
+          {/*
+            When the send-back was targeted, name the fields the vendor may edit.
+            The lock on everything else is enforced by the server; this only says
+            which fields are open so the vendor is not hunting for them.
+          */}
+          {current.correctionFields && current.correctionFields.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs font-medium text-amber-800">You can edit only:</p>
+              <ul className="mt-1 flex flex-wrap gap-1">
+                {current.correctionFields.map((f) => (
+                  <li
+                    key={f}
+                    className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+                  >
+                    {CORRECTION_FIELD_LABELS[f] ?? f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

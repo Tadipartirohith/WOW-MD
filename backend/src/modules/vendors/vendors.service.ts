@@ -179,6 +179,11 @@ export class VendorsService {
     // and a listing that changes after approval is a listing nobody checked.
     this.lifecycle.assertEditable(vendor, 'identity');
 
+    // When the listing was sent back for a *targeted* correction, only the
+    // flagged fields may change. Enforced here, not by the form: a correction a
+    // vendor can post around is not a correction (EZ1-I205).
+    this.lifecycle.assertCorrectionScope(vendor, dto as Record<string, unknown>);
+
     Object.assign(vendor, dto);
     const saved = await this.saveListing(vendor);
     await this.invalidateSearchCache();
