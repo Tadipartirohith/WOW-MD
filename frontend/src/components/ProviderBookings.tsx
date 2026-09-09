@@ -228,6 +228,12 @@ interface RequestBrief {
     cities: string[];
     functions: number;
   };
+  requirement: {
+    vendorsArranged: number;
+    sourced: { category: string; count: number; services: string[] }[];
+    toSource: string[];
+    structuredNeed: boolean;
+  };
   events: {
     id: string;
     name: string;
@@ -323,6 +329,50 @@ function WeddingBrief({ bookingId }: { bookingId: string }) {
                 </p>
               )}
 
+              {/*
+                The vendor requirement at a glance (EZ1-I216): which categories the
+                couple has already secured, and which core categories are still
+                open — the part the planner is being asked to quote for. Derived
+                from the couple's bookings; see the note below on structured
+                capture.
+              */}
+              <div className="rounded-sm bg-surface p-2">
+                <p className="font-medium text-gray-800">
+                  Vendor requirement
+                  <span className="ml-1 font-normal text-gray-500">
+                    · {data.requirement.vendorsArranged}{' '}
+                    {data.requirement.vendorsArranged === 1 ? 'vendor' : 'vendors'} arranged so far
+                  </span>
+                </p>
+                {data.requirement.sourced.length > 0 && (
+                  <ul className="mt-1 space-y-0.5">
+                    {data.requirement.sourced.map((s) => (
+                      <li key={s.category}>
+                        <span className="font-medium capitalize text-gray-700">{s.category}</span>
+                        <span className="text-gray-400"> ×{s.count}</span>
+                        {s.services.length > 0 && (
+                          <span className="text-gray-500"> — {s.services.join(', ')}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {data.requirement.toSource.length > 0 ? (
+                  <p className="mt-1 text-gray-600">
+                    <span className="text-gray-400">Still to source: </span>
+                    <span className="capitalize">{data.requirement.toSource.join(', ')}</span>
+                  </p>
+                ) : (
+                  <p className="mt-1 text-gray-400">Every core category has a vendor against it.</p>
+                )}
+                {!data.requirement.structuredNeed && (
+                  <p className="mt-1 text-[0.6875rem] text-gray-400">
+                    Derived from the couple's events and bookings — the request does not yet capture
+                    required categories or a vendor count directly.
+                  </p>
+                )}
+              </div>
+
               {data.events.length === 0 ? (
                 <p className="text-gray-500">The couple has not added their functions yet.</p>
               ) : (
@@ -369,6 +419,16 @@ function WeddingBrief({ bookingId }: { bookingId: string }) {
                   {data.otherVendors.map(vendorLine).join('; ')}
                 </p>
               )}
+
+              {/* Close the loop from the brief to the action: the Send quotation
+                  button sits on this same card, in the row below (EZ1-I216). */}
+              <p className="border-t border-gray-200 pt-2 text-gray-500">
+                Ready to price this? Use <span className="font-medium text-gray-700">Send quotation</span>{' '}
+                below to quote against these requirements
+                {data.requirement.toSource.length > 0
+                  ? ', including the categories still to source.'
+                  : '.'}
+              </p>
             </>
           )}
         </div>

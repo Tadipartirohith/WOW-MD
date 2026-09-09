@@ -14,7 +14,7 @@ import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
-import { BookingStatus, ProviderType, TaskStatus, UserRole } from '../../common/enums';
+import { BookingStatus, ProviderType, TaskStatus, UserRole, VendorCategory } from '../../common/enums';
 
 /**
  * The weddings a planner was hired to run.
@@ -318,6 +318,38 @@ export class PlannerClientsService {
       eventDate: v.eventDate,
     });
 
+    // The requirement at a glance, so the planner sees the whole ask before
+    // pricing it (EZ1-I216). The couple's request itself only carries free-text
+    // requirements and a budget — there is no structured "which vendor
+    // categories, how many vendors" on the request or the events — so it is
+    // derived here: the categories the couple has already secured (with counts
+    // and the services booked), and the core wedding categories still with
+    // nothing against them, which is the gap a planner quotes to fill. Doing it
+    // in the service keeps the category enum and the booking-status rules in one
+    // place rather than reimplemented on the client; it stays read-only.
+    const CORE_CATEGORIES: string[] = [
+      VendorCategory.VENUE,
+      VendorCategory.CATERING,
+      VendorCategory.PHOTOGRAPHY,
+      VendorCategory.DECOR,
+      VendorCategory.MAKEUP,
+      VendorCategory.ENTERTAINMENT,
+    ];
+    const byCategory = new Map<string, { count: number; services: Set<string> }>();
+    for (const v of arranged) {
+      const key = v.category ?? 'other';
+      const row = byCategory.get(key) ?? { count: 0, services: new Set<string>() };
+      row.count += 1;
+      if (v.service) row.services.add(v.service);
+      byCategory.set(key, row);
+    }
+    const sourced = [...byCategory.entries()].map(([category, row]) => ({
+      category,
+      count: row.count,
+      services: [...row.services],
+    }));
+    const toSource = CORE_CATEGORIES.filter((c) => !byCategory.has(c));
+
     return {
       client: { name: profiles[0]?.displayName ?? user?.email ?? 'The couple' },
       /** What the couple asked this planner for, before any quote. */
@@ -338,6 +370,21 @@ export class PlannerClientsService {
         venues: [...new Set(events.map((e) => e.venue).filter(Boolean))],
         cities: [...new Set(events.map((e) => e.city).filter(Boolean))],
         functions: events.length,
+      },
+      /**
+       * What the couple needs, at a glance (EZ1-I216). `sourced` is what they
+       * have already arranged, per category; `toSource` is the core wedding
+       * categories still open, which is where the planner's quotation comes in.
+       * `structuredNeed` is false because the client request does not yet
+       * capture required categories or a vendor count as its own fields — this
+       * is derived from their events and bookings, and a future client-side
+       * capture would make it explicit rather than inferred.
+       */
+      requirement: {
+        vendorsArranged: arranged.length,
+        sourced,
+        toSource,
+        structuredNeed: false,
       },
       events: events.map((e) => ({
         id: e.id,
