@@ -190,11 +190,21 @@ export class AuthService {
         this.profiles.create({
           userId: user.id,
           displayName: dto.displayName,
-          // The client set their own password, so this is their own profile.
-          // The agency link is recorded on the account (managedByAgentId), not
-          // by making the agent the profile's steward.
-          claimStatus: ProfileClaimStatus.SELF,
-          managedByUserId: null,
+          // A solo sign-up owns its own profile outright, with no steward.
+          //
+          // An account created through an agency link is owned by the subject
+          // in the same way — they set their own password here — but it also
+          // lands in that agency's book. The book is read off the profile
+          // (managedByUserId), which is what the agent's My Clients list and
+          // dashboard counts filter on, so the link has to record the steward
+          // there too or the new client never appears. That is the same end
+          // state an accepted invitation reaches: the subject owns the profile
+          // (claimed), and the agency still stewards it. Claimed — not self —
+          // is also what stops the agent editing biodata its owner is editing,
+          // and what makes "remove from book" release the profile instead of
+          // deleting the owner's account profile.
+          claimStatus: boundAgentId ? ProfileClaimStatus.CLAIMED : ProfileClaimStatus.SELF,
+          managedByUserId: boundAgentId ?? null,
           contactEmail: user.email,
           contactPhone: dto.phone ?? null,
         }),

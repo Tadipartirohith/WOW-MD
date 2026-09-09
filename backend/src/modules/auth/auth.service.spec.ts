@@ -13,8 +13,8 @@ import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { AuditService } from '../../platform/audit/audit.service';
-import { AccountType, UserRole } from '../../common/enums';
-import { RegisterDto } from './dto/auth.dto';
+import { AccountType, ProfileClaimStatus, UserRole } from '../../common/enums';
+import { RegisterDto, RegisterViaAgentLinkDto } from './dto/auth.dto';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -177,6 +177,50 @@ describe('AuthService', () => {
     it('rejects duplicate email', async () => {
       repo.findOne.mockResolvedValueOnce({ id: 'existing' });
       await expect(service.register(individual())).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  // A client who self-registers through an agency's shared link must land in
+  // that agency's book (EZ1-I199): the account is tied to the agent, and so is
+  // the profile — which is what the agent's My Clients list filters on.
+  describe('registration through an agency sign-up link', () => {
+    const viaLink = (over: Partial<RegisterViaAgentLinkDto> = {}): RegisterViaAgentLinkDto =>
+      ({
+        email: 'linked.client@gmail.com',
+        password: 'Password123',
+        accountType: AccountType.INDIVIDUAL,
+        role: UserRole.BRIDE,
+        displayName: 'Linked Client',
+        phone: '9876543210',
+        token: 'x'.repeat(24),
+        ...over,
+      }) as RegisterViaAgentLinkDto;
+
+    it('ties both the account and the profile to the owning agent', async () => {
+      agencyRepo.findOne.mockResolvedValueOnce({
+        id: 'ag-1',
+        ownerUserId: 'agent-1',
+        isApproved: true,
+        agencyName: 'Blissful Bonds',
+      });
+      repo.findOne.mockResolvedValueOnce(null); // no existing account for the email
+
+      const result = await service.registerViaAgentLink(viaLink());
+
+      // The account carries the agency link, the same as an accepted invitation.
+      expect(result.user.managedByAgentId).toBe('agent-1');
+
+      // The profile is stewarded by that agent and reads as claimed, so it shows
+      // up under the agent's My Clients and the agent cannot overwrite biodata
+      // its owner is editing.
+      const savedProfile = profileRepo.save.mock.calls.at(-1)?.[0];
+      expect(savedProfile.managedByUserId).toBe('agent-1');
+      expect(savedProfile.claimStatus).toBe(ProfileClaimStatus.CLAIMED);
+    });
+
+    it('refuses a token that resolves to no approved agency', async () => {
+      agencyRepo.findOne.mockResolvedValueOnce(null);
+      await expect(service.registerViaAgentLink(viaLink())).rejects.toBeInstanceOf(Error);
     });
   });
 
