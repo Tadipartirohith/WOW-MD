@@ -38,8 +38,8 @@ import { likeEscape } from '../../common/util/like';
  *
  * Subtractive rather than additive, and deliberately so: `GET /vendors/:id` and
  * `/vendors/search` are both unauthenticated, and both returned the whole row.
- * That put a vendor's PAN number, GST number, registered address, compliance
- * document links and payout account id in front of anybody who could reach the
+ * That put a vendor's PAN number, GST number, compliance document links and
+ * payout account id in front of anybody who could reach the
  * listing — and the ids come straight out of the public search, so reaching it
  * needed nothing but the URL. The rejection reason went out with them, so a
  * refusal written for the vendor ("the proprietor's licence does not match the
@@ -60,8 +60,13 @@ export interface PublicVendor {
   portfolio: string[];
   ratingAvg: number;
   ratingCount: number;
-  /** How a buyer reaches them. Published by the vendor for exactly that. */
-  contactPhone: string | null;
+  /**
+   * The registered business address a buyer sees before booking (EZ1-I197).
+   * The mobile number and PAN stay withheld — a buyer reaches the vendor
+   * through a booking request, not a raw phone number — but the address the
+   * business trades from is part of the picture a couple chooses on.
+   */
+  registeredAddress: string | null;
   /** When the business started trading, so a couple can gauge experience (EZ1-I76). */
   tradingSince: string | null;
   /** Whether the platform has stood behind them, not how it decided to. */
@@ -89,7 +94,7 @@ export function publicVendor(v: Vendor, startingPrice: number | null = null): Pu
     portfolio: v.portfolio,
     ratingAvg: v.ratingAvg,
     ratingCount: v.ratingCount,
-    contactPhone: v.contactPhone,
+    registeredAddress: v.registeredAddress,
     tradingSince: v.tradingSince,
     status: v.status,
     isApproved: v.isApproved,

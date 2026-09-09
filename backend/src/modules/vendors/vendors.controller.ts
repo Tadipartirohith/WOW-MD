@@ -340,8 +340,9 @@ export class VendorsController {
     summary: 'One listing, as a buyer sees it',
     description:
       'The subtractive view. This route and /search are unauthenticated, so what they return ' +
-      'is the definition of public: no tax numbers, no registered address, no compliance ' +
-      'documents, no payout account, no decision reasoning.',
+      'is the definition of public: no tax numbers, no PAN, no mobile number, no compliance ' +
+      'documents, no payout account, no decision reasoning. The registered business address ' +
+      'is shown, so a buyer can see where the vendor trades from (EZ1-I197).',
   })
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) {

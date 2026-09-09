@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import { Permission, can } from '../lib/permissions';
 import { useAuth } from '../store/auth';
 import { EmptyState, Loading } from '../components/ui/Feedback';
-import { Star, Storefront } from '@phosphor-icons/react';
+import { MapPin, Star, Storefront } from '@phosphor-icons/react';
 
 /**
  * A single vendor's full profile (EZ1-I76).
@@ -26,7 +26,7 @@ interface PublicVendor {
   portfolio: string[];
   ratingAvg: number;
   ratingCount: number;
-  contactPhone: string | null;
+  registeredAddress: string | null;
   tradingSince: string | null;
 }
 
@@ -183,6 +183,12 @@ export default function VendorDetail() {
           {vendor.tradingSince && (
             <p className="mt-1 text-xs text-gray-500">
               Trading since {new Date(vendor.tradingSince).toLocaleDateString()}
+            </p>
+          )}
+          {vendor.registeredAddress && (
+            <p className="mt-1 flex items-start gap-1 text-xs text-gray-500">
+              <MapPin size={13} weight="light" className="mt-0.5 shrink-0" aria-hidden />
+              <span>{vendor.registeredAddress}</span>
             </p>
           )}
           {vendor.description && (

@@ -417,25 +417,37 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   const [existingNote, setExistingNote] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // What this business sells, from the catalog. A vendor who has not adopted
+  // it has none, and the request falls back to the free-text form below.
+  const { data: services = [], isLoading: servicesLoading } = useQuery<VendorServiceSummary[]>({
+    queryKey: ['vendor-public-services', vendor.id],
+    queryFn: async () => (await api.get(`/vendors/${vendor.id}/services`)).data,
+    retry: false,
+  });
+
+  const bookable = services.filter((s) => s.bookable);
+
+  // Service before availability (EZ1-I197): where the vendor has bookable
+  // services, the buyer must pick one before any dates are shown — the slots
+  // are that service's, and a calendar chosen before the service is a calendar
+  // for the wrong thing. A vendor with no catalog has nothing to pick, so the
+  // window (or the slotless date, EZ1-I179) opens straight away as before.
+  const needsService = bookable.length > 0;
+  const showAvailability = needsService ? Boolean(serviceId) : !servicesLoading;
+
   // Availability is service-specific (EZ1-I28/I32): once a service is chosen the
   // time slots are only that service's (plus any general, service-less slots),
-  // so a slot published for Transport is not offered when booking Makeup.
+  // so a slot published for Transport is not offered when booking Makeup. Not
+  // fetched until a service is chosen where the catalog offers one (EZ1-I197).
   const { data: slots = [], isLoading } = useQuery<Slot[]>({
     queryKey: ['bookable-slots', vendor.id, serviceId],
+    enabled: showAvailability,
     queryFn: async () =>
       (
         await api.get(`/vendors/${vendor.id}/availability`, {
           params: serviceId ? { vendorServiceId: serviceId } : {},
         })
       ).data,
-  });
-
-  // What this business sells, from the catalog. A vendor who has not adopted
-  // it has none, and the request falls back to the free-text form below.
-  const { data: services = [] } = useQuery<VendorServiceSummary[]>({
-    queryKey: ['vendor-public-services', vendor.id],
-    queryFn: async () => (await api.get(`/vendors/${vendor.id}/services`)).data,
-    retry: false,
   });
 
   // The questions this service asks, generated from the same rows the server
@@ -447,11 +459,11 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
     retry: false,
   });
 
-  const bookable = services.filter((s) => s.bookable);
   const fields = context?.bookingForm ?? [];
   const offerings = context?.offerings ?? [];
   const offering = offerings.find((o) => o.id === offeringId);
   const takesQuantity = Boolean(offering && QUANTITY_MODELS.includes(offering.pricingModel));
+  const selectedService = bookable.find((s) => s.id === serviceId);
 
   // Bookings can be tied to one event — the mehendi's makeup artist is not the
   // reception's. Absent for anyone who has not set their events up yet.
@@ -545,81 +557,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
           </div>
         )}
 
-        {isLoading && <p className="text-sm text-gray-400">Checking their calendar…</p>}
-
-        {!isLoading && (
           <form onSubmit={submit} className="space-y-4">
-            <div>
-              <p className="label">Pick a window</p>
-              {slots.length > 0 && (
-              <div className="max-h-56 space-y-3 overflow-y-auto rounded-sm border border-gray-200 p-3">
-                {[...byDate.entries()].map(([date, daySlots]) => (
-                  <div key={date}>
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                      {new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-                        weekday: 'short',
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {daySlots.map((slot) => (
-                        <button
-                          key={slot.id}
-                          type="button"
-                          onClick={() => {
-                            setSlotId(slot.id);
-                            setEventDate('');
-                          }}
-                          className={`rounded-sm border px-3 py-1.5 text-sm ${
-                            slotId === slot.id
-                              ? 'border-brand bg-brand-light text-brand-dark'
-                              : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          {slot.startTime.slice(0, 5)}–{slot.endTime.slice(0, 5)}
-                          {slot.note ? ` · ${slot.note}` : ''}
-                          {/*
-                            A window a caterer can still take four bookings in
-                            reads very differently from one with a single place
-                            left, so the buyer sees the count rather than a bare
-                            time.
-                          */}
-                          {slot.capacity > 1 && (
-                            <span className="ml-1 text-xs text-gray-500">
-                              · {slot.remaining} of {slot.capacity} left
-                            </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              )}
-
-              {/* Slotless request (EZ1-I179): when nothing is published, or none
-                  of the windows suit, the buyer names a date and the vendor
-                  confirms it. Choosing a slot above clears this and vice versa. */}
-              {!slotId && (
-                <label className="mt-2 block text-sm">
-                  <span className="text-gray-700">
-                    {slots.length > 0 ? 'Or request another date' : 'Which date do you need?'}
-                  </span>
-                  <input
-                    className="input mt-1 max-w-[12rem]"
-                    type="date"
-                    min={todayIso}
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                  />
-                  <span className="mt-1 block text-xs text-gray-500">
-                    No published window — the vendor confirms this date before you pay.
-                  </span>
-                </label>
-              )}
-            </div>
-
             {bookable.length > 0 && (
               <label className="block text-sm">
                 <span className="text-gray-700">Which service?</span>
@@ -712,6 +650,103 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
               </label>
             )}
 
+            {/* Service before availability (EZ1-I197): the dates only appear once
+                the buyer has chosen what they are booking. The summary restates
+                the service and its price above the calendar, and each window
+                carries its own time (its duration) and, where the vendor runs
+                several at once, how many places are left. Windows that are full
+                or blocked never reach here — listBookable returns only the free
+                ones — so every date shown is one the buyer can actually take. */}
+            {showAvailability ? (
+              <div>
+                {selectedService && (
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-2">
+                    <span className="text-sm font-medium text-gray-900">
+                      {selectedService.displayName ?? selectedService.definition?.name ?? 'Service'}
+                    </span>
+                    {offering && (
+                      <span className="text-sm text-gray-700">{offeringPrice(offering)}</span>
+                    )}
+                  </div>
+                )}
+                <p className="label">Pick a date and time</p>
+                {isLoading && <p className="text-sm text-gray-400">Checking their calendar…</p>}
+                {!isLoading && slots.length > 0 && (
+                  <div className="max-h-56 space-y-3 overflow-y-auto rounded-sm border border-gray-200 p-3">
+                    {[...byDate.entries()].map(([date, daySlots]) => (
+                      <div key={date}>
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                          {new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {daySlots.map((slot) => (
+                            <button
+                              key={slot.id}
+                              type="button"
+                              onClick={() => {
+                                setSlotId(slot.id);
+                                setEventDate('');
+                              }}
+                              className={`rounded-sm border px-3 py-1.5 text-sm ${
+                                slotId === slot.id
+                                  ? 'border-brand bg-brand-light text-brand-dark'
+                                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              {slot.startTime.slice(0, 5)}–{slot.endTime.slice(0, 5)}
+                              {slot.note ? ` · ${slot.note}` : ''}
+                              {/*
+                                A window a caterer can still take four bookings in
+                                reads very differently from one with a single place
+                                left, so the buyer sees the count rather than a bare
+                                time.
+                              */}
+                              {slot.capacity > 1 && (
+                                <span className="ml-1 text-xs text-gray-500">
+                                  · {slot.remaining} of {slot.capacity} left
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Slotless request (EZ1-I179): when nothing is published, or none
+                    of the windows suit, the buyer names a date and the vendor
+                    confirms it. Choosing a slot above clears this and vice versa. */}
+                {!isLoading && !slotId && (
+                  <label className="mt-2 block text-sm">
+                    <span className="text-gray-700">
+                      {slots.length > 0 ? 'Or request another date' : 'Which date do you need?'}
+                    </span>
+                    <input
+                      className="input mt-1 max-w-[12rem]"
+                      type="date"
+                      min={todayIso}
+                      value={eventDate}
+                      onChange={(e) => setEventDate(e.target.value)}
+                    />
+                    <span className="mt-1 block text-xs text-gray-500">
+                      No published window — the vendor confirms this date before you pay.
+                    </span>
+                  </label>
+                )}
+              </div>
+            ) : (
+              needsService && (
+                <p className="rounded-sm bg-surface-sunken px-3 py-2 text-sm text-gray-500">
+                  Pick a service above to see the dates and times they are free.
+                </p>
+              )
+            )}
+
             {/*
               The questions below are generated from the service the buyer
               picked, not written into this page. That is what replaces a
@@ -799,7 +834,6 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
               </button>
             </div>
           </form>
-        )}
       </div>
     </div>
   );
