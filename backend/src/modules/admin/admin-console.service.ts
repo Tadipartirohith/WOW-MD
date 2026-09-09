@@ -9,6 +9,8 @@ import { Payment } from '../bookings/entities/payment.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
+import { ServiceOffering } from '../catalog/entities/service-offering.entity';
+import { OfficerServiceArea } from '../verification/entities/officer-service-area.entity';
 import { SupportCase } from '../verification/entities/support-case.entity';
 import { VerificationRequest } from '../verification/entities/verification-request.entity';
 import { AgentCharge } from '../agents/entities/agent-charge.entity';
@@ -63,6 +65,9 @@ export class AdminConsoleService {
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(VendorService) private readonly vendorServices: Repository<VendorService>,
+    @InjectRepository(ServiceOffering) private readonly offerings: Repository<ServiceOffering>,
+    @InjectRepository(OfficerServiceArea)
+    private readonly serviceAreas: Repository<OfficerServiceArea>,
     @InjectRepository(SupportCase) private readonly cases: Repository<SupportCase>,
     @InjectRepository(VerificationRequest)
     private readonly verifications: Repository<VerificationRequest>,
@@ -257,28 +262,41 @@ export class AdminConsoleService {
      * question does not apply, and a screen showing four empty sections
      * teaches an administrator to stop reading it.
      */
-    const [interests, money, agencyClients, officerLoad] = await Promise.all([
-      profileIds.length
-        ? this.interests.find({
-            where: [{ fromProfileId: In(profileIds) }, { toProfileId: In(profileIds) }],
-            order: { createdAt: 'DESC' },
-            take: 50,
-          })
-        : Promise.resolve([]),
-      this.payments.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 50 }),
-      user.role === UserRole.AGENT
-        ? this.users.find({
-            where: { managedByAgentId: userId },
-            select: ['id', 'email', 'role', 'isActive', 'createdAt'],
-          })
-        : Promise.resolve([]),
-      user.role === UserRole.IN_PERSON
-        ? this.verifications.find({
-            where: { assignedToUserId: userId },
-            order: { createdAt: 'DESC' },
-          })
-        : Promise.resolve([]),
-    ]);
+    const [interests, money, agencyClients, officerLoad, officerAreas, officerDecisions] =
+      await Promise.all([
+        profileIds.length
+          ? this.interests.find({
+              where: [{ fromProfileId: In(profileIds) }, { toProfileId: In(profileIds) }],
+              order: { createdAt: 'DESC' },
+              take: 50,
+            })
+          : Promise.resolve([]),
+        this.payments.find({ where: { userId }, order: { createdAt: 'DESC' }, take: 50 }),
+        user.role === UserRole.AGENT
+          ? this.users.find({
+              where: { managedByAgentId: userId },
+              select: ['id', 'email', 'role', 'isActive', 'createdAt'],
+            })
+          : Promise.resolve([]),
+        user.role === UserRole.IN_PERSON
+          ? this.verifications.find({
+              where: { assignedToUserId: userId },
+              order: { createdAt: 'DESC' },
+            })
+          : Promise.resolve([]),
+        // Where this officer travels (EZ1-I188), and the visits they have
+        // actually decided — assigned work is the queue, decisions are the record.
+        user.role === UserRole.IN_PERSON
+          ? this.serviceAreas.find({ where: { officerUserId: userId }, order: { createdAt: 'ASC' } })
+          : Promise.resolve([]),
+        user.role === UserRole.IN_PERSON
+          ? this.verifications.find({
+              where: { decidedByUserId: userId },
+              order: { decidedAt: 'DESC' },
+              take: 20,
+            })
+          : Promise.resolve([]),
+      ]);
 
     // The matchmaking story as counts, because fifty interest rows is not an
     // answer to "where is this person up to".
@@ -313,12 +331,29 @@ export class AdminConsoleService {
       bookings: placed,
       /** Bookings made *with* this account (vendor/planner), newest first. */
       providerBookings,
-      /** A planner's own agency record(s) — the vendor equivalent is `businesses`. */
+      /**
+       * A planner's own agency record(s) — the vendor equivalent is `businesses`.
+       * The full agency detail (packages, coverage, contact) rides along so the
+       * planner detail page can show everything without a second read (EZ1-I188).
+       */
       plannerBusinesses: plannerBusinesses.map((p) => ({
         id: p.id,
         name: p.agencyName,
         city: p.city,
         isApproved: p.isApproved,
+        bio: p.bio,
+        servesCities: p.servesCities,
+        packages: p.packages,
+        yearsExperience: p.yearsExperience,
+        contactPerson: p.contactPerson,
+        contactPhone: p.contactPhone,
+        contactEmail: p.contactEmail,
+        address: p.address,
+        state: p.state,
+        pincode: p.pincode,
+        website: p.website,
+        ratingAvg: p.ratingAvg,
+        ratingCount: p.ratingCount,
       })),
       casesRaised: raised,
       casesAssigned: against,
@@ -363,8 +398,217 @@ export class AdminConsoleService {
                 (v) => v.slaBreachedAt || (v.slaDeadline && new Date(v.slaDeadline) < new Date()),
               ).length,
               queue: officerLoad.slice(0, 20),
+              /** The regions this officer will actually travel to (EZ1-I188). */
+              serviceAreas: officerAreas.map((a) => ({
+                id: a.id,
+                label: a.label,
+                city: a.city,
+                state: a.state,
+                primary: a.primary,
+              })),
+              /** Visits this officer has closed out — the record behind the queue. */
+              decisions: officerDecisions.map((v) => ({
+                id: v.id,
+                applicantType: v.applicantType,
+                status: v.status,
+                decidedAt: v.decidedAt,
+                createdAt: v.createdAt,
+              })),
             }
           : null,
+    };
+  }
+
+  /**
+   * One marriage profile in full (EZ1-I185).
+   *
+   * The account drill-down lists an agency's associated profiles by name; this
+   * is what opens when an administrator clicks one — the whole profile, not the
+   * matchmaking-facing subset. The government id *number* is never stored and
+   * never returned; only the last four and whether an officer verified it.
+   */
+  async profileDetail(profileId: string) {
+    const profile = await this.profiles.findOne({ where: { id: profileId } });
+    if (!profile) throw new NotFoundException('Profile not found');
+
+    const [owner, steward, interests, verifier] = await Promise.all([
+      profile.userId
+        ? this.users.findOne({
+            where: { id: profile.userId },
+            select: ['id', 'email', 'role', 'isActive', 'isVerified', 'phone', 'createdAt'],
+          })
+        : Promise.resolve(null),
+      profile.managedByUserId
+        ? this.users.findOne({
+            where: { id: profile.managedByUserId },
+            select: ['id', 'email', 'role'],
+          })
+        : Promise.resolve(null),
+      this.interests.find({
+        where: [{ fromProfileId: profileId }, { toProfileId: profileId }],
+        order: { createdAt: 'DESC' },
+        take: 50,
+      }),
+      profile.idVerifiedByUserId
+        ? this.users.findOne({
+            where: { id: profile.idVerifiedByUserId },
+            select: ['id', 'email'],
+          })
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      profile: {
+        id: profile.id,
+        profileCode: profile.profileCode,
+        displayName: profile.displayName,
+        gender: profile.gender,
+        dateOfBirth: profile.dateOfBirth,
+        city: profile.city,
+        address: profile.address,
+        bio: profile.bio,
+        photos: profile.photos ?? [],
+        preferences: profile.preferences ?? {},
+        // Contact and stewardship.
+        contactEmail: profile.contactEmail,
+        contactPhone: profile.contactPhone,
+        stewardRelation: profile.stewardRelation,
+        managingFor: profile.managingFor,
+        claimStatus: profile.claimStatus,
+        // Circulation and lifecycle.
+        networkVisibility: profile.networkVisibility,
+        visibility: profile.visibility,
+        lifecycle: profile.lifecycle,
+        lifecycleReason: profile.lifecycleReason,
+        profileCompleted: profile.profileCompleted,
+        lastActiveAt: profile.lastActiveAt,
+        pooledAt: profile.pooledAt,
+        // Identity verification, number excluded by design.
+        governmentIdType: profile.governmentIdType,
+        governmentIdLast4: profile.governmentIdLast4,
+        idSubmittedAt: profile.idSubmittedAt,
+        idVerifiedAt: profile.idVerifiedAt,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+      },
+      owner,
+      steward,
+      verifiedBy: verifier,
+      matchmaking: {
+        sent: interests.filter((i) => i.fromProfileId === profileId).length,
+        received: interests.filter((i) => i.toProfileId === profileId).length,
+        accepted: interests.filter((i) => i.status === InterestStatus.ACCEPTED).length,
+        fixed: interests.filter((i) => i.matchFixedState === MatchFixedState.CONFIRMED).length,
+      },
+    };
+  }
+
+  /**
+   * One vendor business in full (EZ1-I188).
+   *
+   * The vendor account drill-down lists a vendor's businesses by name and
+   * status; this is what opens when an administrator clicks one — the
+   * registration and compliance details, every service in the catalogue with
+   * its offerings and concurrency, the uploaded documents, the verification
+   * history, and the bookings taken against it.
+   */
+  async businessDetail(vendorId: string) {
+    const vendor = await this.vendors.findOne({ where: { id: vendorId } });
+    if (!vendor) throw new NotFoundException('Business not found');
+
+    const [owner, services, verifications, receivedRaw] = await Promise.all([
+      this.users.findOne({
+        where: { id: vendor.ownerUserId },
+        select: ['id', 'email', 'role', 'isActive', 'phone', 'createdAt'],
+      }),
+      this.vendorServices.find({ where: { vendorId }, order: { createdAt: 'ASC' } }),
+      this.verifications.find({ where: { subjectId: vendorId }, order: { createdAt: 'DESC' } }),
+      this.bookings.find({
+        where: { providerId: vendorId },
+        order: { createdAt: 'DESC' },
+        take: 20,
+      }),
+    ]);
+
+    const serviceIds = services.map((s) => s.id);
+    const offerings = serviceIds.length
+      ? await this.offerings.find({
+          where: { vendorServiceId: In(serviceIds) },
+          order: { sortOrder: 'ASC' },
+        })
+      : [];
+    const offeringsByService = new Map<string, ServiceOffering[]>();
+    for (const o of offerings) {
+      const list = offeringsByService.get(o.vendorServiceId) ?? [];
+      list.push(o);
+      offeringsByService.set(o.vendorServiceId, list);
+    }
+
+    const bookings = await this.attachParties(receivedRaw);
+
+    return {
+      business: {
+        id: vendor.id,
+        name: vendor.name,
+        category: vendor.category,
+        otherCategory: vendor.otherCategory,
+        description: vendor.description,
+        city: vendor.city,
+        pricing: vendor.pricing ?? {},
+        portfolio: vendor.portfolio ?? [],
+        ratingAvg: vendor.ratingAvg,
+        ratingCount: vendor.ratingCount,
+        // Registration & compliance.
+        gstNumber: vendor.gstNumber,
+        panNumber: vendor.panNumber,
+        registrationNumber: vendor.registrationNumber,
+        tradingSince: vendor.tradingSince,
+        registeredAddress: vendor.registeredAddress,
+        contactPhone: vendor.contactPhone,
+        complianceDocuments: vendor.complianceDocuments ?? [],
+        // Lifecycle.
+        status: vendor.status,
+        isApproved: vendor.isApproved,
+        submittedAt: vendor.submittedAt,
+        verifiedAt: vendor.verifiedAt,
+        decisionReason: vendor.decisionReason,
+        revisionCount: vendor.revisionCount,
+        archivedAt: vendor.archivedAt,
+        payoutAccountId: vendor.payoutAccountId,
+        createdAt: vendor.createdAt,
+        updatedAt: vendor.updatedAt,
+      },
+      owner,
+      /** Services & catalogue, each with its priced offerings and concurrency. */
+      services: services.map((s) => ({
+        id: s.id,
+        displayName: s.displayName,
+        description: s.description,
+        concurrentCapacity: s.concurrentCapacity,
+        active: s.active,
+        offerings: (offeringsByService.get(s.id) ?? []).map((o) => ({
+          id: o.id,
+          name: o.name,
+          pricingModel: o.pricingModel,
+          price: o.price,
+          currency: o.currency,
+          unitLabel: o.unitLabel,
+          isPackage: o.isPackage,
+          inclusions: o.inclusions,
+          active: o.active,
+        })),
+      })),
+      verifications: verifications.map((v) => ({
+        id: v.id,
+        status: v.status,
+        applicantType: v.applicantType,
+        remarks: v.remarks,
+        findings: v.findings,
+        decidedAt: v.decidedAt,
+        submittedAt: v.submittedAt,
+        createdAt: v.createdAt,
+      })),
+      bookings,
     };
   }
 

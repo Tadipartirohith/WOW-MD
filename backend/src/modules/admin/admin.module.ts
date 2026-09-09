@@ -4,6 +4,8 @@ import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
+import { ServiceOffering } from '../catalog/entities/service-offering.entity';
+import { OfficerServiceArea } from '../verification/entities/officer-service-area.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { Dispute } from './entities/dispute.entity';
 import { Profile } from '../users/entities/profile.entity';
@@ -26,6 +28,8 @@ import { AdminController } from './admin.controller';
       Vendor,
       PlannerProfile,
       VendorService,
+      ServiceOffering,
+      OfficerServiceArea,
       Booking,
       Dispute,
       Profile,

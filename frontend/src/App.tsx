@@ -77,6 +77,8 @@ import AdminLayout, { ADMIN_NAV as ADMIN_PORTAL_NAV } from './pages/admin/AdminL
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminBookingDetail from './pages/admin/AdminBookingDetail';
 import AdminAccountDetail from './pages/admin/AdminAccountDetail';
+import AdminProfileDetail from './pages/admin/AdminProfileDetail';
+import AdminBusinessDetail from './pages/admin/AdminBusinessDetail';
 import {
   AdminAgents,
   AdminAuditLogs,
@@ -1095,6 +1097,9 @@ export default function App() {
         <Route path="officers/:id" element={<AdminAccountDetail kind="officer" />} />
         <Route path="planners" element={<AdminPlanners />} />
         <Route path="planners/:id" element={<AdminAccountDetail kind="planner" />} />
+        {/* Drill-downs from an account: one profile, one business, in full (EZ1-I185/I188). */}
+        <Route path="profiles/:id" element={<AdminProfileDetail />} />
+        <Route path="businesses/:id" element={<AdminBusinessDetail />} />
         <Route path="bookings" element={<AdminBookings />} />
         <Route path="bookings/:id" element={<AdminBookingDetail />} />
         <Route path="payments" element={<AdminPayments />} />

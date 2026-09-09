@@ -94,6 +94,32 @@ export class AdminController {
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
   @ApiOperation({
+    summary: 'One marriage profile in full (EZ1-I185)',
+    description:
+      'What opens when an administrator clicks a profile in an agency\'s associated-profiles ' +
+      'list: the whole profile, not just the matchmaking-facing subset. The government id ' +
+      'number is never stored and never returned.',
+  })
+  @Get('profiles/:id')
+  profileDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.console.profileDetail(id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
+    summary: 'One vendor business in full (EZ1-I188)',
+    description:
+      'Registration and compliance, every service in the catalogue with its offerings and ' +
+      'concurrency, uploaded documents, verification history and bookings taken — what opens ' +
+      'when an administrator clicks a business on a vendor account.',
+  })
+  @Get('businesses/:id')
+  businessDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.console.businessDetail(id);
+  }
+
+  @RequirePermissions(Permission.ADMIN_USERS_READ)
+  @ApiOperation({
     summary: 'One booking, with everybody attached to it',
     description:
       'Client, the agency behind them, provider, every payment and any dispute, in one read. ' +

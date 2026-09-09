@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CaretLeft } from '@phosphor-icons/react';
 import { api, apiMessage } from '../../lib/api';
 import { formatDate } from '../../lib/dates';
@@ -67,7 +68,25 @@ interface AccountDetail {
   businesses: { id: string; name: string; category: string; status: string; isApproved: boolean }[];
   bookings: BookingRow[];
   providerBookings: (BookingRow & { buyerName: string | null; serviceName: string | null; amountPaid: string })[];
-  plannerBusinesses: { id: string; name: string; city: string | null; isApproved: boolean }[];
+  plannerBusinesses: {
+    id: string;
+    name: string;
+    city: string | null;
+    isApproved: boolean;
+    bio: string | null;
+    servesCities: string[];
+    packages: { name: string; price: number; includes?: string[] }[];
+    yearsExperience: number;
+    contactPerson: string | null;
+    contactPhone: string | null;
+    contactEmail: string | null;
+    address: string | null;
+    state: string | null;
+    pincode: string | null;
+    website: string | null;
+    ratingAvg: number;
+    ratingCount: number;
+  }[];
   casesRaised: { id: string; title: string; status: string; createdAt: string }[];
   casesAssigned: { id: string; title: string; status: string; createdAt: string }[];
   verifications: { id: string; applicantType: string; status: string; createdAt: string }[];
@@ -85,6 +104,14 @@ interface AccountDetail {
     open: number;
     overdue: number;
     queue: { id: string; applicantType: string; status: string; createdAt: string }[];
+    serviceAreas: { id: string; label: string; city: string | null; state: string | null; primary: boolean }[];
+    decisions: {
+      id: string;
+      applicantType: string;
+      status: string;
+      decidedAt: string | null;
+      createdAt: string;
+    }[];
   } | null;
 }
 
@@ -93,13 +120,34 @@ const money = (v: string) => `₹${Number(v ?? 0).toLocaleString('en-IN')}`;
 export default function AdminAccountDetail({ kind }: { kind: Kind }) {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const meta = KIND[kind];
+  const [actionError, setActionError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const { data, isLoading, error } = useQuery<AccountDetail>({
     queryKey: ['admin-account-detail', id],
     queryFn: async () => (await api.get(`/admin/accounts/${id}`)).data,
     retry: false,
   });
+
+  // Suspend or reinstate — an admin management action the backend already
+  // exposes at PUT /admin/users/:id/status, surfaced here so a drill-down ends
+  // in a decision rather than a dead end (EZ1-I188).
+  async function setActive(active: boolean) {
+    if (!window.confirm(active ? 'Reinstate this account?' : 'Suspend this account?')) return;
+    setActionError('');
+    setBusy(true);
+    try {
+      await api.put(`/admin/users/${id}/status`, { isActive: active });
+      for (const k of ['admin-account-detail', 'analytics', 'audit'])
+        qc.invalidateQueries({ queryKey: [k] });
+    } catch (err) {
+      setActionError(apiMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const back = (
     <button
@@ -135,15 +183,25 @@ export default function AdminAccountDetail({ kind }: { kind: Kind }) {
             <h1 className="page-title truncate">{name}</h1>
             <p className="page-subtitle">{user.email}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <span className={`pill ${user.isActive ? 'bg-positive-bg text-positive-fg' : 'bg-critical-bg text-critical-fg'}`}>
-              {user.isActive ? 'Active' : 'Suspended'}
-            </span>
-            <span className={`pill ${user.isVerified ? 'bg-positive-bg text-positive-fg' : 'bg-gray-100 text-gray-500'}`}>
-              {user.isVerified ? 'Verified' : 'Unverified'}
-            </span>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-wrap gap-2">
+              <span className={`pill ${user.isActive ? 'bg-positive-bg text-positive-fg' : 'bg-critical-bg text-critical-fg'}`}>
+                {user.isActive ? 'Active' : 'Suspended'}
+              </span>
+              <span className={`pill ${user.isVerified ? 'bg-positive-bg text-positive-fg' : 'bg-gray-100 text-gray-500'}`}>
+                {user.isVerified ? 'Verified' : 'Unverified'}
+              </span>
+            </div>
+            <button
+              className={user.isActive ? 'btn-outline btn-sm' : 'btn btn-sm'}
+              disabled={busy}
+              onClick={() => setActive(!user.isActive)}
+            >
+              {user.isActive ? 'Suspend account' : 'Reinstate account'}
+            </button>
           </div>
         </div>
+        {actionError && <p className="alert-critical mt-3">{actionError}</p>}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -215,17 +273,21 @@ export default function AdminAccountDetail({ kind }: { kind: Kind }) {
 
       {data.profiles.length > 0 && (
         <ListSection
-          title="Profiles"
+          title={kind === 'agent' ? 'Associated profiles' : 'Profiles'}
           empty="No profiles."
           rows={data.profiles}
           render={(p) => (
-            <div key={p.id} className="flex items-center justify-between gap-3 py-2">
-              <span className="truncate text-sm text-gray-800">{p.displayName}</span>
+            <Link
+              key={p.id}
+              to={`/admin/profiles/${p.id}`}
+              className="flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-brand-soft/40"
+            >
+              <span className="truncate text-sm font-medium text-gray-800">{p.displayName}</span>
               <span className="text-xs text-gray-500">
                 {p.lifecycle}
                 {p.city ? ` · ${p.city}` : ''}
               </span>
-            </div>
+            </Link>
           )}
         />
       )}
@@ -236,35 +298,70 @@ export default function AdminAccountDetail({ kind }: { kind: Kind }) {
           empty="No businesses."
           rows={data.businesses}
           render={(b) => (
-            <div key={b.id} className="flex items-center justify-between gap-3 py-2">
+            <Link
+              key={b.id}
+              to={`/admin/businesses/${b.id}`}
+              className="flex items-center justify-between gap-3 rounded-md px-2 py-2 transition-colors hover:bg-brand-soft/40"
+            >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-gray-900">{b.name}</span>
                 <span className="text-xs text-gray-500">{b.category}</span>
               </span>
               <span className="pill bg-gray-100 text-gray-600">{b.status.replace(/_/g, ' ')}</span>
-            </div>
+            </Link>
           )}
         />
       )}
 
-      {data.plannerBusinesses.length > 0 && (
-        <ListSection
-          title="Business details"
-          empty="No agency record."
-          rows={data.plannerBusinesses}
-          render={(b) => (
-            <div key={b.id} className="flex items-center justify-between gap-3 py-2">
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-gray-900">{b.name}</span>
-                {b.city && <span className="text-xs text-gray-500">{b.city}</span>}
-              </span>
-              <span className={`pill ${b.isApproved ? 'bg-positive-bg text-positive-fg' : 'bg-caution-bg text-caution-fg'}`}>
-                {b.isApproved ? 'Approved' : 'Pending approval'}
-              </span>
+      {/* A planner's agency in full: coverage, contact and packages (EZ1-I188). */}
+      {data.plannerBusinesses.map((b) => (
+        <div key={b.id} className="card">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="section-title">{b.name}</h2>
+              <p className="text-xs text-gray-500">
+                {[b.city, b.state].filter(Boolean).join(', ') || 'Location not set'}
+                {b.yearsExperience > 0 ? ` · ${b.yearsExperience} yrs experience` : ''}
+              </p>
+            </div>
+            <span className={`pill ${b.isApproved ? 'bg-positive-bg text-positive-fg' : 'bg-caution-bg text-caution-fg'}`}>
+              {b.isApproved ? 'Approved' : 'Pending approval'}
+            </span>
+          </div>
+          {b.bio && <p className="mb-3 whitespace-pre-line text-sm text-gray-700">{b.bio}</p>}
+          <div className="grid gap-1 sm:grid-cols-2">
+            <Row label="Contact person">{b.contactPerson ?? '—'}</Row>
+            <Row label="Phone">{b.contactPhone ?? '—'}</Row>
+            <Row label="Email">{b.contactEmail ?? '—'}</Row>
+            <Row label="Website">{b.website ?? '—'}</Row>
+            <Row label="Address">{[b.address, b.pincode].filter(Boolean).join(' · ') || '—'}</Row>
+            <Row label="Serves">{b.servesCities.length ? b.servesCities.join(', ') : '—'}</Row>
+            <Row label="Rating">
+              {b.ratingCount > 0 ? `${b.ratingAvg.toFixed(1)} (${b.ratingCount})` : 'No ratings'}
+            </Row>
+          </div>
+          {b.packages.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                Packages
+              </p>
+              <div className="divide-y">
+                {b.packages.map((pkg, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate text-gray-800">{pkg.name}</span>
+                      {pkg.includes && pkg.includes.length > 0 && (
+                        <span className="text-xs text-gray-500">{pkg.includes.join(', ')}</span>
+                      )}
+                    </span>
+                    <span className="font-medium tabular-nums text-gray-900">{money(String(pkg.price))}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-        />
-      )}
+        </div>
+      ))}
 
       {/* Bookings made *with* a vendor or planner — the list their page is about (EZ1-I172). */}
       {data.providerBookings.length > 0 && (
@@ -343,6 +440,43 @@ export default function AdminAccountDetail({ kind }: { kind: Kind }) {
             </div>
           )}
         />
+      )}
+
+      {/* Where an officer travels, and the visits they have decided (EZ1-I188). */}
+      {kind === 'officer' && data.officer && (data.officer.serviceAreas.length > 0 || data.officer.decisions.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="card">
+            <h2 className="section-title mb-2">Service areas</h2>
+            {data.officer.serviceAreas.length === 0 ? (
+              <p className="py-2 text-sm text-gray-400">No coverage recorded.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {data.officer.serviceAreas.map((a) => (
+                  <span
+                    key={a.id}
+                    className={`pill ${a.primary ? 'bg-brand-soft text-brand-strong' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    {a.label}
+                    {a.primary ? '' : ' (backup)'}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <ListSection
+            title="Decisions made"
+            empty="No decisions recorded."
+            rows={data.officer.decisions}
+            render={(d) => (
+              <div key={d.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <span className="text-gray-700">
+                  {d.applicantType} · {d.decidedAt ? formatDate(d.decidedAt) : formatDate(d.createdAt)}
+                </span>
+                <span className="pill bg-gray-100 text-gray-600">{d.status.replace(/_/g, ' ')}</span>
+              </div>
+            )}
+          />
+        </div>
       )}
 
       {(data.casesRaised.length > 0 || data.casesAssigned.length > 0) && (
