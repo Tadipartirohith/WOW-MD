@@ -346,4 +346,16 @@ export class AgentsController {
   reviewMyAgent(@CurrentUser('userId') userId: string, @Body() dto: SubmitAgentReviewDto) {
     return this.agentReviews.submitReview(userId, dto);
   }
+
+  /**
+   * The agent's own reviews: their average rating, the review count, and every
+   * individual client review (EZ1-I206). Agent-scoped — gated on the same
+   * permission that lets someone run an agency.
+   */
+  @RequirePermissions(Permission.AGENCY_MANAGE)
+  @ApiOperation({ summary: 'Your rating and the reviews clients have left you' })
+  @Get('my-reviews')
+  myReviews(@CurrentUser('userId') userId: string) {
+    return this.agentReviews.getMyReviews(userId);
+  }
 }

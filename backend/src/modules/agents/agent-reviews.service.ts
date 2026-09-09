@@ -1,7 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
+import { Profile } from '../users/entities/profile.entity';
 import { AgentProfile } from './entities/agent-profile.entity';
 import { AgentReview } from './entities/agent-review.entity';
 import { SubmitAgentReviewDto } from './dto/agent-review.dto';
@@ -9,6 +10,19 @@ import { SubmitAgentReviewDto } from './dto/agent-review.dto';
 export interface AgentRating {
   average: number;
   count: number;
+}
+
+/** One client's review as the agent sees it on their own reviews page. */
+export interface AgentReviewItem {
+  rating: number;
+  comment: string | null;
+  clientName: string;
+  createdAt: Date;
+}
+
+export interface MyReviewsView {
+  rating: AgentRating;
+  reviews: AgentReviewItem[];
 }
 
 export interface MyAgentView {
@@ -34,6 +48,7 @@ export class AgentReviewsService {
   constructor(
     @InjectRepository(AgentReview) private readonly reviews: Repository<AgentReview>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
     @InjectRepository(AgentProfile) private readonly agencies: Repository<AgentProfile>,
   ) {}
 
@@ -51,6 +66,39 @@ export class AgentReviewsService {
     return {
       average: Math.round(Number(avg ?? 0) * 100) / 100,
       count: Number(count ?? 0),
+    };
+  }
+
+  /**
+   * The agent's own reviews page: their aggregate rating plus every individual
+   * client review, newest first, each named by the client's profile display
+   * name (falling back to their email). This is the agent-facing side of
+   * EZ1-I206 — the client writes on `getMyAgent`, the agent reads it here.
+   */
+  async getMyReviews(agentUserId: string): Promise<MyReviewsView> {
+    const [rating, rows] = await Promise.all([
+      this.getRating(agentUserId),
+      this.reviews.find({ where: { agentId: agentUserId }, order: { createdAt: 'DESC' } }),
+    ]);
+
+    const userIds = [...new Set(rows.map((r) => r.userId))];
+    const [profiles, users] = await Promise.all([
+      userIds.length ? this.profiles.find({ where: { userId: In(userIds) } }) : Promise.resolve([]),
+      userIds.length ? this.users.find({ where: { id: In(userIds) } }) : Promise.resolve([]),
+    ]);
+    const nameOf = (uid: string) =>
+      profiles.find((p) => p.userId === uid)?.displayName ??
+      users.find((u) => u.id === uid)?.email ??
+      'A client';
+
+    return {
+      rating,
+      reviews: rows.map((r) => ({
+        rating: r.rating,
+        comment: r.comment,
+        clientName: nameOf(r.userId),
+        createdAt: r.createdAt,
+      })),
     };
   }
 
