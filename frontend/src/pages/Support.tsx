@@ -1,5 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { ComponentType, FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { IconProps } from '@phosphor-icons/react';
+import { Lifebuoy, WarningCircle, Hourglass, CheckCircle } from '@phosphor-icons/react';
 import { api, apiMessage } from '../lib/api';
 import PhotoUploader from '../components/PhotoUploader';
 import { formatDateTime } from '../lib/dates';
@@ -75,12 +77,19 @@ const OUTCOME_LABEL: Record<string, string> = {
  * subject is asked for deliberately rather than inferred: freezing somebody's
  * money by accident is not a small mistake.
  */
+/** The terminal statuses: a case here has an answer, one way or another. */
+const DONE = ['resolved', 'rejected', 'closed'];
+
+/** The three buckets the overview card counts and filters by. */
+type Bucket = 'open' | 'pending' | 'resolved';
+
 export default function Support() {
   const qc = useQueryClient();
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [raising, setRaising] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Bucket | null>(null);
 
   const { data: cases, isLoading } = useQuery({
     queryKey: ['support-cases'],
@@ -89,8 +98,13 @@ export default function Support() {
   });
 
   const rows: SupportCase[] = cases?.data ?? [];
-  const live = rows.filter((c) => !['resolved', 'rejected', 'closed'].includes(c.status));
-  const done = rows.filter((c) => ['resolved', 'rejected', 'closed'].includes(c.status));
+  // Open is the just-raised state; resolved covers every terminal status;
+  // pending is everything in between (being triaged, investigated, waited on).
+  const openCases = rows.filter((c) => c.status === 'open');
+  const done = rows.filter((c) => DONE.includes(c.status));
+  const pending = rows.filter((c) => c.status !== 'open' && !DONE.includes(c.status));
+
+  const showAll = filter === null;
 
   return (
     <div className="space-y-5">
@@ -133,12 +147,95 @@ export default function Support() {
         </p>
       )}
 
-      {live.length > 0 && (
-        <Section title="Open" cases={live} open={open} setOpen={setOpen} />
+      {!isLoading && rows.length > 0 && (
+        <IssuesCard
+          total={rows.length}
+          openCount={openCases.length}
+          pendingCount={pending.length}
+          resolvedCount={done.length}
+          filter={filter}
+          setFilter={setFilter}
+        />
       )}
-      {done.length > 0 && (
-        <Section title="Closed" cases={done} open={open} setOpen={setOpen} />
+
+      {(showAll || filter === 'open') && openCases.length > 0 && (
+        <Section title="Open" cases={openCases} open={open} setOpen={setOpen} />
       )}
+      {(showAll || filter === 'pending') && pending.length > 0 && (
+        <Section title="In progress" cases={pending} open={open} setOpen={setOpen} />
+      )}
+      {(showAll || filter === 'resolved') && done.length > 0 && (
+        <Section title="Resolved" cases={done} open={open} setOpen={setOpen} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The overview card (EZ1-I208): four counts derived from the cases already
+ * loaded — the whole picture in a glance — each a button that filters the list
+ * below to that bucket. The active tile stays lit; clicking it again, or the
+ * "All" tile, clears the filter. Empty buckets are shown but not clickable:
+ * there is nothing to filter to.
+ */
+function IssuesCard({
+  total,
+  openCount,
+  pendingCount,
+  resolvedCount,
+  filter,
+  setFilter,
+}: {
+  total: number;
+  openCount: number;
+  pendingCount: number;
+  resolvedCount: number;
+  filter: Bucket | null;
+  setFilter: (b: Bucket | null) => void;
+}) {
+  const tiles: {
+    key: Bucket | null;
+    label: string;
+    count: number;
+    icon: ComponentType<IconProps>;
+    chip: string;
+    ring: string;
+  }[] = [
+    { key: null, label: 'All issues', count: total, icon: Lifebuoy, chip: 'bg-rose-50 text-rose-700', ring: 'ring-rose-300' },
+    { key: 'open', label: 'Open', count: openCount, icon: WarningCircle, chip: 'bg-amber-50 text-amber-800', ring: 'ring-amber-300' },
+    { key: 'pending', label: 'Pending', count: pendingCount, icon: Hourglass, chip: 'bg-sky-50 text-sky-800', ring: 'ring-sky-300' },
+    { key: 'resolved', label: 'Resolved', count: resolvedCount, icon: CheckCircle, chip: 'bg-emerald-50 text-emerald-800', ring: 'ring-emerald-300' },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {tiles.map(({ key, label, count, icon: Glyph, chip, ring }) => {
+        const active = filter === key;
+        // "All" is always selectable; a bucket tile only when it has cases.
+        const clickable = key === null || count > 0;
+        return (
+          <button
+            key={label}
+            type="button"
+            disabled={!clickable}
+            aria-pressed={active}
+            onClick={() => setFilter(key)}
+            className={`card flex items-center gap-3 text-left shadow-card transition duration-200 ease-out ${
+              clickable ? 'hover:-translate-y-0.5 hover:shadow-lifted' : 'cursor-default opacity-70'
+            } ${active ? `ring-2 ${ring}` : ''}`}
+          >
+            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[--radius-md] ${chip}`}>
+              <Glyph size={22} weight="duotone" aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[1.5rem] font-semibold leading-none tabular-nums text-gray-900">
+                {count}
+              </span>
+              <span className="mt-1 block text-sm font-medium text-gray-600">{label}</span>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
