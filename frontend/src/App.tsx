@@ -79,6 +79,7 @@ import AdminBookingDetail from './pages/admin/AdminBookingDetail';
 import AdminAccountDetail from './pages/admin/AdminAccountDetail';
 import AdminProfileDetail from './pages/admin/AdminProfileDetail';
 import AdminBusinessDetail from './pages/admin/AdminBusinessDetail';
+import AdminSupport from './pages/admin/AdminSupport';
 import {
   AdminAgents,
   AdminAuditLogs,
@@ -1114,15 +1115,7 @@ export default function App() {
         <Route path="catalog" element={<Navigate to="/admin/services-catalog" replace />} />
         <Route path="reports" element={<AdminReports />} />
         <Route path="audit" element={<AdminAuditLogs />} />
-        <Route
-          path="support"
-          element={
-            <AdminComingSoon
-              title="Support"
-              note="Disputes and support cases are worked on the Verification screen for now. A dedicated admin support inbox is not built yet."
-            />
-          }
-        />
+        <Route path="support" element={<AdminSupport />} />
         {/*
           Notifications and Security are the real modules, not placeholders
           (EZ1-I176). For an administrator the portal nav is the only nav

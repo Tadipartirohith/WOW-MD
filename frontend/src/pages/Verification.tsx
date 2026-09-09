@@ -48,7 +48,7 @@ interface VerificationRequest {
   verificationStartedAt?: string | null;
 }
 
-interface SupportCase {
+export interface SupportCase {
   id: string;
   subjectType: string;
   subjectId: string | null;
@@ -121,7 +121,7 @@ interface SupportCase {
   } | null;
 }
 
-interface Officer {
+export interface Officer {
   id: string;
   name: string;
   email: string;
@@ -261,7 +261,7 @@ const SECTIONS: { key: string; label: string; blurb: string; statuses: string[] 
 ];
 
 /** Case status cards for the Cases tab, in the order work moves (EZ1-I83). */
-const CASE_FILTERS: { key: CaseStatus; label: string }[] = [
+export const CASE_FILTERS: { key: CaseStatus; label: string }[] = [
   { key: 'open', label: 'Open' },
   { key: 'allocated', label: 'Allocated' },
   { key: 'in_progress', label: 'In progress' },
@@ -297,6 +297,12 @@ function Pill({ status }: { status: string }) {
 export default function Verification() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
+  // Cases moved to the admin Support module (EZ1-I203): an administrator works
+  // them at /admin/support now, so the Cases tab and its metric tiles are
+  // hidden here for the admin. A Verification Officer still works cases on this
+  // screen, so everyone who is not an admin keeps them.
+  const role = useAuth((s) => s.user?.role);
+  const showCases = role !== 'admin';
   const canAllocate = can(permissions, Permission.VERIFICATION_ALLOCATE);
   const canDecide = can(permissions, Permission.VERIFICATION_DECIDE);
   /*
@@ -447,27 +453,31 @@ export default function Verification() {
               setSection('rejected');
             }}
           />
-          <Metric
-            label="Open cases"
-            value={
-              (metrics.cases?.open ?? 0) +
-              (metrics.cases?.allocated ?? 0) +
-              (metrics.cases?.in_progress ?? 0) +
-              (metrics.cases?.escalated ?? 0)
-            }
-            onClick={() => {
-              setTab('cases');
-              setCaseFilter(null);
-            }}
-          />
-          <Metric
-            label="Resolved cases"
-            value={metrics.cases?.resolved ?? 0}
-            onClick={() => {
-              setTab('cases');
-              setCaseFilter('resolved');
-            }}
-          />
+          {showCases && (
+            <>
+              <Metric
+                label="Open cases"
+                value={
+                  (metrics.cases?.open ?? 0) +
+                  (metrics.cases?.allocated ?? 0) +
+                  (metrics.cases?.in_progress ?? 0) +
+                  (metrics.cases?.escalated ?? 0)
+                }
+                onClick={() => {
+                  setTab('cases');
+                  setCaseFilter(null);
+                }}
+              />
+              <Metric
+                label="Resolved cases"
+                value={metrics.cases?.resolved ?? 0}
+                onClick={() => {
+                  setTab('cases');
+                  setCaseFilter('resolved');
+                }}
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -475,9 +485,11 @@ export default function Verification() {
         <TabButton active={tab === 'requests'} onClick={() => setTab('requests')}>
           Visits ({rows.length})
         </TabButton>
-        <TabButton active={tab === 'cases'} onClick={() => setTab('cases')}>
-          Cases ({caseRows.length})
-        </TabButton>
+        {showCases && (
+          <TabButton active={tab === 'cases'} onClick={() => setTab('cases')}>
+            Cases ({caseRows.length})
+          </TabButton>
+        )}
         {canManageOfficers && (
           <TabButton active={tab === 'officers'} onClick={() => setTab('officers')}>
             Officers ({officers?.length ?? 0})
@@ -567,7 +579,7 @@ export default function Verification() {
         </div>
       )}
 
-      {tab === 'cases' && (
+      {showCases && tab === 'cases' && (
         <div className="space-y-3">
           {/*
             Case status cards (EZ1-I83). Every status is its own filter with a
@@ -1105,7 +1117,7 @@ const CASE_ACTIONS: Record<string, CaseAction[]> = {
   ],
 };
 
-function CaseRow({
+export function CaseRow({
   item,
   officers,
   canAllocate,
