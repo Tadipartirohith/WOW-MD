@@ -17,7 +17,6 @@ import {
 import { api } from '../../lib/api';
 import { BOOKING_STATUS_LABEL } from '../../lib/permissions';
 import { ActivityFeed } from '../../components/AdminConsole';
-import Admin360 from '../../components/Admin360';
 
 interface Analytics {
   totalUsers: number;
@@ -113,13 +112,6 @@ export default function AdminDashboard() {
       </div>
 
       {analytics?.escrow && <RevenueOverview escrow={analytics.escrow} />}
-
-      {/*
-        The lookup comes next: it is the thing an administrator often opens this
-        page holding — a support ticket with a uuid in it — while everything
-        above and below is the platform in aggregate, a different question.
-      */}
-      <Admin360 />
 
       <ActivityFeed />
 
