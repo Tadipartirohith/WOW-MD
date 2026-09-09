@@ -148,10 +148,19 @@ export default function Chat() {
   const call = useCall();
   const messages: Message[] = [...(history?.data ?? [])].reverse();
   const active = conversations.find((c) => c.withUserId === withUserId);
-  // A match thread is locked until the interest is accepted — which is exactly
-  // when `context` appears. Inquiry and representation threads are never gated
-  // this way, so they stay open regardless of `context`.
-  const locked = active?.kind === 'match' && !active.context;
+  // Locked by default (EZ1-I155). The composer opens only for a thread we can
+  // positively confirm is talkable: an inquiry or representation thread, or a
+  // match whose interest is accepted — which is exactly when `context` appears.
+  // A thread the conversation list does not carry (a `?with=` deep link, or a
+  // not-yet-accepted match) leaves `active` undefined and therefore stays
+  // locked, so the UI is never an open composer the server would refuse. Any
+  // genuinely accepted match is already in the list (as a row or a silent
+  // pending match), so this only locks what should be locked.
+  const openable =
+    active?.kind === 'inquiry' ||
+    active?.kind === 'representation' ||
+    Boolean(active?.context);
+  const locked = !openable;
 
   // Opening a thread clears its badge, and the URL carries the selection so a
   // notification can link straight into a conversation.
