@@ -228,26 +228,48 @@ export default function VendorDetail() {
           </button>
         </div>
         {checkedDate && !checking && (
-          <p
-            className={`mb-3 rounded-sm p-3 text-sm ${
-              dayOpen.length > 0 ? 'bg-brand-light text-brand-dark' : 'bg-surface-sunken text-gray-600'
-            }`}
-          >
-            {dayOpen.length > 0
-              ? `Free on ${new Date(checkedDate).toLocaleDateString()} — ${dayOpenings} opening${
-                  dayOpenings === 1 ? '' : 's'
-                } left.`
-              : `No published opening on ${new Date(
-                  checkedDate,
-                ).toLocaleDateString()}. You can still send a request and the vendor will confirm.`}
-          </p>
+          <div className="mb-3">
+            <p
+              className={`rounded-sm p-3 text-sm ${
+                dayOpen.length > 0
+                  ? 'bg-brand-light text-brand-dark'
+                  : 'bg-surface-sunken text-gray-600'
+              }`}
+            >
+              {dayOpen.length > 0
+                ? `Free on ${new Date(checkedDate).toLocaleDateString()} — ${dayOpenings} opening${
+                    dayOpenings === 1 ? '' : 's'
+                  } left.`
+                : `No published opening on ${new Date(
+                    checkedDate,
+                  ).toLocaleDateString()}. You can still send a request and the vendor will confirm.`}
+            </p>
+            {dayOpen.length === 0 && canBook && (
+              <button
+                className="btn btn-sm mt-2"
+                onClick={() => navigate(`/vendors?request=${vendor.id}&date=${checkedDate}`)}
+              >
+                Send request
+              </button>
+            )}
+          </div>
         )}
 
         {slots.length === 0 ? (
-          <p className="card text-sm text-gray-500">
-            No open dates published for the next two months. You can still send a request and the
-            vendor will confirm.
-          </p>
+          <div className="card space-y-3">
+            <p className="text-sm text-gray-500">
+              No open dates published for the next two months. You can still send a request and the
+              vendor will confirm.
+            </p>
+            {canBook && (
+              <button
+                className="btn btn-sm"
+                onClick={() => navigate(`/vendors?request=${vendor.id}`)}
+              >
+                Send request
+              </button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-wrap gap-2">
             {slots.slice(0, 24).map((s) => (

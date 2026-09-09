@@ -397,6 +397,11 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   // in a dropdown is asking them to repeat themselves.
   const [params] = useSearchParams();
   const [slotId, setSlotId] = useState('');
+  // A request without a published window (EZ1-I179): the vendor may have nothing
+  // open, or none of the open windows suit, so the buyer names a date and the
+  // vendor confirms. Prefilled from the detail page's date check when it arrives.
+  const [eventDate, setEventDate] = useState(params.get('date') ?? '');
+  const todayIso = new Date().toISOString().slice(0, 10);
   const [eventId, setEventId] = useState(params.get('eventId') ?? '');
   const [serviceId, setServiceId] = useState('');
   const [offeringId, setOfferingId] = useState('');
@@ -481,7 +486,11 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
       const { data } = await api.post('/bookings', {
         providerType: 'vendor',
         providerId: vendor.id,
-        slotId,
+        ...(slotId ? { slotId } : {}),
+        // No published window: carry the date the buyer asked for so the vendor
+        // knows which day to confirm. The server derives it from the slot when
+        // one is chosen, so the two are never sent together.
+        ...(!slotId && eventDate ? { eventDate } : {}),
         requirements,
         ...(serviceId ? { vendorServiceId: serviceId } : {}),
         ...(offeringId ? { offeringId } : {}),
@@ -538,17 +547,11 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
 
         {isLoading && <p className="text-sm text-gray-400">Checking their calendar…</p>}
 
-        {!isLoading && slots.length === 0 && (
-          <p className="rounded-sm bg-gray-50 p-4 text-sm text-gray-600">
-            They have nothing free in the next six months. Message them from Chat if your date is
-            further out.
-          </p>
-        )}
-
-        {slots.length > 0 && (
+        {!isLoading && (
           <form onSubmit={submit} className="space-y-4">
             <div>
               <p className="label">Pick a window</p>
+              {slots.length > 0 && (
               <div className="max-h-56 space-y-3 overflow-y-auto rounded-sm border border-gray-200 p-3">
                 {[...byDate.entries()].map(([date, daySlots]) => (
                   <div key={date}>
@@ -564,7 +567,10 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                         <button
                           key={slot.id}
                           type="button"
-                          onClick={() => setSlotId(slot.id)}
+                          onClick={() => {
+                            setSlotId(slot.id);
+                            setEventDate('');
+                          }}
                           className={`rounded-sm border px-3 py-1.5 text-sm ${
                             slotId === slot.id
                               ? 'border-brand bg-brand-light text-brand-dark'
@@ -590,6 +596,28 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
                   </div>
                 ))}
               </div>
+              )}
+
+              {/* Slotless request (EZ1-I179): when nothing is published, or none
+                  of the windows suit, the buyer names a date and the vendor
+                  confirms it. Choosing a slot above clears this and vice versa. */}
+              {!slotId && (
+                <label className="mt-2 block text-sm">
+                  <span className="text-gray-700">
+                    {slots.length > 0 ? 'Or request another date' : 'Which date do you need?'}
+                  </span>
+                  <input
+                    className="input mt-1 max-w-[12rem]"
+                    type="date"
+                    min={todayIso}
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                  />
+                  <span className="mt-1 block text-xs text-gray-500">
+                    No published window — the vendor confirms this date before you pay.
+                  </span>
+                </label>
+              )}
             </div>
 
             {bookable.length > 0 && (
@@ -758,7 +786,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
               <button
                 className="btn"
                 disabled={
-                  !slotId ||
+                  (!slotId && !eventDate) ||
                   busy ||
                   (bookable.length > 0 && !serviceId) ||
                   (offerings.length > 0 && !offeringId)
