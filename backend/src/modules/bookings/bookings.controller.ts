@@ -22,6 +22,12 @@ import {
 import { BookingChatService } from './booking-chat.service';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { RespondQuotationDto, SendQuotationDto } from './dto/quotation.dto';
+import {
+  CreateBookingAddonDto,
+  RequoteBookingAddonDto,
+  RespondBookingAddonDto,
+} from './dto/booking-addon.dto';
+import { BookingAddonsService } from './booking-addons.service';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
@@ -33,6 +39,7 @@ export class BookingsController {
   constructor(
     private readonly bookings: BookingsService,
     private readonly quotations: QuotationsService,
+    private readonly addons: BookingAddonsService,
     private readonly bookingChat: BookingChatService,
   ) {}
 
@@ -255,6 +262,94 @@ export class BookingsController {
     @Body() dto: RespondQuotationDto,
   ) {
     return this.quotations.reject(actor, quotationId, dto);
+  }
+
+  // --------------------------------------------------------------- add-ons
+  //
+  // Extra services asked for on a booking whose advance is already held
+  // (EZ1-I215). A mini-quotation one confirmed booking deeper: the buyer
+  // proposes, the vendor accepts/rejects/requotes, the buyer accepts a requote.
+  // Guarded exactly like their quotation neighbours — buyer moves under
+  // BOOKING_PAY, vendor moves under BOOKING_CONFIRM.
+
+  @RequirePermissions(Permission.BOOKING_PAY)
+  @ApiOperation({
+    summary: 'Request an add-on on a confirmed booking',
+    description: 'An extra service on top of the booking. Waits for the vendor to respond.',
+  })
+  @Post(':id/addons')
+  createAddon(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateBookingAddonDto,
+  ) {
+    return this.addons.create(actor, id, dto);
+  }
+
+  // Either party may read the add-ons; access is enforced in the service
+  // (assertEitherSide), like the booking history above.
+  @ApiOperation({ summary: 'Add-ons on a booking, newest first. Either side may read them.' })
+  @Get(':id/addons')
+  listAddons(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.addons.list(actor, id);
+  }
+
+  @RequirePermissions(Permission.BOOKING_CONFIRM)
+  @ApiOperation({ summary: 'Vendor accepts an add-on at the asked price' })
+  @Put('addons/:addonId/accept')
+  acceptAddon(
+    @CurrentUser() actor: AuthUser,
+    @Param('addonId', ParseUUIDPipe) addonId: string,
+    @Body() dto: RespondBookingAddonDto,
+  ) {
+    return this.addons.vendorAccept(actor, addonId, dto);
+  }
+
+  @RequirePermissions(Permission.BOOKING_CONFIRM)
+  @ApiOperation({ summary: 'Vendor rejects an add-on' })
+  @Put('addons/:addonId/reject')
+  rejectAddon(
+    @CurrentUser() actor: AuthUser,
+    @Param('addonId', ParseUUIDPipe) addonId: string,
+    @Body() dto: RespondBookingAddonDto,
+  ) {
+    return this.addons.vendorReject(actor, addonId, dto);
+  }
+
+  @RequirePermissions(Permission.BOOKING_CONFIRM)
+  @ApiOperation({
+    summary: 'Vendor requotes an add-on',
+    description: 'Sets the vendor’s own price. The buyer then accepts it.',
+  })
+  @Put('addons/:addonId/requote')
+  requoteAddon(
+    @CurrentUser() actor: AuthUser,
+    @Param('addonId', ParseUUIDPipe) addonId: string,
+    @Body() dto: RequoteBookingAddonDto,
+  ) {
+    return this.addons.vendorRequote(actor, addonId, dto);
+  }
+
+  @RequirePermissions(Permission.BOOKING_PAY)
+  @ApiOperation({ summary: 'Buyer accepts the vendor’s requoted add-on price' })
+  @Put('addons/:addonId/accept-requote')
+  acceptAddonRequote(
+    @CurrentUser() actor: AuthUser,
+    @Param('addonId', ParseUUIDPipe) addonId: string,
+    @Body() dto: RespondBookingAddonDto,
+  ) {
+    return this.addons.buyerAcceptRequote(actor, addonId, dto);
+  }
+
+  @RequirePermissions(Permission.BOOKING_PAY)
+  @ApiOperation({ summary: 'Buyer withdraws an add-on request, or declines a requote' })
+  @Put('addons/:addonId/withdraw')
+  withdrawAddon(
+    @CurrentUser() actor: AuthUser,
+    @Param('addonId', ParseUUIDPipe) addonId: string,
+    @Body() dto: RespondBookingAddonDto,
+  ) {
+    return this.addons.buyerReject(actor, addonId, dto);
   }
 
   @RequirePermissions(Permission.BOOKING_CONFIRM)

@@ -121,6 +121,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
           <>
             <ServiceAnswers booking={b as never} />
             {isPlanner && <WeddingBrief bookingId={b.id} />}
+            <VendorAddOns bookingId={b.id} />
           </>
         )}
         renderActions={(b) => (
@@ -433,6 +434,147 @@ function WeddingBrief({ bookingId }: { bookingId: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+interface BookingAddon {
+  id: string;
+  title: string;
+  description: string | null;
+  quantity: number;
+  proposedPrice: string | null;
+  vendorPrice: string | null;
+  currency: string;
+  note: string | null;
+  status: 'requested' | 'accepted' | 'rejected' | 'requoted';
+  responseNote: string | null;
+  createdAt: string;
+}
+
+const ADDON_STATUS_LABEL: Record<BookingAddon['status'], string> = {
+  requested: 'Awaiting your response',
+  requoted: 'Requoted → awaiting the client',
+  accepted: 'Agreed',
+  rejected: 'Declined',
+};
+
+/**
+ * Add-on requests the client raised on this booking (EZ1-I215).
+ *
+ * The seller side of the mini-quotation on a confirmed booking: the vendor sees
+ * each extra the client asked for and accepts it, rejects it, or requotes with
+ * their own price for the client to accept. Only the requests still awaiting the
+ * vendor carry the controls.
+ */
+function VendorAddOns({ bookingId }: { bookingId: string }) {
+  const qc = useQueryClient();
+  const [requoting, setRequoting] = useState<string | null>(null);
+  const [price, setPrice] = useState('');
+  const [error, setError] = useState('');
+
+  const { data: addons } = useQuery({
+    queryKey: ['incoming-addons', bookingId],
+    queryFn: async () => (await api.get(`/bookings/${bookingId}/addons`)).data as BookingAddon[],
+    retry: false,
+  });
+
+  async function run(fn: () => Promise<unknown>) {
+    setError('');
+    try {
+      await fn();
+      qc.invalidateQueries({ queryKey: ['incoming-addons', bookingId] });
+      setRequoting(null);
+      setPrice('');
+    } catch (err) {
+      setError(apiMessage(err, 'That action was rejected.'));
+    }
+  }
+
+  if ((addons ?? []).length === 0) return null;
+
+  return (
+    <div className="mt-3 rounded-sm bg-surface-sunken p-3">
+      <p className="text-sm font-semibold text-gray-800">Add-on requests</p>
+      {error && <p className="mt-1 alert-critical">{error}</p>}
+      <div className="mt-2 space-y-2">
+        {(addons ?? []).map((a) => (
+          <div key={a.id} className="rounded-sm bg-surface p-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium text-gray-900">
+                {a.title}
+                {a.quantity > 1 && <span className="text-gray-500"> × {a.quantity}</span>}
+              </p>
+              <span className="text-xs capitalize text-gray-500">{ADDON_STATUS_LABEL[a.status]}</span>
+            </div>
+            {a.description && <p className="mt-1 text-gray-600">{a.description}</p>}
+            {a.note && <p className="mt-1 text-xs text-gray-500">Client note: {a.note}</p>}
+            <div className="mt-1 text-gray-700">
+              {a.proposedPrice != null && (
+                <span>
+                  Client proposed: {a.currency} {a.proposedPrice}
+                </span>
+              )}
+              {a.vendorPrice != null && (
+                <span className="ml-2 font-medium text-gray-900">
+                  Your price: {a.currency} {a.vendorPrice}
+                </span>
+              )}
+            </div>
+
+            {a.status === 'requested' && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => run(() => api.put(`/bookings/addons/${a.id}/accept`, {}))}
+                >
+                  Accept
+                </button>
+                <button
+                  className="btn-outline btn-sm"
+                  onClick={() => run(() => api.put(`/bookings/addons/${a.id}/reject`, {}))}
+                >
+                  Reject
+                </button>
+                <button
+                  className="btn-outline btn-sm"
+                  onClick={() => {
+                    setRequoting(requoting === a.id ? null : a.id);
+                    setPrice(a.proposedPrice ?? '');
+                  }}
+                >
+                  Requote
+                </button>
+                {requoting === a.id && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input w-32"
+                      type="number"
+                      min={0}
+                      placeholder="Your price"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                    />
+                    <button
+                      className="btn btn-sm"
+                      disabled={!price}
+                      onClick={() =>
+                        run(() =>
+                          api.put(`/bookings/addons/${a.id}/requote`, {
+                            vendorPrice: Number(price),
+                          }),
+                        )
+                      }
+                    >
+                      Send price
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

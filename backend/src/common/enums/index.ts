@@ -224,6 +224,26 @@ export enum QuotationStatus {
   SUPERSEDED = 'superseded',
 }
 
+/**
+ * Where an add-on request on a confirmed booking stands (EZ1-I215).
+ *
+ * A buyer asks for an extra service on a booking whose advance is already held;
+ * the vendor accepts at the asked price, rejects, or requotes with their own
+ * price. A requote waits on the buyer, who then accepts it (agreeing the vendor's
+ * price) or declines. One row per request, never edited away, so the agreed
+ * extra and what it was agreed at stay on the record like a quotation does.
+ */
+export enum BookingAddonStatus {
+  /** Buyer asked; waiting on the vendor. */
+  REQUESTED = 'requested',
+  /** Agreed — at the buyer's asked price, or at the vendor's requoted one. */
+  ACCEPTED = 'accepted',
+  /** Turned down by the vendor, or withdrawn/declined by the buyer. */
+  REJECTED = 'rejected',
+  /** Vendor countered with a price; waiting on the buyer to accept it. */
+  REQUOTED = 'requoted',
+}
+
 /** What an agent is charging for. */
 export enum AgentChargeType {
   /** Onboarding fee for building and running a client profile. */

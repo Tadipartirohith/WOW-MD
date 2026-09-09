@@ -5,6 +5,7 @@ import { Payment } from './entities/payment.entity';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Quotation } from './entities/quotation.entity';
+import { BookingAddon } from './entities/booking-addon.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -18,6 +19,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { ChatModule } from '../chat/chat.module';
 import { BookingsService } from './bookings.service';
 import { QuotationsService } from './quotations.service';
+import { BookingAddonsService } from './booking-addons.service';
 import { BookingChatService } from './booking-chat.service';
 import { BookingsController } from './bookings.controller';
 import { PaymentsController } from './payments.controller';
@@ -33,6 +35,7 @@ import {
       Booking,
       Payment,
       Quotation,
+      BookingAddon,
       Vendor,
       PlannerProfile,
       Profile,
@@ -56,6 +59,7 @@ import {
   providers: [
     BookingsService,
     QuotationsService,
+    BookingAddonsService,
     BookingChatService,
     MockPaymentProvider,
     RazorpayPaymentProvider,

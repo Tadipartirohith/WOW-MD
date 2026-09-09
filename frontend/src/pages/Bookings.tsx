@@ -56,6 +56,20 @@ interface Quotation {
   status: string;
 }
 
+interface BookingAddon {
+  id: string;
+  title: string;
+  description: string | null;
+  quantity: number;
+  proposedPrice: string | null;
+  vendorPrice: string | null;
+  currency: string;
+  note: string | null;
+  status: 'requested' | 'accepted' | 'rejected' | 'requoted';
+  responseNote: string | null;
+  createdAt: string;
+}
+
 type MilestoneKey = 'advance' | 'second' | 'final';
 
 interface Milestone {
@@ -212,6 +226,7 @@ export default function Bookings() {
       qc.invalidateQueries({ queryKey: ['bookings'] });
       qc.invalidateQueries({ queryKey: ['quotations'] });
       qc.invalidateQueries({ queryKey: ['milestones'] });
+      qc.invalidateQueries({ queryKey: ['booking-addons'] });
     } catch (err) {
       setError(apiMessage(err, 'That action was rejected.'));
     }
@@ -851,6 +866,9 @@ function BookingDetail({
         })}
       </div>
 
+      {/* Extra services asked for on top of a confirmed booking (EZ1-I215). */}
+      <BuyerAddOns booking={booking} canPay={canPay} onRun={onRun} />
+
       {milestones && (
         <div>
           <h3 className="section-title text-sm">Instalments</h3>
@@ -901,6 +919,219 @@ function BookingDetail({
       )}
 
       <BookingChat bookingId={booking.id} />
+    </div>
+  );
+}
+
+/** The plain-English badge for each add-on state (EZ1-I215). */
+const ADDON_STATUS_LABEL: Record<BookingAddon['status'], string> = {
+  requested: 'Add-On Request → Waiting for Vendor',
+  requoted: 'Vendor requoted → your decision',
+  accepted: 'Agreed',
+  rejected: 'Declined',
+};
+
+const ADDON_STATUS_STYLE: Record<BookingAddon['status'], string> = {
+  requested: 'bg-amber-50 text-amber-700',
+  requoted: 'bg-blue-50 text-blue-700',
+  accepted: 'bg-emerald-100 text-emerald-700',
+  rejected: 'bg-gray-100 text-gray-600',
+};
+
+/**
+ * Add-ons the buyer requests on a booking whose advance is already held
+ * (EZ1-I215).
+ *
+ * A mini-quotation one confirmed booking deeper: the buyer asks for an extra
+ * service, the vendor accepts / rejects / requotes, and a requote comes back
+ * here for the buyer to accept the vendor's price. Requesting is only offered
+ * once the booking is confirmed or in progress.
+ */
+function BuyerAddOns({
+  booking,
+  canPay,
+  onRun,
+}: {
+  booking: Booking;
+  canPay: boolean;
+  onRun: (fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [price, setPrice] = useState('');
+  const [description, setDescription] = useState('');
+  const [note, setNote] = useState('');
+
+  const { data: addons } = useQuery({
+    queryKey: ['booking-addons', booking.id],
+    queryFn: async () =>
+      (await api.get(`/bookings/${booking.id}/addons`)).data as BookingAddon[],
+    retry: false,
+  });
+
+  const canRequest = canPay && ['confirmed', 'in_progress'].includes(booking.status);
+
+  // Nothing to show on a booking that has neither add-ons nor the ability to
+  // take one — a request that has not been confirmed, or one long finished.
+  if ((addons ?? []).length === 0 && !canRequest) return null;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    await onRun(() =>
+      api.post(`/bookings/${booking.id}/addons`, {
+        title: title.trim(),
+        quantity: Number(quantity) || 1,
+        proposedPrice: price ? Number(price) : undefined,
+        description: description.trim() || undefined,
+        note: note.trim() || undefined,
+      }),
+    );
+    setTitle('');
+    setQuantity('1');
+    setPrice('');
+    setDescription('');
+    setNote('');
+    setOpen(false);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <h3 className="section-title text-sm">Add-Ons</h3>
+        {canRequest && (
+          <button
+            type="button"
+            className="btn-outline btn-sm"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? 'Cancel' : 'Request Add-Ons'}
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <form onSubmit={submit} className="mt-2 space-y-2 rounded-sm bg-gray-50 p-3">
+          <label className="block text-sm">
+            <span className="text-gray-700">Extra service or package</span>
+            <input
+              className="input mt-1"
+              placeholder="e.g. Extra drone coverage"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="text-gray-700">Quantity</span>
+              <input
+                className="input mt-1"
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-gray-700">Price (if you have one)</span>
+              <input
+                className="input mt-1"
+                type="number"
+                min={0}
+                placeholder="Leave blank for the vendor to quote"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="text-gray-700">Requirements</span>
+            <textarea
+              className="input mt-1"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-gray-700">Note for the vendor (optional)</span>
+            <input className="input mt-1" value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+          <button className="btn" disabled={!title.trim()}>
+            Send request
+          </button>
+        </form>
+      )}
+
+      <div className="mt-2 space-y-2">
+        {(addons ?? []).map((a) => {
+          const agreed = a.vendorPrice ?? a.proposedPrice;
+          return (
+            <div key={a.id} className="rounded-sm bg-gray-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">
+                  {a.title}
+                  {a.quantity > 1 && <span className="text-gray-500"> × {a.quantity}</span>}
+                </p>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${ADDON_STATUS_STYLE[a.status]}`}
+                >
+                  {ADDON_STATUS_LABEL[a.status]}
+                </span>
+              </div>
+              {a.description && <p className="mt-1 text-sm text-gray-600">{a.description}</p>}
+              {a.note && <p className="mt-1 text-xs text-gray-500">Your note: {a.note}</p>}
+              <div className="mt-1 text-sm text-gray-700">
+                {a.proposedPrice != null && (
+                  <span>
+                    You proposed: {a.currency} {a.proposedPrice}
+                  </span>
+                )}
+                {a.status === 'requoted' && a.vendorPrice != null && (
+                  <span className="ml-2 font-medium text-blue-700">
+                    Vendor’s price: {a.currency} {a.vendorPrice}
+                  </span>
+                )}
+                {a.status === 'accepted' && agreed != null && (
+                  <span className="ml-2 font-medium text-emerald-700">
+                    Agreed: {a.currency} {agreed}
+                  </span>
+                )}
+              </div>
+              {a.responseNote && (
+                <p className="mt-1 text-xs text-gray-500">Vendor: {a.responseNote}</p>
+              )}
+              {a.status === 'requoted' && canPay && (
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => onRun(() => api.put(`/bookings/addons/${a.id}/accept-requote`, {}))}
+                  >
+                    Accept new price
+                  </button>
+                  <button
+                    className="btn-outline btn-sm"
+                    onClick={() => onRun(() => api.put(`/bookings/addons/${a.id}/withdraw`, {}))}
+                  >
+                    Decline
+                  </button>
+                </div>
+              )}
+              {a.status === 'requested' && canPay && (
+                <div className="mt-2">
+                  <button
+                    className="btn-outline btn-sm"
+                    onClick={() => onRun(() => api.put(`/bookings/addons/${a.id}/withdraw`, {}))}
+                  >
+                    Withdraw request
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
