@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
@@ -11,55 +12,54 @@ import { EMAIL_PATTERN, GMAIL_PATTERN, MOBILE_10_PATTERN, NAME_PATTERN } from '.
  * Sign-up is a two-step choice: first *what kind of account*, then the details.
  * The account type decides which persona (and therefore which permission set)
  * the new account gets, so it is the first thing we ask for.
+ *
+ * Which types exist is the server's to say, not ours. GET /auth/account-types
+ * mirrors the INDIVIDUAL_USER_ENABLED switch, so with Individual sign-up closed
+ * the option is not offered at all rather than offered and then refused with a
+ * 403 after the visitor has filled the whole form in (council review).
  */
 interface AccountTypeOption {
   type: AccountType;
   label: string;
-  blurb: string;
-  icon: string;
+  description: string;
   /** Individual accounts additionally pick bride/groom/family. */
-  roles?: { value: string; label: string }[];
+  requiresRole: boolean;
+  roles?: string[];
 }
 
-const ACCOUNT_TYPES: AccountTypeOption[] = [
-  {
-    type: 'individual',
-    label: 'Individual',
-    blurb: 'Looking for a match, or a family member searching on their behalf.',
-    icon: '💍',
-    roles: [
-      { value: 'bride', label: 'Bride' },
-      { value: 'groom', label: 'Groom' },
-      { value: 'family', label: 'Family member' },
-    ],
-  },
-  {
-    type: 'agent',
-    label: 'Marriage agent',
-    blurb:
-      'Build profiles for clients, invite them to claim their account, and book on their behalf. Reviewed before activation.',
-    icon: '🤝',
-  },
-  {
-    type: 'vendor',
-    label: 'Vendor',
-    blurb: 'Sell wedding services: venue, catering, photography, decor and more.',
-    icon: '🏛️',
-  },
-  {
-    type: 'planner',
-    label: 'Wedding planner',
-    blurb: 'Offer planning packages and co-manage the weddings you are engaged on.',
-    icon: '📋',
-  },
-];
+/** Presentation only — the server owns the list, we own how it looks. */
+const TYPE_ICONS: Record<string, string> = {
+  individual: '💍',
+  agent: '🤝',
+  vendor: '🏛️',
+  planner: '📋',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  bride: 'Bride',
+  groom: 'Groom',
+  family: 'Family member',
+};
 
 export default function Register() {
   const nav = useNavigate();
   const setAuth = useAuth((s) => s.setAuth);
 
-  const [accountType, setAccountType] = useState<AccountType>('individual');
-  const [role, setRole] = useState('bride');
+  const { data: catalogue, isPending: typesPending } = useQuery<{
+    individualUserEnabled: boolean;
+    accountTypes: AccountTypeOption[];
+  }>({
+    queryKey: ['account-types'],
+    queryFn: async () => (await api.get('/auth/account-types')).data,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const accountTypes = catalogue?.accountTypes ?? [];
+  // Nothing is chosen until the visitor picks; until then the first type the
+  // server offered stands in, so the default can never be a closed flow.
+  const [chosenType, setChosenType] = useState<AccountType | null>(null);
+  const [chosenRole, setChosenRole] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -69,7 +69,10 @@ export default function Register() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const selected = ACCOUNT_TYPES.find((a) => a.type === accountType)!;
+  const accountType: AccountType = chosenType ?? accountTypes[0]?.type ?? 'individual';
+  const selected = accountTypes.find((a) => a.type === accountType);
+  const roles = selected?.roles ?? [];
+  const role = chosenRole && roles.includes(chosenRole) ? chosenRole : (roles[0] ?? 'bride');
   // Every account is reached on its mobile number — it is what an OTP goes to
   // and how the other side gets in touch — so it is required at sign-up for all
   // personas, not offered as an optional afterthought.
@@ -131,9 +134,9 @@ export default function Register() {
         displayName: displayName.trim(),
       };
       if (phone.trim()) payload.phone = phone.replace(/\s|-/g, '');
-      // `role` is only meaningful for individual sign-ups; the server derives it
-      // from accountType for every other persona.
-      if (accountType === 'individual') payload.role = role;
+      // `role` is only meaningful where the server said the type needs one; it
+      // derives the role from accountType for every other persona.
+      if (selected?.requiresRole) payload.role = role;
 
       const { data } = await api.post('/auth/register', payload);
       setAuth(data);
@@ -169,14 +172,23 @@ export default function Register() {
 
         <fieldset>
           <legend className="label">I am joining as</legend>
+          {typesPending && <p className="text-sm text-gray-500">Loading the account types…</p>}
+          {!typesPending && accountTypes.length === 0 && (
+            <p className="alert-critical">
+              Sign-up is closed at the moment. Please try again later.
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
-            {ACCOUNT_TYPES.map((opt) => {
+            {accountTypes.map((opt) => {
               const active = opt.type === accountType;
               return (
                 <button
                   type="button"
                   key={opt.type}
-                  onClick={() => setAccountType(opt.type)}
+                  onClick={() => {
+                    setChosenType(opt.type);
+                    setChosenRole(null);
+                  }}
                   aria-pressed={active}
                   className={`rounded-lg border p-3 text-left transition ${
                     active
@@ -185,17 +197,17 @@ export default function Register() {
                   }`}
                 >
                   <span className="text-lg" aria-hidden>
-                    {opt.icon}
+                    {TYPE_ICONS[opt.type] ?? '•'}
                   </span>
                   <p className="font-medium text-gray-900">{opt.label}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{opt.blurb}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">{opt.description}</p>
                 </button>
               );
             })}
           </div>
         </fieldset>
 
-        {selected.roles && (
+        {roles.length > 0 && (
           <div>
             <label className="label" htmlFor="role">
               Who is this profile for?
@@ -204,11 +216,11 @@ export default function Register() {
               id="role"
               className="input"
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={(e) => setChosenRole(e.target.value)}
             >
-              {selected.roles.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
+              {roles.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r] ?? r}
                 </option>
               ))}
             </select>
@@ -305,8 +317,8 @@ export default function Register() {
           />
         </div>
 
-        <button className="btn w-full" disabled={loading}>
-          {loading ? 'Creating...' : `Create ${selected.label.toLowerCase()} account`}
+        <button className="btn w-full" disabled={loading || !selected}>
+          {loading ? 'Creating...' : `Create ${selected ? `${selected.label.toLowerCase()} ` : ''}account`}
         </button>
 
         <p className="text-center text-sm text-gray-500">

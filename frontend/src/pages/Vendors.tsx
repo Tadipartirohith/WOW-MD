@@ -538,7 +538,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   // reception's. Absent for anyone who has not set their events up yet.
   const { data: events = [] } = useQuery<WeddingEvent[]>({
     queryKey: ['my-events'],
-    queryFn: async () => (await api.get('/events')).data?.data ?? [],
+    queryFn: async () => (await api.get('/events')).data ?? [],
     retry: false,
   });
 

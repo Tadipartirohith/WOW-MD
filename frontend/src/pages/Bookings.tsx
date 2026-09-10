@@ -1224,7 +1224,7 @@ function DisputeForm({
   const [evidence, setEvidence] = useState<string[]>([]);
   const [url, setUrl] = useState('');
 
-  const ready = title.trim().length >= 3 && description.trim().length >= 10;
+  const ready = title.trim().length >= 5 && description.trim().length >= 10;
 
   return (
     <form
