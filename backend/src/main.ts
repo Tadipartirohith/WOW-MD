@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
@@ -61,6 +61,27 @@ async function bootstrap() {
       .build();
     const document = SwaggerModule.createDocument(app, swaggerCfg);
     SwaggerModule.setup(`${cfg.runtime.apiPrefix}/docs`, app, document);
+  }
+
+  /*
+   * Every link the platform hands out -- the event invitation a host forwards
+   * to a guest, the password reset, the agent's client sign-up link -- is
+   * built from APP_BASE_URL. If that still points at localhost outside
+   * development then all of them are unreachable for the person who receives
+   * them, and nothing about the platform looks broken from the inside: the
+   * host sees a link, sends it, and the guest sees "not available"
+   * (EZ1-I178, reopened as EZ1-I232).
+   *
+   * Said once, loudly, at boot. Not fatal, because refusing to start would
+   * take a running deployment down over a setting it has survived without so
+   * far -- but nobody reading the logs can now miss why the links are wrong.
+   */
+  if (cfg.runtime.env === 'production' && /localhost|127\.0\.0\.1/.test(cfg.mail.appBaseUrl)) {
+    new Logger('Bootstrap').error(
+      `APP_BASE_URL is ${cfg.mail.appBaseUrl}. Every invitation, reset and RSVP link this ` +
+        'deployment sends will point at the server itself and will not open for the person ' +
+        'who receives it. Set APP_BASE_URL to the address users reach the portal on.',
+    );
   }
 
   await app.listen(cfg.runtime.port);

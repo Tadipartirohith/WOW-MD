@@ -72,8 +72,15 @@ services:
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      # Where the links inside emails point: the SPA, not the API.
-      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      # Where every link the platform hands out points: the SPA, not the API.
+      # Invitations, password resets and RSVP links are all built from this.
+      #
+      # The fallback follows FRONTEND_PORT rather than hard-coding 8080, which
+      # pointed at nothing on any stack that had moved the web port. It is
+      # still only useful on the machine running the stack -- set APP_BASE_URL
+      # to the address your users actually reach the portal on, or every link
+      # you send is unopenable for whoever receives it (EZ1-I232).
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:${FRONTEND_PORT:-8080}}
       # Payments. The gateway keys were missing here, so a deployment could put
       # real Razorpay credentials in docker/.env and still run on the mock
       # provider, because the container never received them — the escrow would
