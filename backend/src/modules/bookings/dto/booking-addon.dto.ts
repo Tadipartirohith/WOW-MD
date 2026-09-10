@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsInt,
   IsNumber,
   IsOptional,
@@ -8,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsUploadedUrl } from '../../../common/decorators/uploaded-url.decorator';
 
 export class CreateBookingAddonDto {
   @ApiProperty({ example: 'Extra drone coverage', maxLength: 200 })
@@ -67,4 +70,30 @@ export class RespondBookingAddonDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+}
+
+/**
+ * What the provider hands over when they mark a booking delivered (EZ1-I228).
+ *
+ * Both optional. A photographer's delivery is a gallery link and a caterer's is
+ * nothing at all, so demanding evidence would block the honest majority to
+ * catch the dishonest few; when it is supplied it stays on the booking, which
+ * is what an administrator settling a dispute later needs.
+ */
+export class MarkDeliveredDto {
+  @ApiPropertyOptional({ maxLength: 2000, description: 'What was delivered.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Photographs or documents evidencing the delivery.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUploadedUrl({ each: true })
+  evidence?: string[];
 }

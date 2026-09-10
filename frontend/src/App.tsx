@@ -109,6 +109,7 @@ import ProviderConsole from './pages/ProviderConsole';
 import WeddingPlanners from './pages/WeddingPlanners';
 import Forbidden from './pages/Forbidden';
 import Verification from './pages/Verification';
+import OfficerCases from './pages/OfficerCases';
 import Visits from './pages/Visits';
 import CalendarPage from './pages/Calendar';
 import SetPassword from './pages/SetPassword';
@@ -340,23 +341,25 @@ const NAV: NavEntry[] = [
     group: 'operations',
     icon: SealCheck,
   },
-  // Visits and Calendar are the officer's own planning surfaces over the very
-  // same allocated requests the Verification queue works (EZ1-I201). Gated on
-  // fieldwork, which officers hold and administrators never do, so they sit in
-  // the officer's Operations band and stay off the admin console.
+  /*
+    Cases, not Visits and Calendar.
+
+    Visits and Calendar were two more views over the very same allocated
+    requests the Verification queue already shows, so an officer had three
+    entries for one queue and none for the investigations they also carry
+    (EZ1-I219). Cases replaces both: it is different work with a different
+    shape, and it was previously reachable only as a tab that shared its
+    filters with the visit list.
+  */
   {
-    to: '/visits',
-    label: 'Visits',
-    requires: [Permission.VERIFICATION_FIELDWORK],
+    to: '/cases',
+    label: 'Cases',
+    requires: [Permission.CASE_INVESTIGATE],
+    // An administrator works cases from Support, which is the same records
+    // with the allocation controls attached (EZ1-I203).
+    hideFor: ['admin'],
     group: 'operations',
-    icon: IdentificationCard,
-  },
-  {
-    to: '/calendar',
-    label: 'Calendar',
-    requires: [Permission.VERIFICATION_FIELDWORK],
-    group: 'operations',
-    icon: CalendarBlank,
+    icon: ClipboardText,
   },
   { to: '/notifications', label: 'Notifications', requires: [], group: 'account', icon: Bell },
   // Vendors had nowhere at all to say something had gone wrong outside a
@@ -853,6 +856,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.SESSION_MANAGE_OWN]}>
             <Security />
+          </Protected>
+        }
+      />
+      <Route
+        path="/cases"
+        element={
+          <Protected requires={[Permission.CASE_INVESTIGATE]}>
+            <OfficerCases />
           </Protected>
         }
       />

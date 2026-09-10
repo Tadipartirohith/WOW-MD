@@ -12,6 +12,7 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Quotation } from './entities/quotation.entity';
+import { MarkDeliveredDto } from './dto/booking-addon.dto';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -823,7 +824,11 @@ export class BookingsService {
    * The provider says the work is delivered. This does not complete the
    * booking — it makes the balance payable, and paying it is what completes it.
    */
-  async completeWork(actor: AuthUser, bookingId: string): Promise<Booking> {
+  async completeWork(
+    actor: AuthUser,
+    bookingId: string,
+    dto: MarkDeliveredDto = {},
+  ): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertSellerSide(actor, booking);
 
@@ -837,6 +842,12 @@ export class BookingsService {
     }
 
     booking.completedAt = new Date();
+    // What was handed over, kept with the booking (EZ1-I228). Only overwritten
+    // when something was actually supplied, so re-marking a delivery does not
+    // wipe the evidence attached the first time.
+    booking.deliveredAt = new Date();
+    if (dto.notes?.trim()) booking.deliveryNotes = dto.notes.trim();
+    if (dto.evidence?.length) booking.deliveryEvidence = dto.evidence;
     const saved = await this.transition(booking, BookingStatus.COMPLETED_PENDING_FINAL_PAYMENT);
 
     await this.outbox.record({
@@ -854,12 +865,58 @@ export class BookingsService {
    * blocks it outright: escrow a provider can release while the buyer disputes
    * it is not escrow.
    */
+  /**
+   * The buyer says the work was done as agreed.
+   *
+   * The half of the escrow flow that was missing: money became releasable when
+   * the balance arrived, which records that the buyer *paid* rather than that
+   * they were *satisfied* (EZ1-I228). Accepting is what turns held money into
+   * money the provider is owed; the alternative is to raise a dispute, which
+   * freezes it instead.
+   */
+  async confirmDelivery(actor: AuthUser, bookingId: string): Promise<Booking> {
+    const booking = await this.loadOrFail(bookingId);
+    await this.assertBuyerSide(actor, booking);
+
+    if (!booking.deliveredAt) {
+      throw new BadRequestException('The provider has not marked this delivered yet');
+    }
+    if (booking.deliveryAcceptedAt) return booking;
+    if (await this.cases.hasOpenCaseFor(bookingId)) {
+      throw new BadRequestException(
+        'An open case is holding this booking. It moves on when a settlement is recorded.',
+      );
+    }
+
+    booking.deliveryAcceptedAt = new Date();
+    const saved = await this.bookings.save(booking);
+
+    await this.outbox.record({
+      eventType: 'booking.delivery_accepted',
+      aggregateType: 'booking',
+      payload: { bookingId, userId: booking.userId },
+    });
+    return saved;
+  }
+
   async settle(actor: AuthUser, bookingId: string): Promise<Booking> {
     const booking = await this.loadOrFail(bookingId);
     await this.assertParticipant(actor, booking);
 
     if (booking.status !== BookingStatus.COMPLETED) {
       throw new BadRequestException('The booking is not complete yet');
+    }
+    /*
+     * Delivered work needs the buyer's word before the money moves.
+     *
+     * Conditioned on `deliveredAt` rather than on the acceptance being absent,
+     * so bookings that completed before this flow existed settle exactly as
+     * they did — there is nothing for their buyers to have accepted.
+     */
+    if (booking.deliveredAt && !booking.deliveryAcceptedAt) {
+      throw new BadRequestException(
+        'The customer has not confirmed the delivery yet. They accept it, or raise a dispute.',
+      );
     }
     if (await this.cases.hasOpenCaseFor(bookingId)) {
       throw new BadRequestException(

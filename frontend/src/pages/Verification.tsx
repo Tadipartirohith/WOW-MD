@@ -324,12 +324,18 @@ function Pill({ status }: { status: string }) {
 export default function Verification() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
-  // Cases moved to the admin Support module (EZ1-I203): an administrator works
-  // them at /admin/support now, so the Cases tab and its metric tiles are
-  // hidden here for the admin. A Verification Officer still works cases on this
-  // screen, so everyone who is not an admin keeps them.
-  const role = useAuth((s) => s.user?.role);
-  const showCases = role !== 'admin';
+  /*
+    Cases have their own page now (EZ1-I219).
+
+    They moved off the admin's copy of this screen first (EZ1-I203, to Support)
+    and now off the officer's too, so no role works a case from here.
+
+    An officer works them at /cases and an administrator at Support; either way
+    this screen is the visit queue and nothing else, so the tab and its filter
+    row are gone. `CaseRow` and `CASE_FILTERS` are still exported from here
+    because both of those pages render them.
+  */
+  const showCases = false;
   const canAllocate = can(permissions, Permission.VERIFICATION_ALLOCATE);
   const canDecide = can(permissions, Permission.VERIFICATION_DECIDE);
   /*

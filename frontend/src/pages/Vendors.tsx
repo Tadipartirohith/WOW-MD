@@ -346,9 +346,15 @@ export default function Vendors() {
                 is still obvious, and the card that the pointer is actually on
                 is the one that looks pressable.
 
-                View vendor opens the full profile — services, portfolio and
-                availability (EZ1-I117). A buyer also gets Request quote, which
-                opens the availability-and-request dialog straight from the card.
+                View details is the only action on a card now (EZ1-I226).
+
+                A card carried a Request quote button straight into the booking
+                form, so a buyer could ask a vendor for a price having seen a
+                name, a city and a starting figure — not the services, the
+                portfolio, the reviews or what the vendor is actually free to
+                do. The request belongs after the vendor has been read, so it
+                lives on the profile, where the form can also ask which service
+                is wanted before showing the availability for it.
               */}
               <div className="mt-auto flex flex-col gap-2 pt-4">
                 {typeof v.startingPrice === 'number' && (
@@ -358,17 +364,12 @@ export default function Vendors() {
                   </p>
                 )}
                 <button
-                  className="btn-outline btn-sm w-full transition-colors
-                    group-hover/vendor:border-brand group-hover/vendor:text-brand-strong"
+                  className="btn btn-sm w-full transition-colors"
                   onClick={() => navigate(`/vendors/${v.id}`)}
                 >
-                  View vendor
+                  View details
                 </button>
-                {canBook ? (
-                  <button className="btn btn-sm w-full" onClick={() => setRequesting(v)}>
-                    Request quote
-                  </button>
-                ) : (
+                {!canBook && (
                   <p className="rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
                     Browse to recommend — the couple places the booking.
                   </p>
