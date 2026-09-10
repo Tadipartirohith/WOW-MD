@@ -241,22 +241,35 @@ export default function ProfilePreview({
               )}
             </Group>
 
-            {/* The horoscope headline before acceptance, so a family can compare
-                charts while deciding whether to send interest (EZ1-I48). The full
-                chart and document stay behind the mutual accept. */}
-            {data.limited && (str('rashi') || str('star') || str('gothram') || str('kujaDosham')) && (
-              <Group title="Horoscope">
-                <Row label="Rashi">{str('rashi')}</Row>
-                <Row label="Star">{str('star')}</Row>
-                <Row label="Padam">{str('padam')}</Row>
-                <Row label="Gothram">{str('gothram')}</Row>
-                <Row label="Kuja dosham">{str('kujaDosham')}</Row>
-              </Group>
-            )}
+            {/* The horoscope before acceptance, so a family can compare charts
+                while deciding whether to send interest (EZ1-I48, EZ1-I231).
+                Family, contact and the rest of the biodata stay behind the
+                mutual accept; the chart does not, because comparing it is what
+                this decision is actually made on. */}
+            {data.limited &&
+              Boolean(
+                str('rashi') ||
+                  str('star') ||
+                  str('gothram') ||
+                  str('kujaDosham') ||
+                  d.horoscopeDocumentUrl,
+              ) && (
+                <Group title="Horoscope">
+                  <Row label="Rashi">{str('rashi')}</Row>
+                  <Row label="Star">{str('star')}</Row>
+                  <Row label="Padam">{str('padam')}</Row>
+                  <Row label="Gothram">{str('gothram')}</Row>
+                  <Row label="Kuja dosham">{str('kujaDosham')}</Row>
+                  {/* The chart is what families actually compare on before
+                      sending interest, so it is here rather than behind the
+                      accept (EZ1-I231). */}
+                  <HoroscopeChart url={d.horoscopeDocumentUrl as string | null | undefined} />
+                </Group>
+              )}
 
             {data.limited && (
               <p className="text-xs text-gray-500">
-                Family, the full horoscope and the rest of the biodata are shared once you both
+                Family, contact details and the rest of the biodata are shared once you both
                 accept interest.
               </p>
             )}

@@ -70,6 +70,14 @@ export default function VendorDetail() {
   const navigate = useNavigate();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canBook = can(permissions, Permission.BOOKING_CREATE);
+  /*
+   * A planner engaged on a wedding may raise the request for the couple
+   * (EZ1-I235). The booking is still the couple's -- the planner is recorded
+   * as who placed it -- so the same controls are offered, and the request
+   * form asks which client it is for.
+   */
+  const canRequestForClient = can(permissions, Permission.BOOKING_REQUEST_FOR_CLIENT);
+  const canAsk = canBook || canRequestForClient;
 
   const { data: vendor, isLoading } = useQuery({
     queryKey: ['vendor', id],
@@ -194,7 +202,7 @@ export default function VendorDetail() {
           {vendor.description && (
             <p className="mt-3 text-sm text-gray-700">{vendor.description}</p>
           )}
-          {canBook && (
+          {canAsk && (
             <button
               className="btn mt-4"
               onClick={() => navigate(`/vendors?request=${vendor.id}`)}
@@ -247,17 +255,26 @@ export default function VendorDetail() {
                     dayOpenings === 1 ? '' : 's'
                   } left.`
                 : /*
-                     Only offer the request to somebody who can make one.
-                     An agent or a planner holds no booking:create -- the couple
-                     books, not the agency that introduced them -- so telling
-                     them they "can still send a request" promised an action
-                     that had no button under it (EZ1-I179).
+                     Never a promise the reader cannot act on, and never a dead
+                     end either.
+
+                     This once told everybody "you can still send a request"
+                     with the button gated on booking:create, so an agent or a
+                     planner read an instruction they had no way to follow
+                     (EZ1-I179). Making the sentence conditional fixed that and
+                     introduced the opposite fault: a planner now saw a bare
+                     "no opening" and nothing about what to do next, which came
+                     straight back as EZ1-I235. So each reader is told what is
+                     actually true for them.
                    */
                   `No published opening on ${new Date(checkedDate).toLocaleDateString()}.${
-                    canBook ? ' You can still send a request and the vendor will confirm.' : ''
+                    canAsk
+                      ? ' You can still send a request and the vendor will confirm.'
+                      : ' The couple can still request this date from their own account,' +
+                        ' and the vendor confirms it there.'
                   }`}
             </p>
-            {dayOpen.length === 0 && canBook && (
+            {dayOpen.length === 0 && canAsk && (
               <button
                 className="btn btn-sm mt-2"
                 onClick={() => navigate(`/vendors?request=${vendor.id}&date=${checkedDate}`)}
@@ -272,9 +289,12 @@ export default function VendorDetail() {
           <div className="card space-y-3">
             <p className="text-sm text-gray-500">
               No open dates published for the next two months.
-              {canBook ? ' You can still send a request and the vendor will confirm.' : ''}
+              {canAsk
+                ? ' You can still send a request and the vendor will confirm.'
+                : ' The couple can still request a date from their own account, and the vendor' +
+                  ' confirms it there.'}
             </p>
-            {canBook && (
+            {canAsk && (
               <button
                 className="btn btn-sm"
                 onClick={() => navigate(`/vendors?request=${vendor.id}`)}

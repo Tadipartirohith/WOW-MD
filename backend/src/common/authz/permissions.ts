@@ -25,6 +25,19 @@ export enum Permission {
 
   // --- bookings (buy side) ---
   BOOKING_CREATE = 'booking:create',
+  /**
+   * Raise a booking request on behalf of a wedding you are engaged on.
+   *
+   * Deliberately not BOOKING_CREATE. EZ1-I29 removed booking from planners on
+   * the principle that the couple books and the agency that introduced them
+   * does not, and that still holds: a request raised this way belongs to the
+   * couple, is paid by the couple, and appears in the couple's bookings. The
+   * planner is recorded as who placed it and nothing more.
+   *
+   * Without it a planner could see that a vendor had no published date and had
+   * no way to ask, which is the dead end reported as EZ1-I235 and EZ1-I240.
+   */
+  BOOKING_REQUEST_FOR_CLIENT = 'booking:request_for_client',
   BOOKING_PAY = 'booking:pay',
   BOOKING_CANCEL_OWN = 'booking:cancel:own',
   BOOKING_READ_OWN = 'booking:read:own',
@@ -279,6 +292,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
 
   // Wedding planners sell services AND co-manage the plans they are engaged on.
   [UserRole.PLANNER]: [
+    // Requests raised for a wedding this planner runs. The booking is the
+    // couple's; the planner is only recorded as having placed it (EZ1-I235).
+    Permission.BOOKING_REQUEST_FOR_CLIENT,
     Permission.PROFILE_MANAGE_OWN,
     Permission.PLANNER_LISTING_MANAGE,
     Permission.BOOKING_CONFIRM,

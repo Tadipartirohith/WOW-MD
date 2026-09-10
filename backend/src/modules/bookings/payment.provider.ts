@@ -44,6 +44,23 @@ export interface PayoutDestination {
   label: string;
 }
 
+/**
+ * What became of a refund.
+ *
+ * `refund()` used to return void and swallow both failure modes -- a gateway
+ * 5xx and a capture it could not find -- so the caller wrote REFUNDED against a
+ * refund that never left the platform. Money cannot be recorded as returned on
+ * the strength of having asked (council review, 2026-09-10).
+ */
+export interface RefundResult {
+  /** Whether the gateway confirmed it. */
+  refunded: boolean;
+  /** The gateway's reference, when there is one. */
+  refundRef: string | null;
+  /** Why not, when it did not. Surfaced to the operator, never swallowed. */
+  reason: string | null;
+}
+
 export interface PayoutResult {
   /** Whether money actually moved. */
   transferred: boolean;
@@ -61,7 +78,7 @@ export interface PaymentProvider {
     currency: string,
     destination: PayoutDestination,
   ): Promise<PayoutResult>;
-  refund(providerRef: string, amount: string): Promise<void>;
+  refund(providerRef: string, amount: string): Promise<RefundResult>;
   /**
    * Verifies the signature on an inbound webhook and normalises it. Returning
    * null means the signature did not check out and the request must be refused.
@@ -97,8 +114,9 @@ export class MockPaymentProvider implements PaymentProvider {
     return { transferred: true, transferRef: `mock_txn_${randomUUID()}`, reason: null };
   }
 
-  async refund(providerRef: string, amount: string): Promise<void> {
+  async refund(providerRef: string, amount: string): Promise<RefundResult> {
     this.logger.debug(`[mock] refund ${amount} for ${providerRef}`);
+    return { refunded: true, refundRef: `mock_rfnd_${providerRef}`, reason: null };
   }
 
   /**
@@ -257,11 +275,12 @@ export class RazorpayPaymentProvider implements PaymentProvider {
    * did not happen. Refunding an order means refunding the payment that
    * captured against it.
    */
-  async refund(providerRef: string, amount: string): Promise<void> {
+  async refund(providerRef: string, amount: string): Promise<RefundResult> {
     const paymentId = await this.capturedPaymentFor(providerRef);
     if (!paymentId) {
+      const reason = 'No captured payment was found for that order';
       this.logger.error(`Refund for ${providerRef} found no captured payment`);
-      return;
+      return { refunded: false, refundRef: null, reason };
     }
 
     const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
@@ -269,14 +288,26 @@ export class RazorpayPaymentProvider implements PaymentProvider {
       headers: { 'content-type': 'application/json', authorization: this.authHeader() },
       body: JSON.stringify({
         amount: this.toMinorUnits(amount),
-        // Razorpay dedupes on this, so a retried cancellation refunds once.
         speed: 'normal',
+        // The idempotency key. `speed` does not dedupe anything -- the comment
+        // that said so was wrong -- so a retried cancellation is made safe by
+        // keying the receipt on the order instead.
+        receipt: `rfnd_${providerRef}`,
         notes: { order: providerRef },
       }),
     });
     if (!res.ok) {
-      this.logger.error(`Refund failed for ${providerRef}: ${res.status} ${await res.text()}`);
+      const body = await res.text();
+      this.logger.error(`Refund failed for ${providerRef}: ${res.status} ${body}`);
+      return {
+        refunded: false,
+        refundRef: null,
+        reason: `The gateway refused the refund (${res.status})`,
+      };
     }
+
+    const json = (await res.json().catch(() => null)) as { id?: string } | null;
+    return { refunded: true, refundRef: json?.id ?? null, reason: null };
   }
 
   /**

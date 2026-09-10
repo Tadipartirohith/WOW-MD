@@ -13,6 +13,7 @@ import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Quotation } from './entities/quotation.entity';
 import { MarkDeliveredDto } from './dto/booking-addon.dto';
+import { Permission, roleHasPermission } from '../../common/authz/permissions';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -273,11 +274,34 @@ export class BookingsService {
     // families and is paid for that; it does not hire their photographer, and
     // it certainly does not hold their escrow. Booking on somebody else's
     // behalf was removed with that scope, not merely hidden.
-    if (!isIndividual(actor.role)) {
+    /*
+     * Who this booking is for.
+     *
+     * Ordinarily the caller: a couple books for themselves. A planner engaged
+     * on a wedding may also raise the request, naming the couple -- the
+     * booking is still theirs, still paid by them, and still appears in their
+     * bookings; the planner is recorded in `bookedByUserId` as who placed it
+     * (EZ1-I235). That keeps EZ1-I29's rule that the agency does not own the
+     * booking while giving the planner the way to ask that they had none of.
+     */
+    const forClient = dto.forClientUserId;
+    if (forClient && forClient !== actor.userId) {
+      if (!roleHasPermission(actor.role, Permission.BOOKING_REQUEST_FOR_CLIENT)) {
+        throw new ForbiddenException('You cannot place a booking for somebody else');
+      }
+      // Engaged on that wedding, or not at all. Same check the planner's own
+      // events and brief go through.
+      const engaged = await this.weddingPlans.findOne({
+        where: { userId: forClient, plannerUserId: actor.userId },
+      });
+      if (!engaged) {
+        throw new ForbiddenException('You are not engaged on that wedding');
+      }
+    } else if (!isIndividual(actor.role)) {
       throw new ForbiddenException('Only the couple and their family can place bookings');
     }
 
-    const clientUserId = actor.userId;
+    const clientUserId = forClient && forClient !== actor.userId ? forClient : actor.userId;
     await this.assertServicesUnlocked(clientUserId);
 
     const provider = await this.providerOwner(dto.providerType, dto.providerId);
@@ -1104,11 +1128,25 @@ export class BookingsService {
       if (!payment.providerRef) continue;
       // Refunds return the FULL amount to the buyer: the platform earns no
       // commission on a booking that never happened.
-      await this.gateway.refund(payment.providerRef, payment.amount);
+      //
+      // And only recorded when the gateway confirms it. This wrote REFUNDED
+      // unconditionally, so a refund lost to a 5xx or an unfindable capture
+      // still showed on the buyer's escrow page as money returned, with the
+      // booking cancelled and nothing left to retry it. A failure now stays
+      // HELD_IN_ESCROW with the reason on the row, which is true and
+      // recoverable (council review, 2026-09-10).
+      const outcome = await this.gateway.refund(payment.providerRef, payment.amount);
+      if (!outcome.refunded) {
+        await this.payments.update(payment.id, {
+          payoutNote: outcome.reason ?? 'The gateway did not confirm the refund',
+        });
+        continue;
+      }
       await this.payments.update(payment.id, {
         status: PaymentStatus.REFUNDED,
         commissionAmount: '0.00',
         payoutAmount: '0.00',
+        payoutNote: null,
       });
       await this.audit.record({
         action: AuditAction.BOOKING_ESCROW_REFUNDED,
@@ -1176,7 +1214,12 @@ export class BookingsService {
     }
     if (booking.startedAt) events.push({ at: booking.startedAt, label: 'Work started', detail: null });
     if (booking.completedAt)
-      events.push({ at: booking.completedAt, label: 'Marked delivered', detail: null });
+      events.push({
+        at: booking.completedAt,
+        label: 'Marked delivered',
+        // What the provider said they handed over, so the timeline carries it too.
+        detail: booking.deliveryNotes ?? null,
+      });
     if (booking.cancelledAt) {
       events.push({
         at: booking.cancelledAt,

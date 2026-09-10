@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { Permission, permissionsFor } from '../authz/permissions';
 import { AuthUser } from '../decorators/current-user.decorator';
@@ -29,16 +29,33 @@ export class PermissionsGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!required || required.length === 0) return true;
+    const anyOf = this.reflector.getAllAndOverride<Permission[]>(ANY_PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    const hasAnd = Boolean(required && required.length > 0);
+    const hasOr = Boolean(anyOf && anyOf.length > 0);
+    if (!hasAnd && !hasOr) return true;
 
     const { user } = context.switchToHttp().getRequest<{ user?: AuthUser }>();
     if (!user) throw new ForbiddenException('Authentication required');
 
     const held = permissionsFor(user.role);
-    const missing = required.filter((p) => !held.includes(p));
-    if (missing.length > 0) {
+
+    if (hasAnd) {
+      const missing = (required as Permission[]).filter((p) => !held.includes(p));
+      if (missing.length > 0) {
+        throw new ForbiddenException(
+          `Your account type (${user.role}) cannot perform this action. Missing: ${missing.join(', ')}`,
+        );
+      }
+    }
+
+    // At least one of the alternatives, when the route declares any.
+    if (hasOr && !(anyOf as Permission[]).some((p) => held.includes(p))) {
       throw new ForbiddenException(
-        `Your account type (${user.role}) cannot perform this action. Missing: ${missing.join(', ')}`,
+        `Your account type (${user.role}) cannot perform this action. ` +
+          `Needs one of: ${(anyOf as Permission[]).join(', ')}`,
       );
     }
     return true;

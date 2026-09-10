@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../../lib/api';
+import { MOBILE_10_PATTERN } from '../../lib/permissions';
 import {
   AllBookings,
   Businesses,
@@ -381,6 +382,13 @@ function CreateOfficer() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  /*
+   * CreateOfficerDto requires a mobile number and this form never collected
+   * one, so every submission 400'd and no verification officer could be
+   * created at all -- the only route by which the persona exists (EZ1-I234,
+   * confirmed by the council review).
+   */
+  const [phone, setPhone] = useState('');
   const [region, setRegion] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -391,10 +399,16 @@ function CreateOfficer() {
     setDone('');
     setBusy(true);
     try {
-      await api.post('/verification/officers', { email, name, region: region || undefined });
+      await api.post('/verification/officers', {
+        email,
+        name,
+        phone,
+        region: region || undefined,
+      });
       setDone('Officer created. Their credentials are on the way.');
       setName('');
       setEmail('');
+      setPhone('');
       setRegion('');
       setOpen(false);
       qc.invalidateQueries({ queryKey: ['admin-officers'] });
@@ -443,13 +457,23 @@ function CreateOfficer() {
         />
         <input
           className="input"
+          placeholder="Mobile number"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+        <input
+          className="input"
           placeholder="Area covered"
           value={region}
           onChange={(e) => setRegion(e.target.value)}
         />
       </div>
       <div className="flex flex-wrap gap-2">
-        <button className="btn" disabled={busy || !email || name.trim().length < 2} onClick={create}>
+        <button
+          className="btn"
+          disabled={busy || !email || name.trim().length < 2 || !MOBILE_10_PATTERN.test(phone)}
+          onClick={create}
+        >
           {busy ? 'Creating…' : 'Create officer'}
         </button>
         <button className="btn-ghost" onClick={() => setOpen(false)}>
