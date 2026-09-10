@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { BOOKING_STATUS_LABEL, Permission, can } from '../lib/permissions';
 import { useAuth } from '../store/auth';
@@ -109,7 +109,18 @@ export default function Events() {
    * any of them — Events listed the planner's own days, of which there are
    * none, because a planner is not the one getting married.
    */
-  const [host, setHost] = useState('');
+  /*
+   * Whose wedding this is, seeded from the address bar.
+   *
+   * A planner arriving from a booking already knows which couple they are
+   * looking at, and making them pick that couple again out of a dropdown is
+   * how a booking and its events end up feeling like two unrelated records
+   * (EZ1-I195, EZ1-I196). `?host=` carries it; the picker still works for
+   * everything else, and the server refuses a client this planner is not
+   * engaged on either way.
+   */
+  const [eventParams] = useSearchParams();
+  const [host, setHost] = useState(eventParams.get('host') ?? '');
   const { data: engaged } = useQuery({
     queryKey: ['engaged-hosts'],
     queryFn: async () =>

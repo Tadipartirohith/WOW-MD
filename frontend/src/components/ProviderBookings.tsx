@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
+import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
 import BookingChat from './BookingChat';
@@ -247,7 +248,8 @@ interface BriefVendor {
 }
 
 interface RequestBrief {
-  client: { name: string };
+  /** `userId` is the couple the brief belongs to, for the link into Events. */
+  client: { name: string; userId?: string | null };
   request: {
     requirements: string | null;
     expectedBudget: string | null;
@@ -323,6 +325,21 @@ function WeddingBrief({ bookingId }: { bookingId: string }) {
       {open && (
         <div className="mt-2 space-y-3 rounded-sm bg-surface-sunken p-3 text-xs text-gray-700">
           {isPending && <p className="text-gray-500">Loading the brief…</p>}
+          {/*
+            Through to the Events module, which owns this detail.
+
+            The brief is a read-only assembly of the couple's events; anything
+            that needs changing is changed there, on the one record both sides
+            share (EZ1-I195, EZ1-I196).
+          */}
+          {data?.client?.userId && (
+            <Link
+              className="inline-block text-xs font-medium text-brand-strong underline underline-offset-2"
+              to={`/events?host=${data.client.userId}`}
+            >
+              Open these days in Events
+            </Link>
+          )}
           {data && (
             <>
               <dl className="flex flex-wrap gap-x-4 gap-y-1">
