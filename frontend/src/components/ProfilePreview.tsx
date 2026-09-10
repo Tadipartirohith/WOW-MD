@@ -288,6 +288,22 @@ export default function ProfilePreview({
                 <>
                   <Row label="Rashi">{String(bag('horoscope').rashi ?? '') || null}</Row>
                   <Row label="Star">{String(bag('horoscope').star ?? '') || null}</Row>
+                  {/* The rest of the chart. Families compare on padam, gothram
+                      and kuja dosham as much as on rashi and star, and all five
+                      are on the biodata already — only the first two were being
+                      shown here (EZ1-I231). */}
+                  <Row label="Padam">{String(bag('horoscope').padam ?? '') || null}</Row>
+                  <Row label="Gothram">{String(bag('horoscope').gothram ?? '') || null}</Row>
+                  <Row label="Kuja dosham">
+                    {String(bag('horoscope').kujaDosham ?? '') || null}
+                  </Row>
+                  <Row label="Place of birth">
+                    {String(bag('horoscope').birthPlace ?? '') || null}
+                  </Row>
+                  <Row label="Time of birth">
+                    {String(bag('horoscope').timeOfBirth ?? '') || null}
+                  </Row>
+                  <HoroscopeChart url={d.horoscopeDocumentUrl as string | null | undefined} />
                 </>
               )}
             </Group>
@@ -428,6 +444,50 @@ function ProfileImage({
       onError={() => setFailed(true)}
       className={className}
     />
+  );
+}
+
+
+/**
+ * The chart the family uploaded, shown rather than merely stored.
+ *
+ * It was written to the biodata, saved, returned in this very payload, and
+ * never rendered anywhere — so a family who attached their daughter's chart
+ * saw no sign of it on any profile view (EZ1-I231). An image is worth showing
+ * inline, because that is what people want to look at; a PDF opens in a tab,
+ * because an inline PDF viewer inside a modal is worse than a new tab. When
+ * nothing was uploaded the row says so, rather than leaving a blank the reader
+ * has to interpret.
+ */
+function HoroscopeChart({ url }: { url: string | null | undefined }) {
+  if (!url) return <Row label="Chart">{null}</Row>;
+
+  // The stored path decides the treatment. Anything that is not an image we
+  // can render is offered as a link, which is the safe fallback for a PDF and
+  // for any format we have not thought of.
+  const isImage = /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(url);
+
+  return (
+    <div className="flex gap-3 py-1.5">
+      <dt className="w-40 shrink-0 text-gray-500">Chart</dt>
+      <dd className="min-w-0 font-medium text-gray-900">
+        {isImage ? (
+          <a href={url} target="_blank" rel="noreferrer" className="block">
+            <img
+              src={url}
+              alt="Horoscope chart"
+              loading="lazy"
+              className="max-h-64 rounded-sm border border-gray-200 object-contain"
+            />
+            <span className="mt-1 block text-xs text-brand-strong">Open full size</span>
+          </a>
+        ) : (
+          <a href={url} target="_blank" rel="noreferrer" className="text-brand-strong underline">
+            Open the chart
+          </a>
+        )}
+      </dd>
+    </div>
   );
 }
 
