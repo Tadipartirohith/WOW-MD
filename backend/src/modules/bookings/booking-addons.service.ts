@@ -183,12 +183,55 @@ export class BookingAddonsService {
     addon.responseNote = note?.trim() || null;
     const saved = await this.addons.save(addon);
 
+    /*
+     * An accepted add-on is money owed, so it goes onto the booking.
+     *
+     * Accepting recorded the add-on and stopped there: the row read `accepted`
+     * at the agreed price while the booking still showed the original amount,
+     * so the couple owed 6,500 that appeared on no total, no instalment and no
+     * payments page (EZ1-I215). The booking total is the one number every
+     * downstream reader trusts -- escrow, commission, the vendor's accounts --
+     * and it has to carry what was actually agreed.
+     *
+     * Summed from the accepted add-ons rather than incremented, so a
+     * double-submitted acceptance cannot add the same extra twice.
+     */
+    if (addon.status === BookingAddonStatus.ACCEPTED) {
+      await this.applyAcceptedAddons(addon.bookingId);
+    }
+
     await this.outbox.record({
       eventType,
       aggregateType: 'booking',
       payload: { bookingId: addon.bookingId, addonId: addon.id, status: addon.status },
     });
     return saved;
+  }
+
+  /**
+   * Re-totals a booking from its base amount plus everything accepted on it.
+   *
+   * `baseAmount` is written the first time an add-on is accepted and never
+   * again, so the original figure survives however many extras are agreed
+   * afterwards and the sum stays idempotent.
+   */
+  private async applyAcceptedAddons(bookingId: string): Promise<void> {
+    const booking = await this.loadBooking(bookingId);
+    const accepted = await this.addons.find({
+      where: { bookingId, status: BookingAddonStatus.ACCEPTED },
+    });
+
+    if (booking.baseAmount === null || booking.baseAmount === undefined) {
+      booking.baseAmount = booking.amount;
+    }
+
+    const extras = accepted.reduce((total, a) => {
+      const agreed = a.vendorPrice ?? a.proposedPrice ?? '0';
+      return total + Number(agreed) * (a.quantity ?? 1);
+    }, 0);
+
+    booking.amount = (Number(booking.baseAmount) + extras).toFixed(2);
+    await this.bookings.save(booking);
   }
 
   private async loadForSeller(

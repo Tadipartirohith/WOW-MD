@@ -41,8 +41,25 @@ export class Booking {
   @Column({ type: 'enum', enum: BookingStatus, default: BookingStatus.REQUESTED })
   status: BookingStatus;
 
+  /**
+   * What is owed in total, extras included.
+   *
+   * Every downstream reader — escrow, commission, the vendor's accounts —
+   * takes its figure from here, so an accepted add-on has to land in it.
+   */
   @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
   amount: string;
+
+  /**
+   * The quotation before any add-ons, kept so `amount` can be recomputed.
+   *
+   * Written the first time an add-on is accepted and never again: re-summing
+   * from a stable base is what makes agreeing a second extra — or the same one
+   * twice — arrive at the right number rather than compounding (EZ1-I215).
+   * Null on every booking that has never had an add-on, which is most of them.
+   */
+  @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
+  baseAmount: string | null;
 
   @Column({ default: 'INR' })
   currency: string;
