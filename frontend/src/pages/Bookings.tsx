@@ -13,6 +13,13 @@ import { Loading } from '../components/ui/Feedback';
 
 interface Booking {
   id: string;
+  /**
+   * When the provider marked the work delivered, and whether this buyer has
+   * accepted it (EZ1-I228). Escrow turns on the acceptance, not on the balance
+   * arriving, so the two are read separately.
+   */
+  deliveredAt?: string | null;
+  deliveryAcceptedAt?: string | null;
   userId: string;
   bookedByUserId: string;
   providerType: 'vendor' | 'planner';
@@ -410,6 +417,24 @@ export default function Bookings() {
               {OPEN_STATUSES.includes(b.status) && (
                 <button className="btn-outline" onClick={() => setCancelling(b.id)}>
                   Cancel
+                </button>
+              )}
+              {/*
+                The buyer's word that the work was done (EZ1-I228).
+
+                Escrow used to become releasable when the balance arrived, which
+                records that they paid rather than that they were satisfied.
+                This is the other half, and it sits next to "Raise an issue"
+                because those are the two answers to the same question.
+              */}
+              {b.deliveredAt && !b.deliveryAcceptedAt && (
+                <button
+                  className="btn"
+                  onClick={() =>
+                    run(() => api.put(`/bookings/${b.id}/confirm-delivery`, {}))
+                  }
+                >
+                  Accept &amp; complete
                 </button>
               )}
               {canDispute && (

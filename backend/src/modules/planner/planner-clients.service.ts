@@ -351,7 +351,20 @@ export class PlannerClientsService {
     const toSource = CORE_CATEGORIES.filter((c) => !byCategory.has(c));
 
     return {
-      client: { name: profiles[0]?.displayName ?? user?.email ?? 'The couple' },
+      client: {
+        name: profiles[0]?.displayName ?? user?.email ?? 'The couple',
+        /*
+         * Who the wedding belongs to, so the booking can link to their events
+         * rather than only summarising them (EZ1-I195).
+         *
+         * The brief is read-only and assembled from the Events module, which is
+         * right -- event detail has one home and a booking should not carry a
+         * second copy to drift from it. But a read-only summary with no way
+         * through to the thing it summarises is where a planner starts keeping
+         * their own notes, which is how the two diverge in the first place.
+         */
+        userId: clientUserId,
+      },
       /** What the couple asked this planner for, before any quote. */
       request: {
         requirements: booking.requirements ?? null,

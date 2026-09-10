@@ -27,6 +27,15 @@ interface IncomingBooking {
   currency: string;
   eventDate: string | null;
   createdAt: string;
+  /**
+   * The published window this was booked into, when there was one.
+   *
+   * Null means the customer named a date the provider had not opened — a
+   * "request on date" rather than a booking against a slot (EZ1-I227). The
+   * distinction is not a status, it is how the request arrived, which is why
+   * it is read from here rather than from `status`.
+   */
+  slotId?: string | null;
   requirements: string | null;
   clientName: string | null;
   clientEmail: string | null;
@@ -65,10 +74,31 @@ const NEXT_ACTION: Record<string, string> = {
   completed_pending_final_payment: 'Awaiting the final payment',
 };
 
+/**
+ * Whether this arrived as a request against a date the provider never opened.
+ *
+ * The customer wanted a day with no published window and asked anyway, which
+ * the provider has to answer differently: they are being asked whether they
+ * *can* do it at all, not merely for a price against a slot they already
+ * offered (EZ1-I227). Still an ordinary booking underneath — accepting it puts
+ * it back on the same quotation-to-payment path as everything else — so it is
+ * derived here rather than given a status of its own.
+ */
+function isRequestOnDate(b: IncomingBooking): boolean {
+  return (
+    !b.slotId &&
+    Boolean(b.eventDate) &&
+    ['requested', 'quotation_sent', 'quotation_accepted'].includes(b.status)
+  );
+}
+
 /** The tabs, and which statuses each gathers. */
 const TABS: { key: string; label: string; statuses: string[] }[] = [
   { key: 'all', label: 'All', statuses: [] },
   { key: 'requests', label: 'Requests', statuses: ['requested', 'quotation_sent', 'quotation_accepted'] },
+  // Derived rather than status-based; `statuses` stays empty and the filter
+  // below special-cases it.
+  { key: 'request_on_date', label: 'Request on Date', statuses: [] },
   { key: 'confirmed', label: 'Confirmed', statuses: ['payment_pending', 'pending', 'confirmed'] },
   { key: 'in_progress', label: 'In progress', statuses: ['in_progress'] },
   { key: 'completed', label: 'Completed', statuses: ['completed', 'completed_pending_final_payment'] },
@@ -145,6 +175,7 @@ export default function BookingConsole({
     const term = search.trim().toLowerCase();
 
     const filtered = all.filter((b) => {
+      if (tab === 'request_on_date' && !isRequestOnDate(b)) return false;
       if (wanted.length > 0 && !wanted.includes(b.status)) return false;
       if (!term) return true;
       // Everything somebody might type: a couple, a booking reference, a
@@ -167,6 +198,9 @@ export default function BookingConsole({
   }, [all, tab, search, sort]);
 
   const countFor = (entry: (typeof TABS)[number]): number | undefined => {
+    // Counted from the rows, not the server's per-status tally: the server
+    // counts statuses and this tab is not one (EZ1-I227).
+    if (entry.key === 'request_on_date') return all.filter(isRequestOnDate).length;
     if (!counts) return undefined;
     if (entry.key === 'all') return counts.all;
     return entry.statuses.reduce((n, status) => n + (counts[status] ?? 0), 0);
@@ -283,6 +317,17 @@ export default function BookingConsole({
                   <span className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs text-gray-700">
                     {statusLabels[booking.status] ?? booking.status.replace(/_/g, ' ')}
                   </span>
+                  {/* Marked on the row as well as gathered under its own tab, so
+                      it reads as one wherever the provider comes across it
+                      (EZ1-I227). */}
+                  {isRequestOnDate(booking) && (
+                    <span
+                      className="rounded-full bg-caution-bg px-2 py-0.5 text-xs text-caution-fg"
+                      title="The customer asked for a date you have not published. Check it before quoting."
+                    >
+                      Request on date
+                    </span>
+                  )}
                   {booking.paymentStatus && (
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs ${

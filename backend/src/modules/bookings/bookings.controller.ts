@@ -24,6 +24,7 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { RespondQuotationDto, SendQuotationDto } from './dto/quotation.dto';
 import {
   CreateBookingAddonDto,
+  MarkDeliveredDto,
   RequoteBookingAddonDto,
   RespondBookingAddonDto,
 } from './dto/booking-addon.dto';
@@ -373,8 +374,30 @@ export class BookingsController {
       'that. Refused before the second instalment, and while a case is open.',
   })
   @Put(':id/complete')
-  complete(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.bookings.completeWork(actor, id);
+  complete(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MarkDeliveredDto,
+  ) {
+    return this.bookings.completeWork(actor, id, dto);
+  }
+
+  /**
+   * The buyer accepts the delivery, which is what makes the money releasable.
+   *
+   * Distinct from paying the balance: one records that they paid, the other
+   * that they were satisfied, and escrow turns on the second (EZ1-I228). The
+   * alternative to accepting is raising a dispute, which freezes it instead.
+   */
+  @RequirePermissions(Permission.BOOKING_PAY)
+  @ApiOperation({
+    summary: 'Confirm the work was delivered as agreed',
+    description:
+      'Refused before the provider marks it delivered, and while a case is open on the booking.',
+  })
+  @Put(':id/confirm-delivery')
+  confirmDelivery(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.confirmDelivery(actor, id);
   }
 
   @RequirePermissions(Permission.BOOKING_COMPLETE)

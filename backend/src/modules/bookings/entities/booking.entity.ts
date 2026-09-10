@@ -133,6 +133,39 @@ export class Booking {
   @Column({ type: 'timestamptz', nullable: true })
   completedAt: Date | null;
 
+  /**
+   * When the provider said the work was done, and what they showed for it.
+   *
+   * "Mark as delivered" recorded a status change and nothing else, so a buyer
+   * being asked to release money had only the provider's word for it and an
+   * administrator settling a dispute had no record of what was handed over
+   * (EZ1-I228). Notes and evidence are optional -- a photographer's delivery is
+   * a gallery link, a caterer's is nothing at all -- but when they are given
+   * they stay on the booking.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  deliveredAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  deliveryNotes: string | null;
+
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  deliveryEvidence: string[];
+
+  /**
+   * When the buyer accepted the delivery.
+   *
+   * The step the escrow flow was missing. Held money became releasable on the
+   * balance being paid, which is the buyer's *money* arriving rather than the
+   * buyer *agreeing the work was done* -- and those are different facts. Until
+   * this is set on a booking that was delivered, `settle` refuses.
+   *
+   * Null on every booking that predates the delivery flow, which is why the
+   * refusal is conditioned on `deliveredAt` rather than on this being absent.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  deliveryAcceptedAt: Date | null;
+
   @Column({ type: 'text', nullable: true })
   notes: string;
 
