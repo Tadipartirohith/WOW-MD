@@ -115,11 +115,46 @@ function Routes() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: rgb(theme.canvas) },
+        // The header follows the theme rather than the platform default, or a
+        // dark-mode user gets one white bar at the top of an otherwise dark
+        // screen. `headerBackTitle` is emptied so a long title on the previous
+        // screen does not push the chevron off the iOS bar.
+        headerStyle: { backgroundColor: rgb(theme.surface) },
+        headerTintColor: rgb(theme.brandStrong),
+        headerTitleStyle: { color: rgb(theme.ink[900]), fontSize: 17, fontWeight: '600' },
+        headerBackTitle: '',
+        headerShadowVisible: false,
       }}
     >
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
       <Stack.Screen name="(tabs)" />
+
+      {/*
+        The screens pushed out of a tab, each with the platform's own header.
+        A native header rather than a title drawn into the page: it brings the
+        back button, the swipe-back gesture and the large-title collapse with
+        it, and a hand-rolled one brings none of those and has to be told about
+        the notch.
+
+        The titles are the web app's own words, because a vendor who has used
+        the site is looking for "Catalog & Services" and not for a synonym.
+      */}
+      <Stack.Screen
+        name="business-details"
+        options={{ headerShown: true, title: 'Business Details' }}
+      />
+      <Stack.Screen
+        name="business-services"
+        options={{ headerShown: true, title: 'Catalog & Services' }}
+      />
+      <Stack.Screen
+        name="business-review"
+        options={{ headerShown: true, title: 'Review & Submit' }}
+      />
+      <Stack.Screen name="accounts" options={{ headerShown: true, title: 'Accounts' }} />
+      <Stack.Screen name="visit/[id]" options={{ headerShown: true, title: 'Visit' }} />
+      <Stack.Screen name="case/[id]" options={{ headerShown: true, title: 'Case' }} />
     </Stack>
   );
 }

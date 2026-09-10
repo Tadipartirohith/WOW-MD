@@ -1,9 +1,20 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Check } from 'phosphor-react-native';
+import { useRouter } from 'expo-router';
+import {
+  Bell,
+  Briefcase,
+  CalendarBlank,
+  CaretRight,
+  Check,
+  ClipboardText,
+  Coins,
+  Receipt,
+  SealCheck,
+  type IconProps,
+} from 'phosphor-react-native';
 
 import { signOut } from '@/lib/api';
-import { useAuth } from '@/store/auth';
-import { ROLE_LABEL } from '@/shared/permissions';
+import { Permission, ROLE_LABEL, can, canAny } from '@/shared/permissions';
 import {
   Body,
   Button,
@@ -15,22 +26,41 @@ import {
   Screen,
   SectionTitle,
 } from '@/components/ui';
+import { useAuth } from '@/store/auth';
 import { radius, rgb, space, useTheme, useThemeChoice, type ThemeChoice } from '@/theme';
 
 /**
- * More: the account itself, and the settings that belong to this device.
+ * More: everything the tab bar could not hold, plus the account itself.
  *
- * Deliberately not a directory of everything the web app can do. A menu of
- * links to screens that do not exist yet is a menu of dead ends, and it reads
- * as an unfinished app rather than a smaller one.
+ * The bar fits five, and a vendor's portal is six screens; an officer's is
+ * four. So this is the rest of the sidebar, grouped under the same headings the
+ * web app groups them under — "Your business", "Operations" — because a vendor
+ * who has used the site is looking for a heading they already know.
+ *
+ * Only what exists is listed. The earlier version of this screen deliberately
+ * carried no directory at all, on the grounds that a menu of links to screens
+ * that do not exist is a menu of dead ends; that argument still holds, so the
+ * screens that are still web-only are named as such at the bottom rather than
+ * offered as rows that go nowhere.
  */
 export default function More() {
   const user = useAuth((s) => s.user);
+  const permissions = user?.permissions ?? [];
+
+  const isVendor = can(permissions, Permission.VENDOR_LISTING_MANAGE);
+  const isProvider = canAny(permissions, [
+    Permission.VENDOR_LISTING_MANAGE,
+    Permission.PLANNER_LISTING_MANAGE,
+  ]);
+  const isOfficer = canAny(permissions, [
+    Permission.VERIFICATION_PROCESS,
+    Permission.VERIFICATION_ALLOCATE,
+  ]);
 
   return (
     <Screen>
       <View style={{ gap: space(1), marginTop: space(4) }}>
-        <PageTitle>Account</PageTitle>
+        <PageTitle>More</PageTitle>
         <PageSubtitle>{user?.email ?? 'Signed in'}</PageSubtitle>
       </View>
 
@@ -38,7 +68,7 @@ export default function More() {
         <Eyebrow>Signed in as</Eyebrow>
         <SectionTitle>{user ? (ROLE_LABEL[user.role] ?? user.role) : 'Unknown'}</SectionTitle>
         {/* This is the email-confirmation flag, not in-person identity — which
-            no longer gates matchmaking for individuals (EZ1-I70). */}
+            no longer gates matchmaking for individuals. */}
         {user?.isVerified ? (
           <Caption>Your email address is confirmed.</Caption>
         ) : (
@@ -46,10 +76,132 @@ export default function More() {
         )}
       </Card>
 
+      {/* Your business — the same heading, in the same order, as the sidebar. */}
+      {isProvider && (
+        <Group title="Your business">
+          {isVendor ? (
+            <Row icon={Briefcase} label="My Business" hint="Your listing, services and prices" to="/business" />
+          ) : null}
+          <Row
+            icon={Receipt}
+            label="Bookings"
+            hint="Requests, quotations and the work in flight"
+            to="/bookings"
+          />
+          <Row
+            icon={CalendarBlank}
+            label="Availability"
+            hint="The windows you can take work in"
+            to="/availability"
+          />
+          <Row icon={Coins} label="Accounts" hint="Escrow, payouts and the ledger" to="/accounts" />
+        </Group>
+      )}
+
+      {isOfficer && (
+        <Group title="Operations">
+          <Row
+            icon={SealCheck}
+            label="Verification"
+            hint="Visits allocated to you, and your availability"
+            to="/verification"
+          />
+          {can(permissions, Permission.CASE_INVESTIGATE) ? (
+            <Row
+              icon={ClipboardText}
+              label="Cases"
+              hint="Investigations, evidence and resolutions"
+              to="/cases"
+            />
+          ) : null}
+        </Group>
+      )}
+
+      <Group title="Account">
+        <Row icon={Bell} label="Notifications" hint="Everything the platform has told you" to="/notifications" />
+      </Group>
+
       <Appearance />
+
+      {/*
+        Said out loud rather than left to be discovered. A provider who cannot
+        find My Reviews should know it is on the site and not that the app has
+        lost it.
+      */}
+      {isProvider ? (
+        <Caption tone="faint">
+          My Reviews, Support and Security are on the web app for now.
+        </Caption>
+      ) : null}
 
       <Button label="Sign out" variant="outline" onPress={() => void signOut()} />
     </Screen>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={{ gap: space(1.5) }}>
+      <Eyebrow>{title}</Eyebrow>
+      <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>{children}</Card>
+    </View>
+  );
+}
+
+function Row({
+  icon: Glyph,
+  label,
+  hint,
+  to,
+}: {
+  icon: React.ComponentType<IconProps>;
+  label: string;
+  hint: string;
+  to: string;
+}) {
+  const theme = useTheme();
+  const router = useRouter();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      // Cast because these paths are generated into the router's type union at
+      // build time, and this list is written once for every persona.
+      onPress={() => router.push(to as never)}
+      style={({ pressed }) => [
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space(3),
+          paddingHorizontal: space(4),
+          paddingVertical: space(3),
+          minHeight: 60,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: rgb(theme.border),
+        },
+        pressed && { backgroundColor: rgb(theme.surfaceSunken) },
+      ]}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: rgb(theme.brandSoft),
+        }}
+      >
+        <Glyph size={17} color={rgb(theme.brandStrong)} />
+      </View>
+      <View style={{ flex: 1, gap: space(0.5) }}>
+        <Body>{label}</Body>
+        <Caption tone="faint" numberOfLines={1}>
+          {hint}
+        </Caption>
+      </View>
+      <CaretRight size={16} color={rgb(theme.ink[400])} />
+    </Pressable>
   );
 }
 

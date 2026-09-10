@@ -4,16 +4,17 @@ import { View } from 'react-native';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
 import { Permission, canAny } from '@/shared/permissions';
+import { OfficerHome } from '@/components/home/officer-home';
+import { ProviderHome } from '@/components/home/provider-home';
 import {
   Body,
-  Card,
   Caption,
+  Card,
   Eyebrow,
   Loading,
   PageSubtitle,
   PageTitle,
   Screen,
-  SectionTitle,
 } from '@/components/ui';
 import { rgb, space, useTheme } from '@/theme';
 
@@ -22,14 +23,26 @@ import { rgb, space, useTheme } from '@/theme';
  *
  * The web dashboard's rule holds here and matters more on a phone: a screen
  * that only links to other screens tells you nothing you did not already know.
- * These are the numbers a person opens the app to find, and each one is chosen
- * by what their account can actually do.
+ * These are the numbers a person opens the app to find, and which ones they are
+ * is decided by what their account can actually do — the same capability test
+ * the sidebar uses, not a role string.
+ *
+ * A provider and an officer each get their own dashboard, because the web app
+ * has two of them (VendorDashboard and the Verification metrics) and they answer
+ * different questions. A buyer or an agent gets the counters this screen has
+ * always carried.
  */
 export default function Home() {
   const user = useAuth((s) => s.user);
   const permissions = user?.permissions ?? [];
 
   const isProvider = canAny(permissions, [Permission.BOOKING_READ_INCOMING]);
+  const isOfficer = canAny(permissions, [
+    Permission.VERIFICATION_PROCESS,
+    Permission.VERIFICATION_ALLOCATE,
+    Permission.VERIFICATION_FIELDWORK,
+  ]);
+  const canFieldwork = canAny(permissions, [Permission.VERIFICATION_FIELDWORK]);
   const isBuyer = canAny(permissions, [Permission.BOOKING_READ_OWN]);
   const isAgent = canAny(permissions, [Permission.AGENCY_MANAGE]);
 
@@ -45,18 +58,8 @@ export default function Home() {
     retry: false,
   });
 
-  // What a vendor opens the app to find out is how many people are waiting on
-  // a price from them right now, not how many jobs they have ever had.
-  const { data: newRequests } = useQuery({
-    queryKey: ['new-requests-count'],
-    queryFn: async () =>
-      (await api.get('/bookings/incoming', { params: { limit: 1, status: 'requested' } })).data,
-    retry: false,
-    enabled: isProvider,
-  });
-
   // Booking buckets from the dedicated counts endpoint, matching the web
-  // dashboard (EZ1-I75) rather than reading .total off a one-row list.
+  // dashboard rather than reading .total off a one-row list.
   const { data: bookingCounts } = useQuery({
     queryKey: ['my-booking-counts'],
     queryFn: async () =>
@@ -70,7 +73,7 @@ export default function Home() {
     enabled: isBuyer,
   });
 
-  // The agent's book at a glance (EZ1-I79).
+  // The agent's book at a glance.
   const { data: agentStats } = useQuery({
     queryKey: ['agent-stats'],
     queryFn: async () =>
@@ -97,24 +100,32 @@ export default function Home() {
       {isPending ? (
         <Loading rows={2} />
       ) : (
-        <View style={{ gap: space(3) }}>
-          <Counter label="Unread notifications" value={unread?.unread} />
-          {isProvider ? <Counter label="Waiting on a price from you" value={newRequests?.total} /> : null}
-          {isBuyer ? (
-            <>
-              <Counter label="My bookings" value={bookingCounts?.all} />
-              <Counter label="Active bookings" value={bookingCounts?.active} />
-              <Counter label="Completed bookings" value={bookingCounts?.completed} />
-              <Counter label="Cancelled bookings" value={bookingCounts?.cancelled} />
-            </>
-          ) : null}
-          {isAgent ? (
-            <>
-              <Counter label="Total clients" value={agentStats?.totalClients} />
-              <Counter label="Matches fixed" value={agentStats?.matchesFixed} />
-              <Counter label="Remaining clients" value={agentStats?.remainingClients} />
-              <Counter label="Total interests" value={agentStats?.totalInterests} />
-            </>
+        <View style={{ gap: space(4) }}>
+          {isProvider ? <ProviderHome /> : null}
+          {isOfficer ? <OfficerHome canFieldwork={canFieldwork} /> : null}
+
+          {/* The counters this screen has always carried, for the accounts that
+              are neither selling nor verifying. */}
+          {!isProvider && !isOfficer ? (
+            <View style={{ gap: space(3) }}>
+              <Counter label="Unread notifications" value={unread?.unread} />
+              {isBuyer ? (
+                <>
+                  <Counter label="My bookings" value={bookingCounts?.all} />
+                  <Counter label="Active bookings" value={bookingCounts?.active} />
+                  <Counter label="Completed bookings" value={bookingCounts?.completed} />
+                  <Counter label="Cancelled bookings" value={bookingCounts?.cancelled} />
+                </>
+              ) : null}
+              {isAgent ? (
+                <>
+                  <Counter label="Total clients" value={agentStats?.totalClients} />
+                  <Counter label="Matches fixed" value={agentStats?.matchesFixed} />
+                  <Counter label="Remaining clients" value={agentStats?.remainingClients} />
+                  <Counter label="Total interests" value={agentStats?.totalInterests} />
+                </>
+              ) : null}
+            </View>
           ) : null}
         </View>
       )}

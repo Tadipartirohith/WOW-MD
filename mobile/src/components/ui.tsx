@@ -264,9 +264,18 @@ export function Button({
 interface FieldProps extends TextInputProps {
   label: string;
   hint?: string;
+  /**
+   * What is wrong with this field, in words.
+   *
+   * Field-level rather than a summary at the top of the form, matching the web
+   * client: a list of complaints above a phone-height form names fields the
+   * person then has to scroll to find, and the one they mistyped is the one
+   * they cannot see.
+   */
+  error?: string;
 }
 
-export function Field({ label, hint, style, ...props }: FieldProps) {
+export function Field({ label, hint, error, style, ...props }: FieldProps) {
   const theme = useTheme();
   return (
     <View style={{ gap: space(1.5) }}>
@@ -276,7 +285,7 @@ export function Field({ label, hint, style, ...props }: FieldProps) {
         style={[
           {
             borderWidth: StyleSheet.hairlineWidth,
-            borderColor: rgb(theme.border),
+            borderColor: rgb(error ? theme.criticalFg : theme.border),
             backgroundColor: rgb(theme.surface),
             borderRadius: radius.sm,
             paddingHorizontal: space(3),
@@ -289,7 +298,8 @@ export function Field({ label, hint, style, ...props }: FieldProps) {
         ]}
         {...props}
       />
-      {hint ? <Caption tone="faint">{hint}</Caption> : null}
+      {error ? <Caption tone="critical">{error}</Caption> : null}
+      {hint && !error ? <Caption tone="faint">{hint}</Caption> : null}
     </View>
   );
 }
