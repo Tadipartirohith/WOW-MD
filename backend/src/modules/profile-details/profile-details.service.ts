@@ -151,14 +151,29 @@ export class ProfileDetailsService {
           touched = true;
         }
       }
-      // The bride/groom's date of birth is collected in the biodata only for a
-      // family login (EZ1-I158) and belongs on the managed profile, the same
-      // column an individual sets on their own profile.
-      if (dto.dateOfBirth && profile.dateOfBirth !== dto.dateOfBirth) {
-        profile.dateOfBirth = dto.dateOfBirth;
-        touched = true;
-      }
       if (touched) await this.profiles.save(profile);
+    }
+
+    /*
+     * The date of birth, written whenever one was sent.
+     *
+     * This used to sit inside the `managingFor` branch above, so it was only
+     * ever saved for a profile carrying that column — and a profile created
+     * through the stewardship intake does not carry it. The result was that a
+     * family member typed their daughter's date of birth, pressed save, got no
+     * error, and the field came back empty: the write was being skipped
+     * silently (EZ1-I182).
+     *
+     * `managingFor` is the right gate for the display-name rename above, which
+     * is genuinely about a profile named after the account that created it. It
+     * is the wrong gate for a date of birth, which simply belongs to whichever
+     * profile this biodata is for. `editable()` has already established that
+     * the caller may write to it, and the form only offers the field when the
+     * profile is somebody the caller is filling in on behalf of.
+     */
+    if (dto.dateOfBirth && profile.dateOfBirth !== dto.dateOfBirth) {
+      profile.dateOfBirth = dto.dateOfBirth;
+      await this.profiles.save(profile);
     }
 
     return this.persist(profileId, row);

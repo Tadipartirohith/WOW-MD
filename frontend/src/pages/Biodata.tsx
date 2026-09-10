@@ -296,15 +296,29 @@ export default function Biodata() {
           // deliberately rather than carrying the parent's over.
           initial={{
             ...details,
-            dateOfBirth: details.firstName ? (data?.dateOfBirth ?? '') : '',
+            dateOfBirth: data?.dateOfBirth ?? '',
           }}
           contact={contact}
           onSave={(b) => save('personal', b)}
           storageKey={`biodata:${targetId}:personal`}
-          // A family member enters the bride/groom's date of birth here; an
-          // individual sets their own on their profile, not in the biodata
-          // (EZ1-I158). `managingFor` is set only on a family-managed profile.
-          showDob={Boolean(me?.managingFor)}
+          /*
+            Whose date of birth this field is for.
+
+            Shown whenever the biodata being edited is not the viewer's own,
+            which is exactly the case where the date belongs to somebody the
+            viewer is entering it on behalf of — a family member filling in
+            their daughter's, or an agent filling in a client's. An individual
+            editing their own biodata does not see it, because their date is
+            set on their profile instead (EZ1-I158).
+
+            It used to read the viewer's own `managingFor` column, which is a
+            self-description a family account has usually never filled in — so
+            the field vanished and the bride's date of birth could not be
+            entered at all, which is the other half of EZ1-I182. The value
+            above seeds from `data`, the *managed* profile's own record, so the
+            parent's date is never carried across either.
+          */
+          showDob={Boolean(targetId) && targetId !== me?.id}
         />
       </Accordion>
 
