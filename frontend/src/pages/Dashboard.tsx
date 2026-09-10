@@ -636,10 +636,18 @@ export default function Dashboard() {
       {isPlanner && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Counter label="Weddings" value={plannerOverview?.weddings ?? 0} to="/my-clients" />
+          {/*
+            To the bookings, not to the client list.
+
+            This pointed at My Clients, which is a list of couples and shows no
+            booking at all -- the same fault as the Overdue tasks tile
+            (EZ1-I230), reported again for this one as EZ1-I237. A planner
+            clicking "12 bookings" is asking to see those twelve.
+          */}
           <Counter
             label="Bookings"
             value={plannerOverview?.bookings.total ?? 0}
-            to="/my-clients"
+            to="/bookings"
           />
           <Counter
             label="Held in escrow"

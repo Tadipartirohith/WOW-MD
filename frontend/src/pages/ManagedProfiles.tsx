@@ -107,6 +107,12 @@ export default function ManagedProfiles() {
   const isFamily = useAuth((s) => s.user?.role) === 'family';
   const isAgent = can(permissions, Permission.AGENCY_MANAGE);
 
+  /*
+   * Whether the creation form is open (EZ1-I238). Closed by default: the page
+   * exists to show the profiles, and it closes itself again on a successful
+   * save so the agent lands back on the list with the new client in it.
+   */
+  const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState(emptyDraft);
   const [consent, setConsent] = useState<ConsentDraft>(emptyConsent());
   const [error, setError] = useState('');
@@ -148,6 +154,8 @@ export default function ManagedProfiles() {
     onSuccess: (profile, inviteNow) => {
       setDraft(emptyDraft);
       setConsent(emptyConsent());
+      // Back to the list, with the profile just created in it (EZ1-I238).
+      setCreating(false);
       setError('');
       setNotice(
         inviteNow
@@ -256,12 +264,25 @@ export default function ManagedProfiles() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Client Profiles</h1>
-        <p className="page-subtitle">
-          Build a complete profile for someone who has not joined yet. It can be matched
-          immediately; when you invite them, they set their own password and take ownership.
-        </p>
+      {/*
+        The page is the list; creating is an action on it (EZ1-I238).
+
+        The creation form used to sit open above the profiles, so an agent
+        opening Client Profiles to find a client scrolled a fourteen-field form
+        first, every time, and the page mixed "what I have" with "make another".
+      */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="page-title">Client Profiles</h1>
+          <p className="page-subtitle">
+            The clients you look after. Build a profile for someone who has not joined yet and it
+            can be matched immediately; when you invite them, they set their own password and take
+            ownership.
+          </p>
+        </div>
+        <button className="btn shrink-0" onClick={() => setCreating((open) => !open)}>
+          {creating ? 'Cancel' : 'Create new client'}
+        </button>
       </div>
 
       {notice && <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">{notice}</p>}
@@ -271,6 +292,7 @@ export default function ManagedProfiles() {
         <ClientSignupLink active={Boolean(agency.shareLinkActive)} />
       )}
 
+      {creating && (
       <form onSubmit={submit} className="card space-y-4">
         <h2 className="section-title">New profile</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -434,6 +456,7 @@ export default function ManagedProfiles() {
           </p>
         </div>
       </form>
+      )}
 
       <div className="card space-y-3">
         <h2 className="section-title">Profiles you manage</h2>
