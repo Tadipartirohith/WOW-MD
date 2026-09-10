@@ -177,8 +177,15 @@ export default function Events() {
   // cannot disagree — which is the failure that stops somebody believing a
   // summary at all.
   const { data: summary } = useQuery({
-    queryKey: ['event-summary'],
-    queryFn: async () => (await api.get('/events/summary')).data as EventSummary,
+    // Keyed on the host too, or switching client leaves the previous
+    // wedding's counters sitting above the new one's list (EZ1-I232).
+    queryKey: ['event-summary', host],
+    queryFn: async () =>
+      (
+        await api.get('/events/summary', {
+          params: { ...(host ? { hostUserId: host } : {}) },
+        })
+      ).data as EventSummary,
     retry: false,
   });
   const { data: guests = [] } = useQuery({

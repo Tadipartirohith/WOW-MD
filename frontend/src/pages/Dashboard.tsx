@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
@@ -185,6 +185,9 @@ const TILES: Tile[] = [
 
 export default function Dashboard() {
   const user = useAuth((s) => s.user);
+  // Read reactively: the Overdue tasks tile links back into this same page with
+  // ?tasks=overdue, so the panel below has to notice the change (EZ1-I230).
+  const [taskParams] = useSearchParams();
   const permissions = user?.permissions ?? [];
 
   const isProvider = canAny(permissions, [Permission.BOOKING_READ_INCOMING]);
@@ -333,6 +336,15 @@ export default function Dashboard() {
   const upcomingTasks = (plannerBook?.upcomingTasks ?? []).filter(
     (t) => !completedPlanIds.has(t.planId),
   );
+  /*
+    Whether the deadlines panel is showing everything or only what is late.
+
+    Driven by the query string so the Overdue tasks tile above can link to it,
+    which is what that tile now does instead of navigating away to the client
+    list (EZ1-I230). The full list is one click back.
+  */
+  const overdueOnly = taskParams.get('tasks') === 'overdue';
+  const shownTasks = overdueOnly ? upcomingTasks.filter((t) => t.overdue) : upcomingTasks;
 
   // A marriage agent opens the app to see their book at a glance (EZ1-I79):
   // how many clients, how many are matched, how many are still open, and the
@@ -634,10 +646,20 @@ export default function Dashboard() {
             value={`₹${Number(plannerOverview?.escrowHeld ?? 0).toLocaleString('en-IN')}`}
             to="/accounts"
           />
+          {/*
+            Straight to the overdue tasks themselves.
+
+            This pointed at My Clients, which is a list of couples and does not
+            mention a task -- a planner clicking "3 overdue" was shown their
+            client list and left to work out which three (EZ1-I230). The
+            deadlines panel below is already on this page and already holds
+            them, so the tile filters that panel to the overdue ones and takes
+            the planner to it.
+          */}
           <Counter
             label="Overdue tasks"
             value={plannerOverview?.tasks.overdue ?? 0}
-            to="/my-clients"
+            to="/?tasks=overdue#planner-tasks"
             tone={(plannerOverview?.tasks.overdue ?? 0) > 0 ? 'text-red-600' : undefined}
           />
         </div>
@@ -701,13 +723,24 @@ export default function Dashboard() {
                 </ul>
               )}
             </div>
-            <div className="card">
-              <h3 className="section-title text-sm">Tasks &amp; deadlines</h3>
-              {upcomingTasks.length === 0 ? (
-                <p className="mt-1 text-sm text-gray-500">Nothing due across your weddings.</p>
+            <div className="card" id="planner-tasks">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="section-title text-sm">
+                  {overdueOnly ? 'Overdue tasks' : 'Tasks & deadlines'}
+                </h3>
+                {overdueOnly && (
+                  <Link className="text-xs text-brand-dark hover:underline" to="/">
+                    Show everything due
+                  </Link>
+                )}
+              </div>
+              {shownTasks.length === 0 ? (
+                <p className="mt-1 text-sm text-gray-500">
+                  {overdueOnly ? 'Nothing overdue.' : 'Nothing due across your weddings.'}
+                </p>
               ) : (
                 <ul className="mt-2 divide-y">
-                  {upcomingTasks.slice(0, 6).map((t) => (
+                  {shownTasks.slice(0, overdueOnly ? 50 : 6).map((t) => (
                     <li key={t.id} className="flex items-baseline justify-between gap-2 py-1.5 text-sm">
                       <span className="truncate">
                         <span className="text-gray-800">{t.title}</span>

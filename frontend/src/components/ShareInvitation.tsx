@@ -22,19 +22,25 @@ export default function ShareInvitation({ eventId, eventName }: { eventId: strin
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
-  // The link is forwarded to a family group and opened on other phones, so it
-  // must point at the app's public address — not at wherever the host happens
-  // to be viewing the portal. On the dev machine that origin is
-  // `http://localhost:8080`, which is unreachable from a guest's phone and is
-  // exactly why a shared invitation came up "not available". Deployments set
-  // VITE_APP_BASE_URL to the public SPA URL; local dev falls back to the origin.
-  const baseUrl = import.meta.env.VITE_APP_BASE_URL || window.location.origin;
-  const link = token ? `${baseUrl}/invitation/${token}` : '';
+  /*
+   * The address comes from the server, whole.
+   *
+   * It used to be assembled here from `window.location.origin`, which is the
+   * host's own address bar — `localhost:8080` on a dev machine, and therefore
+   * the guest's own phone when they tap it (EZ1-I178). A build-time
+   * VITE_APP_BASE_URL was the first attempt and could not work: Vite inlines
+   * it when the image is built, nothing supplied it, and it collapsed back to
+   * the origin every time. The server builds it from APP_BASE_URL, a runtime
+   * setting, so the link is right wherever this is deployed and nobody has to
+   * rebuild the bundle to change it.
+   */
+  const [link, setLink] = useState('');
 
   const mint = useMutation({
     mutationFn: async () => (await api.post(`/events/${eventId}/share-link`, {})).data,
-    onSuccess: (d: { token: string }) => {
+    onSuccess: (d: { token: string; url: string }) => {
       setToken(d.token);
+      setLink(d.url);
       setError('');
     },
     onError: (e) => setError(apiMessage(e, 'The link could not be created.')),
@@ -44,6 +50,7 @@ export default function ShareInvitation({ eventId, eventName }: { eventId: strin
     mutationFn: async () => api.delete(`/events/${eventId}/share-link`),
     onSuccess: () => {
       setToken('');
+      setLink('');
       setError('');
     },
     onError: (e) => setError(apiMessage(e, 'The link could not be withdrawn.')),
