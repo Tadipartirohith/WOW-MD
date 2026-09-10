@@ -386,7 +386,7 @@ export default function Events() {
                 ))}
               </div>
             </div>
-            <div className={view === 'cards' ? 'grid gap-2 sm:grid-cols-2' : 'space-y-1'}>
+            <div className={view === 'cards' ? 'grid gap-3 sm:grid-cols-2' : 'space-y-3'}>
               {events.map((ev) => (
                 <div key={ev.id}>
                   {editing === ev.id ? (
@@ -400,24 +400,13 @@ export default function Events() {
                     />
                   ) : (
                     <div
-                      className={
-                        view === 'cards'
-                          ? `flex flex-col gap-3 rounded-sm border p-4 ${
-                              selected === ev.id
-                                ? 'border-brand bg-brand-light'
-                                : 'border-gray-200 hover:bg-gray-50'
-                            }`
-                          : `flex items-start justify-between gap-3 rounded-sm border px-3 py-2.5 ${
-                              selected === ev.id
-                                ? 'border-brand bg-brand-light'
-                                : 'border-transparent hover:bg-gray-50'
-                            }`
-                      }
+                      className={`flex h-full flex-col gap-3 rounded-sm border p-4 ${
+                        selected === ev.id
+                          ? 'border-brand bg-brand-light'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
                     >
-                      <button
-                        className="min-w-0 flex-1 space-y-2 text-left"
-                        onClick={() => setSelected(ev.id)}
-                      >
+                      <button className="min-w-0 space-y-2 text-left" onClick={() => setSelected(ev.id)}>
                         {/* 1. Date — the card's anchor, above the name. */}
                         <span className="block text-[11px] font-semibold uppercase tracking-wide text-brand-dark">
                           {formatDate(ev.eventDate)}
@@ -535,13 +524,7 @@ export default function Events() {
 
                       {/* 5. Actions — one consistent area, right in list view,
                           a divided footer row in cards view. */}
-                      <div
-                        className={
-                          view === 'cards'
-                            ? 'flex flex-wrap items-center gap-1 border-t border-gray-100 pt-2'
-                            : 'flex shrink-0 items-center gap-1'
-                        }
-                      >
+                      <div className="mt-auto flex flex-wrap items-center gap-1 border-t border-gray-100 pt-2">
                         {/*
                           Straight to the vendors for this day. It was only
                           reachable after selecting the day and scrolling the
