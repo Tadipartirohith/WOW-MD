@@ -102,6 +102,7 @@ import NetworkPool from './pages/NetworkPool';
 import Interests from './pages/Interests';
 import SharedBiodata from './pages/SharedBiodata';
 import Agency from './pages/Agency';
+import AgentReviews from './pages/AgentReviews';
 import Security from './pages/Security';
 import Support from './pages/Support';
 import ProviderConsole from './pages/ProviderConsole';
@@ -250,6 +251,10 @@ const NAV: NavEntry[] = [
    */
   { to: '/my-clients', label: 'My Clients', requires: [Permission.PLAN_MANAGE_ENGAGED], group: 'clients', icon: AddressBook },
   { to: '/agency', label: 'My Agency', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Buildings },
+  // Reviews are about how the agency is doing, not what it is, so they get
+  // their own entry rather than living inside the agency's details form
+  // (EZ1-I229).
+  { to: '/my-reviews', label: 'My Reviews', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Star },
   { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE], group: 'wedding', icon: Storefront },
   // "Planners" and "Planner" next to each other were indistinguishable. One is
   // the marketplace where a planner is hired; the other is the couple's own
@@ -931,6 +936,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.AGENCY_MANAGE]}>
             <Agency />
+          </Protected>
+        }
+      />
+      <Route
+        path="/my-reviews"
+        element={
+          <Protected requires={[Permission.AGENCY_MANAGE]}>
+            <AgentReviews />
           </Protected>
         }
       />

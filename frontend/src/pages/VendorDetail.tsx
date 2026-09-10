@@ -246,9 +246,16 @@ export default function VendorDetail() {
                 ? `Free on ${new Date(checkedDate).toLocaleDateString()} — ${dayOpenings} opening${
                     dayOpenings === 1 ? '' : 's'
                   } left.`
-                : `No published opening on ${new Date(
-                    checkedDate,
-                  ).toLocaleDateString()}. You can still send a request and the vendor will confirm.`}
+                : /*
+                     Only offer the request to somebody who can make one.
+                     An agent or a planner holds no booking:create -- the couple
+                     books, not the agency that introduced them -- so telling
+                     them they "can still send a request" promised an action
+                     that had no button under it (EZ1-I179).
+                   */
+                  `No published opening on ${new Date(checkedDate).toLocaleDateString()}.${
+                    canBook ? ' You can still send a request and the vendor will confirm.' : ''
+                  }`}
             </p>
             {dayOpen.length === 0 && canBook && (
               <button
@@ -264,8 +271,8 @@ export default function VendorDetail() {
         {slots.length === 0 ? (
           <div className="card space-y-3">
             <p className="text-sm text-gray-500">
-              No open dates published for the next two months. You can still send a request and the
-              vendor will confirm.
+              No open dates published for the next two months.
+              {canBook ? ' You can still send a request and the vendor will confirm.' : ''}
             </p>
             {canBook && (
               <button
