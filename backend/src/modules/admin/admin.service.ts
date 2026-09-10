@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
@@ -17,6 +17,7 @@ import {
   BookingStatus,
   CaseStatus,
   DisputeStatus,
+  INDIVIDUAL_ROLES,
   MatchFixedState,
   PaymentStatus,
   ProfileLifecycle,
@@ -130,10 +131,47 @@ export class AdminService {
     );
   }
 
-  listDisputes(status?: DisputeStatus) {
-    return this.disputes.find({
+  /**
+   * Disputes, with enough context to act on one.
+   *
+   * The rows themselves hold two bare uuids — who raised it and which booking —
+   * and an administrator cannot resolve a dispute against a uuid. The dashboard
+   * has counted these all along and there was nowhere to click through to
+   * (EZ1-I222), so this fills in the booking and the person before the screen
+   * that now shows them.
+   */
+  async listDisputes(status?: DisputeStatus) {
+    const rows = await this.disputes.find({
       where: status ? { status } : {},
       order: { createdAt: 'DESC' },
+    });
+    if (rows.length === 0) return [];
+
+    const [bookings, raisers] = await Promise.all([
+      this.bookings.find({ where: { id: In(rows.map((r) => r.bookingId)) } }),
+      this.users.find({ where: { id: In(rows.map((r) => r.raisedBy)) } }),
+    ]);
+    const bookingById = new Map(bookings.map((b) => [b.id, b]));
+    const raiserById = new Map(raisers.map((u) => [u.id, u]));
+
+    return rows.map((r) => {
+      const booking = bookingById.get(r.bookingId);
+      const raiser = raiserById.get(r.raisedBy);
+      return {
+        ...r,
+        raisedByName: raiser?.email ?? 'Unknown',
+        raisedByRole: raiser?.role ?? null,
+        booking: booking
+          ? {
+              id: booking.id,
+              status: booking.status,
+              amount: booking.amount,
+              currency: booking.currency,
+              providerType: booking.providerType,
+              eventDate: booking.eventDate ?? null,
+            }
+          : null,
+      };
     });
   }
 
@@ -165,7 +203,17 @@ export class AdminService {
       totalBookings,
       openDisputes,
     ] = await Promise.all([
-      this.users.count(),
+      /*
+       * People who came here to get married, not every row in the table.
+       *
+       * This counted the whole users table, so the headline "Total Users"
+       * silently included the vendors, agents, planners, officers and admins
+       * that the four cards beside it already count — one platform of 621
+       * where 340 individuals had actually signed up. Every other card on that
+       * row counts one role, so this one counting all of them made the set
+       * read as though it summed, which it never did (EZ1-I224).
+       */
+      this.users.count({ where: { role: In([...INDIVIDUAL_ROLES]) } }),
       this.vendors.count(),
       this.vendors.count({ where: { isApproved: false } }),
       this.planners.count(),

@@ -14,6 +14,7 @@ import {
   AvailabilityView,
   OfficerAvailability,
   availabilityView,
+  isOnLeaveNow,
 } from './entities/officer-availability.entity';
 import { canonicalCity, normalisePlace, stateOf } from './service-area';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -39,6 +40,7 @@ import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 import {
   ApplicantType,
   NotificationType,
+  OfficerAvailabilityStatus,
   UserRole,
   VerificationStatus,
 } from '../../common/enums';
@@ -232,6 +234,7 @@ export class VerificationService {
       throw new BadRequestException('That account cannot carry out verification');
     }
     if (officer.role === UserRole.AGENT) await this.refuseIfConflicted(officer, request);
+    await this.refuseIfUnavailable(officer.id);
 
     request.assignedToUserId = officer.id;
     request.allocatedByUserId = actor.userId;
@@ -813,6 +816,32 @@ export class VerificationService {
    * two businesses and the request names which of them is being verified;
    * falling back to the owner is for the older rows that predate that column.
    */
+  /**
+   * Refuses work to an officer who is on leave or has stood down.
+   *
+   * Availability used to be advisory: auto-allocation skipped an officer who
+   * was out, but a named manual allocation went through, on the reasoning that
+   * an administrator naming somebody has decided. In practice that meant the
+   * dropdown still listed them, the administrator had no way to see they were
+   * out, and cases landed in the queue of somebody on leave — which is the
+   * complaint (EZ1-I221). So the check moved to the point that actually creates
+   * the assignment, and it is here rather than only in the picker because an
+   * officer can begin leave between the page loading and the click.
+   *
+   * Existing work is untouched: going on leave does not unassign anything, it
+   * only stops new work arriving.
+   */
+  private async refuseIfUnavailable(officerUserId: string): Promise<void> {
+    const row = await this.availability.findOne({ where: { officerUserId } });
+    if (!isOnLeaveNow(row)) return;
+    const until = row?.leaveTo ? ` until ${row.leaveTo}` : '';
+    throw new BadRequestException(
+      row?.status === OfficerAvailabilityStatus.ON_LEAVE
+        ? `That officer is on leave${until} and cannot take new work. Please choose another officer.`
+        : 'That officer is currently unavailable and cannot take new work. Please choose another officer.',
+    );
+  }
+
   /**
    * Stops an agent being sent to inspect something they have a stake in.
    *

@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { NotificationsService } from './notifications.service';
 import { Notification } from './entities/notification.entity';
 import { User } from '../auth/entities/user.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 import { PushService } from '../../platform/push/push.service';
 import { WhatsAppService } from '../../platform/whatsapp/whatsapp.service';
 import { NotificationType } from '../../common/enums';
@@ -50,6 +51,8 @@ describe('NotificationsService delivery', () => {
         NotificationsService,
         { provide: getRepositoryToken(Notification), useValue: repo },
         { provide: getRepositoryToken(User), useValue: users },
+        // Read only to label booking notifications; nothing here exercises it.
+        { provide: getRepositoryToken(Booking), useValue: { find: jest.fn().mockResolvedValue([]) } },
         { provide: PushService, useValue: push },
         { provide: WhatsAppService, useValue: whatsapp },
       ],
