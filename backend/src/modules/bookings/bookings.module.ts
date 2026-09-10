@@ -47,7 +47,9 @@ import {
       WeddingPlan,
     ]),
     AgentsModule,
-    VerificationModule,
+    // Mutual: settlement in verification calls back into this module to move
+    // the escrow it decided (council review, 2026-09-10).
+    forwardRef(() => VerificationModule),
     MatchmakingModule,
     forwardRef(() => VendorsModule),
     forwardRef(() => CatalogModule),

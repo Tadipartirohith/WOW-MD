@@ -20,6 +20,7 @@ import { UsersModule } from '../users/users.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { VendorsModule } from '../vendors/vendors.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { BookingsModule } from '../bookings/bookings.module';
 
 @Module({
   imports: [
@@ -45,6 +46,13 @@ import { CatalogModule } from '../catalog/catalog.module';
     // So an officer reviewing a vendor can see the catalog & offerings that
     // business submitted, not just its base row (EZ1-I25).
     CatalogModule,
+    /*
+     * Settling a dispute moves escrow, and escrow is moved in exactly one
+     * place -- BookingsService. Bookings already imports this module for
+     * SupportCasesService, so the reference is mutual and both sides say so
+     * (council review, 2026-09-10).
+     */
+    forwardRef(() => BookingsModule),
   ],
   providers: [VerificationService, SupportCasesService, OfficersService],
   controllers: [VerificationController],

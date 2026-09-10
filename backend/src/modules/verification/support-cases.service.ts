@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
@@ -29,6 +30,7 @@ import {
   TriageCaseDto,
 } from './dto/case.dto';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
+import { BookingsService } from '../bookings/bookings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
@@ -88,6 +90,8 @@ const IN_FLIGHT: CaseStatus[] = Object.values(CaseStatus).filter(
 
 @Injectable()
 export class SupportCasesService {
+  private readonly logger = new Logger(SupportCasesService.name);
+
   constructor(
     @InjectRepository(SupportCase) private readonly cases: Repository<SupportCase>,
     @InjectRepository(User) private readonly users: Repository<User>,
@@ -109,6 +113,13 @@ export class SupportCasesService {
     // the two modules already reference each other.
     @Inject(forwardRef(() => BusinessLifecycleService))
     private readonly lifecycle: BusinessLifecycleService,
+    /*
+     * Escrow moves in exactly one place. A settlement decided here is carried
+     * out there, so there is a single implementation of "money leaves the
+     * platform" rather than a second copy that drifts (council review).
+     */
+    @Inject(forwardRef(() => BookingsService))
+    private readonly bookingsService: BookingsService,
   ) {}
 
   /**
@@ -974,7 +985,9 @@ export class SupportCasesService {
     const saved = await this.cases.save(item);
 
     if (item.subjectId && item.subjectType === CaseSubject.BOOKING) {
-      await this.applySettlement(item.subjectId, outcome);
+      // The settled figure travels with the outcome; a PARTIAL that loses it
+      // pays out the full amount, which is what used to happen.
+      await this.applySettlement(item.subjectId, outcome, item.settlementAmount, actor);
 
       // Where the booking lands follows the money. A refund means the job did
       // not happen; anything else means it carries on from wherever the dispute
@@ -1045,20 +1058,53 @@ export class SupportCasesService {
     );
   }
 
-  private async applySettlement(bookingId: string, outcome: SettlementOutcome): Promise<void> {
-    const disputed = await this.payments.find({
-      where: { bookingId, status: PaymentStatus.DISPUTED },
-    });
-    for (const payment of disputed) {
-      const status =
-        outcome === SettlementOutcome.RELEASE
-          ? PaymentStatus.RELEASED
-          : outcome === SettlementOutcome.REFUND
-            ? PaymentStatus.REFUNDED
-            : outcome === SettlementOutcome.PARTIAL
-              ? PaymentStatus.RELEASED
-              : PaymentStatus.HELD_IN_ESCROW;
-      await this.payments.update(payment.id, { status });
+  /**
+   * Carries out the settlement an officer decided.
+   *
+   * This used to rewrite payment statuses and stop: the gateway was never
+   * called, so a buyer awarded a refund never received it and a provider
+   * awarded a release was never paid, while the ledger, the escrow page and
+   * the audit log all said otherwise. Worse, the row left DISPUTED, so neither
+   * `settle` nor the nightly payout sweep would ever look at it again -- the
+   * money was stranded silently (council review, 2026-09-10).
+   *
+   * PARTIAL also released the full held amount and threw away the figure the
+   * officer had entered, so a 50,000 dispute settled at 20,000 paid out 50,000.
+   *
+   * All of it now goes through BookingsService, which is the one place escrow
+   * moves, and records only what the gateway confirms. NO_ACTION is the one
+   * outcome that moves nothing: it puts the money back where it was.
+   */
+  private async applySettlement(
+    bookingId: string,
+    outcome: SettlementOutcome,
+    settledAmount?: string | null,
+    actor?: AuthUser,
+  ): Promise<void> {
+    if (outcome === SettlementOutcome.NO_ACTION) {
+      const disputed = await this.payments.find({
+        where: { bookingId, status: PaymentStatus.DISPUTED },
+      });
+      for (const payment of disputed) {
+        await this.payments.update(payment.id, { status: PaymentStatus.HELD_IN_ESCROW });
+      }
+      return;
+    }
+
+    const mapped =
+      outcome === SettlementOutcome.RELEASE ? 'release'
+      : outcome === SettlementOutcome.REFUND ? 'refund'
+      : 'partial';
+
+    const result = await this.bookingsService.settleDisputed(bookingId, mapped, settledAmount, actor);
+    if (result.failed > 0) {
+      // Deliberately not thrown: the officer's decision is recorded either way,
+      // and the payments that could not move stay DISPUTED with the gateway's
+      // reason on them, so the case can be settled again. Swallowing this
+      // silently is what produced the original defect.
+      this.logger.error(
+        `Settlement on booking ${bookingId}: ${result.failed} payment(s) did not move and remain disputed`,
+      );
     }
   }
 

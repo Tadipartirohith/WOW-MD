@@ -200,12 +200,41 @@ export class BookingsService {
    * The final instalment is the remainder rather than its own percentage, so
    * rounding can never leave a rupee uncollected or collect one too many:
    * advance + second + final always equals the booking total exactly.
+   *
+   * `alreadyCharged` is what earlier instalments were actually billed at, and
+   * it matters because the total can grow after some of them are paid. An
+   * add-on is only requestable once the booking is CONFIRMED -- which is to
+   * say once the advance is held -- so accepting one raises the total against
+   * instalments that have already been taken at the old figure. Recomputing
+   * every milestone as a fresh percentage of the new total then quietly loses
+   * the advance's share of the increase: a 20,000 add-on on a 100,000 booking
+   * billed 30,000 + 36,000 + 48,000 = 114,000 against an agreed 120,000, and
+   * the provider was short-paid the missing 6,000 (council review,
+   * 2026-09-10).
+   *
+   * Passing what was really charged makes the final instalment absorb the
+   * difference, so the three instalments still sum to the agreed total however
+   * many times it changed on the way.
    */
-  milestoneAmount(total: string, milestone: PaymentMilestone): string {
+  milestoneAmount(
+    total: string,
+    milestone: PaymentMilestone,
+    alreadyCharged?: Partial<Record<PaymentMilestone, string>>,
+  ): string {
     const gross = Math.round(parseFloat(total) * 100);
     const pct = this.cfg.payments.milestonePercents;
-    const advance = Math.floor((gross * pct.advance) / 100);
-    const second = Math.floor((gross * pct.second) / 100);
+    const minorOf = (value: string) => Math.round(parseFloat(value) * 100);
+
+    // What each earlier instalment was billed at: the real figure when one
+    // exists, the percentage otherwise.
+    const advance =
+      alreadyCharged?.[PaymentMilestone.ADVANCE] !== undefined
+        ? minorOf(alreadyCharged[PaymentMilestone.ADVANCE] as string)
+        : Math.floor((gross * pct.advance) / 100);
+    const second =
+      alreadyCharged?.[PaymentMilestone.SECOND] !== undefined
+        ? minorOf(alreadyCharged[PaymentMilestone.SECOND] as string)
+        : Math.floor((gross * pct.second) / 100);
 
     const minor =
       milestone === PaymentMilestone.ADVANCE
@@ -213,7 +242,28 @@ export class BookingsService {
         : milestone === PaymentMilestone.SECOND
           ? second
           : gross - advance - second;
-    return (minor / 100).toFixed(2);
+    // A total that shrank below what has already been taken owes nothing more.
+    return (Math.max(0, minor) / 100).toFixed(2);
+  }
+
+  /**
+   * What each instalment on a booking was actually billed at.
+   *
+   * Read from the live payment rows -- anything not refunded or failed -- so a
+   * later instalment is priced against what really happened rather than
+   * against a percentage of a total that has since moved.
+   */
+  private async chargedSoFar(
+    bookingId: string,
+  ): Promise<Partial<Record<PaymentMilestone, string>>> {
+    const rows = await this.payments.find({ where: { bookingId } });
+    const dead = [PaymentStatus.REFUNDED, PaymentStatus.FAILED];
+    const charged: Partial<Record<PaymentMilestone, string>> = {};
+    for (const row of rows) {
+      if (dead.includes(row.status)) continue;
+      charged[row.milestone] = row.amount;
+    }
+    return charged;
   }
 
   /** Every milestone on a booking, with what has been paid against each. */
@@ -222,6 +272,12 @@ export class BookingsService {
     await this.assertParticipant(actor, booking);
 
     const payments = await this.payments.find({ where: { bookingId } });
+    // Priced against what earlier instalments really cost, not against a fresh
+    // percentage of a total that may have moved since (council review).
+    const charged: Partial<Record<PaymentMilestone, string>> = {};
+    for (const row of payments) {
+      if (!this.isDead(row.status)) charged[row.milestone] = row.amount;
+    }
     const order = [PaymentMilestone.ADVANCE, PaymentMilestone.SECOND, PaymentMilestone.FINAL];
     return {
       bookingId,
@@ -231,7 +287,7 @@ export class BookingsService {
         const payment = payments.find((p) => p.milestone === milestone && !this.isDead(p.status));
         return {
           milestone,
-          amount: this.milestoneAmount(booking.amount, milestone),
+          amount: this.milestoneAmount(booking.amount, milestone, charged),
           status: payment?.status ?? null,
           paymentId: payment?.id ?? null,
         };
@@ -599,7 +655,10 @@ export class BookingsService {
       }
       this.assertMilestoneAllowed(booking, milestone, live);
 
-      const amount = this.milestoneAmount(booking.amount, milestone);
+      // Priced against what earlier instalments really cost, so an add-on
+      // accepted after the advance is billed in full (council review).
+      const charged = await this.chargedSoFar(bookingId);
+      const amount = this.milestoneAmount(booking.amount, milestone, charged);
       // The split is fixed at the moment of payment, so what the provider is
       // owed cannot drift if the commission rate changes later.
       const { commission, payout } = this.splitAmount(amount);
@@ -1023,6 +1082,158 @@ export class BookingsService {
       });
     }
     return moved;
+  }
+
+  /**
+   * Moves the money a dispute settlement decided.
+   *
+   * The settlement path used to write payment statuses and nothing else: an
+   * officer resolved a case, the row flipped to RELEASED or REFUNDED, the
+   * buyer's escrow page agreed, the audit log agreed, and the gateway was
+   * never called. Nobody was paid and nobody was refunded, and because the row
+   * had left DISPUTED no sweep would ever find it again -- the money sat on
+   * the platform account with the ledger claiming otherwise (council review,
+   * 2026-09-10).
+   *
+   * So settlement moves money here, in the same service that holds every other
+   * escrow transition, and records only what the gateway confirms. A failure
+   * leaves the payment DISPUTED with the reason on the row, which is both true
+   * and recoverable: the case can be settled again.
+   *
+   * PARTIAL splits one held instalment two ways -- `settledAmount` to the
+   * provider, the remainder back to the buyer. It used to release the whole
+   * amount and discard the figure the officer had entered, so a 50,000 dispute
+   * settled at 20,000 paid the provider 50,000.
+   */
+  async settleDisputed(
+    bookingId: string,
+    outcome: 'release' | 'refund' | 'partial',
+    settledAmount?: string | null,
+    actor?: AuthUser,
+  ): Promise<{ moved: number; failed: number }> {
+    const disputed = await this.payments.find({
+      where: { bookingId, status: PaymentStatus.DISPUTED },
+    });
+    if (disputed.length === 0) return { moved: 0, failed: 0 };
+
+    const booking = await this.bookings.findOne({ where: { id: bookingId } });
+    const destination = booking
+      ? await this.payoutDestination(booking)
+      : { accountId: null, label: 'unknown provider' };
+
+    /*
+     * A partial settlement names one figure for the whole booking, and escrow
+     * can hold several instalments. The figure is applied across them in order
+     * -- earliest instalment first -- so the provider is paid exactly the
+     * amount decided and the rest goes back, whatever the instalment split
+     * happened to be.
+     */
+    let remainingToProvider = outcome === 'partial' ? Number(settledAmount ?? 0) : 0;
+    let moved = 0;
+    let failed = 0;
+
+    for (const payment of disputed) {
+      if (!payment.providerRef) {
+        failed += 1;
+        continue;
+      }
+
+      const gross = Number(payment.amount);
+      const toProvider =
+        outcome === 'release' ? gross
+        : outcome === 'refund' ? 0
+        : Math.max(0, Math.min(gross, remainingToProvider));
+      const toBuyer = gross - toProvider;
+      if (outcome === 'partial') remainingToProvider -= toProvider;
+
+      // What actually left the platform, so the row can be written truthfully
+      // even when only one leg succeeds.
+      let releasedOk = toProvider === 0;
+      let refundedOk = toBuyer === 0;
+      let note: string | null = null;
+      let payoutRef: string | null = payment.payoutRef ?? null;
+      let split = { payout: '0.00', commission: '0.00' };
+
+      if (toProvider > 0) {
+        // Commission is taken on the settled share, not on the original
+        // amount: the platform earns on what the provider is actually paid.
+        split = this.splitAmount(toProvider.toFixed(2));
+        const result = await this.gateway.release(
+          payment.providerRef,
+          split.payout,
+          payment.currency,
+          destination,
+        );
+        releasedOk = result.transferred;
+        payoutRef = result.transferRef;
+        if (!result.transferred) note = result.reason;
+      }
+
+      if (toBuyer > 0) {
+        const refund = await this.gateway.refund(payment.providerRef, toBuyer.toFixed(2));
+        refundedOk = refund.refunded;
+        if (!refund.refunded) note = refund.reason ?? note;
+      }
+
+      /*
+       * A refund that did not happen is the one failure that must hold.
+       *
+       * The buyer's money cannot be recorded as returned on the strength of
+       * having asked, so the row stays DISPUTED with the reason and the case
+       * can be settled again.
+       *
+       * A release that did not transfer is different, and the rest of this
+       * service already models it: the provider is owed rather than paid, and
+       * PENDING_PAYOUT is that state -- the usual cause is a provider whose
+       * payout onboarding has not cleared, which the nightly sweep retries.
+       * Treating it as a failure would leave every settlement against such a
+       * provider stuck in dispute.
+       */
+      if (!refundedOk) {
+        failed += 1;
+        await this.payments.update(payment.id, {
+          payoutNote: note ?? 'The gateway did not confirm the refund',
+        });
+        continue;
+      }
+
+      const status =
+        !releasedOk ? PaymentStatus.PENDING_PAYOUT
+        : toProvider === 0 ? PaymentStatus.REFUNDED
+        : toBuyer === 0 ? PaymentStatus.RELEASED
+        : PaymentStatus.PARTIALLY_SETTLED;
+
+      await this.payments.update(payment.id, {
+        status,
+        payoutAmount: split.payout,
+        commissionAmount: split.commission,
+        payoutRef,
+        // Kept when the provider is owed rather than paid, so the sweep and the
+        // operator both know why.
+        payoutNote: releasedOk ? null : note,
+      });
+      moved += 1;
+
+      await this.audit.record({
+        action:
+          toProvider === 0
+            ? AuditAction.BOOKING_ESCROW_REFUNDED
+            : AuditAction.BOOKING_ESCROW_RELEASED,
+        actor,
+        resourceType: 'booking',
+        resourceId: bookingId,
+        metadata: {
+          settlement: outcome,
+          milestone: payment.milestone,
+          gross: payment.amount,
+          toProvider: toProvider.toFixed(2),
+          toBuyer: toBuyer.toFixed(2),
+          commission: split.commission,
+        },
+      });
+    }
+
+    return { moved, failed };
   }
 
   /** The seller's linked account on the gateway, and who they are. */
