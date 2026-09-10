@@ -30,6 +30,11 @@ export const Permission = {
   CHAT_MATCH: 'chat:match',
   CHAT_INQUIRE: 'chat:inquire',
   BOOKING_CREATE: 'booking:create',
+  /**
+   * Raise a booking request for a wedding you are engaged on (EZ1-I235).
+   * The booking belongs to the couple; the planner is only who placed it.
+   */
+  BOOKING_REQUEST_FOR_CLIENT: 'booking:request_for_client',
   BOOKING_PAY: 'booking:pay',
   BOOKING_CANCEL_OWN: 'booking:cancel:own',
   BOOKING_READ_OWN: 'booking:read:own',

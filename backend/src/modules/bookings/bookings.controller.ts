@@ -30,7 +30,10 @@ import {
 } from './dto/booking-addon.dto';
 import { BookingAddonsService } from './booking-addons.service';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
 
 @ApiTags('bookings')
@@ -92,7 +95,12 @@ export class BookingsController {
     return this.bookingChat.markRead(actor, id);
   }
 
-  @RequirePermissions(Permission.BOOKING_CREATE)
+  /*
+    Either the couple placing their own booking, or a planner raising the same
+    request for a wedding they run (EZ1-I235). The service decides which, and
+    refuses a planner naming a wedding they are not engaged on.
+  */
+  @RequireAnyPermission(Permission.BOOKING_CREATE, Permission.BOOKING_REQUEST_FOR_CLIENT)
   @ApiOperation({
     summary: 'Place a booking',
     description:

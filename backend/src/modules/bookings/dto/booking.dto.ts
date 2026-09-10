@@ -18,6 +18,19 @@ import { BookingStatus, PaymentMethod, PaymentMilestone, ProviderType } from '..
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class CreateBookingDto {
+  /**
+   * The couple this request is for, when a planner raises it for them.
+   *
+   * Omitted by a couple booking for themselves, which is every other caller.
+   * Supplying it is refused unless the caller holds
+   * BOOKING_REQUEST_FOR_CLIENT and is actually engaged on that wedding, so the
+   * field grants nothing on its own (EZ1-I235).
+   */
+  @ApiPropertyOptional({ format: 'uuid', description: "The engaged client's user id." })
+  @IsOptional()
+  @IsUUID()
+  forClientUserId?: string;
+
   @ApiProperty({ enum: ProviderType, default: ProviderType.VENDOR })
   @IsEnum(ProviderType)
   providerType: ProviderType = ProviderType.VENDOR;

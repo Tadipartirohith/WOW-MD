@@ -104,6 +104,14 @@ export default function Vendors() {
   // "Check availability" booking action (EZ1-I29).
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const canBook = can(permissions, Permission.BOOKING_CREATE);
+  /*
+   * A planner engaged on a wedding may raise the request for the couple
+   * (EZ1-I235). The booking belongs to the couple either way; the planner is
+   * recorded as who placed it, which is why this is a separate capability from
+   * BOOKING_CREATE rather than a grant of it.
+   */
+  const canRequestForClient = can(permissions, Permission.BOOKING_REQUEST_FOR_CLIENT);
+  const canAsk = canBook || canRequestForClient;
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
@@ -369,7 +377,7 @@ export default function Vendors() {
                 >
                   View details
                 </button>
-                {!canBook && (
+                {!canAsk && (
                   <p className="rounded-sm bg-surface-sunken px-2 py-1.5 text-center text-xs text-gray-500">
                     Browse to recommend — the couple places the booking.
                   </p>
@@ -462,6 +470,21 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   // something different from an ordinary duplicate (EZ1-I160).
   const [existingNote, setExistingNote] = useState('');
   const [busy, setBusy] = useState(false);
+  /*
+   * Whose wedding this request is for.
+   *
+   * Empty for a couple booking for themselves, which is every ordinary caller
+   * and the reason the picker below only appears for a planner: `/events/engaged`
+   * answers with the weddings this account was engaged on, and a couple is
+   * engaged on none (EZ1-I235).
+   */
+  const [forClient, setForClient] = useState('');
+  const { data: engagedClients = [] } = useQuery({
+    queryKey: ['engaged-hosts'],
+    queryFn: async () =>
+      (await api.get('/events/engaged')).data as { userId: string; name: string }[],
+    retry: false,
+  });
 
   // What this business sells, from the catalog. A vendor who has not adopted
   // it has none, and the request falls back to the free-text form below.
@@ -539,6 +562,13 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
       return;
     }
 
+    // A planner has to say whose wedding this is. Sending it as their own would
+    // put a couple's booking on the planner's account (EZ1-I235).
+    if (engagedClients.length > 0 && !forClient) {
+      setError('Choose which wedding this request is for.');
+      return;
+    }
+
     setBusy(true);
     try {
       const { data } = await api.post('/bookings', {
@@ -556,6 +586,9 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
         ...(fields.length > 0 ? { serviceAnswers: cleanAnswers(fields, answers) } : {}),
         ...(eventId ? { eventId } : {}),
         ...(budget ? { expectedBudget: Number(budget) } : {}),
+        // Only ever sent by a planner naming an engaged couple; the server
+        // refuses it from anybody else and refuses a wedding they do not run.
+        ...(forClient ? { forClientUserId: forClient } : {}),
       });
       nav(`/bookings?highlight=${data.id}`);
     } catch (err) {
@@ -863,12 +896,42 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
               </span>
             </label>
 
+            {/*
+              Whose wedding, asked only of somebody running one.
+
+              A couple never sees this: /events/engaged answers empty for them.
+              A planner must choose, because the booking is the couple's and
+              guessing would put it on the wrong account (EZ1-I235).
+            */}
+            {engagedClients.length > 0 && (
+              <label className="block text-sm">
+                <span className="text-gray-700">Requesting for</span>
+                <select
+                  className="input mt-1"
+                  value={forClient}
+                  onChange={(e) => setForClient(e.target.value)}
+                >
+                  <option value="">Choose the wedding…</option>
+                  {engagedClients.map((c) => (
+                    <option key={c.userId} value={c.userId}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-gray-500">
+                  The booking belongs to them and is paid by them. You are recorded as having
+                  placed it.
+                </span>
+              </label>
+            )}
+
             <div className="flex gap-2">
               <button
                 className="btn"
                 disabled={
                   (!slotId && !eventDate) ||
                   busy ||
+                  (engagedClients.length > 0 && !forClient) ||
                   (bookable.length > 0 && !serviceId) ||
                   (offerings.length > 0 && !offeringId)
                 }

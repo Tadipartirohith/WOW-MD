@@ -13,6 +13,7 @@ import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Quotation } from './entities/quotation.entity';
 import { MarkDeliveredDto } from './dto/booking-addon.dto';
+import { Permission, roleHasPermission } from '../../common/authz/permissions';
 import { WeddingEvent } from '../events/entities/event.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
@@ -273,11 +274,34 @@ export class BookingsService {
     // families and is paid for that; it does not hire their photographer, and
     // it certainly does not hold their escrow. Booking on somebody else's
     // behalf was removed with that scope, not merely hidden.
-    if (!isIndividual(actor.role)) {
+    /*
+     * Who this booking is for.
+     *
+     * Ordinarily the caller: a couple books for themselves. A planner engaged
+     * on a wedding may also raise the request, naming the couple -- the
+     * booking is still theirs, still paid by them, and still appears in their
+     * bookings; the planner is recorded in `bookedByUserId` as who placed it
+     * (EZ1-I235). That keeps EZ1-I29's rule that the agency does not own the
+     * booking while giving the planner the way to ask that they had none of.
+     */
+    const forClient = dto.forClientUserId;
+    if (forClient && forClient !== actor.userId) {
+      if (!roleHasPermission(actor.role, Permission.BOOKING_REQUEST_FOR_CLIENT)) {
+        throw new ForbiddenException('You cannot place a booking for somebody else');
+      }
+      // Engaged on that wedding, or not at all. Same check the planner's own
+      // events and brief go through.
+      const engaged = await this.weddingPlans.findOne({
+        where: { userId: forClient, plannerUserId: actor.userId },
+      });
+      if (!engaged) {
+        throw new ForbiddenException('You are not engaged on that wedding');
+      }
+    } else if (!isIndividual(actor.role)) {
       throw new ForbiddenException('Only the couple and their family can place bookings');
     }
 
-    const clientUserId = actor.userId;
+    const clientUserId = forClient && forClient !== actor.userId ? forClient : actor.userId;
     await this.assertServicesUnlocked(clientUserId);
 
     const provider = await this.providerOwner(dto.providerType, dto.providerId);

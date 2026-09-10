@@ -759,6 +759,23 @@ export class ProfileDetailsService {
             padam: chart.padam ?? null,
             gothram: chart.gothram ?? null,
             kujaDosham: chart.kujaDosham ?? null,
+            /*
+             * The chart itself, before the mutual accept (EZ1-I231).
+             *
+             * It was held back with the rest of the private biodata, on the
+             * reasoning that a chart image carries the exact birth date and
+             * time while this view deliberately shows only an age band. That
+             * was reversed deliberately: in this market a chart is the thing
+             * families compare before deciding whether to send interest at
+             * all, and the headline above -- rashi, star, padam, gothram, kuja
+             * dosham -- is already public here. Withholding only the image
+             * while publishing everything computed from it protected very
+             * little and stopped the comparison the page exists for.
+             *
+             * Everything else private stays private: family, contact, marital
+             * history and the rest of the gallery are still behind the accept.
+             */
+            horoscopeDocumentUrl: detail.horoscopeDocumentUrl ?? null,
           }
         : null;
       return {
