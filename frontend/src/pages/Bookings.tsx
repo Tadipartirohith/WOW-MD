@@ -20,6 +20,9 @@ interface Booking {
    */
   deliveredAt?: string | null;
   deliveryAcceptedAt?: string | null;
+  /** What the provider said they handed over, and any evidence for it. */
+  deliveryNotes?: string | null;
+  deliveryEvidence?: string[];
   userId: string;
   bookedByUserId: string;
   providerType: 'vendor' | 'planner';
@@ -419,6 +422,43 @@ export default function Bookings() {
                   Cancel
                 </button>
               )}
+              {/*
+                What the provider says they delivered, shown before the buyer is
+                asked to accept it.
+
+                This was written to the booking, the provider was told "the
+                customer sees this when they confirm", and nothing rendered it
+                anywhere -- so the buyer released escrow against a bare button
+                (council review, 2026-09-10). The point of recording a delivery
+                is that somebody reads it.
+              */}
+              {b.deliveredAt && !b.deliveryAcceptedAt && (b.deliveryNotes || (b.deliveryEvidence ?? []).length > 0) && (
+                <div className="w-full rounded-sm border border-gray-200 bg-surface-sunken p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    What was delivered
+                  </p>
+                  {b.deliveryNotes && (
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">
+                      {b.deliveryNotes}
+                    </p>
+                  )}
+                  {(b.deliveryEvidence ?? []).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(b.deliveryEvidence ?? []).map((url) => (
+                        <a key={url} href={url} target="_blank" rel="noreferrer">
+                          <img
+                            src={url}
+                            alt="Delivery evidence"
+                            loading="lazy"
+                            className="h-20 w-28 rounded-sm border border-gray-200 object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/*
                 The buyer's word that the work was done (EZ1-I228).
 

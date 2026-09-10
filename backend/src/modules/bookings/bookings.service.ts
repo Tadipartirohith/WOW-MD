@@ -1128,11 +1128,25 @@ export class BookingsService {
       if (!payment.providerRef) continue;
       // Refunds return the FULL amount to the buyer: the platform earns no
       // commission on a booking that never happened.
-      await this.gateway.refund(payment.providerRef, payment.amount);
+      //
+      // And only recorded when the gateway confirms it. This wrote REFUNDED
+      // unconditionally, so a refund lost to a 5xx or an unfindable capture
+      // still showed on the buyer's escrow page as money returned, with the
+      // booking cancelled and nothing left to retry it. A failure now stays
+      // HELD_IN_ESCROW with the reason on the row, which is true and
+      // recoverable (council review, 2026-09-10).
+      const outcome = await this.gateway.refund(payment.providerRef, payment.amount);
+      if (!outcome.refunded) {
+        await this.payments.update(payment.id, {
+          payoutNote: outcome.reason ?? 'The gateway did not confirm the refund',
+        });
+        continue;
+      }
       await this.payments.update(payment.id, {
         status: PaymentStatus.REFUNDED,
         commissionAmount: '0.00',
         payoutAmount: '0.00',
+        payoutNote: null,
       });
       await this.audit.record({
         action: AuditAction.BOOKING_ESCROW_REFUNDED,
@@ -1200,7 +1214,12 @@ export class BookingsService {
     }
     if (booking.startedAt) events.push({ at: booking.startedAt, label: 'Work started', detail: null });
     if (booking.completedAt)
-      events.push({ at: booking.completedAt, label: 'Marked delivered', detail: null });
+      events.push({
+        at: booking.completedAt,
+        label: 'Marked delivered',
+        // What the provider said they handed over, so the timeline carries it too.
+        detail: booking.deliveryNotes ?? null,
+      });
     if (booking.cancelledAt) {
       events.push({
         at: booking.cancelledAt,

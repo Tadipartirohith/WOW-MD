@@ -124,7 +124,17 @@ export default function WeddingPlanners() {
             ...(city ? { city } : {}),
             ...(minRating ? { minRating } : {}),
             page: 1,
-            limit: PAGE_SIZE * pages,
+            /*
+             * Clamped to the server's cap.
+             *
+             * "Load more" grows the limit rather than turning the page, so at
+             * nine presses it asked for 108 against a PAGINATION_MAX_LIMIT of
+             * 100 and the whole request 400'd -- the list did not stop growing,
+             * it vanished. Clamping to eight whole pages keeps it working;
+             * turning this into real page-based accumulation is the proper
+             * follow-up (council review, 2026-09-10).
+             */
+            limit: Math.min(PAGE_SIZE * pages, PAGE_SIZE * 8),
           },
         })
       ).data as { data: Planner[]; meta: { total: number } },

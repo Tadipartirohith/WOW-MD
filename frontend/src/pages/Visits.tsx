@@ -62,7 +62,7 @@ export default function Visits() {
   const { data, isLoading } = useQuery({
     queryKey: ['officer-visits'],
     queryFn: async () =>
-      (await api.get('/verification/requests', { params: { limit: 200 } })).data as {
+      (await api.get('/verification/requests', { params: { limit: 100 } })).data as {
         data: Visit[];
       },
     retry: false,
