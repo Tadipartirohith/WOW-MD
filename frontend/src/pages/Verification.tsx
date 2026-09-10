@@ -139,6 +139,20 @@ export interface Officer {
    * are making. The server refuses the conflicted combinations regardless.
    */
   kind?: 'officer' | 'agent';
+  /**
+   * Out of allocation right now -- on leave inside its window, or stood down.
+   *
+   * Reported by the workload endpoint all along and never read here, so the
+   * dropdown offered officers who were away and the allocation went through
+   * (EZ1-I221). They stay listed, marked and disabled, rather than vanishing:
+   * an administrator looking for somebody needs to see *why* they cannot pick
+   * them, or they go hunting for a name that is simply missing.
+   */
+  onLeave?: boolean;
+  /** `available` | `on_leave` | `unavailable`, for the label beside the name. */
+  availabilityStatus?: string;
+  /** Last day of the leave window, when there is one. */
+  leaveTo?: string | null;
 }
 
 /**
@@ -172,6 +186,7 @@ function AllocateePicker({
   const eligible = officers.filter(
     (o) => (o.kind ?? 'officer') === 'officer' && o.id !== excludeUserId,
   );
+  const away = eligible.filter((o) => o.onLeave).length;
 
   return (
     <label className="text-sm">
@@ -179,12 +194,22 @@ function AllocateePicker({
       <select className="input mt-1" value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">Lightest workload (recommended)</option>
         {eligible.map((o) => (
-          <option key={o.id} value={o.id}>
+          <option key={o.id} value={o.id} disabled={o.onLeave}>
             {o.name}
             {typeof o.openCount === 'number' ? `: ${o.openCount} open` : ''}
+            {o.onLeave
+              ? o.availabilityStatus === 'on_leave'
+                ? ` — on leave${o.leaveTo ? ` until ${o.leaveTo}` : ''}`
+                : ' — unavailable'
+              : ''}
           </option>
         ))}
       </select>
+      {away > 0 && (
+        <span className="mt-1 block text-xs text-gray-500">
+          {away === 1 ? '1 officer is' : `${away} officers are`} away and cannot take new work.
+        </span>
+      )}
     </label>
   );
 }
@@ -370,15 +395,23 @@ export default function Verification() {
       (await api.get('/verification/workload')).data as {
         officerUserId: string;
         open: number;
+        onLeave?: boolean;
+        availability?: { status: string; leaveTo: string | null };
       }[],
     retry: false,
     enabled: canAllocate,
   });
 
-  const officersWithLoad: Officer[] = (officers ?? []).map((o) => ({
-    ...o,
-    openCount: workload.find((w) => w.officerUserId === o.id)?.open ?? 0,
-  }));
+  const officersWithLoad: Officer[] = (officers ?? []).map((o) => {
+    const load = workload.find((w) => w.officerUserId === o.id);
+    return {
+      ...o,
+      openCount: load?.open ?? 0,
+      onLeave: load?.onLeave ?? false,
+      availabilityStatus: load?.availability?.status,
+      leaveTo: load?.availability?.leaveTo ?? null,
+    };
+  });
 
   async function run(fn: () => Promise<unknown>, done?: string) {
     setError('');
@@ -1248,6 +1281,23 @@ export function CaseRow({
   // fresh case, so the two do not blur into one another.
   const inReview = item.status === 'resolution_submitted' || item.status === 'admin_review';
 
+  /*
+   * Whether the case is currently somebody else's move.
+   *
+   * Allocate / Needs a visit / Waiting on them stayed on screen after the case
+   * had been handed to an officer, which read as though the administrator still
+   * had something to do — and re-allocating a case an officer had already
+   * started was one stray click away (EZ1-I218). While it sits with the officer
+   * or with whoever was asked for information, the strip goes; it comes back
+   * the moment the ball is back in the administrator's court, which is
+   * `reassigned` (sent back), `escalated` (needs a visit arranged) and the
+   * untouched states.
+   */
+  const withSomebodyElse =
+    item.status === 'allocated' ||
+    item.status === 'in_progress' ||
+    item.status === 'waiting_for_information';
+
   return (
     <div className="card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1480,7 +1530,20 @@ export function CaseRow({
         </div>
       )}
 
-      {canAllocate && !settled && !inReview && (
+      {/*
+        With the officer, so nothing here is the administrator's to press. The
+        assignment and what it is waiting on stay visible above; only the
+        actions go (EZ1-I218).
+      */}
+      {canAllocate && !settled && !inReview && withSomebodyElse && (
+        <p className="text-xs text-gray-500">
+          {item.status === 'waiting_for_information'
+            ? 'Waiting on a reply. Actions return when they respond.'
+            : 'With the assigned officer. Actions return when they report back.'}
+        </p>
+      )}
+
+      {canAllocate && !settled && !inReview && !withSomebodyElse && (
         <div className="flex flex-wrap items-end gap-2">
           <AllocateePicker
             officers={officers}

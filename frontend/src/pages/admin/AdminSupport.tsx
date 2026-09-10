@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../../lib/api';
 import { useAuth } from '../../store/auth';
@@ -31,6 +32,31 @@ export default function AdminSupport() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  /*
+   * Which half of Support you are looking at, held in the URL.
+   *
+   * Cases and disputes are separate entities on the server -- separate tables,
+   * separate endpoints, separate resolution paths -- so they stay separate here
+   * rather than being merged into one list (EZ1-I222). Keeping the choice in the
+   * query string is what lets the dashboard's two tiles land on the right one,
+   * instead of both dropping the administrator on Verification, which owns
+   * neither.
+   */
+  const [params, setParams] = useSearchParams();
+  const tab: 'cases' | 'disputes' = params.get('tab') === 'disputes' ? 'disputes' : 'cases';
+  const setTab = (next: 'cases' | 'disputes') => {
+    const copy = new URLSearchParams(params);
+    copy.set('tab', next);
+    setParams(copy, { replace: true });
+  };
+
+  const { data: disputes = [] } = useQuery({
+    queryKey: ['admin-disputes'],
+    queryFn: async () => (await api.get('/admin/disputes')).data as Dispute[],
+    retry: false,
+    enabled: tab === 'disputes',
+  });
+
   const { data: cases } = useQuery({
     queryKey: ['verification-cases'],
     queryFn: async () => (await api.get('/verification/cases')).data,
@@ -51,15 +77,25 @@ export default function AdminSupport() {
       (await api.get('/verification/workload')).data as {
         officerUserId: string;
         open: number;
+        onLeave?: boolean;
+        availability?: { status: string; leaveTo: string | null };
       }[],
     retry: false,
     enabled: canAllocate,
   });
 
-  const officersWithLoad: Officer[] = (officers ?? []).map((o) => ({
-    ...o,
-    openCount: workload.find((w) => w.officerUserId === o.id)?.open ?? 0,
-  }));
+  // Same shape as the Verification screen's roster, and for the same reason:
+  // an officer who is away is shown, marked, and not selectable (EZ1-I221).
+  const officersWithLoad: Officer[] = (officers ?? []).map((o) => {
+    const load = workload.find((w) => w.officerUserId === o.id);
+    return {
+      ...o,
+      openCount: load?.open ?? 0,
+      onLeave: load?.onLeave ?? false,
+      availabilityStatus: load?.availability?.status,
+      leaveTo: load?.availability?.leaveTo ?? null,
+    };
+  });
   const activeOfficers = officersWithLoad
     .filter((o) => o.isActive)
     .sort((a, b) => (a.openCount ?? 0) - (b.openCount ?? 0));
@@ -73,6 +109,8 @@ export default function AdminSupport() {
       qc.invalidateQueries({ queryKey: ['verification-cases'] });
       qc.invalidateQueries({ queryKey: ['verification-metrics'] });
       qc.invalidateQueries({ queryKey: ['verification-officers'] });
+      qc.invalidateQueries({ queryKey: ['admin-disputes'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
     } catch (err) {
       setError(apiMessage(err, 'That action was rejected.'));
     }
@@ -95,11 +133,32 @@ export default function AdminSupport() {
       {error && <p className="alert-critical">{error}</p>}
       {notice && <p className="alert-positive">{notice}</p>}
 
-      {/*
-        Case status cards with live counts, in the order work moves. Clicking one
-        filters the list; clicking it again clears the filter.
-      */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-1 border-b border-gray-200">
+        {(['cases', 'disputes'] as const).map((key) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            aria-current={tab === key ? 'page' : undefined}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm ${
+              tab === key
+                ? 'border-brand font-medium text-brand-strong'
+                : 'border-transparent text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {key === 'cases' ? 'Cases' : 'Disputes'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'disputes' ? (
+        <DisputesPanel disputes={disputes} onRun={run} />
+      ) : (
+        <>
+          {/*
+            Case status cards with live counts, in the order work moves. Clicking
+            one filters the list; clicking it again clears the filter.
+          */}
+          <div className="flex flex-wrap gap-2">
         {CASE_FILTERS.map((f) => {
           const count = caseRows.filter((c) => c.status === f.key).length;
           return (
@@ -136,7 +195,168 @@ export default function AdminSupport() {
             />
           ))
         )}
-      </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** A dispute as the admin list needs it: the money, the person, the reason. */
+interface Dispute {
+  id: string;
+  reason: string;
+  status: 'open' | 'resolved' | 'rejected';
+  resolution: string | null;
+  createdAt: string;
+  raisedByName: string;
+  raisedByRole: string | null;
+  booking: {
+    id: string;
+    status: string;
+    amount: string;
+    currency: string;
+    providerType: string;
+    eventDate: string | null;
+  } | null;
+}
+
+const DISPUTE_TONE: Record<Dispute['status'], string> = {
+  open: 'bg-caution-bg text-caution-fg',
+  resolved: 'bg-positive-bg text-positive-fg',
+  rejected: 'bg-critical-bg text-critical-fg',
+};
+
+/**
+ * Disputes raised against bookings.
+ *
+ * The endpoint and the resolve action have existed since disputes were built;
+ * nothing ever rendered them. So the dashboard counted eight open disputes and
+ * clicking that tile went to Verification, which does not hold a single one
+ * (EZ1-I222). Deciding one asks for a note first, because a rejection with no
+ * reason is not an answer either party can act on.
+ */
+function DisputesPanel({
+  disputes,
+  onRun,
+}: {
+  disputes: Dispute[];
+  onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [resolution, setResolution] = useState('');
+
+  const openCount = disputes.filter((d) => d.status === 'open').length;
+
+  if (disputes.length === 0) {
+    return <p className="card text-sm text-gray-500">No disputes have been raised.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-600">
+        {openCount} open of {disputes.length}. A disputed booking keeps its money in escrow until
+        this is decided.
+      </p>
+
+      {disputes.map((d) => (
+        <div key={d.id} className="card space-y-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-800">
+                {d.booking
+                  ? `${d.booking.currency} ${Number(d.booking.amount).toLocaleString('en-IN')} · ${d.booking.providerType}`
+                  : 'Booking no longer available'}
+              </p>
+              <p className="text-xs text-gray-500">
+                Raised by {d.raisedByName}
+                {d.raisedByRole ? ` (${d.raisedByRole})` : ''} on{' '}
+                {new Date(d.createdAt).toLocaleDateString()}
+                {d.booking?.eventDate ? ` · event ${d.booking.eventDate}` : ''}
+              </p>
+            </div>
+            <span className={`rounded-full px-2 py-1 text-xs ${DISPUTE_TONE[d.status]}`}>
+              {d.status}
+            </span>
+          </div>
+
+          <p className="whitespace-pre-wrap text-sm text-gray-700">{d.reason}</p>
+
+          {d.resolution && (
+            <p className="rounded-sm bg-surface-sunken p-2 text-sm text-gray-700">
+              <span className="font-medium">Resolution:</span> {d.resolution}
+            </p>
+          )}
+
+          {d.status === 'open' &&
+            (openId === d.id ? (
+              <div className="space-y-2 border-t pt-2">
+                <label className="label" htmlFor={`res-${d.id}`}>
+                  What was decided, and why
+                </label>
+                <textarea
+                  id={`res-${d.id}`}
+                  className="input"
+                  rows={2}
+                  maxLength={2000}
+                  value={resolution}
+                  onChange={(e) => setResolution(e.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn btn-sm"
+                    disabled={resolution.trim().length < 3}
+                    onClick={async () => {
+                      await onRun(
+                        () =>
+                          api.put(`/admin/disputes/${d.id}/resolve`, {
+                            status: 'resolved',
+                            resolution: resolution.trim(),
+                          }),
+                        'Dispute resolved.',
+                      );
+                      setOpenId(null);
+                      setResolution('');
+                    }}
+                  >
+                    Uphold and resolve
+                  </button>
+                  <button
+                    className="btn-outline btn-sm"
+                    disabled={resolution.trim().length < 3}
+                    onClick={async () => {
+                      await onRun(
+                        () =>
+                          api.put(`/admin/disputes/${d.id}/resolve`, {
+                            status: 'rejected',
+                            resolution: resolution.trim(),
+                          }),
+                        'Dispute rejected.',
+                      );
+                      setOpenId(null);
+                      setResolution('');
+                    }}
+                  >
+                    Reject
+                  </button>
+                  <button className="btn-ghost btn-sm" onClick={() => setOpenId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="btn-outline btn-sm"
+                onClick={() => {
+                  setOpenId(d.id);
+                  setResolution('');
+                }}
+              >
+                Decide this
+              </button>
+            ))}
+        </div>
+      ))}
     </div>
   );
 }

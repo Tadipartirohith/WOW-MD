@@ -18,6 +18,7 @@ import { Vendor } from '../vendors/entities/vendor.entity';
 import { VendorAvailabilitySlot } from '../vendors/entities/vendor-availability-slot.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Profile } from '../users/entities/profile.entity';
+import { OfficerAvailability, isOnLeaveNow } from './entities/officer-availability.entity';
 import {
   AllocateCaseDto,
   CaseQueryDto,
@@ -38,6 +39,7 @@ import {
   CaseStatus,
   CaseSubject,
   NotificationType,
+  OfficerAvailabilityStatus,
   PaymentStatus,
   ProviderType,
   SettlementOutcome,
@@ -96,6 +98,9 @@ export class SupportCasesService {
     private readonly slots: Repository<VendorAvailabilitySlot>,
     @InjectRepository(PlannerProfile) private readonly planners: Repository<PlannerProfile>,
     @InjectRepository(Profile) private readonly profiles: Repository<Profile>,
+    // Read to refuse allocation to an officer who is out (EZ1-I221).
+    @InjectRepository(OfficerAvailability)
+    private readonly availability: Repository<OfficerAvailability>,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     // Reopening a locked listing to resolve a "My Business Listing" case is a
@@ -589,6 +594,25 @@ export class SupportCasesService {
     if (item.raisedByUserId && officer.id === item.raisedByUserId) {
       throw new BadRequestException(
         'This case was raised by that officer; allocate it to a different officer.',
+      );
+    }
+
+    /*
+     * Not to somebody who is out.
+     *
+     * Checked on the server rather than only greyed out in the dropdown,
+     * because leave can start between the page rendering and the click, and
+     * because the endpoint is reachable without the page at all (EZ1-I221).
+     * Cases already on an officer are untouched when they go on leave; this
+     * only stops new ones arriving.
+     */
+    const avail = await this.availability.findOne({ where: { officerUserId: officer.id } });
+    if (isOnLeaveNow(avail)) {
+      const until = avail?.leaveTo ? ` until ${avail.leaveTo}` : '';
+      throw new BadRequestException(
+        avail?.status === OfficerAvailabilityStatus.ON_LEAVE
+          ? `That officer is on leave${until} and cannot take new cases. Please choose another officer.`
+          : 'That officer is currently unavailable and cannot take new cases. Please choose another officer.',
       );
     }
 

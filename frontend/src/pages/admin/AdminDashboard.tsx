@@ -11,6 +11,7 @@ import {
   Hourglass,
   Lifebuoy,
   Scales,
+  SealCheck,
   Vault,
   TrendUp,
 } from '@phosphor-icons/react';
@@ -77,14 +78,30 @@ export default function AdminDashboard() {
    */
   const cards: SummaryCard[] = analytics
     ? [
-        { label: 'Total Users', value: analytics.totalUsers, to: '/admin/users', icon: UsersThree, gradient: 'from-brand-100 to-brand-50', accent: 'brand' },
+        // "Individual Users" because that is what it counts: the brides, grooms
+        // and family members who came here to get married. It read "Total Users"
+        // over a count of every row in the table, which double-counted the four
+        // tiles beside it (EZ1-I224).
+        { label: 'Individual Users', value: analytics.totalUsers, to: '/admin/users', icon: UsersThree, gradient: 'from-brand-100 to-brand-50', accent: 'brand' },
         { label: 'Total Agents', value: analytics.totalAgents, to: '/admin/agents', icon: IdentificationCard, gradient: 'from-brand-soft to-surface', accent: 'brand' },
         { label: 'Total Vendors', value: analytics.totalVendors, to: '/admin/vendors', icon: Storefront, gradient: 'from-caution-bg to-surface', accent: 'caution' },
+        // The officer roster had a page and a nav entry but no tile, so the one
+        // number an allocator most wants before assigning work was the one the
+        // dashboard did not carry (EZ1-I222).
+        { label: 'Verification Officers', value: analytics.verification.officers, to: '/admin/officers', icon: SealCheck, gradient: 'from-positive-bg to-brand-50', accent: 'positive' },
         { label: 'Wedding Planners', value: analytics.totalPlanners, to: '/admin/planners', icon: ClipboardText, gradient: 'from-brand-100 to-surface', accent: 'brand' },
         { label: 'Total Bookings', value: analytics.totalBookings, to: '/admin/bookings', icon: Receipt, gradient: 'from-brand-soft to-brand-50', accent: 'brand' },
         { label: 'Awaiting Verification', value: analytics.verification.awaitingAllocation, to: '/verification', icon: Hourglass, gradient: 'from-positive-bg to-surface', accent: 'positive' },
-        { label: 'Open Cases', value: analytics.verification.casesOpen, to: '/verification', icon: Lifebuoy, gradient: 'from-caution-bg to-brand-50', accent: 'caution' },
-        { label: 'Open Disputes', value: analytics.openDisputes, to: '/verification', icon: Scales, gradient: 'from-brand-50 to-surface', accent: 'brand' },
+        /*
+         * Cases and disputes are Support's, not Verification's.
+         *
+         * Both tiles pointed at /verification, which holds neither — an
+         * administrator clicking "8 open disputes" landed on a visit queue and
+         * had no way to reach a single one of them. They stay two tiles because
+         * they are two tables with two resolution paths (EZ1-I222).
+         */
+        { label: 'Open Cases', value: analytics.verification.casesOpen, to: '/admin/support?tab=cases', icon: Lifebuoy, gradient: 'from-caution-bg to-brand-50', accent: 'caution' },
+        { label: 'Open Disputes', value: analytics.openDisputes, to: '/admin/support?tab=disputes', icon: Scales, gradient: 'from-brand-50 to-surface', accent: 'brand' },
         {
           label: 'Held in Escrow',
           value: `₹${Number(analytics.escrow?.bookings?.held ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`,

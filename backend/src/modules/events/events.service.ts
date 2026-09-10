@@ -592,13 +592,30 @@ export class EventsService {
    * the guest list keeps their own per-guest token — those are addressed to a
    * person and are not affected by rotating the open one.
    */
-  async createShareLink(userId: string, eventId: string): Promise<{ token: string }> {
+  async createShareLink(userId: string, eventId: string): Promise<{ token: string; url: string }> {
     const event = await this.ownedEvent(userId, eventId);
     const { token, tokenHash } = generateToken();
     event.shareTokenHash = tokenHash;
     event.shareTokenCreatedAt = new Date();
     await this.events.save(event);
-    return { token };
+    /*
+     * The whole address, built here rather than in the browser.
+     *
+     * This returned a bare token and the page pasted it onto
+     * `window.location.origin`, so the host was handed a link to whatever
+     * address they happened to be viewing the portal on — `localhost:8080` on
+     * a dev machine, which is a guest's own phone when they tap it, and is
+     * why a forwarded invitation opened as "not available" (EZ1-I178).
+     *
+     * A build-time `VITE_APP_BASE_URL` was tried first and cannot work: Vite
+     * inlines it at image-build time, nothing supplies it, and it collapsed
+     * back to the origin in every build. APP_BASE_URL is a runtime variable
+     * the config schema already validates, and it is what `/invite/:token`
+     * and the RSVP links have always been built from — so one setting now
+     * governs every link the platform hands out.
+     */
+    const base = this.cfg.mail.appBaseUrl.replace(/\/+$/, '');
+    return { token, url: `${base}/invitation/${token}` };
   }
 
   /** Stops the link working, without touching the guests who used it. */

@@ -284,6 +284,25 @@ export class EventQueryDto {
   @ApiPropertyOptional({ description: 'Matches the name, venue or city.' })
   @IsOptional() @IsString() @MaxLength(120)
   q?: string;
+
+  /**
+   * Whose wedding, when a planner is working on a client's.
+   *
+   * Declared here because it has to be. The route reads it with its own
+   * `@Query('hostUserId')` and hands it to `resolveHost`, which is where the
+   * engagement is actually checked — but the global ValidationPipe runs
+   * `forbidNonWhitelisted` against this DTO first, and a property the DTO does
+   * not know is not ignored, it is a 400 for the whole request. So a planner
+   * who picked a client off the dropdown got "property hostUserId should not
+   * exist" and an Events page that stayed empty, however correctly they had
+   * been engaged (EZ1-I232).
+   *
+   * Declaring it grants nothing: `resolveHost` still refuses a host this
+   * planner is not engaged on.
+   */
+  @ApiPropertyOptional({ description: "A planner may name a client's wedding they are engaged on." })
+  @IsOptional() @IsUUID()
+  hostUserId?: string;
 }
 
 /**

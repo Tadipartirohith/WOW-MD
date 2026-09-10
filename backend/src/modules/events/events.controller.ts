@@ -75,8 +75,21 @@ export class EventsController {
       'below them shows.',
   })
   @Get('summary')
-  summary(@CurrentUser('userId') userId: string) {
-    return this.events.eventSummary(userId);
+  async summary(
+    @CurrentUser() actor: AuthUser,
+    @Query('hostUserId') hostUserId?: string,
+  ) {
+    /*
+     * Counted for the same wedding the list below is showing.
+     *
+     * This only ever counted the caller's own events, so a planner who picked
+     * a client saw their three functions listed under "Upcoming 0" -- the
+     * counters were the planner's own empty wedding while the list was the
+     * client's (EZ1-I232). resolveHost applies the same engagement check the
+     * list does, so naming a client grants nothing extra here.
+     */
+    const host = await this.events.resolveHost(actor, hostUserId);
+    return this.events.eventSummary(host);
   }
 
   @ApiOperation({

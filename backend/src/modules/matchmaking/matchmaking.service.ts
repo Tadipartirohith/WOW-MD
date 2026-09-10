@@ -1023,8 +1023,9 @@ export class MatchmakingService {
     const interest = await this.interests.findOne({ where: { id: interestId } });
     if (!interest) throw new NotFoundException('Interest not found');
 
-    // Throws unless the caller controls the recipient profile.
-    const recipient = await this.resolveSubject(actor, interest.toProfileId);
+    // Throws unless the caller controls the recipient profile. Called for that
+    // refusal alone — nothing here needs the profile it resolves.
+    await this.resolveSubject(actor, interest.toProfileId);
 
     // Declining is always available. Requiring a verified document before
     // somebody may say no would trap them in a conversation they have already

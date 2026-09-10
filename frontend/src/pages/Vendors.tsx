@@ -130,18 +130,53 @@ export default function Vendors() {
     setSearch('');
   };
 
-  // Arriving from the vendor detail page's "Check availability" (EZ1-I76),
-  // open that vendor's request dialog straight away. The detail page is a
-  // separate route, so it hands the booking flow back here through ?request=.
+  /*
+   * Arriving from the vendor detail page's "Send request" (EZ1-I76), open that
+   * vendor's request form straight away.
+   *
+   * The lookup used to be `vendors.find(...)` against whatever this page had
+   * loaded, and that list is filtered, sorted and paginated. A buyer who had a
+   * category or city filter set, or whose vendor sat past the first page, hit
+   * `undefined` — so nothing opened, nothing was said, and the click was
+   * swallowed. From the buyer's side that is exactly the reported "there is no
+   * way to initiate it" (EZ1-I179): the detail page tells them they may send a
+   * request, and pressing the button appears to do nothing.
+   *
+   * Fetching the vendor by id when the list does not hold it makes the handoff
+   * independent of whatever the list happens to be showing.
+   */
   useEffect(() => {
     const wanted = params.get('request');
     if (!wanted || requesting) return;
-    const match = vendors.find((v) => v.id === wanted);
-    if (match) {
-      setRequesting(match);
+
+    let cancelled = false;
+    const open = (v: Vendor) => {
+      if (cancelled) return;
+      setRequesting(v);
       params.delete('request');
       setParams(params, { replace: true });
+    };
+
+    const match = vendors.find((v) => v.id === wanted);
+    if (match) {
+      open(match);
+      return;
     }
+    // Not on this page of results — ask for it directly.
+    api
+      .get(`/vendors/${wanted}`)
+      .then((r) => open(r.data as Vendor))
+      .catch(() => {
+        // Withdrawn, or never visible to this account. Clear the parameter so
+        // the page does not sit there looking like it is about to do something.
+        if (cancelled) return;
+        params.delete('request');
+        setParams(params, { replace: true });
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [params, vendors, requesting, setParams]);
 
   return (
@@ -344,7 +379,17 @@ export default function Vendors() {
         ))}
       </div>
 
-      {requesting && <RequestDialog vendor={requesting} onClose={() => setRequesting(null)} />}
+      {/*
+        Scrolled to, not just rendered. The form sits under the vendor grid, so
+        a buyer handed here from a vendor's page landed at the top of a list of
+        forty others with the thing they asked for somewhere off-screen
+        (EZ1-I179).
+      */}
+      {requesting && (
+        <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <RequestDialog vendor={requesting} onClose={() => setRequesting(null)} />
+        </div>
+      )}
     </div>
   );
 }

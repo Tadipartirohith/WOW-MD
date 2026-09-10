@@ -7,6 +7,9 @@ import { DataSource } from 'typeorm';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
+import { Quotation } from './entities/quotation.entity';
+import { VendorReview } from '../vendors/entities/vendor-review.entity';
+import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { Profile } from '../users/entities/profile.entity';
@@ -76,7 +79,13 @@ describe('BookingsService', () => {
   };
   const usersRepo = { findOne: jest.fn(async () => ({ id: 'u1', role: UserRole.BRIDE })) };
   const cases = { hasOpenCaseFor: jest.fn(async () => false) } as unknown as SupportCasesService;
-  const matchmaking = { isMatchFixed: jest.fn(async () => true) } as unknown as MatchmakingService;
+  // `fixedPartnerUserId` is how a booking finds the other half of a fixed match
+  // so it does not create a duplicate from both sides. Null is the "nobody is
+  // in a fixed match" answer, which is what these tests set up.
+  const matchmaking = {
+    isMatchFixed: jest.fn(async () => true),
+    fixedPartnerUserId: jest.fn(async () => null),
+  } as unknown as MatchmakingService;
   const availability = {
     isBookable: jest.fn(async () => true),
     findSlot: jest.fn(async () => null),
@@ -146,7 +155,24 @@ describe('BookingsService', () => {
         BookingsService,
         { provide: getRepositoryToken(Booking), useValue: bookingsRepo },
         { provide: getRepositoryToken(Payment), useValue: paymentsRepo },
+        // Quotations joined the service after this suite was written; nothing
+        // here goes down a quotation path, so an inert double is enough.
+        {
+          provide: getRepositoryToken(Quotation),
+          useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), create: jest.fn() },
+        },
         { provide: getRepositoryToken(Vendor), useValue: vendorsRepo },
+        // Both joined the service after this suite was written, and neither is
+        // reached by anything here: reviews are written on completion paths the
+        // tests stop short of, and the wedding plan is read for context only.
+        {
+          provide: getRepositoryToken(VendorReview),
+          useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), create: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(WeddingPlan),
+          useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), create: jest.fn() },
+        },
         { provide: getRepositoryToken(PlannerProfile), useValue: plannersRepo },
         { provide: getRepositoryToken(Profile), useValue: profilesRepo },
         { provide: getRepositoryToken(User), useValue: usersRepo },

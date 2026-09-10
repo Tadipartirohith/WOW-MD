@@ -111,7 +111,7 @@ describe('AuthService', () => {
 
   const individual = (over: Partial<RegisterDto> = {}): RegisterDto =>
     ({
-      email: 'a@b.com',
+      email: 'a.tester@gmail.com',
       password: 'Password123',
       accountType: AccountType.INDIVIDUAL,
       role: UserRole.BRIDE,
@@ -124,7 +124,7 @@ describe('AuthService', () => {
       const result = await service.register(individual());
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
-      expect(result.user.email).toBe('a@b.com');
+      expect(result.user.email).toBe('a.tester@gmail.com');
       expect(result.user.role).toBe(UserRole.BRIDE);
       // A solo user is never tied to an agency.
       expect(result.user.managedByAgentId).toBeNull();
@@ -227,7 +227,7 @@ describe('AuthService', () => {
   describe('login', () => {
     const activeUser = async (over: Partial<User> = {}) => ({
       id: 'u1',
-      email: 'a@b.com',
+      email: 'a.tester@gmail.com',
       role: UserRole.BRIDE,
       passwordHash: await bcrypt.hash('correct', 4),
       isActive: true,
@@ -241,27 +241,27 @@ describe('AuthService', () => {
 
     it('signs in with the correct password', async () => {
       repo.findOne.mockResolvedValueOnce(await activeUser());
-      const result = await service.login({ email: 'a@b.com', password: 'correct' });
+      const result = await service.login({ email: 'a.tester@gmail.com', password: 'correct' });
       expect(result.accessToken).toBeDefined();
       expect(result.user.permissions.length).toBeGreaterThan(0);
     });
 
     it('rejects the wrong password', async () => {
       repo.findOne.mockResolvedValueOnce(await activeUser());
-      await expect(service.login({ email: 'a@b.com', password: 'wrong' })).rejects.toBeInstanceOf(
+      await expect(service.login({ email: 'a.tester@gmail.com', password: 'wrong' })).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
 
     it('counts a failed attempt against the account', async () => {
       repo.findOne.mockResolvedValueOnce(await activeUser({ failedLoginAttempts: 0 }));
-      await expect(service.login({ email: 'a@b.com', password: 'wrong' })).rejects.toThrow();
+      await expect(service.login({ email: 'a.tester@gmail.com', password: 'wrong' })).rejects.toThrow();
       expect(repo.update).toHaveBeenCalledWith('u1', { failedLoginAttempts: 1 });
     });
 
     it('locks the account once the attempt limit is reached', async () => {
       repo.findOne.mockResolvedValueOnce(await activeUser({ failedLoginAttempts: 2 }));
-      await expect(service.login({ email: 'a@b.com', password: 'wrong' })).rejects.toThrow();
+      await expect(service.login({ email: 'a.tester@gmail.com', password: 'wrong' })).rejects.toThrow();
       const call = repo.update.mock.calls.at(-1);
       expect(call?.[1].lockedUntil).toBeInstanceOf(Date);
     });
@@ -270,14 +270,14 @@ describe('AuthService', () => {
       repo.findOne.mockResolvedValueOnce(
         await activeUser({ lockedUntil: new Date(Date.now() + 600_000) }),
       );
-      await expect(service.login({ email: 'a@b.com', password: 'correct' })).rejects.toBeInstanceOf(
+      await expect(service.login({ email: 'a.tester@gmail.com', password: 'correct' })).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
 
     it('refuses a deactivated account', async () => {
       repo.findOne.mockResolvedValueOnce(await activeUser({ isActive: false }));
-      await expect(service.login({ email: 'a@b.com', password: 'correct' })).rejects.toBeInstanceOf(
+      await expect(service.login({ email: 'a.tester@gmail.com', password: 'correct' })).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
@@ -286,7 +286,7 @@ describe('AuthService', () => {
       repo.findOne.mockResolvedValueOnce(
         await activeUser({ mfaEnabled: true, mfaSecret: 'JBSWY3DPEHPK3PXP' }),
       );
-      await expect(service.login({ email: 'a@b.com', password: 'correct' })).rejects.toBeInstanceOf(
+      await expect(service.login({ email: 'a.tester@gmail.com', password: 'correct' })).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
     });
@@ -296,7 +296,7 @@ describe('AuthService', () => {
         await activeUser({ mfaEnabled: true, mfaSecret: 'JBSWY3DPEHPK3PXP' }),
       );
       await expect(
-        service.login({ email: 'a@b.com', password: 'correct', mfaCode: '000000' }),
+        service.login({ email: 'a.tester@gmail.com', password: 'correct', mfaCode: '000000' }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
@@ -316,8 +316,8 @@ describe('AuthService', () => {
     });
 
     it('sends a reset email for a live account', async () => {
-      repo.findOne.mockResolvedValueOnce({ id: 'u1', email: 'a@b.com', isActive: true });
-      await service.requestPasswordReset('a@b.com');
+      repo.findOne.mockResolvedValueOnce({ id: 'u1', email: 'a.tester@gmail.com', isActive: true });
+      await service.requestPasswordReset('a.tester@gmail.com');
       expect(mail.sendPasswordReset).toHaveBeenCalled();
     });
 
@@ -360,7 +360,7 @@ describe('AuthService', () => {
       (jwt.verifyAsync as jest.Mock).mockResolvedValueOnce({ sub: 'u1' });
       repo.findOne.mockResolvedValueOnce({
         id: 'u1',
-        email: 'a@b.com',
+        email: 'a.tester@gmail.com',
         role: UserRole.BRIDE,
         isActive: true,
         managedByAgentId: null,
