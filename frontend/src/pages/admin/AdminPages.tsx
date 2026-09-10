@@ -242,6 +242,224 @@ function QueueCounts({ q }: { q: OfficerRow['verifications'] }) {
   );
 }
 
+/**
+ * Creating an officer, on the page that manages them.
+ *
+ * This lived on the Verification screen, which is the queue of visits -- so
+ * making a new member of staff meant opening a work queue and finding a form
+ * at the bottom of a tab (EZ1-I223). Verification is for verification work;
+ * this page is for the people who do it, and account creation belongs with the
+ * people. Same endpoint as before.
+ */
+/**
+ * Which places an officer covers, editable where the officer is managed.
+ *
+ * Moved here with the roster (EZ1-I223). This is the only surface that can set
+ * an officer's coverage -- the account detail page shows it read-only -- so it
+ * travelled rather than being deleted with the tab that used to hold it.
+ */
+function ServiceAreas({ officerId }: { officerId: string }) {
+  const qc = useQueryClient();
+  const [failed, setFailed] = useState('');
+
+  /** Runs a coverage change, surfacing whatever the server refused. */
+  const onRun = async (fn: () => Promise<unknown>) => {
+    setFailed('');
+    try {
+      await fn();
+      qc.invalidateQueries({ queryKey: ['admin-officers'] });
+    } catch (err) {
+      setFailed(apiMessage(err, 'That change was rejected.'));
+    }
+  };
+  const [adding, setAdding] = useState(false);
+  const [place, setPlace] = useState('');
+  const [scope, setScope] = useState<'city' | 'state'>('city');
+  const [primary, setPrimary] = useState(true);
+
+  const { data: areas = [] } = useQuery<
+    { id: string; label: string; city: string | null; state: string | null; primary: boolean }[]
+  >({
+    queryKey: ['officer-areas', officerId],
+    queryFn: async () => (await api.get(`/verification/officers/${officerId}/areas`)).data,
+    retry: false,
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['officer-areas', officerId] });
+
+  return (
+    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+      {failed && <p className="mb-1 text-xs text-critical-fg">{failed}</p>}
+      <div className="flex flex-wrap items-center gap-1">
+        {areas.map((a) => (
+          <span
+            key={a.id}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+              a.primary ? 'bg-brand/10 text-brand' : 'bg-gray-100 text-gray-600'
+            }`}
+            title={a.state && !a.city ? 'Whole state' : a.primary ? 'Primary area' : 'Will travel'}
+          >
+            {a.label}
+            {a.state && !a.city ? ' (state)' : ''}
+            <button
+              type="button"
+              className="text-gray-400 hover:text-red-600"
+              onClick={() =>
+                onRun(async () => {
+                  await api.delete(`/verification/areas/${a.id}`);
+                  await refresh();
+                })
+              }
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {areas.length === 0 && (
+          <span className="text-xs text-amber-700">
+            Covers nowhere, only allocated when nobody else fits
+          </span>
+        )}
+        <button
+          type="button"
+          className="text-xs text-brand underline"
+          onClick={() => setAdding(!adding)}
+        >
+          {adding ? 'cancel' : '+ area'}
+        </button>
+      </div>
+
+      {adding && (
+        <form
+          className="mt-2 flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!place.trim()) return;
+            void onRun(async () => {
+              await api.post(`/verification/officers/${officerId}/areas`, {
+                [scope]: place.trim(),
+                primary,
+              });
+              await refresh();
+              setPlace('');
+              setAdding(false);
+            });
+          }}
+        >
+          <select
+            className="input w-28 text-sm"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as 'city' | 'state')}
+          >
+            <option value="city">City</option>
+            <option value="state">State</option>
+          </select>
+          <input
+            className="input w-44 text-sm"
+            placeholder={scope === 'city' ? 'Hyderabad' : 'Telangana'}
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+          />
+          <label className="flex items-center gap-1 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={primary}
+              onChange={(e) => setPrimary(e.target.checked)}
+            />
+            Primary
+          </label>
+          <button className="btn-outline text-sm">Add</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function CreateOfficer() {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [region, setRegion] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+
+  async function create() {
+    setError('');
+    setDone('');
+    setBusy(true);
+    try {
+      await api.post('/verification/officers', { email, name, region: region || undefined });
+      setDone('Officer created. Their credentials are on the way.');
+      setName('');
+      setEmail('');
+      setRegion('');
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ['admin-officers'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+    } catch (err) {
+      setError(apiMessage(err, 'That officer could not be created.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn" onClick={() => setOpen(true)}>
+          Create officer
+        </button>
+        {done && <p className="text-sm text-positive-fg">{done}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="card space-y-3">
+      <div>
+        <h2 className="section-title">Add a verification officer</h2>
+        <p className="text-sm text-gray-600">
+          There is no sign-up for this role. The account is created here and the credentials are
+          emailed; the officer replaces the password on first sign-in.
+        </p>
+      </div>
+      {error && <p className="alert-critical">{error}</p>}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <input
+          className="input"
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          className="input"
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          className="input"
+          placeholder="Area covered"
+          value={region}
+          onChange={(e) => setRegion(e.target.value)}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn" disabled={busy || !email || name.trim().length < 2} onClick={create}>
+          {busy ? 'Creating…' : 'Create officer'}
+        </button>
+        <button className="btn-ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminOfficers() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -283,6 +501,8 @@ export function AdminOfficers() {
       </div>
 
       {error && <p className="alert-critical">{error}</p>}
+
+      <CreateOfficer />
 
       <div className="flex flex-wrap gap-2">
         {OFFICER_FILTERS.map((f) => {
@@ -373,6 +593,10 @@ export function AdminOfficers() {
                           )}
                         </span>
                       )}
+                      {/* Editable here, because this is the page that manages
+                          officers (EZ1-I223). The click guard keeps adding an
+                          area from also opening the officer's record. */}
+                      <ServiceAreas officerId={o.id} />
                     </td>
                     <td className="px-4 py-3">
                       <span

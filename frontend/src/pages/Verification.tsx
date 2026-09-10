@@ -344,7 +344,15 @@ export default function Verification() {
   const canFieldwork = can(permissions, Permission.VERIFICATION_FIELDWORK);
   const canManageOfficers = can(permissions, Permission.ADMIN_OFFICER_MANAGE);
 
-  const [tab, setTab] = useState<'requests' | 'cases' | 'officers'>('requests');
+  /*
+    Officers are managed on their own page (EZ1-I223).
+
+    This screen is the queue of verification work. Who the officers are,
+    creating one, and setting the areas they cover belong with the people
+    rather than with the visits, so all of it moved to
+    Admin -> Verification Officers.
+  */
+  const [tab, setTab] = useState<'requests' | 'cases'>('requests');
   // Null shows every section at once, which is what somebody with four visits
   // wants; picking one is for somebody with forty.
   const [section_, setSection] = useState<string | null>(null);
@@ -532,11 +540,6 @@ export default function Verification() {
             Cases ({caseRows.length})
           </TabButton>
         )}
-        {canManageOfficers && (
-          <TabButton active={tab === 'officers'} onClick={() => setTab('officers')}>
-            Officers ({officers?.length ?? 0})
-          </TabButton>
-        )}
       </div>
 
       {tab === 'requests' && (
@@ -672,9 +675,6 @@ export default function Verification() {
         </div>
       )}
 
-      {tab === 'officers' && canManageOfficers && (
-        <OfficersPanel officers={officers ?? []} onRun={run} />
-      )}
     </div>
   );
 }
@@ -1741,98 +1741,6 @@ export function CaseRow({
   );
 }
 
-function OfficersPanel({
-  officers,
-  onRun,
-}: {
-  officers: Officer[];
-  onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
-}) {
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [region, setRegion] = useState('');
-
-  return (
-    <div className="space-y-4">
-      <div className="card space-y-3">
-        <div>
-          <h2 className="section-title">Add a verification officer</h2>
-          <p className="text-sm text-gray-600">
-            There is no sign-up for this role. The account is created here and the credentials are
-            emailed; the officer replaces the password on first sign-in.
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <input
-            className="input"
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <input
-            className="input"
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="Area covered"
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-          />
-        </div>
-        <button
-          className="btn"
-          disabled={!email || name.length < 2}
-          onClick={() =>
-            onRun(async () => {
-              await api.post('/verification/officers', {
-                email,
-                name,
-                region: region || undefined,
-              });
-              setEmail('');
-              setName('');
-              setRegion('');
-            }, 'Officer created. Their credentials are on the way.')
-          }
-        >
-          Create officer
-        </button>
-      </div>
-
-      <div className="card">
-        <h2 className="section-title mb-2">Officers</h2>
-        {officers.length === 0 && <p className="text-sm text-gray-500">None yet.</p>}
-        {officers.map((o) => (
-          <div
-            key={o.id}
-            className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"
-          >
-            <div className="min-w-0">
-              <p className="font-medium">{o.name}</p>
-              <p className="text-xs text-gray-500">{o.email}</p>
-              <ServiceAreas officerId={o.id} onRun={onRun} />
-            </div>
-            <button
-              className="btn-outline"
-              onClick={() =>
-                onRun(() =>
-                  api.put(`/verification/officers/${o.id}/status`, { isActive: !o.isActive }),
-                )
-              }
-            >
-              {o.isActive ? 'Suspend' : 'Restore'}
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 type AvailabilityStatus = 'available' | 'on_leave' | 'unavailable';
 
 interface Availability {
@@ -2340,113 +2248,3 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
  * Coverage decides the pool and workload decides within it, so an officer with
  * no areas is only ever a fallback — worth being able to see at a glance.
  */
-function ServiceAreas({
-  officerId,
-  onRun,
-}: {
-  officerId: string;
-  onRun: (fn: () => Promise<unknown>, done?: string) => Promise<void>;
-}) {
-  const qc = useQueryClient();
-  const [adding, setAdding] = useState(false);
-  const [place, setPlace] = useState('');
-  const [scope, setScope] = useState<'city' | 'state'>('city');
-  const [primary, setPrimary] = useState(true);
-
-  const { data: areas = [] } = useQuery<
-    { id: string; label: string; city: string | null; state: string | null; primary: boolean }[]
-  >({
-    queryKey: ['officer-areas', officerId],
-    queryFn: async () => (await api.get(`/verification/officers/${officerId}/areas`)).data,
-    retry: false,
-  });
-
-  const refresh = () => qc.invalidateQueries({ queryKey: ['officer-areas', officerId] });
-
-  return (
-    <div className="mt-1">
-      <div className="flex flex-wrap items-center gap-1">
-        {areas.map((a) => (
-          <span
-            key={a.id}
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-              a.primary ? 'bg-brand/10 text-brand' : 'bg-gray-100 text-gray-600'
-            }`}
-            title={a.state && !a.city ? 'Whole state' : a.primary ? 'Primary area' : 'Will travel'}
-          >
-            {a.label}
-            {a.state && !a.city ? ' (state)' : ''}
-            <button
-              type="button"
-              className="text-gray-400 hover:text-red-600"
-              onClick={() =>
-                onRun(async () => {
-                  await api.delete(`/verification/areas/${a.id}`);
-                  await refresh();
-                })
-              }
-            >
-              ×
-            </button>
-          </span>
-        ))}
-        {areas.length === 0 && (
-          <span className="text-xs text-amber-700">
-            Covers nowhere, only allocated when nobody else fits
-          </span>
-        )}
-        <button
-          type="button"
-          className="text-xs text-brand underline"
-          onClick={() => setAdding(!adding)}
-        >
-          {adding ? 'cancel' : '+ area'}
-        </button>
-      </div>
-
-      {adding && (
-        <form
-          className="mt-2 flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!place.trim()) return;
-            void onRun(async () => {
-              await api.post(`/verification/officers/${officerId}/areas`, {
-                [scope]: place.trim(),
-                primary,
-              });
-              await refresh();
-              setPlace('');
-              setAdding(false);
-            }, 'Coverage added.');
-          }}
-        >
-          <select
-            className="input w-28 text-sm"
-            value={scope}
-            onChange={(e) => setScope(e.target.value as 'city' | 'state')}
-          >
-            <option value="city">City</option>
-            <option value="state">State</option>
-          </select>
-          <input
-            className="input w-44 text-sm"
-            placeholder={scope === 'city' ? 'Hyderabad' : 'Telangana'}
-            value={place}
-            onChange={(e) => setPlace(e.target.value)}
-          />
-          <label className="flex items-center gap-1 text-xs text-gray-600">
-            <input
-              type="checkbox"
-              className="h-3 w-3"
-              checked={primary}
-              onChange={(e) => setPrimary(e.target.checked)}
-            />
-            Primary
-          </label>
-          <button className="btn-outline text-sm">Add</button>
-        </form>
-      )}
-    </div>
-  );
-}
