@@ -369,8 +369,24 @@ export class AvailabilityService {
     });
   }
 
-  /** The vendor's own view: every window in the range, whatever its state. */
-  async list(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<SlotView[]> {
+  /**
+   * The vendor's own view: every window in the range, whatever its state.
+   *
+   * "Own" is now enforced. These reads used to take only the provider id, so
+   * any vendor could read any other vendor's private calendar — the confirmed
+   * and pending counts, the blocked days with their reasons, and the internal
+   * per-slot note — all of which the public route beside this one deliberately
+   * withholds (council review). Ownership only, not approval: a vendor still in
+   * verification must still be able to open their own empty availability page.
+   */
+  async list(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+    from?: string,
+    to?: string,
+  ): Promise<SlotView[]> {
+    await this.assertOwnListing(actor, providerType, providerId);
     return (await this.rows(providerType, providerId, from, to)).map((s) => this.view(s));
   }
 
@@ -389,7 +405,12 @@ export class AvailabilityService {
     to?: string,
     vendorServiceId?: string,
   ): Promise<SlotView[]> {
-    const bookable = (await this.list(providerType, providerId, from, to)).filter((s) => s.bookable);
+    // Straight off the rows, not through list(): list() is the owner's view and
+    // now gates on ownership, while this is the public buyer route and must stay
+    // open. What it shows is already the safe subset — bookable windows only.
+    const bookable = (await this.rows(providerType, providerId, from, to))
+      .map((s) => this.view(s))
+      .filter((s) => s.bookable);
     // Service-specific: when the buyer names a service, hide slots published for
     // a different service. A slot with no service (null) is general availability
     // and stays visible for any service (EZ1-I28).
@@ -399,11 +420,17 @@ export class AvailabilityService {
     );
   }
 
-  async summary(providerType: ProviderType, providerId: string, from?: string, to?: string): Promise<AvailabilitySummary> {
+  async summary(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+    from?: string,
+    to?: string,
+  ): Promise<AvailabilitySummary> {
     const window = this.window();
     const start = from ?? window.from;
     const end = to ?? window.to;
-    const views = await this.list(providerType, providerId, start, end);
+    const views = await this.list(actor, providerType, providerId, start, end);
 
     return {
       from: start,
@@ -427,13 +454,14 @@ export class AvailabilityService {
    * specification calls out as "cards that appear clickable but do nothing".
    */
   async filtered(
+    actor: AuthUser,
     providerType: ProviderType,
     providerId: string,
     bucket: 'published' | 'open' | 'requested' | 'booked' | 'full' | 'blocked',
     from?: string,
     to?: string,
   ): Promise<SlotView[]> {
-    const views = await this.list(providerType, providerId, from, to);
+    const views = await this.list(actor, providerType, providerId, from, to);
     switch (bucket) {
       case 'open':
         return views.filter((s) => s.bookable);
@@ -452,8 +480,14 @@ export class AvailabilityService {
   }
 
   /** Per-date rollup, for painting the calendar. */
-  async calendar(providerType: ProviderType, providerId: string, from?: string, to?: string) {
-    const views = await this.list(providerType, providerId, from, to);
+  async calendar(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+    from?: string,
+    to?: string,
+  ) {
+    const views = await this.list(actor, providerType, providerId, from, to);
     const byDate = new Map<string, SlotView[]>();
     for (const slot of views) {
       const list = byDate.get(slot.date) ?? [];
@@ -644,7 +678,7 @@ export class AvailabilityService {
    * is the same question for a caterer and for a planner, which is why they
    * share one table rather than two that would drift.
    */
-  private async assertOwner(
+  private async assertOwnListing(
     actor: AuthUser,
     providerType: ProviderType,
     providerId: string,
@@ -663,6 +697,25 @@ export class AvailabilityService {
     if (actor.role !== UserRole.ADMIN && vendor.ownerUserId !== actor.userId) {
       throw new ForbiddenException('That business is not yours');
     }
+  }
+
+  /**
+   * Ownership, plus the rule that only an approved listing may be *changed*.
+   *
+   * Reading your own calendar is not a verified-business action — a vendor
+   * still in verification has an availability page and it should open — so the
+   * reads gate on assertOwnListing and the writes on this.
+   */
+  private async assertOwner(
+    actor: AuthUser,
+    providerType: ProviderType,
+    providerId: string,
+  ): Promise<void> {
+    await this.assertOwnListing(actor, providerType, providerId);
+    if (providerType === ProviderType.PLANNER) return;
+
+    const vendor = await this.vendors.findOne({ where: { id: providerId } });
+    if (!vendor) throw new NotFoundException('Business not found');
     // Availability is a verified-business action. A vendor that is still in
     // verification — or was rejected — cannot publish or change slots until an
     // administrator approves the listing (EZ1-I137, extending EZ1-I119). Only an
