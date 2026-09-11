@@ -10,7 +10,11 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  Validate,
   ValidateIf,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  isEmail,
 } from 'class-validator';
 import {
   AccountType,
@@ -34,6 +38,19 @@ export const PASSWORD_MESSAGE =
 
 export const normaliseEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
+
+/** Accepts either of the two things a person can be signing in with. */
+@ValidatorConstraint({ name: 'emailOrMobile' })
+export class EmailOrMobileConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    return MOBILE_PATTERN.test(value) || isEmail(value);
+  }
+
+  defaultMessage(): string {
+    return 'Enter your email address or the mobile number your account was set up with';
+  }
+}
 
 export class RegisterDto {
   @ApiProperty({ example: 'bride@example.com' })
@@ -116,11 +133,34 @@ export class RegisterViaAgentLinkDto extends RegisterDto {
   token: string;
 }
 
+/**
+ * Email address or Indian mobile number, whichever the person has.
+ *
+ * A client an agent takes on by phone is created with a mobile number and no
+ * email, invited by SMS, and claims their account by supplying an address at
+ * that moment -- so the number they actually gave the agency, and the only
+ * identifier they know they have with us, was never a credential. `@IsEmail()`
+ * refused it at the DTO with "email must be an email" before any lookup ran
+ * (EZ1-I233).
+ *
+ * Normalises a mobile to the stored E.164 form and leaves everything else to
+ * be trimmed and lower-cased as an address.
+ */
+const normaliseIdentifier = (args: { value: unknown }): unknown => {
+  if (typeof args.value !== 'string') return args.value;
+  const asMobile = normaliseMobile(args);
+  if (typeof asMobile === 'string' && MOBILE_PATTERN.test(asMobile)) return asMobile;
+  return normaliseEmail(args);
+};
+
 export class LoginDto {
-  @ApiProperty({ example: 'bride@example.com' })
-  @IsEmail()
+  @ApiProperty({
+    example: 'bride@example.com',
+    description: 'Email address, or the mobile number the account was set up with',
+  })
   @MaxLength(254)
-  @Transform(normaliseEmail)
+  @Validate(EmailOrMobileConstraint)
+  @Transform(normaliseIdentifier)
   email: string;
 
   @ApiProperty({ example: 'StrongP@ssw0rd' })

@@ -40,6 +40,7 @@ import { SessionContext, SessionsService } from './sessions.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
+import { MOBILE_PATTERN } from '../../common/util/identity-fields';
 
 export interface JwtPayload {
   sub: string;
@@ -269,14 +270,36 @@ export class AuthService {
   // ------------------------------------------------------------------- login
 
   async login(dto: LoginDto, ctx: SessionContext = {}): Promise<AuthResult> {
-    const user = await this.users.findOne({
-      where: { email: dto.email },
-      select: [
-        'id', 'email', 'role', 'passwordHash', 'isActive', 'managedByAgentId',
-        'isVerified', 'mfaEnabled', 'mfaSecret', 'failedLoginAttempts', 'lockedUntil',
-        'mustResetPassword', 'onboardingStage', 'tokenVersion',
-      ],
-    });
+    const select = [
+      'id', 'email', 'role', 'passwordHash', 'isActive', 'managedByAgentId',
+      'isVerified', 'mfaEnabled', 'mfaSecret', 'failedLoginAttempts', 'lockedUntil',
+      'mustResetPassword', 'onboardingStage', 'tokenVersion',
+    ] as const;
+
+    /*
+     * The identifier is an address or a mobile number (EZ1-I233).
+     *
+     * `phone` carries no unique constraint and never has, so a number really
+     * can name more than one account -- a household that shared one number
+     * across two profiles, say. Authenticating "whichever row came back
+     * first" would be the wrong person, so an ambiguous number is refused and
+     * told to use the address instead. One match signs in normally.
+     */
+    const user = MOBILE_PATTERN.test(dto.email)
+      ? await (async () => {
+          const matches = await this.users.find({
+            where: { phone: dto.email, isActive: true },
+            select: [...select],
+            take: 2,
+          });
+          if (matches.length > 1) {
+            throw new UnauthorizedException(
+              'That mobile number is registered to more than one account. Sign in with your email address.',
+            );
+          }
+          return matches[0] ?? null;
+        })()
+      : await this.users.findOne({ where: { email: dto.email }, select: [...select] });
 
     // Compare against a dummy hash when the user is absent so the response time
     // does not reveal whether an email is registered.

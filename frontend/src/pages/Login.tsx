@@ -92,13 +92,20 @@ export default function Login() {
           <div className="space-y-4">
             <div>
               <label className="label" htmlFor="email">
-                Email
+                Email or mobile number
               </label>
+              {/*
+                `type="text"`, not `type="email"`: a client an agency took on by
+                phone signs in with the number they gave them, and the browser's
+                own email validation refused it before the form could be
+                submitted (EZ1-I233). `autoComplete="username"` covers both.
+              */}
               <input
                 id="email"
                 className="input"
-                type="email"
-                autoComplete="email"
+                type="text"
+                inputMode="email"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
