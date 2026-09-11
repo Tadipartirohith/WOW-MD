@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { createHash, createHmac } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 import { AppConfigService } from '../../config/app-config.service';
 
 export interface PresignedUpload {
@@ -46,7 +46,7 @@ export class MediaStorageProvider {
   }
 
   presign(userId: string, filename: string): PresignedUpload {
-    const key = `uploads/${userId}/${Date.now()}-${this.safeName(filename)}`;
+    const key = `uploads/${userId}/${Date.now()}-${randomBytes(8).toString('hex')}-${this.safeName(filename)}`;
     if (this.cfg.media.storageProvider === 's3' && this.cfg.media.s3Bucket) {
       return this.presignS3(key);
     }

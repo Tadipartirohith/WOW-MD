@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Controller,
   Get,
   Header,
@@ -94,6 +95,23 @@ export class MockStorageController {
     }
 
     const target = this.pathFor(objectKey);
+    /*
+     * Write once, never replace.
+     *
+     * This route cannot be authenticated: with the real provider the browser
+     * PUTs to a presigned S3 URL carrying its own auth and sends no bearer
+     * token, so requiring one here would break every upload on the default
+     * provider. What it can refuse is overwriting. Every media URL the API
+     * hands out -- a profile photograph, a support-case attachment, the
+     * evidence a provider files on a booking -- is also its own write address,
+     * so without this anyone who had seen one could silently replace the bytes
+     * behind it while the row, the history and the case all went on pointing at
+     * the same URL (council review). presign mints a fresh random key per
+     * upload, so a legitimate client never PUTs the same key twice.
+     */
+    if (existsSync(target)) {
+      throw new ConflictException('That object already exists');
+    }
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, body);
     // S3 answers a successful PUT with an empty 200, so this does too — a
