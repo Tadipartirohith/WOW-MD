@@ -200,6 +200,7 @@ export const BOOKING_STATUS_LABEL: Record<string, string> = {
   pending: 'Paid, awaiting confirmation',
   confirmed: 'Confirmed',
   in_progress: 'In progress',
+  completed_pending_final_payment: 'Awaiting the final payment',
   completed: 'Completed',
   disputed: 'Under investigation',
   cancelled: 'Cancelled',

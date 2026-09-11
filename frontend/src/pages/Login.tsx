@@ -33,7 +33,9 @@ export default function Login() {
       setAuth(data);
       nav('/');
     } catch (err) {
-      const body = (err as AxiosError<{ code?: string }>).response?.data;
+      // The global filter nests the thrown payload under 'error', which is
+      // where the challenge code lands -- never at the top level (council review).
+      const body = (err as AxiosError<{ error?: { code?: string } }>).response?.data?.error;
       if (body?.code === 'MFA_REQUIRED') {
         // Not an error the user caused: ask for the second factor instead.
         setNeedsMfa(true);

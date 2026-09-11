@@ -1,6 +1,5 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
 import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
@@ -105,8 +104,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
       setError('');
     },
     onError: (err) => {
-      const msg = (err as AxiosError<{ message?: string | string[] }>).response?.data?.message;
-      setError(Array.isArray(msg) ? msg.join('. ') : msg || 'That action was rejected.');
+      setError(apiMessage(err, 'That action was rejected.'));
     },
   });
 

@@ -1,8 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
-import { api } from '../lib/api';
+import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import PasswordField from '../components/PasswordField';
 import type { AccountType } from '../lib/permissions';
@@ -145,13 +144,7 @@ export default function Register() {
       if (accountType === 'agent') nav('/agency');
       else nav(accountType === 'individual' ? '/profile' : '/');
     } catch (err) {
-      const res = (err as AxiosError<{ message?: string | string[] }>).response;
-      const msg = res?.data?.message;
-      setError(
-        Array.isArray(msg)
-          ? msg.join('. ')
-          : msg || 'Could not register. The email may already be in use.',
-      );
+      setError(apiMessage(err, 'Could not register. The email may already be in use.'));
     } finally {
       setLoading(false);
     }
