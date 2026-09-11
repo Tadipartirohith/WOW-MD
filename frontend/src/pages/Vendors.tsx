@@ -538,7 +538,7 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
   // reception's. Absent for anyone who has not set their events up yet.
   const { data: events = [] } = useQuery<WeddingEvent[]>({
     queryKey: ['my-events'],
-    queryFn: async () => (await api.get('/events')).data?.data ?? [],
+    queryFn: async () => (await api.get('/events')).data ?? [],
     retry: false,
   });
 
@@ -590,7 +590,10 @@ function RequestDialog({ vendor, onClose }: { vendor: Vendor; onClose: () => voi
         // refuses it from anybody else and refuses a wedding they do not run.
         ...(forClient ? { forClientUserId: forClient } : {}),
       });
-      nav(`/bookings?highlight=${data.id}`);
+      // A planner who raised this for a client cannot see it on /bookings --
+      // they hold no BOOKING_READ_OWN, so that page renders their own incoming
+      // work instead. The client's page carries it, under Vendors and services.
+      nav(forClient ? `/my-clients/${forClient}#vendors` : `/bookings?highlight=${data.id}`);
     } catch (err) {
       const body = (err as { response?: { data?: { error?: { code?: string; bookingId?: string } } } })
         .response?.data?.error;

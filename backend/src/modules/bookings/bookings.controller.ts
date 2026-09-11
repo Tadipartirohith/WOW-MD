@@ -104,8 +104,9 @@ export class BookingsController {
   @ApiOperation({
     summary: 'Place a booking',
     description:
-      'Individual users book for themselves. Agents may pass onBehalfOfUserId to book for a ' +
-      'client on their own books. Vendors and planners cannot reach this route.',
+      'The couple and their family book for themselves. A planner engaged on the wedding may ' +
+      'place the same request for them by naming the couple in forClientUserId; the booking is ' +
+      'still theirs and still paid by them. Vendors and agents cannot reach this route.',
   })
   @Post()
   create(@CurrentUser() actor: AuthUser, @Body() dto: CreateBookingDto) {

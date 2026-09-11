@@ -72,8 +72,8 @@ export class CirculationController {
   @ApiBearerAuth()
   @RequirePermissions(Permission.MANAGED_PROFILE_MANAGE)
   @Get('profiles/:id/consent')
-  consentState(@Param('id', ParseUUIDPipe) id: string) {
-    return this.consent.stateFor(id);
+  consentState(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.consent.stateFor(actor, id);
   }
 
   @ApiBearerAuth()

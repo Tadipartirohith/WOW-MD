@@ -67,7 +67,27 @@ export class ConsentService {
     );
   }
 
-  async stateFor(profileId: string): Promise<ConsentState> {
+  /**
+   * The consent picture for a profile the caller stewards.
+   *
+   * This route used to take only the id. The consent row carries the name and
+   * telephone number of the parent who signed, the agent who took it and the
+   * agency notes, and MANAGED_PROFILE_MANAGE is held by every family and agent
+   * account -- so any signed-up account could read the consent-giver for any
+   * profile id it had been shown. Every neighbouring route already gated on
+   * stewardship; this was the one read that did not (council review).
+   */
+  async stateFor(actor: AuthUser, profileId: string): Promise<ConsentState> {
+    await this.stewardedProfile(actor, profileId);
+    return this.stateForProfile(profileId);
+  }
+
+  /**
+   * The same answer without the stewardship check, for callers inside this
+   * service and for managed-profile reads that have already loaded the profile
+   * through their own ownership gate. Do not expose this on a route.
+   */
+  async stateForProfile(profileId: string): Promise<ConsentState> {
     const rows = await this.consents.find({ where: { profileId } });
     const intake = this.live(rows, ConsentScope.INTAKE);
     const circulation = this.live(rows, ConsentScope.CIRCULATION);
@@ -144,7 +164,7 @@ export class ConsentService {
     ) {
       return;
     }
-    const state = await this.stateFor(profile.id);
+    const state = await this.stateForProfile(profile.id);
     if (!state.mayCirculate) {
       throw new ForbiddenException(
         state.reason ?? 'This profile cannot be circulated without recorded consent.',
@@ -154,7 +174,7 @@ export class ConsentService {
 
   /** Intake consent is required before an agency-built profile can be saved. */
   async assertMayHold(profileId: string): Promise<void> {
-    const state = await this.stateFor(profileId);
+    const state = await this.stateForProfile(profileId);
     if (!state.intake) {
       throw new ForbiddenException('Record the family consent before using this profile.');
     }
@@ -209,7 +229,7 @@ export class ConsentService {
       },
     });
 
-    return this.stateFor(profileId);
+    return this.stateForProfile(profileId);
   }
 
   async history(actor: AuthUser, profileId: string): Promise<ProfileConsent[]> {
@@ -227,7 +247,7 @@ export class ConsentService {
     if (!consent) throw new NotFoundException('Consent record not found');
 
     const profile = await this.stewardedProfile(actor, consent.profileId);
-    if (consent.revokedAt) return this.stateFor(profile.id);
+    if (consent.revokedAt) return this.stateForProfile(profile.id);
 
     consent.revokedAt = new Date();
     consent.revokedReason = dto.reason ?? null;
@@ -247,7 +267,7 @@ export class ConsentService {
       metadata: { scope: consent.scope, reason: dto.reason ?? null },
     });
 
-    return this.stateFor(profile.id);
+    return this.stateForProfile(profile.id);
   }
 
   /** Bulk state, so a profile list can show a consent badge per row. */

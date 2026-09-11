@@ -145,8 +145,13 @@ export class VendorsController {
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @ApiOperation({ summary: 'Every slot in the window, whatever its status' })
   @Get(':id/availability/slots')
-  listSlots(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+  listSlots(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: AvailabilityQueryDto,
+  ) {
     return this.availability.list(
+      actor,
       ProviderType.VENDOR,
       id, q.from, q.to,
     );
@@ -156,8 +161,13 @@ export class VendorsController {
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @ApiOperation({ summary: 'Counters for the availability dashboard' })
   @Get(':id/availability/summary')
-  availabilitySummary(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+  availabilitySummary(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: AvailabilityQueryDto,
+  ) {
     return this.availability.summary(
+      actor,
       ProviderType.VENDOR,
       id, q.from, q.to,
     );
@@ -173,11 +183,13 @@ export class VendorsController {
   })
   @Get(':id/availability/slots/by/:bucket')
   availabilityBucket(
+    @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('bucket') bucket: 'published' | 'open' | 'requested' | 'booked' | 'full' | 'blocked',
     @Query() q: AvailabilityQueryDto,
   ) {
     return this.availability.filtered(
+      actor,
       ProviderType.VENDOR,
       id, bucket, q.from, q.to,
     );
@@ -187,8 +199,13 @@ export class VendorsController {
   @RequirePermissions(Permission.VENDOR_LISTING_MANAGE)
   @ApiOperation({ summary: 'Per-date rollup, for painting the calendar' })
   @Get(':id/availability/calendar')
-  availabilityCalendar(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
+  availabilityCalendar(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: AvailabilityQueryDto,
+  ) {
     return this.availability.calendar(
+      actor,
       ProviderType.VENDOR,
       id, q.from, q.to,
     );

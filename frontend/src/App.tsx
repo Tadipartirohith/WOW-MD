@@ -255,7 +255,7 @@ const NAV: NavEntry[] = [
   // Reviews are about how the agency is doing, not what it is, so they get
   // their own entry rather than living inside the agency's details form
   // (EZ1-I229).
-  { to: '/my-reviews', label: 'My Reviews', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Star },
+  { to: '/agency/reviews', label: 'My Reviews', requires: [Permission.AGENCY_MANAGE], group: 'clients', icon: Star },
   { to: '/vendors', label: 'Vendors', requires: [Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE], group: 'wedding', icon: Storefront },
   // "Planners" and "Planner" next to each other were indistinguishable. One is
   // the marketplace where a planner is hired; the other is the couple's own
@@ -950,8 +950,15 @@ export default function App() {
           </Protected>
         }
       />
+      {/*
+        Distinct paths. Both pages used to declare path="/my-reviews"; React Router
+        scores them identically and keeps the earlier one, so the agent route
+        always won and a vendor following their own My Reviews nav entry, stat
+        card or dashboard action got Forbidden -- MyReviews.tsx and the endpoint
+        behind it were unreachable by anyone (council review).
+      */}
       <Route
-        path="/my-reviews"
+        path="/agency/reviews"
         element={
           <Protected requires={[Permission.AGENCY_MANAGE]}>
             <AgentReviews />

@@ -3,7 +3,10 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VendorServicesService } from './vendor-services.service';
 import { UpsertOfferingDto, UpsertVendorServiceDto } from './dto/catalog.dto';
 import { AuthUser, CurrentUser } from '../../common/decorators/current-user.decorator';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/authz/permissions';
 
 /**
@@ -109,10 +112,23 @@ export class VendorServicesController {
  * Separate from the controller above so the two permissions do not have to be
  * held together: a buyer reading a service to book it is not managing a
  * listing.
+ *
+ * Who may read it is wider than who may book. A planner raising the request for
+ * a client holds BOOKING_REQUEST_FOR_CLIENT and deliberately not BOOKING_CREATE,
+ * and the provider answering a request needs the same definition to see what the
+ * buyer was asked and what they replied. Gated on BOOKING_CREATE alone, the
+ * planner got an empty form and then a validation error naming a field it had
+ * never shown them, and the vendor got an empty answers panel on every booking
+ * (council review). This is a read of a service definition the vendor published;
+ * it grants nothing on its own.
  */
 @ApiTags('vendor-services')
 @ApiBearerAuth()
-@RequirePermissions(Permission.BOOKING_CREATE)
+@RequireAnyPermission(
+  Permission.BOOKING_CREATE,
+  Permission.BOOKING_REQUEST_FOR_CLIENT,
+  Permission.BOOKING_READ_INCOMING,
+)
 @Controller('services')
 export class ServiceBookingController {
   constructor(private readonly services: VendorServicesService) {}

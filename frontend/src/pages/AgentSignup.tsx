@@ -1,7 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import PasswordField from '../components/PasswordField';
@@ -99,11 +98,7 @@ export default function AgentSignup() {
       setAuth(auth);
       nav('/profile');
     } catch (err) {
-      const res = (err as AxiosError<{ message?: string | string[] }>).response;
-      const msg = res?.data?.message;
-      setError(
-        Array.isArray(msg) ? msg.join('. ') : msg || 'Could not create your account. Please try again.',
-      );
+      setError(apiMessage(err, 'Could not create your account. Please try again.'));
     } finally {
       setLoading(false);
     }

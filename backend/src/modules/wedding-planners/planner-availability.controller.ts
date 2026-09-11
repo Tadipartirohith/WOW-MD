@@ -91,31 +91,44 @@ export class PlannerAvailabilityController {
 
   @RequirePermissions(Permission.PLANNER_LISTING_MANAGE)
   @Get('slots')
-  list(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.list(ProviderType.PLANNER, id, q.from, q.to);
+  list(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: AvailabilityQueryDto,
+  ) {
+    return this.availability.list(actor, ProviderType.PLANNER, id, q.from, q.to);
   }
 
   @RequirePermissions(Permission.PLANNER_LISTING_MANAGE)
   @Get('summary')
-  summary(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.summary(ProviderType.PLANNER, id, q.from, q.to);
+  summary(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: AvailabilityQueryDto,
+  ) {
+    return this.availability.summary(actor, ProviderType.PLANNER, id, q.from, q.to);
   }
 
   @RequirePermissions(Permission.PLANNER_LISTING_MANAGE)
   @ApiOperation({ summary: 'The slots behind one summary card' })
   @Get('slots/by/:bucket')
   bucket(
+    @CurrentUser() actor: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('bucket') bucket: 'published' | 'open' | 'requested' | 'booked' | 'full' | 'blocked',
     @Query() q: AvailabilityQueryDto,
   ) {
-    return this.availability.filtered(ProviderType.PLANNER, id, bucket, q.from, q.to);
+    return this.availability.filtered(actor, ProviderType.PLANNER, id, bucket, q.from, q.to);
   }
 
   @RequirePermissions(Permission.PLANNER_LISTING_MANAGE)
   @Get('calendar')
-  calendar(@Param('id', ParseUUIDPipe) id: string, @Query() q: AvailabilityQueryDto) {
-    return this.availability.calendar(ProviderType.PLANNER, id, q.from, q.to);
+  calendar(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() q: AvailabilityQueryDto,
+  ) {
+    return this.availability.calendar(actor, ProviderType.PLANNER, id, q.from, q.to);
   }
 
   /**

@@ -226,7 +226,7 @@ export class ManagedProfilesService {
     return {
       ...profile,
       actions: this.agencyActions(profile),
-      circulation: await this.consent.stateFor(profile.id),
+      circulation: await this.consent.stateForProfile(profile.id),
     };
   }
 

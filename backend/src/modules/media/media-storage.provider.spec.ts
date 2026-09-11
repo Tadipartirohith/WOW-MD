@@ -66,7 +66,9 @@ describe('MediaStorageProvider', () => {
 
     it('does not produce an empty name from a filename with nothing usable in it', () => {
       const { key } = provider().presign('user-1', '___.jpg');
-      expect(key).toMatch(/\/\d+-file\.jpg$/);
+      // The random segment is what makes a key unguessable and collision-free,
+      // so the write-once rule in the mock store can never refuse a real upload.
+      expect(key).toMatch(/\/\d+-[0-9a-f]{16}-file\.jpg$/);
     });
   });
 
