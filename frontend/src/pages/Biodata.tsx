@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
@@ -529,25 +529,48 @@ function useDraft(initial: Draft, keys: string[], storageKey?: string) {
     for (const key of keys) next[key] = initial?.[key] ?? '';
     return next;
   };
+  /*
+   * Whether anything in here came from the person rather than from the seed.
+   *
+   * Only a touched draft is written to local storage. Without this the empty
+   * first render -- before the server's answer has arrived -- was itself saved
+   * as a "draft", and the effect below then preferred that empty draft over
+   * the real values when they landed. The result was a biodata that read as
+   * blank however many times it had been filled in: a family opening their
+   * daughter's personal details saw no date of birth even though the profile
+   * had carried one since it was created (EZ1-I236).
+   *
+   * A draft already in storage on arrival is a genuine unsaved edit from a
+   * previous visit, so it still wins -- which is the whole point of EZ1-I73.
+   */
+  const touched = useRef(false);
   const [draft, setDraft] = useState<Draft>(() => loadDraft(storageKey) ?? seed());
   useEffect(() => {
     // Prefer an unsaved local draft over re-seeding from the server (EZ1-I73).
     const stored = loadDraft(storageKey);
+    touched.current = Boolean(stored);
     setDraft(stored ?? seed());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial), keys.join(','), storageKey]);
 
   useEffect(() => {
+    if (!touched.current) return;
     saveDraft(storageKey, draft);
   }, [storageKey, draft]);
 
+  const edit = (fn: (d: Draft) => Draft) => {
+    touched.current = true;
+    setDraft(fn);
+  };
   const set = (key: string) => (e: { target: { value: string } }) =>
-    setDraft((d) => ({ ...d, [key]: e.target.value }));
+    edit((d) => ({ ...d, [key]: e.target.value }));
   /** For controls that hand back a value rather than an event. */
-  const put = (key: string) => (value: string) =>
-    setDraft((d) => ({ ...d, [key]: value }));
-  const clear = () => clearDraft(storageKey);
-  return { draft, setDraft, set, put, clear };
+  const put = (key: string) => (value: string) => edit((d) => ({ ...d, [key]: value }));
+  const clear = () => {
+    touched.current = false;
+    clearDraft(storageKey);
+  };
+  return { draft, setDraft: edit, set, put, clear };
 }
 
 function PersonalForm({

@@ -393,19 +393,36 @@ function CreateOfficer() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
+  // Only ever set on an environment where mail is not delivered (EZ1-I234).
+  const [devPassword, setDevPassword] = useState('');
 
   async function create() {
     setError('');
     setDone('');
     setBusy(true);
     try {
-      await api.post('/verification/officers', {
-        email,
-        name,
-        phone,
-        region: region || undefined,
-      });
-      setDone('Officer created. Their credentials are on the way.');
+      const created = (
+        await api.post('/verification/officers', {
+          email,
+          name,
+          phone,
+          region: region || undefined,
+        })
+      ).data as { devPassword?: string };
+      /*
+       * The API hands back the temporary password only when mail is running
+       * in `log` mode, where nothing is actually delivered. Discarding it and
+       * saying "credentials are on the way" left the administrator with an
+       * account nobody could sign into and no way to find out the password
+       * (EZ1-I234). In a real deployment the field is absent and the message
+       * is the accurate one.
+       */
+      setDevPassword(created?.devPassword ?? '');
+      setDone(
+        created?.devPassword
+          ? 'Officer created. Email is not being delivered on this environment, so hand them the temporary password below.'
+          : 'Officer created. Their credentials are on the way.',
+      );
       setName('');
       setEmail('');
       setPhone('');
@@ -422,11 +439,24 @@ function CreateOfficer() {
 
   if (!open) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        <button className="btn" onClick={() => setOpen(true)}>
-          Create officer
-        </button>
-        {done && <p className="text-sm text-positive-fg">{done}</p>}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <button className="btn" onClick={() => setOpen(true)}>
+            Create officer
+          </button>
+          {done && <p className="text-sm text-positive-fg">{done}</p>}
+        </div>
+        {devPassword && (
+          <div className="card border-amber-200 bg-amber-50">
+            <p className="text-sm font-medium text-amber-900">Temporary password</p>
+            <p className="mt-1 font-mono text-lg text-amber-950">{devPassword}</p>
+            <p className="mt-1 text-xs text-amber-900">
+              Shown because this environment writes email to a log instead of sending it. Give it to
+              the officer directly — they are made to replace it on first sign-in. It is not shown
+              again once you leave this page.
+            </p>
+          </div>
+        )}
       </div>
     );
   }

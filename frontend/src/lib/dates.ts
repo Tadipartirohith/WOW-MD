@@ -24,9 +24,24 @@ function parse(value: string | null | undefined): Date | null {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00`) : new Date(text);
 
   if (Number.isNaN(date.getTime())) return null;
-  // Anything at or before the epoch is a zero date that has been through a
-  // conversion, not a real one.
-  if (date.getTime() <= 0) return null;
+  /*
+   * Exactly the epoch instant is a zero date that has been through a
+   * conversion. Anything *before* it is a real date.
+   *
+   * This read `<= 0`, which silently swallowed every date before 1 January
+   * 1970 -- so a parent born in 1968 saw their own date of birth render as
+   * "Date not set" on their profile, no matter how many times they saved it.
+   * That is most of the people this platform calls family members, and it
+   * reads as the field having nowhere to store the value, which is how it was
+   * reported (EZ1-I236). Every date on the platform goes through this
+   * function, so it took anniversaries and parents' dates with it.
+   *
+   * The zero dates the guard exists for still go: a null, the string "null",
+   * an empty select and a numeric 0 are all caught above, and a stringified
+   * epoch lands exactly on 0 here. A genuine 1 January 1970 birthday survives
+   * anywhere east of Greenwich, where local midnight is negative.
+   */
+  if (date.getTime() === 0) return null;
   return date;
 }
 
