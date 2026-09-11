@@ -214,7 +214,7 @@ function ServiceAnswers({ booking }: { booking: IncomingBooking }) {
   const answers = booking.serviceAnswers ?? {};
   const hasAnswers = Object.keys(answers).length > 0;
 
-  const { data } = useQuery<{ bookingForm: FieldSpec[] }>({
+  const { data, isError } = useQuery<{ bookingForm: FieldSpec[] }>({
     queryKey: ['service-booking-form', booking.vendorServiceId],
     queryFn: async () =>
       (await api.get(`/services/${booking.vendorServiceId}/booking-form`)).data,
@@ -224,6 +224,17 @@ function ServiceAnswers({ booking }: { booking: IncomingBooking }) {
 
   if (!hasAnswers) return null;
   const fields = data?.bookingForm ?? [];
+
+  // Say so rather than rendering an empty grid. The buyer's answers are on the
+  // booking and the labels for them are not, so a failure here looks exactly
+  // like "they filled nothing in" unless it announces itself.
+  if (isError || (data && fields.length === 0)) {
+    return (
+      <p className="mt-2 text-sm text-gray-500">
+        The buyer&rsquo;s answers could not be loaded for this service.
+      </p>
+    );
+  }
 
   return (
     <dl className="mt-2 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
