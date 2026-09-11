@@ -88,7 +88,15 @@ export default function Matches() {
     onError: (err) => setError(apiMessage(err, 'That interest could not be sent.')),
   });
 
-  const suggestions: Suggestion[] = data?.items ?? data ?? [];
+  /*
+   * `{ data, meta }` -- the same paginated envelope every list endpoint
+   * returns. This read was `data?.items ?? data ?? []`, and there is no
+   * `items` key, so the fallback handed FlatList the envelope OBJECT. RN's
+   * _getItemCount returns 0 for anything not array-like, silently, so the
+   * request succeeded and the screen showed "No matches to show yet" forever
+   * (council round 2). The web client has always read it as `data?.data`.
+   */
+  const suggestions: Suggestion[] = data?.data ?? [];
 
   if (isPending) {
     return (

@@ -194,9 +194,4 @@ export class BookingSearchDto extends PaginationDto {
   @IsOptional()
   @IsEnum(BookingStatus)
   status?: BookingStatus;
-
-  @ApiPropertyOptional({ format: 'uuid', description: 'AGENT only: filter to one client' })
-  @IsOptional()
-  @IsUUID('4')
-  clientId?: string;
 }

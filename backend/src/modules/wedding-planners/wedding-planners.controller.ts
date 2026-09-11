@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Query } from '@nestjs
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { WeddingPlannersService } from './wedding-planners.service';
 import { PlannerSearchDto, UpsertPlannerProfileDto } from './dto/wedding-planner.dto';
+import { PayoutAccountDto } from '../vendors/dto/vendor.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -32,6 +33,20 @@ export class WeddingPlannersController {
   @Put('me')
   upsertOwn(@CurrentUser('userId') userId: string, @Body() dto: UpsertPlannerProfileDto) {
     return this.planners.upsertOwn(userId, dto);
+  }
+
+  @ApiBearerAuth()
+  @RequirePermissions(Permission.PLANNER_LISTING_MANAGE)
+  @ApiOperation({
+    summary: 'Where escrow pays out to',
+    description:
+      'The gateway linked account for this planner. Addressed as `me` rather than by id, like ' +
+      'the rest of this controller: a planner has exactly one listing, so there is no id to get ' +
+      'wrong and no other listing to aim at.',
+  })
+  @Put('me/payout-account')
+  setPayoutAccount(@CurrentUser('userId') userId: string, @Body() dto: PayoutAccountDto) {
+    return this.planners.setPayoutAccount(userId, dto.payoutAccountId);
   }
 
   @Public()

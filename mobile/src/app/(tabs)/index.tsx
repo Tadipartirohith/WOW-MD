@@ -87,7 +87,10 @@ export default function Home() {
     enabled: isAgent,
   });
 
-  const name: string | undefined = profile?.fullName ?? profile?.name;
+  // `displayName` is the only name /users/me returns -- the Profile entity has
+  // no `fullName` or `name`, so both of the fields read here were always
+  // undefined and every persona was greeted "Welcome" (council round 2).
+  const name: string | undefined = profile?.displayName;
 
   return (
     <Screen>

@@ -16,7 +16,6 @@ import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
-import { AgentsService } from '../agents/agents.service';
 import { AuditService } from '../../platform/audit/audit.service';
 import { SupportCasesService } from '../verification/support-cases.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
@@ -125,15 +124,6 @@ describe('BookingsService', () => {
     ),
   } as unknown as DataSource;
   const gateway = { createEscrowHold: jest.fn(), release: jest.fn(), refund: jest.fn() };
-  const agents = {
-    assertManages: jest.fn(async (agentId: string, clientId: string) => {
-      if (agentId !== 'agent-1' || clientId !== 'client-1') {
-        throw new ForbiddenException('That client is not on your books');
-      }
-      return { id: clientId };
-    }),
-  } as unknown as AgentsService;
-
   const baseBooking = (over: Partial<Booking> = {}): Booking =>
     ({
       id: 'b1',
@@ -183,7 +173,6 @@ describe('BookingsService', () => {
         { provide: AppConfigService, useValue: cfg },
         { provide: OutboxService, useValue: outbox },
         { provide: DataSource, useValue: dataSource },
-        { provide: AgentsService, useValue: agents },
         { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: SupportCasesService, useValue: cases },
         { provide: MatchmakingService, useValue: matchmaking },

@@ -164,12 +164,22 @@ export default function Availability() {
     enabled: Boolean(vendorId && bucket),
   });
 
-  // The services a window can be published against. A vendor who has not
-  // adopted the catalog simply has none, and publishes without one.
+  /*
+   * The services a window can be published against. A vendor who has not
+   * adopted the catalog simply has none, and publishes without one.
+   *
+   * Not asked for a planner at all. This is the one query on the page that
+   * hardcodes /vendors instead of using `base`, and a planner's id is a
+   * planner_profiles row, so it 404'd on every load and the failure was
+   * swallowed into the same empty list. The page then rendered correctly by
+   * accident. There is no planner equivalent to route it at -- a planner
+   * offers packages, not catalog services -- so the fix is to stop asking
+   * rather than to ask elsewhere (council round 2).
+   */
   const { data: services = [] } = useQuery<VendorService[]>({
     queryKey: ['vendor-services', vendorId],
     queryFn: async () => (await api.get(`/vendors/${vendorId}/services`)).data,
-    enabled: Boolean(vendorId),
+    enabled: Boolean(vendorId) && !isPlanner,
     retry: false,
   });
 

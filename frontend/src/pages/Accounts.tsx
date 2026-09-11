@@ -63,6 +63,14 @@ export default function Accounts() {
   const navigate = useNavigate();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const isVendor = can(permissions, Permission.VENDOR_LISTING_MANAGE);
+  /*
+   * A planner is a provider too, and took bookings, and was shown the figure
+   * this page calls "Owed to you -- waiting on a payout account to send it
+   * to" with no control anywhere that could supply one. The column and the
+   * read had always existed; only the way in was missing, so every completed
+   * planner booking stayed at PENDING_PAYOUT (council round 2).
+   */
+  const isPlanner = can(permissions, Permission.PLANNER_LISTING_MANAGE);
   const { activeId } = useBusinesses();
 
   const { data, isLoading } = useQuery<Earnings>({
@@ -70,11 +78,14 @@ export default function Accounts() {
     queryFn: async () => (await api.get('/bookings/earnings')).data,
   });
 
-  // The vendor's payout account lives here now, not in My Business (EZ1-I100).
+  // The provider's payout account lives here now, not in My Business (EZ1-I100).
   const { data: payout } = useQuery<{ payoutAccountId: string | null } | null>({
-    queryKey: ['payout-account', activeId],
-    enabled: isVendor && Boolean(activeId),
+    queryKey: ['payout-account', isPlanner ? 'planner' : activeId],
+    enabled: (isVendor && Boolean(activeId)) || isPlanner,
     queryFn: async () => {
+      if (isPlanner) {
+        return (await api.get('/wedding-planners/me')).data as { payoutAccountId: string | null };
+      }
       const listings = (await api.get('/vendors/me')).data as { id: string; payoutAccountId: string | null }[];
       return listings.find((l) => l.id === activeId) ?? null;
     },
@@ -96,7 +107,16 @@ export default function Accounts() {
       </div>
 
       {isVendor && activeId && (
-        <PayoutAccount vendorId={activeId} current={payout?.payoutAccountId ?? null} />
+        <PayoutAccount
+          endpoint={`/vendors/${activeId}/payout-account`}
+          current={payout?.payoutAccountId ?? null}
+        />
+      )}
+      {isPlanner && (
+        <PayoutAccount
+          endpoint="/wedding-planners/me/payout-account"
+          current={payout?.payoutAccountId ?? null}
+        />
       )}
 
       {isLoading && <Loading rows={3} />}

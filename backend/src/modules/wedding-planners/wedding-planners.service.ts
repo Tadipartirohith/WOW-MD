@@ -60,6 +60,25 @@ export class WeddingPlannersService {
     return profile;
   }
 
+  /**
+   * Where escrow pays this planner out to.
+   *
+   * `planner_profiles.payoutAccountId` has existed since the planner became a
+   * provider, and `bookings.service` reads it to decide where a completed
+   * booking's money goes -- but nothing could ever write it. The vendor had a
+   * route and a form; the planner had the column, the read, and no way in, so
+   * every completed planner booking sat at PENDING_PAYOUT and the retry sweep
+   * skipped it on every run for want of an account id (council round 2).
+   *
+   * An empty string clears it, matching the vendor route: a provider whose
+   * account has closed stops payouts going somewhere that will bounce.
+   */
+  async setPayoutAccount(ownerUserId: string, payoutAccountId: string): Promise<PlannerProfile> {
+    const profile = await this.getOwn(ownerUserId);
+    profile.payoutAccountId = payoutAccountId.trim() || null;
+    return this.planners.save(profile);
+  }
+
   /** Resolves the listing a booking points at, and its owner. */
   async findByIdOrFail(id: string): Promise<PlannerProfile> {
     const profile = await this.planners.findOne({ where: { id } });

@@ -143,6 +143,17 @@ interface NavEntry {
    */
   hideFor?: UserRole[];
   /**
+   * A different word for the same destination, for roles that would misread
+   * the default one.
+   *
+   * The alternative was `hideFor`, and that is what this replaced on
+   * /client-profiles: a family steward holds the same capability an agency
+   * does, so hiding the entry to avoid calling their daughter a "client" also
+   * took away the only page that can create, invite or circulate a profile.
+   * Renaming it costs nothing and keeps the capability reachable.
+   */
+  labelFor?: Partial<Record<UserRole, string>>;
+  /**
    * Which band of the sidebar this sits in.
    *
    * The navigation carried twenty-five destinations in one wrapping pill row,
@@ -203,17 +214,21 @@ const NAV: NavEntry[] = [
     label: 'Client Profiles',
     requires: [Permission.MANAGED_PROFILE_MANAGE],
     /*
-     * A family member has relatives, not clients.
+     * A family member has relatives, not clients — so they get the same page
+     * under their own word for it.
      *
-     * They hold the same stewardship capability an agency does — that is how
-     * a father runs his daughter's profile — so the permission cannot tell the
-     * two apart. But "Client Profiles" and "Shared With Me" are an agency's
-     * vocabulary for an agency's business, and putting them in front of a
-     * family reads as though the platform has mistaken them for one. The
-     * profiles themselves are still reachable from Biodata, where a family
-     * member actually looks for them.
+     * This used to be `hideFor: ['family']`, on the reasoning that "Client
+     * Profiles" is an agency's vocabulary and the profiles were "still
+     * reachable from Biodata". The second half was not true: Biodata offers a
+     * family only ProfileSelector, which lists profiles that already exist and
+     * creates none. This page is the sole caller of POST /agents/profiles,
+     * POST /agents/profiles/:id/invite and ShareProfileDialog, and hideFor is
+     * enforced as a redirect, so a family member could not create a relative's
+     * profile, send the claim invitation, or circulate the biodata at all —
+     * four permissions granted to the role with nowhere to exercise them
+     * (council round 2).
      */
-    hideFor: ['family'],
+    labelFor: { family: 'Family Profiles' },
     group: 'clients',
     icon: UsersThree,
   },
@@ -576,7 +591,7 @@ function Layout({ children }: { children: ReactNode }) {
           (n.requires.length === 0 || canAny(permissions, n.requires)),
       ).map((n) => ({
         to: n.to,
-        label: n.label,
+        label: (user && n.labelFor?.[user.role]) ?? n.label,
         icon: n.icon,
         group: n.group,
         badge: n.to === '/notifications' ? unread : undefined,

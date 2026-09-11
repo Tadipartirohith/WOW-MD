@@ -36,7 +36,6 @@ import {
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { PAYMENT_PROVIDER, PaymentProvider, PayoutDestination } from './payment.provider';
-import { AgentsService } from '../agents/agents.service';
 import { SupportCasesService } from '../verification/support-cases.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { AvailabilityService } from '../vendors/availability.service';
@@ -158,7 +157,6 @@ export class BookingsService {
     private readonly cfg: AppConfigService,
     private readonly outbox: OutboxService,
     private readonly dataSource: DataSource,
-    private readonly agents: AgentsService,
     private readonly audit: AuditService,
     private readonly cases: SupportCasesService,
     private readonly matchmaking: MatchmakingService,
@@ -1455,30 +1453,31 @@ export class BookingsService {
     await this.bookings.save(booking);
   }
 
-  /** Buyer-side listing: own bookings, plus managed clients' for an agent. */
+  /**
+   * Buyer-side listing: the caller's own bookings.
+   *
+   * This carried an AGENT branch -- "plus managed clients', for an agent" --
+   * left over from the model EZ1-I29 removed. Its only caller is gated on
+   * BOOKING_READ_OWN and the agent row holds no BOOKING_* permission at all,
+   * so the guard refused before the branch could run; it described a
+   * capability agents have not had for some time, and it was the only
+   * bookedByUserId-aware read in the file, which made it the thing a future
+   * "planner cannot see what they placed" fix would be extended from
+   * (council round 2). A planner reads what they placed for a client on that
+   * client's own page, which is where the redirect now lands.
+   */
   async listForBuyer(actor: AuthUser, q: BookingSearchDto): Promise<PaginatedResult<Booking>> {
     const qb = this.bookings.createQueryBuilder('b');
-    let partnerUserId: string | null = null;
 
-    if (actor.role === UserRole.AGENT) {
-      if (q.clientId) {
-        await this.agents.assertManages(actor.userId, q.clientId);
-        qb.where('b."userId" = :clientId', { clientId: q.clientId });
-      } else {
-        // Everything this agent placed, for whoever it was placed.
-        qb.where('(b."bookedByUserId" = :me OR b."userId" = :me)', { me: actor.userId });
-      }
+    // A match-fixed couple share one wedding, so a booking made from either
+    // account is visible in the other (EZ1-I160): both sides read the same
+    // rows, which is what keeps the shared view inherently in sync. For
+    // everyone else this is exactly the caller's own bookings.
+    const partnerUserId = await this.matchmaking.fixedPartnerUserId(actor.userId);
+    if (partnerUserId) {
+      qb.where('b."userId" IN (:...ids)', { ids: [actor.userId, partnerUserId] });
     } else {
-      // A match-fixed couple share one wedding, so a booking made from either
-      // account is visible in the other (EZ1-I160): both sides read the same
-      // rows, which is what keeps the shared view inherently in sync. For
-      // everyone else this is exactly the caller's own bookings.
-      partnerUserId = await this.matchmaking.fixedPartnerUserId(actor.userId);
-      if (partnerUserId) {
-        qb.where('b."userId" IN (:...ids)', { ids: [actor.userId, partnerUserId] });
-      } else {
-        qb.where('b."userId" = :me', { me: actor.userId });
-      }
+      qb.where('b."userId" = :me', { me: actor.userId });
     }
 
     if (q.status) qb.andWhere('b.status = :status', { status: q.status });
@@ -1557,18 +1556,14 @@ export class BookingsService {
       .createQueryBuilder('b')
       .select('b.status', 'status')
       .addSelect('COUNT(*)', 'count');
-    if (actor.role === UserRole.AGENT) {
-      qb.where('(b."bookedByUserId" = :me OR b."userId" = :me)', { me: actor.userId });
+    // Match-fixed couples share one wedding (EZ1-I160), so the tiles count
+    // both sides' bookings — the same scope as listForBuyer, so the numbers
+    // match the list. Null partner keeps this the caller's own rows.
+    const partnerUserId = await this.matchmaking.fixedPartnerUserId(actor.userId);
+    if (partnerUserId) {
+      qb.where('b."userId" IN (:...ids)', { ids: [actor.userId, partnerUserId] });
     } else {
-      // Match-fixed couples share one wedding (EZ1-I160), so the tiles count
-      // both sides' bookings — the same scope as listForBuyer, so the numbers
-      // match the list. Null partner keeps this the caller's own rows.
-      const partnerUserId = await this.matchmaking.fixedPartnerUserId(actor.userId);
-      if (partnerUserId) {
-        qb.where('b."userId" IN (:...ids)', { ids: [actor.userId, partnerUserId] });
-      } else {
-        qb.where('b."userId" = :me', { me: actor.userId });
-      }
+      qb.where('b."userId" = :me', { me: actor.userId });
     }
     const rows = await qb.groupBy('b.status').getRawMany<{ status: string; count: string }>();
 
@@ -2145,14 +2140,10 @@ export class BookingsService {
     return booking;
   }
 
-  /** The buyer, or the agent who placed it, or an admin. */
+  /** The buyer, or an admin. Agents do not place bookings (EZ1-I29). */
   private async assertBuyerSide(actor: AuthUser, booking: Booking): Promise<void> {
     if (actor.role === UserRole.ADMIN) return;
     if (booking.userId === actor.userId) return;
-    if (booking.bookedByUserId === actor.userId && actor.role === UserRole.AGENT) {
-      await this.agents.assertManages(actor.userId, booking.userId);
-      return;
-    }
     throw new ForbiddenException('This booking does not belong to you');
   }
 

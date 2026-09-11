@@ -1227,7 +1227,20 @@ type CaseAction =
       outcome: 'release' | 'refund' | 'no_action';
       primary?: boolean;
     }
-  | { key: string; label: string; kind: 'escalate' };
+  | { key: string; label: string; kind: 'escalate' }
+  /*
+   * `confirm_identity` is the one action that writes outside the case, and it
+   * is the officer's alone: IDENTITY_CONFIRM is granted to IN_PERSON and
+   * withheld even from an administrator, because seeing the document and the
+   * person together is what the visit is for.
+   *
+   * The permission, the route, the audit action and the `idVerifiedByUserId`
+   * column all shipped with no control anywhere that called them, so the only
+   * way a profile could ever read "Verified" was the self-service Aadhaar OTP
+   * (council round 2). A case about a profile is where an officer actually has
+   * that profile in front of them.
+   */
+  | { key: string; label: string; kind: 'confirm_identity'; primary?: boolean };
 
 const CASE_ACTIONS: Record<string, CaseAction[]> = {
   booking: [
@@ -1256,6 +1269,11 @@ const CASE_ACTIONS: Record<string, CaseAction[]> = {
   ],
   account: [
     { key: 'review', label: 'Review', kind: 'settle', outcome: 'no_action', primary: true },
+    { key: 'escalate', label: 'Escalate', kind: 'escalate' },
+  ],
+  profile: [
+    { key: 'confirm_identity', label: 'Confirm identity document', kind: 'confirm_identity', primary: true },
+    { key: 'review', label: 'Review', kind: 'settle', outcome: 'no_action' },
     { key: 'escalate', label: 'Escalate', kind: 'escalate' },
   ],
   other: [
@@ -1646,11 +1664,22 @@ export function CaseRow({
             the listing unlock are the ones that actually move something.
           */}
           {(() => {
-            const actions = CASE_ACTIONS[item.subjectType] ?? CASE_ACTIONS.other;
+            const actions = (CASE_ACTIONS[item.subjectType] ?? CASE_ACTIONS.other).filter(
+              // Confirming an identity needs the profile it is about; a case
+              // raised without a subject id has nothing to confirm against.
+              (a) => a.kind !== 'confirm_identity' || Boolean(item.subjectId),
+            );
             const money = item.subjectType === 'booking' || item.subjectType === 'payment';
             const notes = resNotes.trim();
 
             const run = (a: CaseAction) => {
+              if (a.kind === 'confirm_identity') {
+                void onRun(
+                  () => api.put(`/verification/identity/${item.subjectId}/verify`),
+                  'Identity confirmed. It now shows as verified on their profile.',
+                );
+                return;
+              }
               if (a.kind === 'escalate') {
                 const reason = window.prompt(
                   'Why does this need somebody on the ground? The next officer reads this.',
@@ -1696,7 +1725,7 @@ export function CaseRow({
                   {actions.map((a) => (
                     <button
                       key={a.key}
-                      className={a.kind === 'settle' && a.primary ? 'btn' : 'btn-outline'}
+                      className={a.kind !== 'escalate' && a.primary ? 'btn' : 'btn-outline'}
                       onClick={() => run(a)}
                     >
                       {a.label}

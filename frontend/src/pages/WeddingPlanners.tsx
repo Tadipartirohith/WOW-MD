@@ -16,7 +16,6 @@ import {
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Permission, can } from '../lib/permissions';
-import ClientSelector from '../components/ClientSelector';
 import { EmptyState, LoadingCards } from '../components/ui/Feedback';
 
 interface PlannerPackage {
@@ -92,7 +91,6 @@ function readShortlist(): Set<string> {
  */
 export default function WeddingPlanners() {
   const permissions = useAuth((s) => s.user?.permissions ?? []);
-  const isAgent = can(permissions, Permission.CLIENT_ACT_ON_BEHALF);
   const canBook = can(permissions, Permission.BOOKING_CREATE);
 
   // City and rating are the two filters the server understands; everything
@@ -491,7 +489,6 @@ export default function WeddingPlanners() {
         <PlannerDetail
           planner={open}
           canBook={canBook}
-          isAgent={isAgent}
           initialDate={weddingDate}
           onClose={() => setOpenId(null)}
           onBooked={(msg) => {
@@ -711,14 +708,12 @@ function AvailabilityChip({
 function PlannerDetail({
   planner,
   canBook,
-  isAgent,
   initialDate,
   onClose,
   onBooked,
 }: {
   planner: Planner;
   canBook: boolean;
-  isAgent: boolean;
   initialDate: string;
   onClose: () => void;
   onBooked: (message: string) => void;
@@ -734,7 +729,6 @@ function PlannerDetail({
   const [date, setDate] = useState(initialDate);
   const [checkedDate, setCheckedDate] = useState('');
   const [amount, setAmount] = useState('');
-  const [onBehalfOf, setOnBehalfOf] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -765,7 +759,6 @@ function PlannerDetail({
       const quoted = Number(amount);
       if (amount.trim() && Number.isFinite(quoted) && quoted > 0) payload.amount = quoted;
       if (checkedDate) payload.eventDate = checkedDate;
-      if (isAgent && onBehalfOf) payload.onBehalfOfUserId = onBehalfOf;
       await api.post('/bookings', payload);
       onBooked('Booking requested. Pay to move it into escrow from the Bookings page.');
     } catch (err) {
@@ -856,7 +849,6 @@ function PlannerDetail({
         {canBook ? (
           <div className="mt-5 space-y-3 border-t border-gray-200 pt-4">
             <h3 className="section-title text-sm">Check availability</h3>
-            {isAgent && <ClientSelector value={onBehalfOf} onChange={setOnBehalfOf} />}
             <div className="flex flex-wrap items-end gap-2">
               <label className="text-sm">
                 <span className="block text-gray-600">Event date</span>

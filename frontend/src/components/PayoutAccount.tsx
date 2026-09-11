@@ -3,16 +3,20 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, apiMessage } from '../lib/api';
 
 /**
- * Where a vendor's money leaves escrow to.
+ * Where a provider's money leaves escrow to.
  *
  * Lives on Accounts alongside the rest of the payment picture (EZ1-I100) rather
  * than inside My Business, which is only about the shop window.
+ *
+ * Takes the whole endpoint rather than an id, because the two providers
+ * address their listing differently: a vendor may own several and names the
+ * one being paid, a planner has exactly one and says "me" (council round 2).
  */
 export default function PayoutAccount({
-  vendorId,
+  endpoint,
   current,
 }: {
-  vendorId: string;
+  endpoint: string;
   current: string | null;
 }) {
   const qc = useQueryClient();
@@ -28,7 +32,7 @@ export default function PayoutAccount({
     setError('');
     setNotice('');
     try {
-      await api.put(`/vendors/${vendorId}/payout-account`, { payoutAccountId: value.trim() });
+      await api.put(endpoint, { payoutAccountId: value.trim() });
       await qc.invalidateQueries({ queryKey: ['my-listing'] });
       await qc.invalidateQueries({ queryKey: ['earnings'] });
       await qc.invalidateQueries({ queryKey: ['payout-account'] });

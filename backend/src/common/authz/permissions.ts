@@ -251,8 +251,22 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.NETWORK_POOL_BROWSE,
     Permission.SESSION_MANAGE_OWN,
     Permission.MFA_MANAGE_OWN,
-    Permission.MEDIA_MANAGE_OWN,
     Permission.DISPUTE_RAISE,
+    /*
+     * AI_ASSIST stays, unlike MEDIA_MANAGE_OWN above it.
+     *
+     * Media went for the reason it went from the vendor: the album gallery is
+     * the couple's wedding, and an agent's sidebar was carrying a group headed
+     * "The wedding" that opened onto somebody else's (council round 2).
+     *
+     * The assistant is a different thing. It is not a couple's surface -- the
+     * planner holds it too, deliberately -- and for the agent it is
+     * load-bearing: Matches.tsx enables the engine's recommended shortlist
+     * only for an account holding AI_ASSIST, and Matches is the brokerage's
+     * primary screen. Removing it to match the vendor change would have
+     * deleted that shortlist with nothing saying why, which is the same shape
+     * as the BOOKING_CREATE removal that produced EZ1-I235/I240.
+     */
     Permission.AI_ASSIST,
 
     /*

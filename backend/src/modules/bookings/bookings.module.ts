@@ -11,7 +11,6 @@ import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
-import { AgentsModule } from '../agents/agents.module';
 import { VerificationModule } from '../verification/verification.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { VendorsModule } from '../vendors/vendors.module';
@@ -46,7 +45,6 @@ import {
       // booking is confirmed (EZ1-I116).
       WeddingPlan,
     ]),
-    AgentsModule,
     // Mutual: settlement in verification calls back into this module to move
     // the escrow it decided (council review, 2026-09-10).
     forwardRef(() => VerificationModule),

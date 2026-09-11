@@ -105,7 +105,10 @@ const TILES: Tile[] = [
     to: '/vendors',
     title: 'Vendors',
     desc: 'Browse venues, catering, photography and more',
-    requires: [Permission.BOOKING_CREATE],
+    // The same pair the nav entry and the route guard use. Gating the tile on
+    // BOOKING_CREATE alone dropped this row for a planner, who was being
+    // offered Vendors in the sidebar on the same screen (council round 2).
+    requires: [Permission.BOOKING_CREATE, Permission.PLANNER_LISTING_MANAGE],
   },
   {
     to: '/wedding-planners',

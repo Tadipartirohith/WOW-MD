@@ -271,17 +271,22 @@ export default function ManagedProfiles() {
         opening Client Profiles to find a client scrolled a fourteen-field form
         first, every time, and the page mixed "what I have" with "make another".
       */}
+      {/*
+        Same page, a family's vocabulary. A father running his daughter's
+        profile is doing what an agency does and holds the same permissions to
+        do it, but "client" is not what she is to him (council round 2).
+      */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="page-title">Client Profiles</h1>
+          <h1 className="page-title">{isFamily ? 'Family Profiles' : 'Client Profiles'}</h1>
           <p className="page-subtitle">
-            The clients you look after. Build a profile for someone who has not joined yet and it
-            can be matched immediately; when you invite them, they set their own password and take
-            ownership.
+            {isFamily
+              ? 'The relatives whose profiles you look after. Build one for someone who has not joined yet and it can be matched immediately; when you invite them, they set their own password and take ownership.'
+              : 'The clients you look after. Build a profile for someone who has not joined yet and it can be matched immediately; when you invite them, they set their own password and take ownership.'}
           </p>
         </div>
         <button className="btn shrink-0" onClick={() => setCreating((open) => !open)}>
-          {creating ? 'Cancel' : 'Create new client'}
+          {creating ? 'Cancel' : isFamily ? 'Add a relative' : 'Create new client'}
         </button>
       </div>
 
