@@ -92,7 +92,7 @@ describe('ConsentService', () => {
 
   describe('state', () => {
     it('reports nothing recorded on a fresh profile', async () => {
-      const state = await service.stateFor('p1');
+      const state = await service.stateForProfile('p1');
       expect(state.intake).toBeNull();
       expect(state.mayCirculate).toBe(false);
       expect(state.reason).toMatch(/no intake consent/i);
@@ -102,7 +102,7 @@ describe('ConsentService', () => {
     // passing them around is another.
     it('does not treat intake consent as permission to circulate', async () => {
       rows = [consentRow({ scope: ConsentScope.INTAKE })];
-      const state = await service.stateFor('p1');
+      const state = await service.stateForProfile('p1');
       expect(state.intake).not.toBeNull();
       expect(state.mayCirculate).toBe(false);
       expect(state.reason).toMatch(/circulation consent/i);
@@ -117,7 +117,7 @@ describe('ConsentService', () => {
           expiresAt: new Date(Date.now() + 86_400_000),
         }),
       ];
-      const state = await service.stateFor('p1');
+      const state = await service.stateForProfile('p1');
       expect(state.mayCirculate).toBe(true);
       expect(state.needsReconfirmation).toBe(false);
     });
@@ -131,7 +131,7 @@ describe('ConsentService', () => {
           expiresAt: new Date(Date.now() - 1000),
         }),
       ];
-      const state = await service.stateFor('p1');
+      const state = await service.stateForProfile('p1');
       expect(state.mayCirculate).toBe(false);
       expect(state.needsReconfirmation).toBe(true);
       expect(state.reason).toMatch(/lapsed/i);
@@ -147,7 +147,7 @@ describe('ConsentService', () => {
           revokedAt: new Date(),
         }),
       ];
-      const state = await service.stateFor('p1');
+      const state = await service.stateForProfile('p1');
       expect(state.mayCirculate).toBe(false);
       expect(state.needsReconfirmation).toBe(true);
     });
@@ -168,7 +168,7 @@ describe('ConsentService', () => {
           createdAt: new Date('2026-08-01T00:00:00Z'),
         }),
       ];
-      const state = await service.stateFor('p1');
+      const state = await service.stateForProfile('p1');
       expect(state.mayCirculate).toBe(true);
       expect(state.circulation?.id).toBe('c3');
     });
