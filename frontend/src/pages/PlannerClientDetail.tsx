@@ -120,12 +120,19 @@ export default function PlannerClientDetail() {
           <Link className="btn-outline btn-sm" to={`/planner/plan/${wedding.planId}/timeline`}>
             View wedding plan
           </Link>
-          <Link className="btn-outline btn-sm" to="/events">
+          {/*
+            Both of these used to drop the client. Events auto-selects the first
+            client when no ?host= is given, so from client B you got client A's
+            functions with nothing saying so; and /bookings renders a planner's
+            own incoming queue, which never contains the client's vendor
+            bookings at all. Both now stay on this client (council review).
+          */}
+          <Link className="btn-outline btn-sm" to={`/events?host=${client.userId}`}>
             Events &amp; tasks
           </Link>
-          <Link className="btn-outline btn-sm" to="/bookings">
+          <a className="btn-outline btn-sm" href="#vendors">
             Bookings
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -234,7 +241,7 @@ export default function PlannerClientDetail() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" id="vendors">
         <h2 className="section-title">Vendors and services</h2>
         {vendors.length === 0 ? (
           <p className="mt-1 text-sm text-gray-500">Nothing booked yet.</p>
