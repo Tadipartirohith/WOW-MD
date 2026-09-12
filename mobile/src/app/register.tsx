@@ -73,6 +73,7 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -113,6 +114,16 @@ export default function Register() {
     if (password.length < 8) errors.password = 'At least 8 characters';
     else if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
       errors.password = 'Needs an uppercase letter, a lowercase letter and a digit';
+    }
+
+    /*
+     * Typed twice, because the field is masked and nobody can proof-read a row
+     * of dots. Getting it wrong here costs a password reset on an account the
+     * person has not used yet, which is the worst possible first impression.
+     */
+    if (!confirmPassword) errors.confirmPassword = 'Type the password again';
+    else if (confirmPassword !== password) {
+      errors.confirmPassword = 'Password and Confirm Password do not match.';
     }
 
     return errors;
@@ -265,16 +276,30 @@ export default function Register() {
           autoCapitalize="none"
           autoComplete="new-password"
           textContentType="newPassword"
+        />
+        {fieldErrors.password ? <Caption tone="critical">{fieldErrors.password}</Caption> : null}
+
+        <Field
+          label="Confirm password"
+          hint={fieldErrors.confirmPassword ? undefined : 'The same password again.'}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete="new-password"
+          textContentType="newPassword"
           onSubmitEditing={submit}
           returnKeyType="go"
         />
-        {fieldErrors.password ? <Caption tone="critical">{fieldErrors.password}</Caption> : null}
+        {fieldErrors.confirmPassword ? (
+          <Caption tone="critical">{fieldErrors.confirmPassword}</Caption>
+        ) : null}
 
         <Button
           label={`Create ${selected.label.toLowerCase()} account`}
           onPress={submit}
           busy={busy}
-          disabled={!email.trim() || !password || !displayName.trim()}
+          disabled={!email.trim() || !password || !confirmPassword || !displayName.trim()}
         />
 
         <View

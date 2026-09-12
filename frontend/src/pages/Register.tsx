@@ -111,7 +111,9 @@ export default function Register() {
     }
 
     if (!confirm) errors.confirm = 'Type the password again';
-    else if (confirm !== password) errors.confirm = 'Passwords do not match';
+    // The same words the app uses, so a vendor who signed up on one and is
+    // being talked through the other is not told two different things.
+    else if (confirm !== password) errors.confirm = 'Password and Confirm Password do not match.';
 
     return errors;
   }
