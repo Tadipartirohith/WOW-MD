@@ -19,6 +19,7 @@ import { formatAnswer, type FieldSpec } from '@/shared/dynamic-form';
 import { BOOKING_STATUS_LABEL } from '@/shared/permissions';
 import { Badge, DetailGrid, DetailRow, Divider } from '@/components/chrome';
 import { VendorAddOns } from '@/components/bookings/addons';
+import { BookingDetail } from '@/components/bookings/detail';
 import { BookingChat } from '@/components/bookings/chat';
 import { QuotationForm } from '@/components/bookings/quotation';
 import { PromptSheet } from '@/components/prompt';
@@ -222,7 +223,7 @@ export function BookingCard({
       />
       {expanded && (
         <>
-          <ServiceAnswers booking={booking} />
+          <BookingDetail booking={booking} />
           <VendorAddOns bookingId={booking.id} />
           <BookingChat bookingId={booking.id} />
         </>
@@ -312,39 +313,5 @@ function Sunken({ children }: { children: React.ReactNode }) {
     >
       {children}
     </View>
-  );
-}
-
-/**
- * What the buyer answered on this service's own form.
- *
- * Fetched per service rather than stored on the booking, so a label an
- * administrator has since reworded reads correctly on an old request.
- */
-function ServiceAnswers({ booking }: { booking: IncomingBooking }) {
-  const answers = booking.serviceAnswers ?? {};
-  const hasAnswers = Object.keys(answers).length > 0;
-
-  const { data } = useQuery<{ bookingForm: FieldSpec[] }>({
-    queryKey: ['service-booking-form', booking.vendorServiceId],
-    queryFn: async () =>
-      (await api.get(`/services/${booking.vendorServiceId}/booking-form`)).data,
-    enabled: Boolean(booking.vendorServiceId) && hasAnswers,
-    retry: false,
-  });
-
-  if (!hasAnswers) return null;
-  const fields = data?.bookingForm ?? [];
-
-  return (
-    <DetailGrid>
-      {fields
-        .filter((field) => answers[field.key] !== undefined)
-        .map((field) => (
-          <DetailRow key={field.key} label={field.label}>
-            {formatAnswer(field, answers[field.key])}
-          </DetailRow>
-        ))}
-    </DetailGrid>
   );
 }

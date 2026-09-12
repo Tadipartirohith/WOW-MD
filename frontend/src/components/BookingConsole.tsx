@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarBlank, MapPin, UsersThree } from '@phosphor-icons/react';
@@ -140,7 +140,15 @@ export default function BookingConsole({
   renderActions,
 }: {
   statusLabels: Record<string, string>;
-  /** Extra detail under the facts — the answers a client gave, for instance. */
+  /**
+   * The whole record, behind a fold.
+   *
+   * Shown only when the provider asks for it (EZ1-I252). It was rendered
+   * unconditionally under every row, which is readable at four bookings and
+   * unusable at forty — and it costs three queries a row, so a queue of forty
+   * opened a hundred and twenty of them to show detail nobody had asked to
+   * see.
+   */
   renderDetail?: (booking: IncomingBooking) => React.ReactNode;
   /** The buttons for a row. Owned by the caller because what a provider may do
    *  depends on rules that live with the booking, not with this list. */
@@ -155,6 +163,21 @@ export default function BookingConsole({
   );
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'event'>('newest');
+  /*
+   * Which rows are open. A set rather than one id: a provider comparing two
+   * quotations should not have the first collapse when they open the second,
+   * and a dashboard that deep-links one booking opens exactly that one.
+   */
+  const highlighted = params.get('highlight');
+  const [open, setOpen] = useState<Set<string>>(
+    () => new Set(highlighted ? [highlighted] : []),
+  );
+  // A booking named in the link — from a notification, or a dashboard row —
+  // arrives open. After that the set is the only thing that decides, so the
+  // next press closes it like any other.
+  useEffect(() => {
+    if (highlighted) setOpen((current) => new Set(current).add(highlighted));
+  }, [highlighted]);
 
   const { data, isPending } = useQuery({
     queryKey: ['incoming-bookings'],
@@ -408,7 +431,26 @@ export default function BookingConsole({
                   </p>
                 )}
 
-              {renderDetail?.(booking)}
+              {renderDetail && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm mt-2"
+                    aria-expanded={open.has(booking.id)}
+                    onClick={() =>
+                      setOpen((current) => {
+                        const next = new Set(current);
+                        if (next.has(booking.id)) next.delete(booking.id);
+                        else next.add(booking.id);
+                        return next;
+                      })
+                    }
+                  >
+                    {open.has(booking.id) ? 'Hide detail' : 'Show detail'}
+                  </button>
+                  {open.has(booking.id) && renderDetail(booking)}
+                </>
+              )}
 
               {booking.requirements && (
                 <p className="mt-2 rounded-sm bg-surface-sunken p-2 text-xs text-gray-700">

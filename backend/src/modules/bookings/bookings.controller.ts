@@ -209,7 +209,12 @@ export class BookingsController {
     });
   }
 
-  @RequirePermissions(Permission.BOOKING_READ_OWN)
+  // Either party may read what has been paid on their own booking; access is
+  // enforced in the service (assertParticipant), not by a role permission the
+  // seller does not hold. A vendor holds BOOKING_READ_INCOMING and not
+  // BOOKING_READ_OWN, so this read — the advance, the balance, and what is in
+  // escrow against their own job — answered 403 for the side doing the work
+  // (EZ1-I252).
   @ApiOperation({ summary: 'The three escrow instalments and what has been paid against each' })
   @Get(':id/milestones')
   milestones(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
@@ -242,7 +247,8 @@ export class BookingsController {
     return this.quotations.send(actor, id, dto);
   }
 
-  @RequirePermissions(Permission.BOOKING_READ_OWN)
+  // As above: the service asserts that the caller is one of the two parties,
+  // and the seller is the one who wrote the quotation (EZ1-I252).
   @ApiOperation({ summary: 'Quotations on a booking, newest first. Either side may read them.' })
   @Get(':id/quotations')
   listQuotations(@CurrentUser() actor: AuthUser, @Param('id', ParseUUIDPipe) id: string) {

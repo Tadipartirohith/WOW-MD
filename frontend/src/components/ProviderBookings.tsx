@@ -5,6 +5,7 @@ import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
 import BookingChat from './BookingChat';
 import BookingConsole from './BookingConsole';
+import BookingDetail from './BookingDetail';
 import { BOOKING_STATUS_LABEL, Permission, can } from '../lib/permissions';
 import { useAuth } from '../store/auth';
 import { FieldSpec, formatAnswer } from './DynamicForm';
@@ -127,6 +128,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
         statusLabels={BOOKING_STATUS_LABEL}
         renderDetail={(b) => (
           <>
+            <BookingDetail booking={b} />
             <ServiceAnswers booking={b as never} />
             {isPlanner && <WeddingBrief bookingId={b.id} />}
             <VendorAddOns bookingId={b.id} />
