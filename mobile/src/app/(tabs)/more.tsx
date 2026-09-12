@@ -1,16 +1,15 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Briefcase,
-  CalendarBlank,
   CaretRight,
   Check,
   Coins,
   Gear,
+  Info,
   Lifebuoy,
   Lock,
-  Receipt,
   SignOut,
+  Star,
   UserCircle,
   type IconProps,
 } from 'phosphor-react-native';
@@ -29,19 +28,23 @@ import { useAuth } from '@/store/auth';
 import { radius, rgb, space, useTheme, useThemeChoice, type ThemeChoice } from '@/theme';
 
 /**
- * More: the account, and the screens the tab bar could not hold.
+ * More: the account, and nothing the tab bar already holds.
  *
- * What is already in the bottom bar is deliberately not repeated here. An
- * officer reaches Verification, Cases and Alerts by tapping the tab they are
- * looking at; listing them again under More meant two routes to the same screen
- * and a menu that read as a sitemap rather than an account page (EZ1-I257).
+ * What is one tap away along the bottom of the same phone is deliberately not
+ * repeated here. An officer reaches Verification, Cases and Alerts from the bar;
+ * a vendor reaches My Business, Bookings and Availability from the bar. Listing
+ * them again meant two routes to the same screen and a menu that read as a
+ * sitemap rather than an account page (EZ1-I257, EZ1-I255).
  *
- * So this is the account itself — who is signed in, their own profile, the way
- * in when something breaks, the password and the devices holding a session —
- * plus how the app looks and the way out.
+ * So this is the account itself — who is signed in, their own profile, what
+ * customers said, the way in when something breaks, the password and the
+ * devices holding a session, the money — then how the app looks, and the way
+ * out. Three groups, the same three for every persona, with the rows a persona
+ * has no use for left out rather than shown dead.
  *
- * Only what exists is listed. A menu of links to screens that do not exist is a
- * menu of dead ends.
+ * Notifications were here too. A vendor has no Alerts tab, so they now reach
+ * them from the bell on Home, where the count is; every other persona has the
+ * tab and was being offered the same screen twice.
  */
 export default function More() {
   const user = useAuth((s) => s.user);
@@ -57,28 +60,6 @@ export default function More() {
     <Screen>
       <AccountHeader />
 
-      {/* Your business — the same heading, in the same order, as the sidebar. */}
-      {isProvider && (
-        <Group title="Your business">
-          {isVendor ? (
-            <Row icon={Briefcase} label="My Business" hint="Your listing, services and prices" to="/business" />
-          ) : null}
-          <Row
-            icon={Receipt}
-            label="Bookings"
-            hint="Requests, quotations and the work in flight"
-            to="/bookings"
-          />
-          <Row
-            icon={CalendarBlank}
-            label="Availability"
-            hint="The windows you can take work in"
-            to="/availability"
-          />
-          <Row icon={Coins} label="Accounts" hint="Escrow, payouts and the ledger" to="/accounts" />
-        </Group>
-      )}
-
       <Group title="My account">
         <Row
           icon={UserCircle}
@@ -86,6 +67,14 @@ export default function More() {
           hint="Your name, contact details and what we hold"
           to="/profile"
         />
+        {isVendor ? (
+          <Row
+            icon={Star}
+            label="My Reviews"
+            hint="What customers said after a completed booking"
+            to="/my-reviews"
+          />
+        ) : null}
         <Row
           icon={Lifebuoy}
           label="Support"
@@ -98,6 +87,9 @@ export default function More() {
           hint="Password, two-factor and signed-in devices"
           to="/security"
         />
+        {isProvider ? (
+          <Row icon={Coins} label="Accounts" hint="Escrow, payouts and the ledger" to="/accounts" />
+        ) : null}
       </Group>
 
       <Group title="App settings">
@@ -105,6 +97,7 @@ export default function More() {
       </Group>
 
       <Group title="Other">
+        <Row icon={Info} label="About" hint="Version, build and what this app is" to="/about" />
         <Row
           icon={SignOut}
           label="Sign out"

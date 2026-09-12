@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
 import { Permission, canAny } from '@/shared/permissions';
+import { NotificationBell } from '@/components/home/notification-bell';
 import { OfficerHome } from '@/components/home/officer-home';
 import { ProviderHome } from '@/components/home/provider-home';
 import {
@@ -43,6 +44,12 @@ export default function Home() {
     Permission.VERIFICATION_FIELDWORK,
   ]);
   const canFieldwork = canAny(permissions, [Permission.VERIFICATION_FIELDWORK]);
+  // Exactly the test the tab bar uses to withhold the Alerts tab, so the bell
+  // appears for the personas that lost the tab and for nobody else.
+  const noAlertsTab = canAny(permissions, [
+    Permission.VENDOR_LISTING_MANAGE,
+    Permission.PLANNER_LISTING_MANAGE,
+  ]);
   const isBuyer = canAny(permissions, [Permission.BOOKING_READ_OWN]);
   const isAgent = canAny(permissions, [Permission.AGENCY_MANAGE]);
 
@@ -94,10 +101,22 @@ export default function Home() {
 
   return (
     <Screen>
-      <View style={{ gap: space(1), marginTop: space(4) }}>
-        <Eyebrow>{greeting()}</Eyebrow>
-        <PageTitle>{name ?? 'Welcome'}</PageTitle>
-        <PageSubtitle>Here is where things stand today.</PageSubtitle>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          gap: space(2),
+          marginTop: space(4),
+        }}
+      >
+        <View style={{ flex: 1, gap: space(1) }}>
+          <Eyebrow>{greeting()}</Eyebrow>
+          <PageTitle>{name ?? 'Welcome'}</PageTitle>
+          <PageSubtitle>Here is where things stand today.</PageSubtitle>
+        </View>
+        {/* A provider's bar has no Alerts tab, so the count comes here instead
+            of hiding behind More (EZ1-I255). */}
+        {noAlertsTab ? <NotificationBell /> : null}
       </View>
 
       {isPending ? (

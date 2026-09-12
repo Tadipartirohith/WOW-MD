@@ -18,9 +18,10 @@ import { space } from '@/theme';
  * endpoints the Verification tab uses, so the figures here and the queue behind
  * them cannot disagree.
  *
- * Availability is on this screen as well as inside Verification, deliberately.
- * Coming off the roster is the thing an officer is most likely to want from a
- * phone, and it should not need two taps to find.
+ * Availability is on this screen and only on this screen. Coming off the roster
+ * is the thing an officer is most likely to want from a phone, so it sits with
+ * the rest of their own standing rather than at the top of the queue, which is
+ * about the work (EZ1-I262).
  */
 export function OfficerHome({ canFieldwork }: { canFieldwork: boolean }) {
   const router = useRouter();

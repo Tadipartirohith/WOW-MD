@@ -156,6 +156,8 @@ function Routes() {
       <Stack.Screen name="profile" options={{ headerShown: true, title: 'My Profile' }} />
       <Stack.Screen name="support" options={{ headerShown: true, title: 'Support' }} />
       <Stack.Screen name="security" options={{ headerShown: true, title: 'Security' }} />
+      <Stack.Screen name="my-reviews" options={{ headerShown: true, title: 'My Reviews' }} />
+      <Stack.Screen name="about" options={{ headerShown: true, title: 'About' }} />
       <Stack.Screen name="visit/[id]" options={{ headerShown: true, title: 'Visit' }} />
       <Stack.Screen name="case/[id]" options={{ headerShown: true, title: 'Case' }} />
     </Stack>
