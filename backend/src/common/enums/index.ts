@@ -141,6 +141,14 @@ export enum NotificationType {
   BOOKING_STARTED = 'booking_started',
   BOOKING_COMPLETED = 'booking_completed',
   BOOKING_CANCELLED = 'booking_cancelled',
+  /**
+   * The customer has asked for something that was not in the quotation.
+   *
+   * A separate type rather than a booking update: it is a question waiting on
+   * a price from the vendor, which is the same shape of work as a request and
+   * needs the same visibility (EZ1-I254).
+   */
+  BOOKING_ADDON = 'booking_addon',
 
   /** A verification officer has been given a visit to make. */
   VERIFICATION_ASSIGNED = 'verification_assigned',

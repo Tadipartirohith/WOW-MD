@@ -45,6 +45,7 @@ export const TYPE_LABEL: Record<string, string> = {
   booking_started: 'Work started',
   booking_completed: 'Work delivered',
   booking_cancelled: 'Booking cancelled',
+  booking_addon: 'Add-on requested',
 
   verification_assigned: 'Visit assigned to you',
   verification_submitted: 'Findings submitted',
@@ -74,6 +75,12 @@ export function describe(n: Notification): string {
       return `${client} has asked about ${job || 'your services'}.`;
     case 'booking_quotation':
       return money ? `${money}: ${job || 'the job'}.` : `A quotation on ${job || 'the job'}.`;
+    case 'booking_addon': {
+      const title = str('title');
+      return title
+        ? `${client} has asked for ${title} on ${job || 'the job'}.`
+        : `${client} has asked for something extra on ${job || 'the job'}.`;
+    }
     case 'booking_confirmed':
       return `The provider has accepted ${job || 'the job'}. The date is held.`;
     case 'booking_payment':

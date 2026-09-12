@@ -116,6 +116,16 @@ export const DELIVERY: Record<NotificationType, DeliverySpec> = {
     whatsappTemplate: 'booking_completed',
     whatsappParams: (p) => [job(p)],
   },
+  [NotificationType.BOOKING_ADDON]: {
+    title: 'Add-on requested',
+    body: (p) => {
+      const title = str(p, 'title', '');
+      return title
+        ? `${str(p, 'clientName', 'A client')} has asked for ${title} on ${job(p)}.`
+        : `${str(p, 'clientName', 'A client')} has asked for something extra on ${job(p)}.`;
+    },
+    whatsappTemplate: null,
+  },
   [NotificationType.BOOKING_CANCELLED]: {
     title: 'Booking cancelled',
     // Who cancelled it and why, not just that it happened (EZ1-I77).

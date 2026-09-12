@@ -78,6 +78,9 @@ export const NOTIFICATION_TARGET: Record<NotificationType, NotificationTarget> =
   // than merely told the work is done.
   [NotificationType.BOOKING_COMPLETED]: { module: 'bookings', action: 'pay', idKey: 'bookingId' },
   [NotificationType.BOOKING_CANCELLED]: { module: 'bookings', action: 'view', idKey: 'bookingId' },
+  // The add-on is read on the booking it hangs off, and the vendor is being
+  // asked for a price on it rather than merely told about it.
+  [NotificationType.BOOKING_ADDON]: { module: 'bookings', action: 'respond', idKey: 'bookingId' },
 
   [NotificationType.VERIFICATION_ASSIGNED]: {
     module: 'verification',

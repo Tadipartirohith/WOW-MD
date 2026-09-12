@@ -1,10 +1,15 @@
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CaretRight } from 'phosphor-react-native';
 
 import { api } from '@/lib/api';
+import { routeFor } from '@/lib/notification-route';
 import { formatDate } from '@/shared/dates';
-import { TYPE_LABEL, describe, type Notification } from '@/shared/notification-copy';
+import { ACTION_LABEL, TYPE_LABEL, describe, type Notification } from '@/shared/notification-copy';
+import { Permission, canAny } from '@/shared/permissions';
 import { Body, Caption, Card, EmptyState, Loading, PageSubtitle, PageTitle } from '@/components/ui';
+import { useAuth } from '@/store/auth';
 import { radius, rgb, space, useTheme } from '@/theme';
 
 /**
@@ -15,10 +20,25 @@ import { radius, rgb, space, useTheme } from '@/theme';
  * item: tapping a row marks it read, because on a phone that is what tapping a
  * notification means, and a separate "mark as read" control beside every row
  * would be a column of buttons nobody presses.
+ *
+ * Tapping also opens the thing the notification is about — the booking, the
+ * visit, the case — and which thing that is comes from the server, which writes
+ * a target module, action and id on every row (EZ1-I254). A row this app has no
+ * screen for still reads and still marks itself read; it simply does not
+ * pretend to lead anywhere, because opening the wrong screen is worse than
+ * opening none.
  */
 export default function Notifications() {
   const theme = useTheme();
   const qc = useQueryClient();
+  const router = useRouter();
+  const permissions = useAuth((s) => s.user?.permissions ?? []);
+  // Staff read a case on the Cases queue; everybody else reads their own on
+  // Support. The same split the web app makes.
+  const canVerify = canAny(permissions, [
+    Permission.VERIFICATION_PROCESS,
+    Permission.VERIFICATION_ALLOCATE,
+  ]);
 
   const { data, isPending, refetch, isRefetching } = useQuery({
     queryKey: ['notifications'],
@@ -86,10 +106,18 @@ export default function Notifications() {
           Interests, bookings and verification decisions all land here.
         </EmptyState>
       }
-      renderItem={({ item }) => (
+      renderItem={({ item }) => {
+        const route = routeFor(item, { canVerify });
+        return (
         <Pressable
           accessibilityRole="button"
-          onPress={() => !item.isRead && markRead.mutate(item.id)}
+          accessibilityLabel={`${TYPE_LABEL[item.type] ?? 'Update'}. ${describe(item)}`}
+          onPress={() => {
+            // Read first, then open: a row that navigates before it marks
+            // itself read comes back unread when the person returns.
+            if (!item.isRead) markRead.mutate(item.id);
+            if (route) router.push(route);
+          }}
           style={({ pressed }) => [pressed && { opacity: 0.7 }]}
         >
           <Card style={{ gap: space(1.5) }}>
@@ -117,9 +145,20 @@ export default function Notifications() {
             <Body tone={item.isRead ? 'muted' : 'default'}>
               {describe(item) || 'Something has changed on your account.'}
             </Body>
+            {/* What pressing this does, said rather than implied — and nothing
+                at all on a row that has nowhere to go. */}
+            {route ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space(1) }}>
+                <Caption tone="brand">
+                  {(item.targetAction && ACTION_LABEL[item.targetAction]) ?? 'Open'}
+                </Caption>
+                <CaretRight size={12} color={rgb(theme.brandStrong)} />
+              </View>
+            ) : null}
           </Card>
         </Pressable>
-      )}
+        );
+      }}
     />
   );
 }

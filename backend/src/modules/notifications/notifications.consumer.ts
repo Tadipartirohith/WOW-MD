@@ -118,6 +118,9 @@ export class NotificationsConsumer implements OnModuleInit {
         { event: 'booking.started', type: NotificationType.BOOKING_STARTED, to: 'buyer' },
         { event: 'booking.work_completed', type: NotificationType.BOOKING_COMPLETED, to: 'buyer' },
         { event: 'booking.cancelled', type: NotificationType.BOOKING_CANCELLED, to: 'both' },
+        // An add-on is a question waiting on a price. It reached the vendor
+        // only if they happened to open the booking (EZ1-I254).
+        { event: 'booking.addon_requested', type: NotificationType.BOOKING_ADDON, to: 'seller' },
       ];
 
     for (const { event, type, to } of bookingEvents) {
