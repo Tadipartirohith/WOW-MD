@@ -49,9 +49,20 @@ export interface AvailabilityView {
   onLeaveNow: boolean;
 }
 
-/** Today as a bare `YYYY-MM-DD`, which is exactly what a `date` column stores. */
-export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * Today as a bare `YYYY-MM-DD`, which is exactly what a `date` column stores.
+ *
+ * The platform's local date, not UTC. `toISOString` is UTC, and east of
+ * Greenwich the two are different days for part of every night: an officer in
+ * India booking leave for today at half past midnight was told the date had
+ * already passed, because the server was still on yesterday (EZ1-I256). The
+ * clients compute their floor the same way, so the date a picker offers and the
+ * date the server will accept are the same date.
+ */
+export function todayIso(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 /**

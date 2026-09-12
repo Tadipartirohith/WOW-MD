@@ -123,6 +123,22 @@ export function daysAway(value: string | null | undefined): number | null {
  * `max` for a date-of-birth picker so under-age entries can't be chosen
  * (EZ1-I101, EZ1-I85). Mirrors the backend IsAdultDate rule.
  */
+/**
+ * Today, where the person using this is standing, as `YYYY-MM-DD`.
+ *
+ * Not `toISOString().slice(0, 10)`, which is today in UTC: an officer in India
+ * booking leave at nine in the evening is already on tomorrow's date by that
+ * measure in the other direction, and after midnight they are on yesterday's.
+ * Either way a date picker whose floor is the wrong day tells somebody the day
+ * they are living in has passed. The parts below are the local ones, the same
+ * way `adultDobMax` builds its answer.
+ */
+export function todayIso(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 export function adultDobMax(minAge = 18): string {
   const d = new Date();
   d.setFullYear(d.getFullYear() - minAge);

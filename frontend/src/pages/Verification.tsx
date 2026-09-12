@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
+import { todayIso } from '../lib/dates';
 import { useAuth } from '../store/auth';
 import { Loading } from '../components/ui/Feedback';
 import {
@@ -1891,7 +1892,22 @@ function MyAvailability() {
   }, [data, seeded]);
 
   const onLeave = status === 'on_leave';
-  const datesOk = !onLeave || (from !== '' && to !== '' && to >= from);
+  /*
+   * Leave is booked, not recorded. A window that starts before today is either
+   * a typo or an attempt to backdate a stand-down that already happened, and
+   * neither can change what was allocated while it was not there — so the floor
+   * is today, the end may not precede the start, and the server rejects both as
+   * well (EZ1-I256).
+   *
+   * A start date already on the record is left alone: an officer correcting the
+   * reason on leave that began last week is not setting a past date, and this
+   * must not turn their existing row into something they can no longer save.
+   */
+  const today = todayIso();
+  const kept = data?.leaveFrom ?? '';
+  const startInPast = from !== '' && from < today && from !== kept;
+  const endBeforeStart = from !== '' && to !== '' && to < from;
+  const datesOk = !onLeave || (from !== '' && to !== '' && !startInPast && !endBeforeStart);
 
   async function save() {
     setError('');
@@ -1961,7 +1977,13 @@ function MyAvailability() {
               className="input"
               type="date"
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              min={kept && kept < today ? kept : today}
+              onChange={(e) => {
+                setFrom(e.target.value);
+                // An end that now precedes the start would be an invalid window
+                // the officer never typed; clear it rather than mark it wrong.
+                if (to !== '' && to < e.target.value) setTo('');
+              }}
             />
           </label>
           <label className="text-sm">
@@ -1970,6 +1992,7 @@ function MyAvailability() {
               className="input"
               type="date"
               value={to}
+              min={from || today}
               onChange={(e) => setTo(e.target.value)}
             />
           </label>
@@ -1985,7 +2008,10 @@ function MyAvailability() {
         </div>
       )}
 
-      {onLeave && !datesOk && from !== '' && to !== '' && (
+      {onLeave && startInPast && (
+        <p className="text-xs text-critical-fg">Leave cannot start before today.</p>
+      )}
+      {onLeave && endBeforeStart && (
         <p className="text-xs text-critical-fg">End date cannot be before the start date.</p>
       )}
       {error && <p className="alert-critical">{error}</p>}

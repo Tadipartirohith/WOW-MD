@@ -9,6 +9,7 @@ import {
   AvailabilityView,
   OfficerAvailability,
   availabilityView,
+  todayIso,
 } from './entities/officer-availability.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
@@ -220,12 +221,27 @@ export class OfficersService {
    * The leave window is two dates or neither, and the end may not precede the
    * start — a half-set window would leave the allocator guessing. Any status
    * other than ON_LEAVE clears the window, so a stale one never reads as live.
+   *
+   * Leave is booked, not recorded: a window that starts before today cannot
+   * change what was allocated while it was not there, so it is refused
+   * (EZ1-I256). The portal and the app disable those dates in the picker; this
+   * is what stops a request that never went near a picker.
+   *
+   * The one exception is the start date already on the row. An officer who has
+   * been on leave since last week and comes back to correct the reason, or to
+   * extend the end, is not setting a past date — and refusing them would make
+   * their own existing record unsaveable, which the ticket rules out.
    */
   async setAvailability(
     actor: AuthUser,
     dto: SetAvailabilityDto,
   ): Promise<AvailabilityView> {
     const onLeave = dto.status === OfficerAvailabilityStatus.ON_LEAVE;
+
+    const row =
+      (await this.availability.findOne({ where: { officerUserId: actor.userId } })) ??
+      this.availability.create({ officerUserId: actor.userId });
+
     if (onLeave) {
       if (!dto.leaveFrom || !dto.leaveTo) {
         throw new BadRequestException('On leave needs a start and an end date');
@@ -233,11 +249,10 @@ export class OfficersService {
       if (dto.leaveTo < dto.leaveFrom) {
         throw new BadRequestException('Leave end date cannot be before the start date');
       }
+      if (dto.leaveFrom < todayIso() && dto.leaveFrom !== row.leaveFrom) {
+        throw new BadRequestException('Leave cannot start before today');
+      }
     }
-
-    const row =
-      (await this.availability.findOne({ where: { officerUserId: actor.userId } })) ??
-      this.availability.create({ officerUserId: actor.userId });
 
     row.status = dto.status;
     row.leaveFrom = onLeave ? (dto.leaveFrom as string) : null;
