@@ -4,6 +4,8 @@ import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
 import { VendorService } from '../catalog/entities/vendor-service.entity';
+import { ServiceDefinition } from '../catalog/entities/service-definition.entity';
+import { ServiceCategory } from '../catalog/entities/service-category.entity';
 import { ServiceOffering } from '../catalog/entities/service-offering.entity';
 import { OfficerServiceArea } from '../verification/entities/officer-service-area.entity';
 import { Booking } from '../bookings/entities/booking.entity';
@@ -23,6 +25,7 @@ import { BookingsModule } from '../bookings/bookings.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { AdminService } from './admin.service';
 import { AdminConsoleService } from './admin-console.service';
+import { ReportsService } from './reports.service';
 import { AdminController } from './admin.controller';
 
 @Module({
@@ -32,6 +35,8 @@ import { AdminController } from './admin.controller';
       Vendor,
       PlannerProfile,
       VendorService,
+      ServiceDefinition,
+      ServiceCategory,
       ServiceOffering,
       OfficerServiceArea,
       Booking,
@@ -55,7 +60,7 @@ import { AdminController } from './admin.controller';
     // asks it what is waiting and tells it what was decided.
     forwardRef(() => CatalogModule),
   ],
-  providers: [AdminService, AdminConsoleService],
+  providers: [AdminService, AdminConsoleService, ReportsService],
   controllers: [AdminController],
   exports: [AdminService, AdminConsoleService],
 })

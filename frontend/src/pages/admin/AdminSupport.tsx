@@ -28,7 +28,14 @@ export default function AdminSupport() {
   const canAllocate = can(permissions, Permission.VERIFICATION_ALLOCATE);
   const canManageOfficers = can(permissions, Permission.ADMIN_OFFICER_MANAGE);
 
-  const [caseFilter, setCaseFilter] = useState<CaseStatus | null>(null);
+  // Seeded from the link, so "Open cases: 3" on Reports lands on those three
+  // rather than the whole inbox (EZ1-I242). Anything that is not a real filter
+  // is ignored rather than trusted.
+  const [linkParams] = useSearchParams();
+  const [caseFilter, setCaseFilter] = useState<CaseStatus | null>(() => {
+    const wanted = linkParams.get('status');
+    return CASE_FILTERS.some((f) => f.key === wanted) ? (wanted as CaseStatus) : null;
+  });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -57,9 +64,38 @@ export default function AdminSupport() {
     enabled: tab === 'disputes',
   });
 
+  /*
+   * The case list asked for one default page -- twenty of the platform's
+   * cases -- and every status chip counted within that page. With 47 cases
+   * and 11 of them open, the inbox said "Open (4)", and a case older than the
+   * newest twenty could not be found here at all. Reports showed the real 11,
+   * and a link from one to the other disagreed with itself (EZ1-I242).
+   *
+   * The server filters by status now, and the chips count every case from the
+   * same support report the Reports page reads.
+   */
   const { data: cases } = useQuery({
-    queryKey: ['verification-cases'],
-    queryFn: async () => (await api.get('/verification/cases')).data,
+    queryKey: ['verification-cases', caseFilter],
+    queryFn: async () =>
+      (
+        await api.get('/verification/cases', {
+          params: { limit: 100, status: caseFilter ?? undefined },
+        })
+      ).data,
+    retry: false,
+    refetchInterval: 20_000,
+  });
+
+  const { data: caseCounts } = useQuery({
+    queryKey: ['verification-cases', 'counts'],
+    queryFn: async () => {
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      return (
+        await api.get('/admin/reports', { params: { kind: 'support', from: '2020-01-01', to: today } })
+      ).data as { cases: number; caseByStatus: Record<string, number> };
+    },
     retry: false,
     refetchInterval: 20_000,
   });
@@ -117,7 +153,9 @@ export default function AdminSupport() {
   }
 
   const caseRows: SupportCase[] = cases?.data ?? [];
-  const shown = caseFilter ? caseRows.filter((c) => c.status === caseFilter) : caseRows;
+  // Already filtered by the server; nothing to narrow here.
+  const shown = caseRows;
+  const totalCases: number = cases?.meta?.total ?? caseRows.length;
 
   return (
     <div className="space-y-6">
@@ -160,7 +198,11 @@ export default function AdminSupport() {
           */}
           <div className="flex flex-wrap gap-2">
         {CASE_FILTERS.map((f) => {
-          const count = caseRows.filter((c) => c.status === f.key).length;
+          // Every case, not the page on screen. Falls back to the loaded rows
+          // only if the counts could not be read.
+          const count = caseCounts
+            ? (caseCounts.caseByStatus[f.key] ?? 0)
+            : caseRows.filter((c) => c.status === f.key).length;
           return (
             <button
               key={f.key}
@@ -180,10 +222,14 @@ export default function AdminSupport() {
       </div>
 
       <div className="space-y-3">
-        {caseRows.length === 0 ? (
-          <p className="card text-sm text-gray-500">No cases.</p>
-        ) : shown.length === 0 ? (
-          <p className="card text-sm text-gray-500">Nothing in that group.</p>
+        {shown.length > 0 && totalCases > shown.length && (
+          <p className="text-xs text-gray-500">
+            Showing the newest {shown.length} of {totalCases}
+            {caseFilter ? ' in this group' : ''}.
+          </p>
+        )}
+        {shown.length === 0 ? (
+          <p className="card text-sm text-gray-500">{caseFilter ? 'Nothing in that group.' : 'No cases.'}</p>
         ) : (
           shown.map((c) => (
             <CaseRow

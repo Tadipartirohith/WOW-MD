@@ -25,6 +25,22 @@ export class ActivityQueryDto {
   @Min(1)
   @Max(200)
   limit = 40;
+
+  /*
+   * An optional window. Without one the feed is "the latest things", which is
+   * what the admin dashboard wants; the Reports page passes its selected dates
+   * so Recent Activity describes the same period as every figure beside it
+   * (EZ1-I242).
+   */
+  @ApiPropertyOptional({ description: 'Inclusive. Only events on or after this date.' })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'Inclusive of the whole day.' })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
 }
 
 /** Shared by the accounts and businesses directories — same three questions. */
@@ -105,6 +121,11 @@ export const REPORT_KINDS = [
   'financial',
   'verification',
   'matchmaking',
+  // The Reports dashboard's tabs (EZ1-I242).
+  'payments',
+  'providers',
+  'categories',
+  'support',
 ] as const;
 
 export class ReportQueryDto {

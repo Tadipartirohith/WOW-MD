@@ -386,6 +386,14 @@ export function AllBookings({ initialStatus = '' }: { initialStatus?: string } =
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const status = params.get('status') ?? initialStatus;
+  /*
+   * A period and a provider, carried by a link from Reports (EZ1-I242). "New
+   * bookings: 17" has to land on those 17, not on every booking ever placed.
+   */
+  const from = params.get('from') ?? '';
+  const to = params.get('to') ?? '';
+  const providerId = params.get('providerId') ?? '';
+  const narrowed = Boolean(from || to || providerId);
   const setStatus = (next: string) => {
     const p = new URLSearchParams(params);
     if (next) p.set('status', next);
@@ -403,17 +411,35 @@ export function AllBookings({ initialStatus = '' }: { initialStatus?: string } =
     queryFn: async () => (await api.get('/admin/analytics')).data,
     retry: false,
   });
-  const counts = analytics?.bookingsByStatus ?? {};
+  // Within a period the tab counts come from the same windowed report the
+  // Reports page read, so the number on the tab is the number that was clicked.
+  const { data: windowed } = useQuery<{ placed: number; byStatus: Record<string, number> }>({
+    queryKey: ['admin-report', 'bookings', from, to],
+    queryFn: async () =>
+      (await api.get('/admin/reports', { params: { kind: 'bookings', from, to } })).data,
+    enabled: Boolean(from && to) && !providerId,
+    retry: false,
+  });
+  const counts = (windowed?.byStatus ?? analytics?.bookingsByStatus) ?? {};
 
   const { data, isLoading } = useQuery<{ data: AdminBookingRow[]; meta: { total: number } }>({
-    queryKey: ['admin-bookings', status],
+    queryKey: ['admin-bookings', status, from, to, providerId],
     queryFn: async () =>
-      (await api.get('/admin/bookings', { params: { limit: 50, status: status || undefined } }))
-        .data,
+      (
+        await api.get('/admin/bookings', {
+          params: {
+            limit: 50,
+            status: status || undefined,
+            from: from || undefined,
+            to: to || undefined,
+            providerId: providerId || undefined,
+          },
+        })
+      ).data,
   });
 
   const tabs: { value: string; label: string; count: number }[] = [
-    { value: '', label: 'All', count: analytics?.totalBookings ?? 0 },
+    { value: '', label: 'All', count: windowed?.placed ?? analytics?.totalBookings ?? 0 },
     ...Object.entries(BOOKING_STATUS_LABEL).map(([value, label]) => ({
       value,
       label,
@@ -428,6 +454,29 @@ export function AllBookings({ initialStatus = '' }: { initialStatus?: string } =
     <div className="space-y-4">
       <div>
         <h1 className="page-title">Bookings</h1>
+        {narrowed && (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+            <span className="rounded-full bg-brand-soft px-2.5 py-0.5 text-brand-strong">
+              {providerId ? 'One provider' : 'Filtered'}
+              {from && to ? `, placed ${from} to ${to}` : ''}
+            </span>
+            {providerId && (
+              <span className="text-xs text-gray-500">Tab counts are for every provider.</span>
+            )}
+            <button
+              className="text-brand-strong underline"
+              onClick={() => {
+                const p = new URLSearchParams(params);
+                p.delete('from');
+                p.delete('to');
+                p.delete('providerId');
+                setParams(p, { replace: true });
+              }}
+            >
+              Show all bookings
+            </button>
+          </p>
+        )}
         <p className="page-subtitle">
           The whole book, by stage. This is where a dispute starts and the only way to notice
           bookings sitting unpaid.

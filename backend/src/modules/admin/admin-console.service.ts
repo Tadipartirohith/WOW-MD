@@ -21,6 +21,8 @@ import {
   availabilityView,
 } from '../verification/entities/officer-availability.entity';
 import { AgentCharge } from '../agents/entities/agent-charge.entity';
+import { Dispute } from './entities/dispute.entity';
+import { MONEY_TAKEN, ReportsService } from './reports.service';
 import {
   ActivityQueryDto,
   AdminBookingQueryDto,
@@ -32,6 +34,7 @@ import {
   BookingStatus,
   BusinessStatus,
   CaseStatus,
+  INDIVIDUAL_ROLES,
   InterestStatus,
   MatchFixedState,
   NetworkVisibility,
@@ -90,7 +93,10 @@ export class AdminConsoleService {
     // Read-only, for an officer's leave state (EZ1-I210) on the roster.
     @InjectRepository(OfficerAvailability)
     private readonly availability: Repository<OfficerAvailability>,
+    // Read-only, for disputes raised in the activity feed (EZ1-I242).
+    @InjectRepository(Dispute) private readonly disputes: Repository<Dispute>,
     private readonly cfg: AppConfigService,
+    private readonly reportsService: ReportsService,
   ) {}
 
   /**
@@ -112,17 +118,64 @@ export class AdminConsoleService {
   async activity(q: ActivityQueryDto): Promise<ActivityItem[]> {
     const take = q.limit;
 
-    const [users, listings, bookings, cases, verifications, clients] = await Promise.all([
-      this.users.find({ order: { createdAt: 'DESC' }, take, select: ['id', 'role', 'createdAt'] }),
-      this.vendors.find({ order: { createdAt: 'DESC' }, take }),
-      this.bookings.find({ order: { createdAt: 'DESC' }, take }),
-      this.cases.find({ order: { createdAt: 'DESC' }, take }),
-      this.verifications.find({ order: { createdAt: 'DESC' }, take }),
+    /*
+     * An optional window over each event's own timestamp -- a booking cancelled
+     * today belongs to today even though it was placed last month (EZ1-I242).
+     * Without one, every source is simply its newest rows.
+     */
+    let range: ReturnType<typeof Between<Date>> | undefined;
+    if (q.from || q.to) {
+      const to = q.to ? new Date(q.to) : new Date();
+      to.setHours(23, 59, 59, 999);
+      const from = q.from ? new Date(q.from) : new Date(0);
+      range = Between(from, to);
+    }
+    const on = (column: string) => (range ? { [column]: range } : {});
+    const happened = (column: string) => (range ? { [column]: range } : { [column]: Not(IsNull()) });
+
+    const [
+      users,
+      listings,
+      bookings,
+      cases,
+      verifications,
+      clients,
+      planners,
+      completed,
+      cancelled,
+      decided,
+      resolved,
+      disputes,
+      payments,
+    ] = await Promise.all([
+      this.users.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take, select: ['id', 'role', 'createdAt'] }),
+      this.vendors.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take }),
+      this.bookings.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take }),
+      this.cases.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take }),
+      this.verifications.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take }),
       this.users.find({
-        where: { managedByAgentId: Not(IsNull()) },
+        where: { managedByAgentId: Not(IsNull()), ...on('createdAt') },
         order: { createdAt: 'DESC' },
         take,
         select: ['id', 'createdAt'],
+      }),
+      this.planners.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take }),
+      this.bookings.find({ where: happened('completedAt'), order: { completedAt: 'DESC' }, take }),
+      this.bookings.find({ where: happened('cancelledAt'), order: { cancelledAt: 'DESC' }, take }),
+      this.verifications.find({
+        where: {
+          ...happened('decidedAt'),
+          status: In([VerificationStatus.APPROVED, VerificationStatus.REJECTED]),
+        },
+        order: { decidedAt: 'DESC' },
+        take,
+      }),
+      this.cases.find({ where: happened('resolvedAt'), order: { resolvedAt: 'DESC' }, take }),
+      this.disputes.find({ where: on('createdAt'), order: { createdAt: 'DESC' }, take }),
+      this.payments.find({
+        where: { ...on('createdAt'), status: In([...MONEY_TAKEN]) },
+        order: { createdAt: 'DESC' },
+        take,
       }),
     ]);
 
@@ -171,6 +224,55 @@ export class AdminConsoleService {
         summary: 'An agency took on a client',
         resourceType: 'agent_client',
         resourceId: c.id,
+      })),
+      ...planners.map((p) => ({
+        at: p.createdAt,
+        kind: 'planner.registered',
+        summary: `${p.agencyName} registered as a wedding planner`,
+        resourceType: 'planner',
+        resourceId: p.id,
+      })),
+      ...completed.map((b) => ({
+        at: b.completedAt as Date,
+        kind: 'booking.completed',
+        summary: 'A booking was marked complete',
+        resourceType: 'booking',
+        resourceId: b.id,
+      })),
+      ...cancelled.map((b) => ({
+        at: b.cancelledAt as Date,
+        kind: 'booking.cancelled',
+        summary: 'A booking was cancelled',
+        resourceType: 'booking',
+        resourceId: b.id,
+      })),
+      ...decided.map((v) => ({
+        at: v.decidedAt as Date,
+        kind: v.status === VerificationStatus.APPROVED ? 'verification.approved' : 'verification.rejected',
+        summary: `A ${v.applicantType} verification was ${v.status === VerificationStatus.APPROVED ? 'approved' : 'rejected'}`,
+        resourceType: 'verification_request',
+        resourceId: v.id,
+      })),
+      ...resolved.map((c) => ({
+        at: c.resolvedAt as Date,
+        kind: 'case.resolved',
+        summary: `Case resolved: ${c.title}`,
+        resourceType: 'support_case',
+        resourceId: c.id,
+      })),
+      ...disputes.map((d) => ({
+        at: d.createdAt,
+        kind: 'dispute.raised',
+        summary: 'A buyer raised a dispute on a booking',
+        resourceType: 'dispute',
+        resourceId: d.id,
+      })),
+      ...payments.map((p) => ({
+        at: p.createdAt,
+        kind: 'payment.received',
+        summary: `${p.milestone} payment of ${Number(p.amount).toLocaleString('en-IN')} taken into escrow`,
+        resourceType: 'payment',
+        resourceId: p.id,
       })),
     ];
 
@@ -748,7 +850,14 @@ export class AdminConsoleService {
     if (q.providerId) qb.andWhere('b.providerId = :providerId', { providerId: q.providerId });
     if (q.userId) qb.andWhere('b.userId = :userId', { userId: q.userId });
     if (q.from) qb.andWhere('b.createdAt >= :from', { from: new Date(q.from) });
-    if (q.to) qb.andWhere('b.createdAt <= :to', { to: new Date(q.to) });
+    if (q.to) {
+      // Inclusive of the whole closing day, as every report window is. A bare
+      // date parsed to midnight at the start of that day, so a count followed
+      // here from Reports landed on fewer bookings than it said (EZ1-I242).
+      const to = new Date(q.to);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(q.to)) to.setHours(23, 59, 59, 999);
+      qb.andWhere('b.createdAt <= :to', { to });
+    }
 
     qb.orderBy('b.createdAt', 'DESC')
       .skip((q.page - 1) * q.limit)
@@ -1026,7 +1135,31 @@ export class AdminConsoleService {
         const byRole: Record<string, number> = {};
         for (const role of Object.values(UserRole)) byRole[role] = 0;
         for (const r of rows) byRole[r.role] += 1;
-        return { kind: q.kind, from, to, total: rows.length, byRole };
+        /*
+         * `total` is every account created, and the Reports page used it as
+         * "New Users" -- so the headline counted vendors, agents, planners and
+         * officers as though they were people getting married. The admin
+         * dashboard fixed the same mistake in EZ1-I224; this is the Reports
+         * half of it (EZ1-I242). `total` stays for anything that genuinely
+         * wants all accounts.
+         */
+        const individuals = rows.filter((r) => INDIVIDUAL_ROLES.includes(r.role)).length;
+        // Platform roles, all-time and counted the way the dashboard counts them.
+        const [vendorCount, plannerCount, officers, agents] = await Promise.all([
+          this.vendors.count(),
+          this.planners.count(),
+          this.users.count({ where: { role: UserRole.IN_PERSON, isActive: true } }),
+          this.users.count({ where: { role: UserRole.AGENT } }),
+        ]);
+        return {
+          kind: q.kind,
+          from,
+          to,
+          total: rows.length,
+          individuals,
+          byRole,
+          platform: { vendors: vendorCount, planners: plannerCount, officers, agents },
+        };
       }
 
       case 'agents': {
@@ -1074,7 +1207,10 @@ export class AdminConsoleService {
         const byStatus: Record<string, number> = {};
         for (const status of Object.values(BookingStatus)) byStatus[status] = 0;
         for (const b of rows) byStatus[b.status] += 1;
-        const value = rows.reduce((t, b) => t + Number(b.amount), 0);
+        // A cancelled booking's price was never going to be paid, and counting
+        // it inflated "booking value" by every job that fell through (EZ1-I242).
+        const live = rows.filter((b) => b.status !== BookingStatus.CANCELLED);
+        const value = live.reduce((t, b) => t + Number(b.amount), 0);
         return {
           kind: q.kind,
           from,
@@ -1085,7 +1221,7 @@ export class AdminConsoleService {
           // Requests that were never priced drag the average to nonsense, so
           // it is taken over the ones that reached a price.
           averageValue: (() => {
-            const priced = rows.filter((b) => Number(b.amount) > 0);
+            const priced = live.filter((b) => Number(b.amount) > 0);
             return priced.length ? (value / priced.length).toFixed(2) : '0.00';
           })(),
         };
@@ -1102,7 +1238,12 @@ export class AdminConsoleService {
           kind: q.kind,
           from,
           to,
-          collected: rows.reduce((t, p) => t + Number(p.amount), 0).toFixed(2),
+          // Money actually taken. Every row used to count here, including a
+          // payment still at `initiated` and one that failed (EZ1-I242).
+          collected: rows
+            .filter((p) => MONEY_TAKEN.includes(p.status))
+            .reduce((t, p) => t + Number(p.amount), 0)
+            .toFixed(2),
           held: sum(PaymentStatus.HELD_IN_ESCROW, 'amount'),
           disputed: sum(PaymentStatus.DISPUTED, 'amount'),
           releasedToProviders: sum(PaymentStatus.RELEASED, 'payoutAmount'),
@@ -1178,44 +1319,18 @@ export class AdminConsoleService {
         };
       }
 
+      // The Reports dashboard's kinds, which live in their own service (EZ1-I242).
+      case 'payments':
+        return { kind: q.kind, from, to, ...(await this.reportsService.payments(from, to)) };
+      case 'providers':
+        return { kind: q.kind, from, to, ...(await this.reportsService.providers(from, to)) };
+      case 'categories':
+        return { kind: q.kind, from, to, ...(await this.reportsService.categories(from, to)) };
+      case 'support':
+        return { kind: q.kind, from, to, ...(await this.reportsService.support(from, to)) };
       case 'verification':
-      default: {
-        const [requests, cases] = await Promise.all([
-          this.verifications.find({ where: { createdAt: window } }),
-          this.cases.find({ where: { createdAt: window } }),
-        ]);
-        const byStatus: Record<string, number> = {};
-        for (const status of Object.values(VerificationStatus)) byStatus[status] = 0;
-        for (const r of requests) byStatus[r.status] += 1;
-
-        const caseByStatus: Record<string, number> = {};
-        for (const status of Object.values(CaseStatus)) caseByStatus[status] = 0;
-        for (const c of cases) caseByStatus[c.status] += 1;
-
-        // How long the desk actually takes, over the cases it finished in the
-        // window. Measured to resolution rather than to closure, because
-        // closure waits on the complainant and would report their silence as
-        // the platform being slow.
-        const decided = cases.filter((c) => c.resolvedAt);
-        const hours = decided.map(
-          (c) => (c.resolvedAt!.getTime() - c.createdAt.getTime()) / 3_600_000,
-        );
-        return {
-          kind: 'verification',
-          from,
-          to,
-          requests: requests.length,
-          byStatus,
-          cases: cases.length,
-          caseByStatus,
-          medianHoursToResolution: hours.length
-            ? Number(hours.sort((a, b) => a - b)[Math.floor(hours.length / 2)].toFixed(1))
-            : null,
-          stillOpen: cases.filter(
-            (c) => c.status !== CaseStatus.CLOSED && c.status !== CaseStatus.RESOLVED,
-          ).length,
-        };
-      }
+      default:
+        return { kind: 'verification', from, to, ...(await this.reportsService.verification(from, to)) };
     }
   }
 
@@ -1237,29 +1352,65 @@ export class AdminConsoleService {
     to.setHours(23, 59, 59, 999);
     const window = Between(from, to);
 
-    const [users, bookings] = await Promise.all([
-      this.users.find({ where: { createdAt: window }, select: ['createdAt'] }),
-      this.bookings.find({ where: { createdAt: window }, select: ['createdAt'] }),
+    const [users, bookings, payments] = await Promise.all([
+      this.users.find({ where: { createdAt: window }, select: ['createdAt', 'role'] }),
+      this.bookings.find({ where: { createdAt: window }, select: ['createdAt', 'amount', 'status'] }),
+      // Revenue by the day the money was taken (EZ1-I242).
+      this.payments.find({
+        where: { createdAt: window, status: In([...MONEY_TAKEN]) },
+        select: ['createdAt', 'amount', 'status', 'commissionAmount'],
+      }),
     ]);
 
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
-    const points = new Map<string, { date: string; users: number; bookings: number }>();
+    const points = new Map<
+      string,
+      {
+        date: string;
+        users: number;
+        individuals: number;
+        bookings: number;
+        value: number;
+        collected: number;
+        commission: number;
+      }
+    >();
     // Iterate in UTC so the generated keys align exactly with the UTC keys the
     // row timestamps produce; mixing local and UTC days drops a bucket at the edge.
     const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
     const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()));
     while (cursor <= end) {
       const key = dayKey(cursor);
-      points.set(key, { date: key, users: 0, bookings: 0 });
+      points.set(key, {
+        date: key,
+        users: 0,
+        individuals: 0,
+        bookings: 0,
+        value: 0,
+        collected: 0,
+        commission: 0,
+      });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
     for (const u of users) {
       const bucket = points.get(dayKey(u.createdAt));
-      if (bucket) bucket.users += 1;
+      if (!bucket) continue;
+      bucket.users += 1;
+      if (INDIVIDUAL_ROLES.includes(u.role)) bucket.individuals += 1;
     }
     for (const b of bookings) {
       const bucket = points.get(dayKey(b.createdAt));
-      if (bucket) bucket.bookings += 1;
+      if (!bucket) continue;
+      bucket.bookings += 1;
+      if (b.status !== BookingStatus.CANCELLED) bucket.value += Number(b.amount);
+    }
+    for (const p of payments) {
+      const bucket = points.get(dayKey(p.createdAt));
+      if (!bucket) continue;
+      bucket.collected += Number(p.amount);
+      // Commission is earned when the money is released, matching the
+      // financial report and the dashboard's escrow position.
+      if (p.status === PaymentStatus.RELEASED) bucket.commission += Number(p.commissionAmount ?? 0);
     }
 
     return { from, to, points: [...points.values()] };
