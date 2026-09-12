@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -45,17 +45,30 @@ export function BookingCard({
   onAct,
   acting,
   onQuoted,
+  openByDefault = false,
 }: {
   booking: IncomingBooking;
   canQuote: boolean;
   onAct: (id: string, path: string, body?: Record<string, unknown>) => void;
   acting: boolean;
   onQuoted: () => void;
+  /**
+   * Opened on arrival, for a card something else asked for by name — a
+   * notification about this booking, or a row on the dashboard. Somebody who
+   * tapped one booking is not then made to tap Show detail on it.
+   */
+  openByDefault?: boolean;
 }) {
   const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(openByDefault);
   const [quoting, setQuoting] = useState(false);
   const [deliveryPrompt, setDeliveryPrompt] = useState(false);
+
+  // The list recycles its rows, so a card that was already mounted when the
+  // request to open it arrived would keep its own collapsed state.
+  useEffect(() => {
+    if (openByDefault) setExpanded(true);
+  }, [openByDefault]);
 
   const actions = ACTIONS[booking.status] ?? [];
   const onDate = isRequestOnDate(booking);

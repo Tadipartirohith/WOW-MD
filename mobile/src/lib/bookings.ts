@@ -117,6 +117,17 @@ export const BOOKING_TABS: { key: string; label: string; statuses: string[] }[] 
   { key: 'cancelled', label: 'Cancelled', statuses: ['cancelled', 'disputed'] },
 ];
 
+/**
+ * The tab that gathers a status.
+ *
+ * A figure on the dashboard opens the bucket it counts, so the count and the
+ * list behind it cannot disagree about which bucket that is. Anything the tabs
+ * do not name falls back to All rather than to an empty screen.
+ */
+export function tabForStatus(status: string): string {
+  return BOOKING_TABS.find((tab) => tab.statuses.includes(status))?.key ?? 'all';
+}
+
 export const PAYMENT_LABEL: Record<string, string> = {
   initiated: 'Payment started',
   held_in_escrow: 'Held in escrow',

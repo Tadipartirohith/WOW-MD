@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, apiMessage } from '@/lib/api';
@@ -15,7 +16,7 @@ import { SelectField } from '@/components/form';
 import { BookingCard } from '@/components/bookings/booking-card';
 import { ListScreen } from '@/components/layout';
 import { BusinessSwitcher } from '@/components/business/switcher';
-import { Alert, Caption, Field, PageSubtitle, PageTitle } from '@/components/ui';
+import { Alert, Button, Caption, Field, PageSubtitle, PageTitle } from '@/components/ui';
 import { useAuth } from '@/store/auth';
 import { space } from '@/theme';
 
@@ -35,6 +36,7 @@ import { space } from '@/theme';
  */
 export default function Bookings() {
   const qc = useQueryClient();
+  const router = useRouter();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   // A planner answers an incoming request the same way a vendor does — with a
   // quotation — so both seller capabilities count. The server already lets
@@ -49,6 +51,43 @@ export default function Bookings() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'event'>('newest');
   const [error, setError] = useState('');
+  /** A booking somewhere else asked for by name; its card opens on arrival. */
+  const [focusId, setFocusId] = useState('');
+
+  /*
+   * Where this screen was opened from, and what it was opened for.
+   *
+   * A figure on Home, a row in a list, a notification about one booking — each
+   * of them names what it meant, rather than dropping the provider at the top
+   * of an unfiltered queue to find it themselves (EZ1-I250, EZ1-I254).
+   *
+   * The parameters are consumed as they are applied. This is a tab, so the
+   * screen is already mounted and a parameter that stayed put would be applied
+   * once and then ignored — tapping Completed, switching to All by hand, and
+   * tapping Completed again would do nothing the second time.
+   */
+  const params = useLocalSearchParams<{ tab?: string; booking?: string; sort?: string }>();
+
+  useEffect(() => {
+    const wanted = typeof params.tab === 'string' ? params.tab : '';
+    const wantedSort = typeof params.sort === 'string' ? params.sort : '';
+    const wantedBooking = typeof params.booking === 'string' ? params.booking : '';
+    if (!wanted && !wantedSort && !wantedBooking) return;
+
+    if (wanted) setTab(wanted);
+    if (wantedSort === 'newest' || wantedSort === 'oldest' || wantedSort === 'event') {
+      setSort(wantedSort);
+    }
+    if (wantedBooking) {
+      // One booking, named: the search already matches on the reference, so
+      // showing it is the same mechanism the provider would use by hand — and
+      // it stays visible and clearable rather than being a hidden filter.
+      setTab('all');
+      setSearch(wantedBooking);
+      setFocusId(wantedBooking);
+    }
+    router.setParams({ tab: '', sort: '', booking: '' });
+  }, [params.tab, params.sort, params.booking, router]);
 
   const { data, isPending, isFetching, refetch } = useQuery({
     queryKey: ['incoming-bookings'],
@@ -167,11 +206,27 @@ export default function Bookings() {
           <Field
             label="Search"
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(value) => {
+              setSearch(value);
+              // Typing past the reference somebody was sent here for means they
+              // are looking for something else now.
+              if (focusId && value !== focusId) setFocusId('');
+            }}
             placeholder="Couple, venue, service or booking id"
             autoCapitalize="none"
             autoCorrect={false}
           />
+          {focusId ? (
+            <Button
+              label="Show every booking"
+              variant="ghost"
+              small
+              onPress={() => {
+                setSearch('');
+                setFocusId('');
+              }}
+            />
+          ) : null}
           <SelectField
             label="Order by"
             value={sort}
@@ -205,6 +260,7 @@ export default function Bookings() {
       renderItem={(booking) => (
         <BookingCard
           booking={booking}
+          openByDefault={booking.id === focusId}
           canQuote={canQuote}
           acting={act.isPending}
           onAct={(id, path, body) => act.mutate({ id, path, body })}

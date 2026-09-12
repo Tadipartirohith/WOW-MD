@@ -1,8 +1,10 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { CaretRight } from 'phosphor-react-native';
 
 import { api } from '@/lib/api';
+import { tabForStatus } from '@/lib/bookings';
 import { BUSINESS_STATUS_LABEL, businessTone } from '@/lib/business-status';
 import { rupees, shortDate } from '@/lib/format';
 import { BOOKING_STATUS_LABEL } from '@/shared/permissions';
@@ -166,19 +168,31 @@ export function ProviderHome() {
           <TileGrid>
             {/* Each tile opens the queue. A number nobody can act on is
                 decoration. */}
-            <StatTile label="Total bookings" value={all} onPress={() => router.push('/bookings')} />
+            <StatTile
+              label="Total bookings"
+              value={all}
+              onPress={() => router.push({ pathname: '/bookings', params: { tab: 'all' } })}
+            />
             <StatTile
               label="New requests"
               value={requested}
               tone={requested > 0 ? 'caution' : undefined}
               hint={requested > 0 ? 'Waiting on a price from you' : undefined}
-              onPress={() => router.push('/bookings')}
+              onPress={() => router.push({ pathname: '/bookings', params: { tab: 'requests' } })}
             />
-            <StatTile label="Active" value={activeCount} onPress={() => router.push('/bookings')} />
+            {/* No tab counts exactly this — active is everything neither
+                finished nor called off, which spans four of them — so it opens
+                the whole queue rather than a bucket that would disagree with
+                the figure on the tile. */}
+            <StatTile
+              label="Active"
+              value={activeCount}
+              onPress={() => router.push({ pathname: '/bookings', params: { tab: 'all' } })}
+            />
             <StatTile
               label="Completed"
               value={completed}
-              onPress={() => router.push('/bookings')}
+              onPress={() => router.push({ pathname: '/bookings', params: { tab: 'completed' } })}
             />
           </TileGrid>
         )}
@@ -235,16 +249,30 @@ export function ProviderHome() {
       </TileGrid>
 
       {/* The whole queue by state, so the shape of the work is legible without
-          opening the list. */}
+          opening the list — and every row opens the bucket it counts. */}
       {all > 0 && (
         <Card>
           <SectionTitle>Booking status</SectionTitle>
           {Object.entries(BOOKING_STATUS_LABEL)
             .filter(([status]) => (c[status] ?? 0) > 0)
             .map(([status, label]) => (
-              <View
+              <Pressable
                 key={status}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: space(2.5) }}
+                accessibilityRole="button"
+                accessibilityLabel={`${label}, ${c[status] ?? 0} bookings`}
+                onPress={() =>
+                  router.push({ pathname: '/bookings', params: { tab: tabForStatus(status) } })
+                }
+                style={({ pressed }) => [
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: space(2.5),
+                    paddingVertical: space(1),
+                    minHeight: 34,
+                  },
+                  pressed && { opacity: 0.6 },
+                ]}
               >
                 <Caption style={{ flex: 1 }} numberOfLines={1}>
                   {label}
@@ -270,7 +298,8 @@ export function ProviderHome() {
                 <Caption style={{ width: 28, textAlign: 'right', fontVariant: ['tabular-nums'] }}>
                   {c[status] ?? 0}
                 </Caption>
-              </View>
+                <CaretRight size={13} color={rgb(theme.ink[400])} />
+              </Pressable>
             ))}
         </Card>
       )}
@@ -281,6 +310,10 @@ export function ProviderHome() {
         loading={incoming.isLoading}
         empty="No dated bookings coming up."
         dateOf={(booking) => booking.eventDate}
+        // The whole list, in the order this card shows it: the soonest wedding
+        // first rather than the newest request.
+        onOpenAll={() => router.push({ pathname: '/bookings', params: { tab: 'all', sort: 'event' } })}
+        onOpen={(id) => router.push({ pathname: '/bookings', params: { booking: id } })}
       />
 
       <BookingList
@@ -289,36 +322,76 @@ export function ProviderHome() {
         loading={incoming.isLoading}
         empty="No bookings yet."
         dateOf={(booking) => booking.createdAt}
+        onOpenAll={() =>
+          router.push({ pathname: '/bookings', params: { tab: 'all', sort: 'newest' } })
+        }
+        onOpen={(id) => router.push({ pathname: '/bookings', params: { booking: id } })}
       />
     </View>
   );
 }
 
+/**
+ * Five rows off the queue, each of which opens the job it names.
+ *
+ * The heading opens the same list in the order this card shows it. Both were
+ * flat text before: a dashboard that shows a customer's name, their wedding and
+ * its date, and then does nothing when the row is pressed, reads as broken
+ * rather than as informational (EZ1-I250).
+ */
 function BookingList({
   title,
   bookings,
   loading,
   empty,
   dateOf,
+  onOpen,
+  onOpenAll,
 }: {
   title: string;
   bookings: IncomingBooking[];
   loading: boolean;
   empty: string;
   dateOf: (booking: IncomingBooking) => string | null;
+  onOpen: (id: string) => void;
+  onOpenAll: () => void;
 }) {
+  const theme = useTheme();
   return (
     <Card>
-      <SectionTitle>{title}</SectionTitle>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, open the list`}
+        onPress={onOpenAll}
+        style={({ pressed }) => [
+          { flexDirection: 'row', alignItems: 'center', gap: space(2), minHeight: 30 },
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <SectionTitle style={{ flex: 1 }}>{title}</SectionTitle>
+        <CaretRight size={14} color={rgb(theme.ink[400])} />
+      </Pressable>
       {loading ? (
         <Loading rows={2} />
       ) : bookings.length === 0 ? (
         <Caption tone="faint">{empty}</Caption>
       ) : (
         bookings.map((booking) => (
-          <View
+          <Pressable
             key={booking.id}
-            style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space(2) }}
+            accessibilityRole="button"
+            accessibilityLabel={`${booking.clientName ?? 'Customer'}, open this booking`}
+            onPress={() => onOpen(booking.id)}
+            style={({ pressed }) => [
+              {
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: space(2),
+                paddingVertical: space(1),
+                minHeight: 44,
+              },
+              pressed && { opacity: 0.6 },
+            ]}
           >
             <View style={{ flex: 1, gap: space(0.5) }}>
               <Body numberOfLines={1}>
@@ -334,7 +407,8 @@ function BookingList({
               </Caption>
             </View>
             <Caption tone="faint">{shortDate(dateOf(booking))}</Caption>
-          </View>
+            <CaretRight size={13} color={rgb(theme.ink[400])} />
+          </Pressable>
         ))
       )}
     </Card>
