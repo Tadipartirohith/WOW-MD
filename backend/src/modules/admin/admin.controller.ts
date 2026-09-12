@@ -12,6 +12,10 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AdminConsoleService } from './admin-console.service';
+import { AdminActivityService } from './admin-activity.service';
+import { AdminAccountsService } from './admin-accounts.service';
+import { AdminBookingsService } from './admin-bookings.service';
+import { AdminReportsService } from './admin-reports.service';
 import { AgencyService } from '../agents/agency.service';
 import { AuditService } from '../../platform/audit/audit.service';
 import { RejectAgencyDto } from '../agents/dto/agency.dto';
@@ -47,6 +51,10 @@ export class AdminController {
     private readonly audit: AuditService,
     private readonly bookings: BookingsService,
     private readonly console: AdminConsoleService,
+    private readonly feed: AdminActivityService,
+    private readonly accounts: AdminAccountsService,
+    private readonly consoleBookings: AdminBookingsService,
+    private readonly consoleReports: AdminReportsService,
     private readonly vendorServices: VendorServicesService,
   ) {}
 
@@ -67,7 +75,7 @@ export class AdminController {
   })
   @Get('activity')
   activity(@Query() q: ActivityQueryDto) {
-    return this.console.activity(q);
+    return this.feed.activity(q);
   }
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
@@ -77,7 +85,7 @@ export class AdminController {
   })
   @Get('directory')
   directory(@Query() q: DirectoryQueryDto) {
-    return this.console.directory(q);
+    return this.accounts.directory(q);
   }
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
@@ -90,20 +98,20 @@ export class AdminController {
   })
   @Get('accounts/:id')
   accountDetail(@Param('id', ParseUUIDPipe) id: string) {
-    return this.console.accountDetail(id);
+    return this.accounts.accountDetail(id);
   }
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
   @ApiOperation({
     summary: 'One marriage profile in full (EZ1-I185)',
     description:
-      'What opens when an administrator clicks a profile in an agency\'s associated-profiles ' +
+      "What opens when an administrator clicks a profile in an agency's associated-profiles " +
       'list: the whole profile, not just the matchmaking-facing subset. The government id ' +
       'number is never stored and never returned.',
   })
   @Get('profiles/:id')
   profileDetail(@Param('id', ParseUUIDPipe) id: string) {
-    return this.console.profileDetail(id);
+    return this.accounts.profileDetail(id);
   }
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
@@ -129,7 +137,7 @@ export class AdminController {
   })
   @Get('bookings/:id')
   bookingDetail(@Param('id', ParseUUIDPipe) id: string) {
-    return this.console.bookingDetail(id);
+    return this.consoleBookings.bookingDetail(id);
   }
 
   @RequirePermissions(Permission.ADMIN_USERS_READ)
@@ -179,14 +187,14 @@ export class AdminController {
   })
   @Get('bookings')
   allBookings(@Query() q: AdminBookingQueryDto) {
-    return this.console.allBookings(q);
+    return this.consoleBookings.allBookings(q);
   }
 
   @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
   @ApiOperation({ summary: 'Every payment/transaction, with parties and escrow status (EZ1-I111)' })
   @Get('transactions')
   transactions(@Query() q: AdminTransactionQueryDto) {
-    return this.console.transactions(q);
+    return this.consoleBookings.transactions(q);
   }
 
   @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
@@ -195,7 +203,7 @@ export class AdminController {
   })
   @Get('transactions/:id')
   transactionDetail(@Param('id', ParseUUIDPipe) id: string) {
-    return this.console.transactionDetail(id);
+    return this.consoleBookings.transactionDetail(id);
   }
 
   @RequirePermissions(Permission.ADMIN_VENDOR_APPROVE)
@@ -204,7 +212,7 @@ export class AdminController {
     description:
       'Empty unless CATALOG_REVIEW_THRESHOLD_PERCENT is set. The listing keeps selling at the ' +
       'old price while one of these is outstanding — taking a shop off sale while somebody ' +
-      'reviews it punishes the vendor for the platform\'s caution.',
+      "reviews it punishes the vendor for the platform's caution.",
   })
   @Get('catalog/price-changes')
   pendingPriceChanges() {
@@ -236,7 +244,7 @@ export class AdminController {
   })
   @Get('reports')
   report(@Query() q: ReportQueryDto) {
-    return this.console.report(q);
+    return this.consoleReports.report(q);
   }
 
   @RequirePermissions(Permission.ADMIN_ANALYTICS_READ)
@@ -248,7 +256,7 @@ export class AdminController {
   })
   @Get('reports/timeseries')
   reportTimeseries(@Query() q: AdminBookingQueryDto) {
-    return this.console.growthSeries(q);
+    return this.consoleReports.growthSeries(q);
   }
 
   // -------------------------------------------------------- agency vetting

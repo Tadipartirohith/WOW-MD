@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Loading } from '../components/ui/Feedback';
@@ -290,11 +291,18 @@ const SECTIONS: { key: string; label: string; blurb: string; statuses: string[] 
 /** Case status cards for the Cases tab, in the order work moves (EZ1-I83). */
 export const CASE_FILTERS: { key: CaseStatus; label: string }[] = [
   { key: 'open', label: 'Open' },
+  // Every status has a card. Triaged, reassigned, waiting and admin review had
+  // none, so those cases were counted nowhere and the cards added up to less
+  // than the inbox -- 37 of 47, with ten triaged cases out of sight (EZ1-I242).
+  { key: 'triaged', label: 'Triaged' },
   { key: 'allocated', label: 'Allocated' },
+  { key: 'reassigned', label: 'Reassigned' },
   { key: 'in_progress', label: 'In progress' },
+  { key: 'waiting_for_information', label: 'Waiting for information' },
   // A submitted resolution waiting on an administrator gets its own card so it
   // is not invisible between "in progress" and "resolved" (EZ1-I49).
   { key: 'resolution_submitted', label: 'In review' },
+  { key: 'admin_review', label: 'With an administrator' },
   { key: 'escalated', label: 'Escalated' },
   { key: 'resolved', label: 'Resolved' },
   { key: 'rejected', label: 'Rejected' },
@@ -324,6 +332,7 @@ function Pill({ status }: { status: string }) {
 export default function Verification() {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
+  const role = useAuth((s) => s.user?.role);
   /*
     Cases have their own page now (EZ1-I219).
 
@@ -361,7 +370,14 @@ export default function Verification() {
   const [tab, setTab] = useState<'requests' | 'cases'>('requests');
   // Null shows every section at once, which is what somebody with four visits
   // wants; picking one is for somebody with forty.
-  const [section_, setSection] = useState<string | null>(null);
+  // Seeded from ?section=, so a verification figure on Reports opens the
+  // requests it counted rather than the whole queue (EZ1-I242). A value that
+  // is not a section is ignored.
+  const [linkParams] = useSearchParams();
+  const [section_, setSection] = useState<string | null>(() => {
+    const wanted = linkParams.get('section');
+    return SECTIONS.some((x) => x.key === wanted) ? wanted : null;
+  });
   const visibleSections = section_ ? SECTIONS.filter((x) => x.key === section_) : SECTIONS;
   // Which case status the Cases tab is filtered to, null for all (EZ1-I83).
   const [caseFilter, setCaseFilter] = useState<CaseStatus | null>(null);
@@ -380,9 +396,36 @@ export default function Verification() {
     refetchInterval: 20_000,
   });
 
+  /*
+   * The queue asked for one default page -- the newest twenty requests -- and
+   * every section counted inside that page. With 175 requests and 98 of them
+   * waiting, the New chip said 12, and a link from Reports for "98 waiting"
+   * opened a section of twelve (EZ1-I242).
+   *
+   * A chosen section is fetched by its own statuses now, and the chips count
+   * from the server's per-status totals.
+   */
+  const sectionStatuses = section_ ? (SECTIONS.find((x) => x.key === section_)?.statuses ?? []) : [];
   const { data: requests } = useQuery({
-    queryKey: ['verification-requests'],
-    queryFn: async () => (await api.get('/verification/requests')).data,
+    queryKey: ['verification-requests', section_],
+    queryFn: async () => {
+      if (sectionStatuses.length === 0) {
+        return (await api.get('/verification/requests', { params: { limit: 100 } })).data;
+      }
+      // One read per status: a section can hold two (submitted and admin review).
+      const pages = await Promise.all(
+        sectionStatuses.map(
+          async (status) =>
+            (await api.get('/verification/requests', { params: { limit: 100, status } })).data,
+        ),
+      );
+      return {
+        data: pages
+          .flatMap((p) => p.data as VerificationRequest[])
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
+        meta: { total: pages.reduce((t, p) => t + (p.meta?.total ?? 0), 0) },
+      };
+    },
     retry: false,
     refetchInterval: 20_000,
   });
@@ -443,6 +486,16 @@ export default function Verification() {
   }
 
   const rows: VerificationRequest[] = requests?.data ?? [];
+  const totalRequests: number = requests?.meta?.total ?? rows.length;
+  // The server's per-status counts, used only where they cover the same
+  // requests this list does: all of them for somebody who allocates, and an
+  // officer's own. Anyone else counts what was loaded.
+  const requestCounts: Record<string, number> | undefined =
+    canAllocate || role === 'in_person' ? metrics?.requests : undefined;
+  const sectionCount = (statuses: string[]) =>
+    requestCounts
+      ? statuses.reduce((t, status) => t + (requestCounts[status] ?? 0), 0)
+      : rows.filter((r) => statuses.includes(r.status)).length;
   const caseRows: SupportCase[] = cases?.data ?? [];
   // Lightest first, so the recommended choice is also the first one listed.
   const activeOfficers = officersWithLoad
@@ -539,7 +592,7 @@ export default function Verification() {
 
       <div className="flex flex-wrap gap-2">
         <TabButton active={tab === 'requests'} onClick={() => setTab('requests')}>
-          Visits ({rows.length})
+          Visits ({requestCounts?.total ?? totalRequests})
         </TabButton>
         {showCases && (
           <TabButton active={tab === 'cases'} onClick={() => setTab('cases')}>
@@ -566,7 +619,7 @@ export default function Verification() {
 
           <div className="flex flex-wrap gap-2">
             {SECTIONS.map((section) => {
-              const count = rows.filter((r) => section.statuses.includes(r.status)).length;
+              const count = sectionCount(section.statuses);
               return (
                 <button
                   key={section.key}
@@ -584,6 +637,13 @@ export default function Verification() {
               );
             })}
           </div>
+
+          {rows.length > 0 && totalRequests > rows.length && (
+            <p className="text-xs text-gray-500">
+              Showing the newest {rows.length} of {totalRequests}
+              {section_ ? ' in this section.' : '. Choose a section to see all of it.'}
+            </p>
+          )}
 
           {visibleSections.map((section) => {
             const q = visitSearch.trim().toLowerCase();

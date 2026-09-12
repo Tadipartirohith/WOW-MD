@@ -25,6 +25,10 @@ import { BookingsModule } from '../bookings/bookings.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { AdminService } from './admin.service';
 import { AdminConsoleService } from './admin-console.service';
+import { AdminActivityService } from './admin-activity.service';
+import { AdminAccountsService } from './admin-accounts.service';
+import { AdminBookingsService } from './admin-bookings.service';
+import { AdminReportsService } from './admin-reports.service';
 import { ReportsService } from './reports.service';
 import { AdminController } from './admin.controller';
 
@@ -60,8 +64,23 @@ import { AdminController } from './admin.controller';
     // asks it what is waiting and tells it what was decided.
     forwardRef(() => CatalogModule),
   ],
-  providers: [AdminService, AdminConsoleService, ReportsService],
+  providers: [
+    AdminService,
+    AdminConsoleService,
+    AdminActivityService,
+    AdminAccountsService,
+    AdminBookingsService,
+    AdminReportsService,
+    ReportsService,
+  ],
   controllers: [AdminController],
-  exports: [AdminService, AdminConsoleService],
+  exports: [
+    AdminService,
+    AdminConsoleService,
+    AdminActivityService,
+    AdminAccountsService,
+    AdminBookingsService,
+    AdminReportsService,
+  ],
 })
 export class AdminModule {}

@@ -1,4 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { saveBlob } from './exporters';
 import { api } from '../../lib/api';
 
 /*
@@ -113,6 +114,7 @@ export interface FinancialReport {
   commission: string;
   refunded: string;
   awaitingPayout: string;
+  partiallySettled: string;
 }
 
 export interface PaymentsReport {
@@ -259,6 +261,23 @@ export const DISPUTE_STATUS_LABEL: Record<string, string> = {
   rejected: 'Rejected',
 };
 
+/**
+ * The section of the Verification queue that holds a request in each status,
+ * so a figure on Reports opens the requests it counted. Mirrors SECTIONS on
+ * that page; a status with no section there has no link here.
+ */
+export const VERIFICATION_SECTION: Record<string, string> = {
+  new: 'new',
+  assigned: 'assigned',
+  in_progress: 'in_progress',
+  submitted: 'submitted',
+  admin_review: 'submitted',
+  additional_review: 'revisit',
+  issue: 'issues',
+  approved: 'approved',
+  rejected: 'rejected',
+};
+
 // ---------------------------------------------------------------- export
 
 export type CsvRow = (string | number | null)[];
@@ -277,10 +296,5 @@ export function downloadCsv(filename: string, rows: CsvRow[]) {
     return `"${text.replace(/"/g, '""')}"`;
   };
   const csv = rows.map((r) => r.map(cell).join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlob(filename, new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' }));
 }

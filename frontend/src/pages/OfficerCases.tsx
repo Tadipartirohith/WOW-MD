@@ -27,12 +27,34 @@ export default function OfficerCases() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  /*
+   * The list asked for one default page -- the newest twenty -- and each chip
+   * counted inside that page, so an officer with more than twenty cases saw
+   * counts that were short and could not reach the older cases at all. The
+   * admin Support inbox had the same fault (EZ1-I242).
+   *
+   * The server filters by status now, and the chips read the server's own
+   * per-status counts for this officer.
+   */
   const { data: cases } = useQuery({
-    queryKey: ['verification-cases'],
-    queryFn: async () => (await api.get('/verification/cases')).data,
+    queryKey: ['verification-cases', caseFilter],
+    queryFn: async () =>
+      (
+        await api.get('/verification/cases', {
+          params: { limit: 100, status: caseFilter ?? undefined },
+        })
+      ).data,
     retry: false,
     refetchInterval: 20_000,
   });
+
+  const { data: metrics } = useQuery({
+    queryKey: ['verification-metrics'],
+    queryFn: async () => (await api.get('/verification/metrics')).data,
+    retry: false,
+    refetchInterval: 20_000,
+  });
+  const caseCounts: Record<string, number> | undefined = metrics?.cases;
 
   // Only an allocator needs the roster; an officer working their own cases
   // never reassigns one, so the request is not made for them.
@@ -57,7 +79,9 @@ export default function OfficerCases() {
   }
 
   const caseRows: SupportCase[] = cases?.data ?? [];
-  const shown = caseFilter ? caseRows.filter((c) => c.status === caseFilter) : caseRows;
+  // Already filtered by the server; nothing to narrow here.
+  const shown = caseRows;
+  const totalCases: number = cases?.meta?.total ?? caseRows.length;
   const activeOfficers = (officers ?? []).filter((o) => o.isActive);
 
   return (
@@ -77,7 +101,10 @@ export default function OfficerCases() {
           straight to what is escalated rather than reading one long list. */}
       <div className="flex flex-wrap gap-2">
         {CASE_FILTERS.map((f) => {
-          const count = caseRows.filter((c) => c.status === f.key).length;
+          // Falls back to the loaded rows only if the counts could not be read.
+          const count = caseCounts
+            ? (caseCounts[f.key] ?? 0)
+            : caseRows.filter((c) => c.status === f.key).length;
           return (
             <button
               key={f.key}
@@ -98,10 +125,16 @@ export default function OfficerCases() {
       </div>
 
       <div className="space-y-3">
-        {caseRows.length === 0 ? (
-          <p className="card text-sm text-gray-500">Nothing allocated to you.</p>
-        ) : shown.length === 0 ? (
-          <p className="card text-sm text-gray-500">Nothing in that group.</p>
+        {shown.length > 0 && totalCases > shown.length && (
+          <p className="text-xs text-gray-500">
+            Showing the newest {shown.length} of {totalCases}
+            {caseFilter ? ' in this group' : ''}.
+          </p>
+        )}
+        {shown.length === 0 ? (
+          <p className="card text-sm text-gray-500">
+            {caseFilter ? 'Nothing in that group.' : 'Nothing allocated to you.'}
+          </p>
         ) : (
           shown.map((c) => (
             <CaseRow

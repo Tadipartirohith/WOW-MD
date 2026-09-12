@@ -18,6 +18,7 @@ import {
   CASE_SUBJECT_LABEL,
   DISPUTE_STATUS_LABEL,
   PAYMENT_STATUS_LABEL,
+  VERIFICATION_SECTION,
   count,
   hours,
   inr,
@@ -83,20 +84,26 @@ export function VerificationTab({ d }: { d: ReportsData }) {
       <KpiGrid>
         <KpiTile label="Verification requests" value={count(v?.requests)} to="/verification" icon={SealCheck}
           accent="positive" load={d.verification} />
-        <KpiTile label="Waiting for an officer" value={count(v?.pending)} to="/verification" icon={Hourglass}
+        <KpiTile label="Waiting for an officer" value={count(v?.pending)} to="/verification?section=new" icon={Hourglass}
           accent="caution" load={d.verification} />
-        <KpiTile label="Approved" hint={`${count(v?.rejected)} rejected`} value={count(v?.approved)} icon={CheckCircle}
+        <KpiTile label="Approved" hint={`${count(v?.rejected)} rejected`} value={count(v?.approved)} to="/verification?section=approved" icon={CheckCircle}
           accent="positive" load={d.verification} />
         <KpiTile label="Typical time to a decision" hint="Median, over requests decided" value={hours(v?.medianHoursToDecision ?? null)}
           icon={Clock} accent="brand" load={d.verification} />
       </KpiGrid>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Requests by status" icon={SealCheck} load={d.verification} empty={!v?.requests}
+        <Panel title="Requests by status" subtitle="Each status opens its section of the queue." icon={SealCheck}
+          load={d.verification} empty={!v?.requests}
           emptyText="No verification was requested in this period.">
           <BarList accent="positive" rows={Object.entries(v?.byStatus ?? {})
             .filter(([, n]) => n > 0)
-            .map(([status, n]) => ({ key: status, label: VERIFICATION_LABEL[status as VerificationStatus] ?? titleCase(status), value: n }))} />
+            .map(([status, n]) => ({
+              key: status,
+              label: VERIFICATION_LABEL[status as VerificationStatus] ?? titleCase(status),
+              value: n,
+              to: VERIFICATION_SECTION[status] ? `/verification?section=${VERIFICATION_SECTION[status]}` : undefined,
+            }))} />
         </Panel>
 
         <Panel title="By applicant" subtitle="Who was being verified, and how it went." icon={SealCheck}

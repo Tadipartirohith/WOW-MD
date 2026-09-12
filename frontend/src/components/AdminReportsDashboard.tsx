@@ -13,6 +13,7 @@ import OverviewTab from './reports/OverviewTab';
 import { BookingsTab, RevenueTab } from './reports/BookingsRevenueTabs';
 import { ProvidersTab, UsersTab } from './reports/PeopleTabs';
 import { PaymentsTab, SupportTab, VerificationTab } from './reports/OperationsTabs';
+import { downloadPdf, downloadXlsx } from './reports/exporters';
 import {
   APPLICANT_LABEL,
   CASE_SUBJECT_LABEL,
@@ -49,6 +50,13 @@ import {
  * and the back button return to exactly what was on screen, and a report can
  * be sent to a colleague as a link.
  */
+
+type ExportFormat = 'csv' | 'xlsx' | 'pdf';
+const EXPORTS: { format: ExportFormat; label: string }[] = [
+  { format: 'csv', label: 'CSV' },
+  { format: 'xlsx', label: 'Excel' },
+  { format: 'pdf', label: 'PDF' },
+];
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
@@ -129,20 +137,35 @@ export default function AdminReportsDashboard() {
   const tabLabel = TABS.find((t) => t.key === tab)!.label;
   const [exportError, setExportError] = useState('');
 
-  function exportCsv() {
+  // One set of rows behind all three formats, so a CSV, a workbook and a PDF
+  // of the same tab and period can never disagree with each other.
+  function exportAs(format: ExportFormat) {
     const rows = csvFor(tab, d);
     if (!rows) {
       setExportError('Some figures on this tab are still loading or could not be loaded. Retry them before exporting.');
       return;
     }
     setExportError('');
-    downloadCsv(`wow-${tab}-${w.from}_to_${w.to}.csv`, [
+    const name = `wow-${tab}-${w.from}_to_${w.to}`;
+    const generated = new Date();
+    if (format === 'pdf') {
+      downloadPdf(
+        `${name}.pdf`,
+        `WOW Reports: ${tabLabel}`,
+        `${w.from} to ${w.to}. Generated ${generated.toLocaleString('en-IN')}.`,
+        rows,
+      );
+      return;
+    }
+    const sheet: CsvRow[] = [
       ['WOW Reports', tabLabel],
       ['Period', w.from, 'to', w.to],
-      ['Generated', new Date().toISOString()],
+      ['Generated', generated.toISOString()],
       [],
       ...rows,
-    ]);
+    ];
+    if (format === 'xlsx') downloadXlsx(`${name}.xlsx`, tabLabel, sheet);
+    else downloadCsv(`${name}.csv`, sheet);
   }
 
   return (
@@ -155,10 +178,17 @@ export default function AdminReportsDashboard() {
             live read of the platform's own records.
           </p>
         </div>
-        <button className="btn inline-flex items-center gap-2" onClick={exportCsv}>
-          <DownloadSimple size={18} weight="bold" aria-hidden />
-          Export {tabLabel} (CSV)
-        </button>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Export ${tabLabel}`}>
+          <span className="inline-flex items-center gap-1.5 text-sm text-gray-600">
+            <DownloadSimple size={18} weight="bold" aria-hidden />
+            Export {tabLabel}
+          </span>
+          {EXPORTS.map((x) => (
+            <button key={x.format} className="btn btn-sm" onClick={() => exportAs(x.format)}>
+              {x.label}
+            </button>
+          ))}
+        </div>
       </header>
       {exportError && <p className="alert-critical">{exportError}</p>}
 
@@ -262,6 +292,7 @@ function csvFor(tab: TabKey, d: ReportsData): CsvRow[] | null {
     ['Awaiting payout', f!.awaitingPayout],
     ['Disputed', f!.disputed],
     ['Refunded', f!.refunded],
+    ['Partially settled', f!.partiallySettled],
   ];
 
   switch (tab) {

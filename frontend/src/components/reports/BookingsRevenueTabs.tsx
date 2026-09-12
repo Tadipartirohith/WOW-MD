@@ -114,6 +114,7 @@ export function RevenueTab({ d }: { d: ReportsData }) {
             { label: 'Awaiting payout', value: Number(f?.awaitingPayout ?? 0), bar: 'bg-brand-400', to: '/admin/payments?status=pending_payout' },
             { label: 'Disputed', value: Number(f?.disputed ?? 0), bar: 'bg-critical-fg', to: '/admin/payments?status=disputed' },
             { label: 'Refunded', value: Number(f?.refunded ?? 0), bar: 'bg-gray-400', to: '/admin/payments?status=refunded' },
+            { label: 'Partially settled', value: Number(f?.partiallySettled ?? 0), bar: 'bg-brand-strong', to: '/admin/payments?status=partially_settled' },
           ]} />
         </Panel>
 
