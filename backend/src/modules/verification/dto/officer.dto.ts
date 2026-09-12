@@ -12,6 +12,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { OfficerAvailabilityStatus } from '../../../common/enums';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 
 /** Trim and lowercase so the same address is not stored two ways. */
 const normaliseEmail = ({ value }: { value: unknown }) =>
@@ -50,9 +51,10 @@ export class CreateOfficerDto {
 }
 
 export class SetOfficerStatusDto {
-  @ApiProperty()
-  @IsBoolean()
-  isActive: boolean;
+  /** Suspending an officer. Strict, like every other account-state switch. */
+  @ApiProperty({ type: Boolean })
+  @StrictBoolean()
+  isActive: boolean | string;
 }
 
 /**

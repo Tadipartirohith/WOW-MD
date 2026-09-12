@@ -383,7 +383,7 @@ export class MatchmakingService {
         : Math.max(this.cfg.matchmaking.minScore, q.minScore ?? 0);
 
       const shortlisted = await this.shortlistedIds(me.id);
-      if (q.shortlistedOnly) {
+      if (q.shortlistedOnly === true) {
         candidates = candidates.filter((c) => shortlisted.has(c.id));
       }
 
@@ -745,7 +745,7 @@ export class MatchmakingService {
     add('goth', q.gothram);
     add('kuja', q.kujaDosham);
     add('q', q.q);
-    add('short', q.shortlistedOnly);
+    add('short', q.shortlistedOnly === true);
     return parts.length ? parts.join('|') : 'none';
   }
 

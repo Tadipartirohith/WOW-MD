@@ -150,10 +150,19 @@ export class SuggestionsQueryDto extends PaginationDto {
   @IsOptional() @IsString() @MaxLength(80)
   q?: string;
 
-  /** Only profiles on this profile's shortlist. */
+  /**
+   * Only profiles on this profile's shortlist.
+   *
+   * `boolean | string` because that union is what StrictBoolean needs to work:
+   * without it the implicit conversion runs first and `?shortlistedOnly=false`
+   * arrives as true. Measured on the running stack before this was fixed: a
+   * search returning 23 suggestions returned 0 when the filter was explicitly
+   * turned off. No screen sends the parameter today, so nobody has hit it --
+   * it was waiting for whoever wired the filter up.
+   */
   @ApiPropertyOptional()
   @IsOptional() @StrictBoolean()
-  shortlistedOnly?: boolean;
+  shortlistedOnly?: boolean | string;
 
   /**
    * `score` is the default and is what matchmaking is for. `recent` exists

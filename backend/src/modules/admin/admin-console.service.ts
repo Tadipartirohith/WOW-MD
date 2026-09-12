@@ -198,7 +198,9 @@ export class AdminConsoleService {
       ]);
 
     if (q.role) qb.andWhere('u.role = :role', { role: q.role });
-    if (q.active !== undefined) qb.andWhere('u.isActive = :active', { active: q.active });
+    if (q.active !== undefined) {
+      qb.andWhere('u.isActive = :active', { active: q.active === true });
+    }
     if (q.q) {
       qb.andWhere('LOWER(u.email) LIKE :needle', { needle: `%${q.q.toLowerCase()}%` });
     }

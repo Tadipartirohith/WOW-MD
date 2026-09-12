@@ -340,7 +340,7 @@ export class AgentsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateClientStatusDto,
   ) {
-    return this.agents.setClientStatus(agentId, id, dto.isActive);
+    return this.agents.setClientStatus(agentId, id, dto.isActive === true);
   }
 
   // -------------------------------------------------- the client rates the agent

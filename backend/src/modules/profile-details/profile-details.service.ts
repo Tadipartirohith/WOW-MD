@@ -265,7 +265,7 @@ export class ProfileDetailsService {
        */
       ...(dto.isNri === undefined
         ? {}
-        : dto.isNri
+        : dto.isNri === true
           ? {
               isNri: true,
               nriCity: dto.nriCity ?? null,
@@ -281,7 +281,7 @@ export class ProfileDetailsService {
         : { familyNetWorth: String(dto.familyNetWorth) }),
       ...(dto.familyNetWorthVisible === undefined
         ? {}
-        : { familyNetWorthVisible: dto.familyNetWorthVisible }),
+        : { familyNetWorthVisible: dto.familyNetWorthVisible === true }),
     });
     return this.persist(profileId, row);
   }

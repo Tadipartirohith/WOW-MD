@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { StrictBoolean } from '../../../common/decorators/strict-boolean.decorator';
 import { ProfileClaimStatus, ProfileLifecycle } from '../../../common/enums';
 
 export class ClientSearchDto extends PaginationDto {
@@ -11,22 +12,18 @@ export class ClientSearchDto extends PaginationDto {
   q?: string;
 
   /*
-   * Carried as the literal string, not a boolean.
+   * This filter always returned active accounts whichever way it was set: the
+   * pipe's implicit conversion turns the string "false" into true, so an agent
+   * choosing "Deactivated accounts" got the active ones and nothing said
+   * otherwise (found while adding the filters beside it, EZ1-I241).
    *
-   * The pipe runs with `enableImplicitConversion`, which coerces a query
-   * parameter to the declared type -- and for a boolean that is `Boolean(value)`,
-   * so the string "false" arrives as true. This filter has therefore always
-   * returned active accounts whichever way it was set: an agent choosing
-   * "Deactivated accounts" got the active ones and nothing said otherwise.
-   * Found while adding the filters beside it (EZ1-I241).
-   *
-   * A string the service compares explicitly cannot be coerced into its own
-   * opposite.
+   * `StrictBoolean` with the `boolean | string` union is the house answer to
+   * that, and it is what the rest of the platform's sensitive booleans use.
    */
-  @ApiPropertyOptional({ enum: ['true', 'false'], description: 'Active or deactivated accounts' })
+  @ApiPropertyOptional({ description: 'Active or deactivated accounts' })
   @IsOptional()
-  @IsIn(['true', 'false'])
-  isActive?: 'true' | 'false';
+  @StrictBoolean()
+  isActive?: boolean | string;
 
   /*
    * The rest of the filters the merged My Clients page offers (EZ1-I241).
@@ -58,18 +55,24 @@ export class ClientSearchDto extends PaginationDto {
   @MaxLength(120)
   city?: string;
 
-  /** A string for the same reason `isActive` is one. */
+  /** Strict for the same reason `isActive` is. */
   @ApiPropertyOptional({
-    enum: ['true', 'false'],
     description: 'True for clients who hold an account, false for profiles the agency still owns',
   })
   @IsOptional()
-  @IsIn(['true', 'false'])
-  hasAccount?: 'true' | 'false';
+  @StrictBoolean()
+  hasAccount?: boolean | string;
 }
 
 export class UpdateClientStatusDto {
-  @ApiPropertyOptional()
-  @IsBoolean()
-  isActive: boolean;
+  /**
+   * Whether the client keeps their account.
+   *
+   * Strict for the reason the admin's equivalent is: an agent who meant to
+   * suspend somebody and reinstated them instead would have no way of telling
+   * from the response. Read with `=== true`.
+   */
+  @ApiPropertyOptional({ type: Boolean })
+  @StrictBoolean()
+  isActive: boolean | string;
 }

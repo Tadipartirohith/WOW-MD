@@ -163,7 +163,7 @@ export class AgentsService {
      * on their behalf. That is the distinction the page calls Client Type.
      */
     if (q.hasAccount !== undefined) {
-      qb.andWhere(q.hasAccount === 'true' ? 'p."userId" IS NOT NULL' : 'p."userId" IS NULL');
+      qb.andWhere(q.hasAccount === true ? 'p."userId" IS NOT NULL' : 'p."userId" IS NULL');
     }
 
     if (q.q) {
@@ -193,7 +193,7 @@ export class AgentsService {
     if (q.isActive !== undefined) {
       qb.andWhere(
         `EXISTS (SELECT 1 FROM users u WHERE u.id = p."userId" AND u."isActive" = :isActive)`,
-        { isActive: q.isActive === 'true' },
+        { isActive: q.isActive === true },
       );
     }
 

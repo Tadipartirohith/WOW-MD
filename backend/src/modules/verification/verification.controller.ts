@@ -107,7 +107,7 @@ export class VerificationController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetOfficerStatusDto,
   ) {
-    return this.officers.setActive(actor, id, dto.isActive);
+    return this.officers.setActive(actor, id, dto.isActive === true);
   }
 
   // ------------------------------------------------------- own availability

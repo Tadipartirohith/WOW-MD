@@ -1,7 +1,7 @@
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
-  IsBoolean,
+
   IsDateString,
   IsEnum,
   IsIn,
@@ -53,9 +53,8 @@ export class DirectoryQueryDto extends PaginationDto {
 
   @ApiPropertyOptional({ description: 'Suspended accounts are the ones people come looking for.' })
   @IsOptional()
-  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
-  @IsBoolean()
-  active?: boolean;
+  @StrictBoolean()
+  active?: boolean | string;
 }
 
 export class AdminBookingQueryDto extends PaginationDto {

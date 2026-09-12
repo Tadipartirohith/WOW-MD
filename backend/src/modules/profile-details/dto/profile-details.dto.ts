@@ -379,7 +379,7 @@ export class FamilyDetailsDto {
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @StrictBoolean()
-  isNri?: boolean;
+  isNri?: boolean | string;
 
   @ApiPropertyOptional({ maxLength: 120 })
   @IsOptional()
@@ -439,7 +439,7 @@ export class FamilyDetailsDto {
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @StrictBoolean()
-  familyNetWorthVisible?: boolean;
+  familyNetWorthVisible?: boolean | string;
 }
 
 export class SiblingDto {
