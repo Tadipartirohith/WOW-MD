@@ -5,13 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
 import { SECTIONS, type VerificationRequest } from '@/lib/verification';
-import { Permission, can } from '@/shared/permissions';
 import { FilterChips, StatTile, TileGrid } from '@/components/chrome';
 import { ListScreen } from '@/components/layout';
-import { MyAvailability } from '@/components/verification/my-availability';
 import { RequestRow } from '@/components/verification/request-row';
 import { Body, Caption, Field, PageSubtitle, PageTitle } from '@/components/ui';
-import { useAuth } from '@/store/auth';
 import { space } from '@/theme';
 
 /**
@@ -34,16 +31,6 @@ import { space } from '@/theme';
  */
 export default function Verification() {
   const router = useRouter();
-  const permissions = useAuth((s) => s.user?.permissions ?? []);
-  /*
-   * Going out, and deciding on what came back, are two different people.
-   *
-   * Both used to hang off one permission, which is how an officer ended up with
-   * Approve, Reject and Needs another look under their own findings — the field
-   * visit and the review of the field visit performed by the same hand. They
-   * are separate on the server, so they are separate here.
-   */
-  const canFieldwork = can(permissions, Permission.VERIFICATION_FIELDWORK);
 
   // Null shows every section at once, which is what somebody with four visits
   // wants; picking one is for somebody with forty.
@@ -118,11 +105,10 @@ export default function Verification() {
           </View>
 
           {/*
-            An officer sets whether they are taking fieldwork. Administrators do
-            not hold fieldwork, so this is officers only.
+            Whether an officer is taking fieldwork lives on Home, beside the
+            rest of their own standing. This page is the queue: the work, not
+            the worker.
           */}
-          {canFieldwork ? <MyAvailability /> : null}
-
           {metrics && (
             <TileGrid>
               {/* Every tile is a filter: pressing one opens the bucket it counts. */}
