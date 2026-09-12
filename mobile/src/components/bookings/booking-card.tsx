@@ -18,7 +18,6 @@ import { money, shortDate } from '@/lib/format';
 import { formatAnswer, type FieldSpec } from '@/shared/dynamic-form';
 import { BOOKING_STATUS_LABEL } from '@/shared/permissions';
 import { Badge, DetailGrid, DetailRow, Divider } from '@/components/chrome';
-import { VendorAddOns } from '@/components/bookings/addons';
 import { BookingDetail } from '@/components/bookings/detail';
 import { BookingChat } from '@/components/bookings/chat';
 import { QuotationForm } from '@/components/bookings/quotation';
@@ -224,7 +223,6 @@ export function BookingCard({
       {expanded && (
         <>
           <BookingDetail booking={booking} />
-          <VendorAddOns bookingId={booking.id} />
           <BookingChat bookingId={booking.id} />
         </>
       )}

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
@@ -7,7 +8,8 @@ import { dateTime, money, shortDate } from '@/lib/format';
 import { formatAnswer, type FieldSpec } from '@/shared/dynamic-form';
 import { BOOKING_STATUS_LABEL, MILESTONE_LABEL } from '@/shared/permissions';
 import { Badge, DetailGrid, DetailRow, Divider } from '@/components/chrome';
-import { Caption, SectionTitle } from '@/components/ui';
+import { VendorAddOns } from '@/components/bookings/addons';
+import { Button, Caption, SectionTitle } from '@/components/ui';
 import { rgb, space, useTheme } from '@/theme';
 
 /**
@@ -20,9 +22,18 @@ import { rgb, space, useTheme } from '@/theme';
  * quoted and what was agreed, what has actually been paid and what is still
  * held in escrow, the add-ons, and the order it all happened in.
  *
- * Sections rather than one long definition list. A booking has five separate
- * questions in it — who, what, how much, what else, and what happened — and a
- * phone can only show one at a time (EZ1-I260).
+ * Four cards, in the order the questions get asked: who and what for, what was
+ * sold, what else was asked for, and where the money is. Then the thread with
+ * the customer, which the card puts underneath (EZ1-I260).
+ *
+ * Nothing is repeated from the row above. The customer's phone and email, the
+ * guest count, the date it was asked for and the budget they named are all on
+ * the card already, and printing them again under a heading is what made this
+ * read as a dump rather than a record.
+ *
+ * The quotation and the timeline are a press further in. They are what somebody
+ * reaches for when a figure is disputed rather than when a job is being worked,
+ * and putting them inline pushed the money off the bottom of the screen.
  *
  * Every figure is read live from the endpoints that own it. Nothing here is
  * computed from a stale copy on the row, and nothing is hardcoded.
@@ -49,9 +60,12 @@ type HistoryEvent = { at: string; label: string; detail: string | null };
 const UNPAID = ['failed', 'refunded'];
 
 export function BookingDetail({ booking }: { booking: IncomingBooking }) {
+  const [showRecord, setShowRecord] = useState(false);
+
   const quotations = useQuery({
     queryKey: ['booking-quotations', booking.id],
     queryFn: async () => (await api.get(`/bookings/${booking.id}/quotations`)).data as Quotation[],
+    enabled: showRecord,
     retry: false,
   });
 
@@ -64,6 +78,7 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
   const history = useQuery({
     queryKey: ['booking-history', booking.id],
     queryFn: async () => (await api.get(`/bookings/${booking.id}/history`)).data as HistoryEvent[],
+    enabled: showRecord,
     retry: false,
   });
 
@@ -88,21 +103,11 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
             {BOOKING_STATUS_LABEL[booking.status] ?? booking.status.replace(/_/g, ' ')}
           </DetailRow>
           <DetailRow label="Customer">{booking.clientName ?? 'Customer'}</DetailRow>
-          {booking.clientPhone ? (
-            <DetailRow label="Phone">{booking.clientPhone}</DetailRow>
-          ) : null}
-          {booking.clientEmail ? (
-            <DetailRow label="Email">{booking.clientEmail}</DetailRow>
-          ) : null}
           <DetailRow label="Event">{booking.eventName ?? '—'}</DetailRow>
           <DetailRow label="Date">{shortDate(booking.eventDate)}</DetailRow>
           <DetailRow label="Venue">
             {[booking.eventVenue, booking.eventCity].filter(Boolean).join(', ') || '—'}
           </DetailRow>
-          {booking.expectedGuests ? (
-            <DetailRow label="Guests">{String(booking.expectedGuests)}</DetailRow>
-          ) : null}
-          <DetailRow label="Requested">{dateTime(booking.createdAt)}</DetailRow>
         </DetailGrid>
       </Section>
 
@@ -113,12 +118,7 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
             <DetailRow label="Package">{booking.offeringName}</DetailRow>
           ) : null}
           {booking.quantity ? <DetailRow label="Quantity">{String(booking.quantity)}</DetailRow> : null}
-          <DetailRow label="Agreed amount">{money(booking.amount, currency)}</DetailRow>
-          {booking.expectedBudget && Number(booking.expectedBudget) > 0 ? (
-            <DetailRow label="Customer budget">
-              {money(booking.expectedBudget, currency)}
-            </DetailRow>
-          ) : null}
+          <DetailRow label="Price">{money(booking.amount, currency)}</DetailRow>
         </DetailGrid>
         {booking.requirements ? (
           <Caption>
@@ -135,7 +135,11 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
         <ServiceAnswers booking={booking} />
       </Section>
 
-      {quotation ? (
+      {/* The extras the customer asked for after the quotation: what they
+          asked for, what they offered, what the vendor answered. */}
+      <VendorAddOns bookingId={booking.id} />
+
+      {showRecord && quotation ? (
         <Section title="Quotation">
           <DetailGrid>
             <DetailRow label="Quoted">{money(quotation.amount, quotation.currency)}</DetailRow>
@@ -184,7 +188,7 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
         ))}
       </Section>
 
-      {history.data && history.data.length > 0 ? (
+      {showRecord && history.data && history.data.length > 0 ? (
         <Section title="History">
           {history.data.map((event, index) => (
             <View key={`${event.at}-${index}`} style={{ gap: space(0.5) }}>
@@ -197,6 +201,13 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
           ))}
         </Section>
       ) : null}
+
+      <Button
+        label={showRecord ? 'Hide quotation and history' : 'Quotation and history'}
+        variant="ghost"
+        small
+        onPress={() => setShowRecord((open) => !open)}
+      />
     </View>
   );
 }

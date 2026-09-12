@@ -127,12 +127,16 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
       <BookingConsole
         statusLabels={BOOKING_STATUS_LABEL}
         renderDetail={(b) => (
-          <>
-            <BookingDetail booking={b} />
-            <ServiceAnswers booking={b as never} />
-            {isPlanner && <WeddingBrief bookingId={b.id} />}
-            <VendorAddOns bookingId={b.id} />
-          </>
+          <BookingDetail
+            booking={b}
+            extras={
+              <div className="space-y-2">
+                <ServiceAnswers booking={b as never} />
+                {isPlanner && <WeddingBrief bookingId={b.id} />}
+                <VendorAddOns bookingId={b.id} />
+              </div>
+            }
+          />
         )}
         renderActions={(b) => (
           <>
