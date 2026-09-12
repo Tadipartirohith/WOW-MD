@@ -320,6 +320,14 @@ export class AgentsController {
   }
 
   @RequirePermissions(Permission.CLIENT_READ)
+  @ApiOperation({ summary: 'Distinct cities across this agent\'s clients, for the filter' })
+  // Declared before 'clients/:id' or the id route swallows it.
+  @Get('clients/filters/cities')
+  clientCities(@CurrentUser('userId') agentId: string) {
+    return this.agents.clientCities(agentId);
+  }
+
+  @RequirePermissions(Permission.CLIENT_READ)
   @Get('clients/:id')
   getClient(@CurrentUser('userId') agentId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.agents.getClient(agentId, id);

@@ -99,7 +99,7 @@ const emptyDraft = {
  * deliberate step: it emails the subject a link where THEY choose a password,
  * which is why the steward never sets one here.
  */
-export default function ManagedProfiles() {
+export default function ManagedProfiles({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   // A family member holds the same stewardship capability an agency does, so
@@ -239,7 +239,7 @@ export default function ManagedProfiles() {
   if (isAgent && agency && !agency.approved) {
     return (
       <div className="space-y-4">
-        <h1 className="page-title">Client Profiles</h1>
+        {!embedded && <h1 className="page-title">Client Profiles</h1>}
         <div className="card border-amber-200 bg-amber-50">
           <h2 className="font-semibold text-amber-900">
             {agency.registered ? 'Your agency is awaiting approval' : 'Register your agency first'}
@@ -278,12 +278,16 @@ export default function ManagedProfiles() {
       */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="page-title">{isFamily ? 'Family Profiles' : 'Client Profiles'}</h1>
-          <p className="page-subtitle">
-            {isFamily
-              ? 'The relatives whose profiles you look after. Build one for someone who has not joined yet and it can be matched immediately; when you invite them, they set their own password and take ownership.'
-              : 'The clients you look after. Build a profile for someone who has not joined yet and it can be matched immediately; when you invite them, they set their own password and take ownership.'}
-          </p>
+          {!embedded && (
+            <>
+              <h1 className="page-title">{isFamily ? 'Family Profiles' : 'Client Profiles'}</h1>
+              <p className="page-subtitle">
+                {isFamily
+                  ? 'The relatives whose profiles you look after. Build one for someone who has not joined yet and it can be matched immediately; when you invite them, they set their own password and take ownership.'
+                  : 'The clients you look after. Build a profile for someone who has not joined yet and it can be matched immediately; when you invite them, they set their own password and take ownership.'}
+              </p>
+            </>
+          )}
         </div>
         <button className="btn shrink-0" onClick={() => setCreating((open) => !open)}>
           {creating ? 'Cancel' : isFamily ? 'Add a relative' : 'Create new client'}

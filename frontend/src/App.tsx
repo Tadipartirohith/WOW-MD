@@ -154,6 +154,14 @@ interface NavEntry {
    */
   labelFor?: Partial<Record<UserRole, string>>;
   /**
+   * Where to send a role that is refused this entry.
+   *
+   * The dashboard, unless the thing they were looking for now lives somewhere
+   * specific -- an agent following an old Client Profiles link wants their
+   * clients, and bouncing them to the dashboard makes them hunt (EZ1-I241).
+   */
+  deniedRedirect?: string;
+  /**
    * Which band of the sidebar this sits in.
    *
    * The navigation carried twenty-five destinations in one wrapping pill row,
@@ -229,6 +237,18 @@ const NAV: NavEntry[] = [
      * (council round 2).
      */
     labelFor: { family: 'Family Profiles' },
+    /*
+     * An agent has one client page now, and this is the lower half of it
+     * (EZ1-I241). The section was moved rather than rebuilt, so nothing an
+     * agent could do here was lost -- only the second entry in the rail, and
+     * the trip between two pages to see one client.
+     *
+     * A family member keeps it as a page of its own: they have no My Clients,
+     * and this is the only route to creating, inviting or circulating a
+     * relative's profile.
+     */
+    hideFor: ['agent'],
+    deniedRedirect: '/clients',
     group: 'clients',
     icon: UsersThree,
   },
@@ -388,7 +408,7 @@ const NAV: NavEntry[] = [
 ];
 
 /** Path to the roles refused it, for the route guard. */
-const DENIED_BY_PATH: { to: string; hideFor?: UserRole[] }[] = NAV;
+const DENIED_BY_PATH: { to: string; hideFor?: UserRole[]; deniedRedirect?: string }[] = NAV;
 
 /**
  * The unread count, shown on the Notifications tab.
@@ -787,7 +807,9 @@ function Protected({
    * they are assessing, the admin the couple's honeymoon planner.
    */
   const entry = role ? DENIED_BY_PATH.find((n) => n.to === path) : undefined;
-  if (role && entry && navDenied(entry, role)) return <Navigate to="/" replace />;
+  if (role && entry && navDenied(entry, role)) {
+    return <Navigate to={entry.deniedRedirect ?? '/'} replace />;
+  }
 
   if (requires.length > 0 && !canAny(permissions, requires)) {
     return (

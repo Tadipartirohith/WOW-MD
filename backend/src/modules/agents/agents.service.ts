@@ -4,7 +4,7 @@ import { In, IsNull, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { Interest } from '../matchmaking/entities/interest.entity';
-import { MatchFixedState } from '../../common/enums';
+import { MatchFixedState, ProfileLifecycle } from '../../common/enums';
 import { ClientSearchDto } from './dto/agent.dto';
 import { PaginatedResult, paginate } from '../../common/dto/pagination.dto';
 
@@ -113,19 +113,72 @@ export class AgentsService {
    * alias with orderBy + skip/take makes TypeORM build an ORDER BY over columns
    * it has no metadata for, which throws at runtime.
    */
+  /**
+   * The cities this agent's own clients are in, for the Location filter.
+   *
+   * Derived rather than a fixed list: the filter should offer the places this
+   * agency actually works in, and a hard-coded set goes stale the first time
+   * they take somebody on somewhere new (EZ1-I241).
+   */
+  async clientCities(agentId: string): Promise<{ cities: string[] }> {
+    const rows = await this.profiles
+      .createQueryBuilder('p')
+      .select('DISTINCT p."city"', 'city')
+      .where('p."managedByUserId" = :agentId', { agentId })
+      .andWhere('p."city" IS NOT NULL')
+      .andWhere("p.\"city\" <> ''")
+      .orderBy('p."city"', 'ASC')
+      .getRawMany<{ city: string }>();
+    return { cities: rows.map((r) => r.city) };
+  }
+
   async listClients(agentId: string, q: ClientSearchDto): Promise<PaginatedResult<ClientView>> {
     const qb = this.profiles
       .createQueryBuilder('p')
-      .where('p."managedByUserId" = :agentId', { agentId })
-      .andWhere('p."archivedAt" IS NULL');
+      .where('p."managedByUserId" = :agentId', { agentId });
+
+    /*
+     * Closed profiles stay out of the list unless somebody asks for them by
+     * name. They are kept for the record and are never matched or circulated,
+     * so putting them in the default view would bury the live book -- but an
+     * agent filtering for "Closed" plainly means to see them (EZ1-I241).
+     */
+    if (q.lifecycle === ProfileLifecycle.ARCHIVED) {
+      qb.andWhere('p."lifecycle" = :lifecycle', { lifecycle: q.lifecycle });
+    } else {
+      qb.andWhere('p."archivedAt" IS NULL');
+      if (q.lifecycle) qb.andWhere('p."lifecycle" = :lifecycle', { lifecycle: q.lifecycle });
+    }
+
+    if (q.claimStatus) {
+      qb.andWhere('p."claimStatus" = :claimStatus', { claimStatus: q.claimStatus });
+    }
+
+    if (q.city) {
+      qb.andWhere('LOWER(p."city") = LOWER(:city)', { city: q.city });
+    }
+
+    /*
+     * A client either holds an account or is still a profile the agency owns
+     * on their behalf. That is the distinction the page calls Client Type.
+     */
+    if (q.hasAccount !== undefined) {
+      qb.andWhere(q.hasAccount === 'true' ? 'p."userId" IS NOT NULL' : 'p."userId" IS NULL');
+    }
 
     if (q.q) {
       const term = `%${q.q.toLowerCase()}%`;
+      // Name, client id, email, and the contact numbers -- an agent looking
+      // somebody up has whichever of those the client gave them (EZ1-I241).
       qb.andWhere(
         `(LOWER(p."displayName") LIKE :term
           OR LOWER(p."profileCode") LIKE :term
+          OR p."contactPhone" LIKE :term
+          OR LOWER(COALESCE(p."contactEmail", '')) LIKE :term
           OR EXISTS (
-            SELECT 1 FROM users u WHERE u.id = p."userId" AND LOWER(u.email) LIKE :term
+            SELECT 1 FROM users u
+            WHERE u.id = p."userId"
+              AND (LOWER(COALESCE(u.email, '')) LIKE :term OR u.phone LIKE :term)
           ))`,
         { term },
       );
@@ -140,7 +193,7 @@ export class AgentsService {
     if (q.isActive !== undefined) {
       qb.andWhere(
         `EXISTS (SELECT 1 FROM users u WHERE u.id = p."userId" AND u."isActive" = :isActive)`,
-        { isActive: q.isActive },
+        { isActive: q.isActive === 'true' },
       );
     }
 
