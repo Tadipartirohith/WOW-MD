@@ -1,15 +1,17 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Bell,
   Briefcase,
   CalendarBlank,
   CaretRight,
   Check,
-  ClipboardText,
   Coins,
+  Gear,
+  Lifebuoy,
+  Lock,
   Receipt,
-  SealCheck,
+  SignOut,
+  UserCircle,
   type IconProps,
 } from 'phosphor-react-native';
 
@@ -17,12 +19,9 @@ import { signOut } from '@/lib/api';
 import { Permission, ROLE_LABEL, can, canAny } from '@/shared/permissions';
 import {
   Body,
-  Button,
   Caption,
   Card,
   Eyebrow,
-  PageSubtitle,
-  PageTitle,
   Screen,
   SectionTitle,
 } from '@/components/ui';
@@ -30,18 +29,19 @@ import { useAuth } from '@/store/auth';
 import { radius, rgb, space, useTheme, useThemeChoice, type ThemeChoice } from '@/theme';
 
 /**
- * More: everything the tab bar could not hold, plus the account itself.
+ * More: the account, and the screens the tab bar could not hold.
  *
- * The bar fits five, and a vendor's portal is six screens; an officer's is
- * four. So this is the rest of the sidebar, grouped under the same headings the
- * web app groups them under — "Your business", "Operations" — because a vendor
- * who has used the site is looking for a heading they already know.
+ * What is already in the bottom bar is deliberately not repeated here. An
+ * officer reaches Verification, Cases and Alerts by tapping the tab they are
+ * looking at; listing them again under More meant two routes to the same screen
+ * and a menu that read as a sitemap rather than an account page (EZ1-I257).
  *
- * Only what exists is listed. The earlier version of this screen deliberately
- * carried no directory at all, on the grounds that a menu of links to screens
- * that do not exist is a menu of dead ends; that argument still holds, so the
- * screens that are still web-only are named as such at the bottom rather than
- * offered as rows that go nowhere.
+ * So this is the account itself — who is signed in, their own profile, the way
+ * in when something breaks, the password and the devices holding a session —
+ * plus how the app looks and the way out.
+ *
+ * Only what exists is listed. A menu of links to screens that do not exist is a
+ * menu of dead ends.
  */
 export default function More() {
   const user = useAuth((s) => s.user);
@@ -52,29 +52,10 @@ export default function More() {
     Permission.VENDOR_LISTING_MANAGE,
     Permission.PLANNER_LISTING_MANAGE,
   ]);
-  const isOfficer = canAny(permissions, [
-    Permission.VERIFICATION_PROCESS,
-    Permission.VERIFICATION_ALLOCATE,
-  ]);
 
   return (
     <Screen>
-      <View style={{ gap: space(1), marginTop: space(4) }}>
-        <PageTitle>More</PageTitle>
-        <PageSubtitle>{user?.email ?? 'Signed in'}</PageSubtitle>
-      </View>
-
-      <Card>
-        <Eyebrow>Signed in as</Eyebrow>
-        <SectionTitle>{user ? (ROLE_LABEL[user.role] ?? user.role) : 'Unknown'}</SectionTitle>
-        {/* This is the email-confirmation flag, not in-person identity — which
-            no longer gates matchmaking for individuals. */}
-        {user?.isVerified ? (
-          <Caption>Your email address is confirmed.</Caption>
-        ) : (
-          <Caption>Confirm your email address to secure your account.</Caption>
-        )}
-      </Card>
+      <AccountHeader />
 
       {/* Your business — the same heading, in the same order, as the sidebar. */}
       {isProvider && (
@@ -98,44 +79,95 @@ export default function More() {
         </Group>
       )}
 
-      {isOfficer && (
-        <Group title="Operations">
-          <Row
-            icon={SealCheck}
-            label="Verification"
-            hint="Visits allocated to you, and your availability"
-            to="/verification"
-          />
-          {can(permissions, Permission.CASE_INVESTIGATE) ? (
-            <Row
-              icon={ClipboardText}
-              label="Cases"
-              hint="Investigations, evidence and resolutions"
-              to="/cases"
-            />
-          ) : null}
-        </Group>
-      )}
-
-      <Group title="Account">
-        <Row icon={Bell} label="Notifications" hint="Everything the platform has told you" to="/notifications" />
+      <Group title="My account">
+        <Row
+          icon={UserCircle}
+          label="My Profile"
+          hint="Your name, contact details and what we hold"
+          to="/profile"
+        />
+        <Row
+          icon={Lifebuoy}
+          label="Support"
+          hint="Raise something that has gone wrong"
+          to="/support"
+        />
+        <Row
+          icon={Lock}
+          label="Security"
+          hint="Password, two-factor and signed-in devices"
+          to="/security"
+        />
       </Group>
 
-      <Appearance />
+      <Group title="App settings">
+        <Appearance />
+      </Group>
 
-      {/*
-        Said out loud rather than left to be discovered. A provider who cannot
-        find My Reviews should know it is on the site and not that the app has
-        lost it.
-      */}
-      {isProvider ? (
-        <Caption tone="faint">
-          My Reviews, Support and Security are on the web app for now.
-        </Caption>
-      ) : null}
-
-      <Button label="Sign out" variant="outline" onPress={() => void signOut()} />
+      <Group title="Other">
+        <Row
+          icon={SignOut}
+          label="Sign out"
+          hint="End this session on this device"
+          onPress={() => void signOut()}
+        />
+      </Group>
     </Screen>
+  );
+}
+
+/**
+ * Who is signed in, said once.
+ *
+ * The page used to open with its own name and the email underneath it, which
+ * spent the top of the screen telling somebody the word they had just tapped.
+ * The email and the role are the two facts that belong here — a vendor with a
+ * second account needs to know which one this is before they act on anything
+ * below — and the gear goes where a gear goes.
+ */
+function AccountHeader() {
+  const theme = useTheme();
+  const router = useRouter();
+  const user = useAuth((s) => s.user);
+
+  return (
+    <Card style={{ marginTop: space(4) }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space(2) }}>
+        <View style={{ flex: 1, gap: space(0.5) }}>
+          <Eyebrow>Signed in as</Eyebrow>
+          <SectionTitle numberOfLines={1}>{user?.email ?? 'Signed in'}</SectionTitle>
+          <Caption tone="faint">
+            {user ? (ROLE_LABEL[user.role] ?? user.role) : 'Unknown'}
+          </Caption>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Security settings"
+          onPress={() => router.push('/security')}
+          hitSlop={8}
+          style={({ pressed }) => [
+            {
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: rgb(theme.surfaceSunken),
+            },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Gear size={19} color={rgb(theme.ink[600])} />
+        </Pressable>
+      </View>
+      {/* This is the email-confirmation flag, not in-person identity — which
+          no longer gates matchmaking for individuals. */}
+      {user?.isVerified ? (
+        <Caption>Your email address is confirmed.</Caption>
+      ) : (
+        <Caption>Confirm your email address to secure your account.</Caption>
+      )}
+    </Card>
   );
 }
 
@@ -153,11 +185,14 @@ function Row({
   label,
   hint,
   to,
+  onPress,
 }: {
   icon: React.ComponentType<IconProps>;
   label: string;
   hint: string;
-  to: string;
+  /** Where the row goes. Omitted for a row that does something instead. */
+  to?: string;
+  onPress?: () => void;
 }) {
   const theme = useTheme();
   const router = useRouter();
@@ -167,7 +202,7 @@ function Row({
       accessibilityLabel={label}
       // Cast because these paths are generated into the router's type union at
       // build time, and this list is written once for every persona.
-      onPress={() => router.push(to as never)}
+      onPress={() => (onPress ? onPress() : to ? router.push(to as never) : undefined)}
       style={({ pressed }) => [
         {
           flexDirection: 'row',
@@ -224,8 +259,10 @@ function Appearance() {
   const choice = useThemeChoice((s) => s.choice);
   const set = useThemeChoice((s) => s.set);
 
+  // No card of its own: the group around it already is one, and a card inside a
+  // card reads as two lists that happen to be touching.
   return (
-    <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
+    <>
       <View style={{ padding: space(4), paddingBottom: space(2) }}>
         <SectionTitle>Appearance</SectionTitle>
       </View>
@@ -276,6 +313,6 @@ function Appearance() {
           );
         })}
       </View>
-    </Card>
+    </>
   );
 }
