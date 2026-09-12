@@ -17,9 +17,21 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  /**
+   * Null for an account that was taken on by mobile number alone.
+   *
+   * A great many clients an agency signs up have no email address, and
+   * demanding one to finish claiming the account meant inventing one
+   * (EZ1-I233). Postgres treats NULLs as distinct in a unique index, so the
+   * existing constraint still stops two accounts sharing one address while
+   * allowing any number of accounts with none.
+   *
+   * Anything that emails a user has to cope with its absence. The number is
+   * the channel for those accounts, and login accepts either.
+   */
   @Index({ unique: true })
-  @Column()
-  email: string;
+  @Column({ type: 'varchar', nullable: true })
+  email: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;

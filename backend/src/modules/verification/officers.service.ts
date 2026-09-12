@@ -19,7 +19,7 @@ import { OfficerAvailabilityStatus, ProfileClaimStatus, UserRole } from '../../c
 
 export interface OfficerView {
   id: string;
-  email: string;
+  email: string | null;
   name: string;
   phone: string | null;
   isActive: boolean;
@@ -158,7 +158,9 @@ export class OfficersService {
     });
     const availByUser = new Map(avail.map((a) => [a.officerUserId, a]));
 
-    return people.map((o) => this.view(o, byUser.get(o.id) ?? o.email, availByUser.get(o.id)));
+    return people.map((o) =>
+      this.view(o, byUser.get(o.id) ?? o.email ?? o.phone ?? o.id, availByUser.get(o.id)),
+    );
   }
 
   /**
@@ -184,7 +186,7 @@ export class OfficersService {
 
     const profile = await this.profiles.findOne({ where: { userId: officerId } });
     const availability = await this.availability.findOne({ where: { officerUserId: officerId } });
-    return this.view(officer, profile?.displayName ?? officer.email, availability);
+    return this.view(officer, profile?.displayName ?? officer.email ?? officer.id, availability);
   }
 
   private view(user: User, name: string, availability?: OfficerAvailability | null): OfficerView {

@@ -649,7 +649,9 @@ export class VerificationService {
 
   private async notifyApplicant(request: VerificationRequest): Promise<void> {
     const applicant = await this.users.findOne({ where: { id: request.applicantUserId } });
-    if (!applicant) return;
+    // A business applicant always has an address; an account taken on by
+    // mobile alone does not, and there is nowhere to send this (EZ1-I233).
+    if (!applicant?.email) return;
     await this.mail.sendVerificationOutcome({
       to: applicant.email,
       applicantType: request.applicantType,

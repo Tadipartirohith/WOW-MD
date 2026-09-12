@@ -38,6 +38,7 @@ import {
 import { permissionsFor } from '../../common/authz/permissions';
 import { SessionContext, SessionsService } from './sessions.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { SmsService } from '../../platform/sms/sms.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
 import { MOBILE_PATTERN } from '../../common/util/identity-fields';
@@ -77,7 +78,8 @@ export interface JwtPayload {
 export interface AuthResult {
   user: {
     id: string;
-    email: string;
+    /** Null for an account taken on by mobile alone (EZ1-I233). */
+    email: string | null;
     role: UserRole;
     managedByAgentId: string | null;
     isVerified: boolean;
@@ -111,6 +113,7 @@ export class AuthService {
     private readonly cfg: AppConfigService,
     private readonly sessions: SessionsService,
     private readonly mail: MailService,
+    private readonly sms: SmsService,
     private readonly audit: AuditService,
   ) {}
 
@@ -460,6 +463,7 @@ export class AuthService {
         expiresAt: expiresIn(this.cfg.auth.emailVerifyTtlHours * 3600),
       }),
     );
+    if (!user.email) return;
     await this.mail.sendEmailVerification({ to: user.email, name, token });
   }
 
@@ -467,6 +471,8 @@ export class AuthService {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Account not found');
     if (user.isVerified) return { success: true };
+    // Nothing to verify for an account with no address (EZ1-I233).
+    if (!user.email) return { success: true };
     await this.sendVerificationEmail(user, user.email);
     return { success: true };
   }
@@ -496,8 +502,23 @@ export class AuthService {
    * Always reports success. Telling an anonymous caller whether an address is
    * registered is exactly the enumeration oracle the login path avoids.
    */
-  async requestPasswordReset(email: string): Promise<{ success: true }> {
-    const user = await this.users.findOne({ where: { email } });
+  async requestPasswordReset(identifier: string): Promise<{ success: true }> {
+    /*
+     * Resolved the same way sign-in resolves it: an address, or the mobile the
+     * account was taken on with. A number matching more than one active
+     * account is treated as no match rather than picking one -- this route
+     * deliberately tells an anonymous caller nothing either way (EZ1-I233).
+     */
+    const user = MOBILE_PATTERN.test(identifier)
+      ? await (async () => {
+          const matches = await this.users.find({
+            where: { phone: identifier, isActive: true },
+            take: 2,
+          });
+          return matches.length === 1 ? matches[0] : null;
+        })()
+      : await this.users.findOne({ where: { email: identifier } });
+
     if (user && user.isActive) {
       const { token, tokenHash } = generateToken();
       await this.emailTokens.save(
@@ -508,7 +529,16 @@ export class AuthService {
           expiresAt: expiresIn(this.cfg.auth.passwordResetTtlMinutes * 60),
         }),
       );
-      await this.mail.sendPasswordReset({ to: user.email, name: user.email, token });
+      /*
+       * Whichever channel this account actually has. The address is preferred
+       * where there is one; an account taken on by mobile gets the link by
+       * SMS, which is the only way it could ever recover a password.
+       */
+      if (user.email) {
+        await this.mail.sendPasswordReset({ to: user.email, name: user.email, token });
+      } else if (user.phone) {
+        await this.sms.sendPasswordReset({ to: user.phone, token });
+      }
     }
     return { success: true };
   }
@@ -600,7 +630,13 @@ export class AuthService {
     await this.users.update(userId, { mfaSecret: secret });
     return {
       secret,
-      otpauthUrl: authenticator.keyuri(user.email, this.cfg.auth.mfaIssuer, secret),
+      // What the authenticator app shows beside the code. An account with no
+      // address falls back to the number it was taken on with (EZ1-I233).
+      otpauthUrl: authenticator.keyuri(
+        user.email ?? user.phone ?? user.id,
+        this.cfg.auth.mfaIssuer,
+        secret,
+      ),
     };
   }
 

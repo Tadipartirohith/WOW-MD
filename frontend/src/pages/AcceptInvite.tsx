@@ -8,6 +8,7 @@ interface InvitationPreview {
   displayName: string;
   /** Null when the invitation went out by SMS alone; the claim form asks for one. */
   email: string | null;
+  phoneHint: string | null;
   invitedBy: string;
   city: string | null;
   photoCount: number;
@@ -49,9 +50,16 @@ export default function AcceptInvite() {
     }
     setLoading(true);
     try {
-      // A mobile-only invitation carries no address, so the person supplies one
-      // here; when the invitation already has an email it is fixed and read-only.
-      const body = data?.email ? { token, password } : { token, password, email };
+      /*
+       * A mobile-only invitation carries no address. The person may add one
+       * and it is optional; when the invitation already has an email it is
+       * fixed and read-only. Sending an empty string would fail validation,
+       * so an untouched field is omitted entirely (EZ1-I233).
+       */
+      const typed = email.trim();
+      const body = data?.email
+        ? { token, password }
+        : { token, password, ...(typed ? { email: typed } : {}) };
       const res = await api.post('/auth/invitations/accept', body);
       setAuth(res.data);
       nav('/profile');
@@ -125,7 +133,7 @@ export default function AcceptInvite() {
         ) : (
           <div>
             <label className="label" htmlFor="email">
-              Your email
+              Your email <span className="font-normal text-gray-500">(optional)</span>
             </label>
             <input
               id="email"
@@ -133,11 +141,17 @@ export default function AcceptInvite() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
             />
+            {/*
+              Not required. This used to be, and an agency's client who had
+              only ever given a mobile number had to invent an address to
+              finish claiming their own account (EZ1-I233).
+            */}
             <p className="mt-1 text-xs text-gray-500">
-              You were invited by text message, so we need an email address. You will sign in with
-              it, and we will use it to help you reset your password.
+              You were invited by text message
+              {data.phoneHint ? ` to ${data.phoneHint}` : ''}, and you can sign in with that
+              number. Add an email if you would like to sign in with one as well; either way you
+              can reset your password by text message.
             </p>
           </div>
         )}

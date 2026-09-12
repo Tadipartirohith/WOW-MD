@@ -3,7 +3,8 @@ import { UserRole } from '../enums';
 
 export interface AuthUser {
   userId: string;
-  email: string;
+  /** Null for an account taken on by mobile alone (EZ1-I233). */
+  email: string | null;
   role: UserRole;
   /** Present when this account was onboarded by an agent. */
   managedByAgentId: string | null;

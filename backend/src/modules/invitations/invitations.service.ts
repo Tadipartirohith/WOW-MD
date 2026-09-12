@@ -27,8 +27,14 @@ import { MOBILE_MESSAGE, MOBILE_PATTERN } from '../../common/util/identity-field
 /** What the public invitation-landing page is allowed to see. */
 export interface InvitationPreview {
   displayName: string;
-  /** Null when the invitation went out by SMS alone; the claim form asks for one. */
+  /** Null when the invitation went out by SMS alone; the claim form offers one. */
   email: string | null;
+  /**
+   * The number the invitation was sent to, masked to its last four digits, so
+   * somebody claiming by SMS can see which identifier they will sign in with
+   * (EZ1-I233). Null when the invitation went by email.
+   */
+  phoneHint: string | null;
   invitedBy: string;
   city: string | null;
   photoCount: number;
@@ -226,6 +232,17 @@ export class InvitationsService {
     return {
       displayName: profile.displayName,
       email: invitation.email,
+      /*
+       * The number this invitation was sent to, so somebody claiming an
+       * account by SMS can see which identifier they will sign in with
+       * (EZ1-I233).
+       *
+       * Masked to the last four digits. This endpoint is reachable by whoever
+       * holds the link, including somebody it was forwarded to, and the last
+       * four are enough for the person who received the message to recognise
+       * their own number.
+       */
+      phoneHint: invitation.phone ? `******${invitation.phone.slice(-4)}` : null,
       invitedBy: stewardProfile?.displayName ?? steward?.email ?? 'A WOW agent',
       city: profile.city ?? null,
       photoCount: profile.photos?.length ?? 0,
@@ -263,16 +280,30 @@ export class InvitationsService {
       if (!profile) throw new NotFoundException('That profile no longer exists');
       if (profile.userId) throw new ConflictException('That profile already has an owner');
 
-      // An invitation that went out by SMS alone carries no address, so the
-      // person supplies one here — this is the first moment somebody who
-      // actually owns the address is filling the form in.
-      const address = invitation.email ?? email;
-      if (!address) {
-        throw new BadRequestException('Enter an email address to finish setting up your account');
+      /*
+       * An invitation that went out by SMS alone carries no address. The
+       * person may supply one here, which is the first moment somebody who
+       * actually owns the address is filling the form in -- but they do not
+       * have to.
+       *
+       * Requiring one is what EZ1-I233 reported: an agency takes a client on
+       * by mobile, invites them by SMS, and the claim form then demanded an
+       * email address the client had never given and might not have. They
+       * either invented one or gave up. An account claimed this way now has
+       * no address at all; the number it was taken on with is its identifier,
+       * sign-in accepts it, and a password reset goes out by SMS.
+       */
+      const address = invitation.email ?? email ?? null;
+      if (!address && !invitation.phone) {
+        throw new BadRequestException(
+          'This invitation has neither an email address nor a mobile number to set the account up with',
+        );
       }
 
-      const clash = await userRepo.findOne({ where: { email: address } });
-      if (clash) throw new ConflictException('An account already exists for that email address');
+      if (address) {
+        const clash = await userRepo.findOne({ where: { email: address } });
+        if (clash) throw new ConflictException('An account already exists for that email address');
+      }
 
       const passwordHash = await bcrypt.hash(password, this.cfg.auth.bcryptRounds);
       const user = await userRepo.save(
@@ -294,8 +325,9 @@ export class InvitationsService {
       );
 
       // Keep the profile's contact details in step with the account, or the
-      // agent's copy and the owner's disagree from the first day.
-      profile.contactEmail = address;
+      // agent's copy and the owner's disagree from the first day. A claim made
+      // without an address leaves the profile's own contact details alone.
+      if (address) profile.contactEmail = address;
       profile.userId = user.id;
       profile.claimStatus = ProfileClaimStatus.CLAIMED;
       await profileRepo.save(profile);

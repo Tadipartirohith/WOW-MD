@@ -132,7 +132,9 @@ export class AgencyService {
     });
 
     const owner = await this.users.findOne({ where: { id: agency.ownerUserId } });
-    if (owner) {
+    // An agency registers with an address, so this is defence rather than a
+    // real case -- but email is optional on an account now (EZ1-I233).
+    if (owner?.email) {
       await this.mail.sendAgentApprovalResult({
         to: owner.email,
         agencyName: agency.agencyName,
@@ -159,7 +161,7 @@ export class AgencyService {
     });
 
     const owner = await this.users.findOne({ where: { id: agency.ownerUserId } });
-    if (owner) {
+    if (owner?.email) {
       await this.mail.sendAgentApprovalResult({
         to: owner.email,
         agencyName: agency.agencyName,

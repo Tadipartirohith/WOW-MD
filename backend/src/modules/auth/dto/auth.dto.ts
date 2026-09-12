@@ -202,10 +202,15 @@ export class RefreshDto {
 }
 
 export class RequestPasswordResetDto {
-  @ApiProperty()
-  @IsEmail()
+  /*
+   * An account taken on by mobile alone has no address to send a link to, so
+   * recovery has to accept the number too or those accounts are locked out of
+   * their own password reset for good (EZ1-I233).
+   */
+  @ApiProperty({ description: 'Email address, or the mobile number the account was set up with' })
   @MaxLength(254)
-  @Transform(normaliseEmail)
+  @Validate(EmailOrMobileConstraint)
+  @Transform(normaliseIdentifier)
   email: string;
 }
 

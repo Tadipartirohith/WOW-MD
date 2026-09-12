@@ -12,6 +12,7 @@ import { Profile } from '../users/entities/profile.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
+import { SmsService } from '../../platform/sms/sms.service';
 import { AuditService } from '../../platform/audit/audit.service';
 import { AccountType, ProfileClaimStatus, UserRole } from '../../common/enums';
 import { RegisterDto, RegisterViaAgentLinkDto } from './dto/auth.dto';
@@ -70,6 +71,8 @@ describe('AuthService', () => {
     sendEmailVerification: jest.fn(),
     sendPasswordReset: jest.fn(),
   } as unknown as MailService;
+  // The channel for an account taken on by mobile alone (EZ1-I233).
+  const sms = { sendPasswordReset: jest.fn() } as unknown as SmsService;
   const audit = { record: jest.fn() } as unknown as AuditService;
 
   const cfg = {
@@ -103,6 +106,7 @@ describe('AuthService', () => {
         { provide: AppConfigService, useValue: cfg },
         { provide: SessionsService, useValue: sessions },
         { provide: MailService, useValue: mail },
+        { provide: SmsService, useValue: sms },
         { provide: AuditService, useValue: audit },
       ],
     }).compile();

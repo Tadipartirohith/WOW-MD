@@ -62,6 +62,22 @@ export class SmsService {
     );
   }
 
+  /**
+   * A password reset for an account that has no email address.
+   *
+   * A client an agency took on by mobile alone has no address the link could
+   * be sent to, so without this they could never recover a password at all
+   * (EZ1-I233). The link is the same one the email carries.
+   */
+  async sendPasswordReset(params: { to: string; token: string }): Promise<boolean> {
+    return this.send(
+      params.to,
+      `Reset your WOW password: ` +
+        `${this.cfg.mail.appBaseUrl.replace(/\/+$/, '')}/reset-password/${encodeURIComponent(params.token)} ` +
+        `If you did not ask for this, ignore this message.`,
+    );
+  }
+
   /** The emailed temporary password is useless to somebody with no email address. */
   async sendProvisionedCredentials(params: {
     to: string;

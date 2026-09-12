@@ -33,8 +33,8 @@ export default function ForgotPassword() {
         {sent ? (
           <>
             <p className="rounded-sm bg-brand-light p-3 text-sm text-brand-dark">
-              If an account exists for <strong>{email}</strong>, a reset link is on its way. It
-              works once and expires shortly.
+              If an account exists for <strong>{email}</strong>, a reset link is on its way by
+              email or text message. It works once and expires shortly.
             </p>
             <Link to="/login" className="btn w-full">
               Back to sign in
@@ -43,16 +43,24 @@ export default function ForgotPassword() {
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <p className="text-sm text-gray-600">
-              Enter your email address and we will send you a link to choose a new password.
+              Enter your email address or mobile number and we will send you a link to choose a new
+              password.
             </p>
             <div>
               <label className="label" htmlFor="email">
-                Email
+                Email or mobile number
               </label>
+              {/*
+                An account an agency took on by mobile alone has no address,
+                so an email-only field locked it out of its own password reset
+                for good. The link goes by SMS for those accounts (EZ1-I233).
+              */}
               <input
                 id="email"
                 className="input"
-                type="email"
+                type="text"
+                inputMode="email"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
