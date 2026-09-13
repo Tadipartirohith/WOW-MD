@@ -59,11 +59,23 @@ export interface AvailabilityView {
  * clients compute their floor the same way, so the date a picker offers and the
  * date the server will accept are the same date.
  */
-export function todayIso(now: Date = new Date()): string {
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
+export function todayIso(now: Date = new Date(), timeZone: string = PLATFORM_TIME_ZONE): string {
+  /*
+   * In the platform's timezone, not the process's. The server runs in UTC, so
+   * its local date was still yesterday until half past five in the morning in
+   * India -- the very case this function exists for. `en-CA` formats a date
+   * as YYYY-MM-DD.
+   */
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
 }
+
+/** The timezone "today" is decided in. The platform's users are in India. */
+const PLATFORM_TIME_ZONE = process.env.APP_TIMEZONE || 'Asia/Kolkata';
 
 /**
  * Whether an officer is out of allocation *today*.

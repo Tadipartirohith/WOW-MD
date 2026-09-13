@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -17,6 +18,8 @@ import { EmailToken } from './entities/email-token.entity';
 import { Profile } from '../users/entities/profile.entity';
 import { MfaRecoveryCode } from './entities/mfa-recovery-code.entity';
 import { AgentProfile } from '../agents/entities/agent-profile.entity';
+import { PhoneVerification } from './entities/phone-verification.entity';
+import { RedisService } from '../../platform/redis/redis.service';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -102,6 +105,13 @@ export interface AuthResult {
 /** Thrown as a 401 body the client can branch on to prompt for a TOTP code. */
 export const MFA_REQUIRED = 'MFA_REQUIRED';
 
+/**
+ * Per-number limits on signing in by mobile (EZ1-I258). The routes are also
+ * limited per IP; these hold however many addresses the requests come from.
+ */
+const OTP_SENDS_PER_HOUR = 5;
+const OTP_FAILURES_PER_HOUR = 10;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -119,6 +129,8 @@ export class AuthService {
     // a number is real (EZ1-I258).
     private readonly phones: PhoneVerificationService,
     private readonly audit: AuditService,
+    // Per-number counters for the mobile sign-in limits.
+    private readonly redis: RedisService,
   ) {}
 
   // ---------------------------------------------------------------- register
@@ -405,17 +417,26 @@ export class AuthService {
    * and a second factor, and adding a route that needs only a handset would be
    * a way around the one that is hardest to get past.
    */
-  async requestMobileOtp(mobile: string): Promise<{ sent: boolean; expiresAt: Date; devCode?: string }> {
+  async requestMobileOtp(mobile: string): Promise<{ sent: true; expiresAt: Date }> {
     const generic = {
-      sent: true,
+      sent: true as const,
       expiresAt: new Date(Date.now() + this.cfg.sms.verificationTtlMinutes * 60_000),
     };
+
+    /*
+     * Counted per number, whatever address asks. The route's own limit is per
+     * IP, and somebody with many addresses could otherwise ring one handset all
+     * night -- and cancel its owner's live code with every request.
+     */
+    if ((await this.bump(`otp:send:${mobile}`, 3600)) > OTP_SENDS_PER_HOUR) return generic;
 
     const user = await this.singleAccountByMobile(mobile);
     if (!user || user.role === UserRole.ADMIN || !user.isActive) return generic;
 
-    const issued = await this.phones.requestLogin(user.id, mobile);
-    return issued;
+    // Nothing about the send reaches the answer: not whether it was delivered,
+    // and never the code.
+    await this.phones.requestLogin(user.id, mobile);
+    return generic;
   }
 
   /**
@@ -427,6 +448,12 @@ export class AuthService {
    * two-factor on still needs its second factor: turning a phone into a single
    * credential for an account that asked for two would be a downgrade its owner
    * did not choose.
+   *
+   * Every refusal before the code is proven is the same 401 in the same words:
+   * no code, a wrong one, an expired one, too many guesses, no such account. Any
+   * difference between them tells a stranger whether the number is registered,
+   * which on a matrimony platform is a question about somebody's private life.
+   * Only once the code is right may the answer say more.
    */
   async loginWithMobileOtp(
     mobile: string,
@@ -434,12 +461,30 @@ export class AuthService {
     mfaCode: string | undefined,
     ctx: SessionContext = {},
   ): Promise<AuthResult> {
-    const user = await this.singleAccountByMobile(mobile);
-    // Deliberately the same refusal as a wrong code: which of the two it was is
-    // exactly what an attacker is asking.
-    if (!user || user.role === UserRole.ADMIN) {
+    const failures = `otp:fail:${mobile}`;
+    const refuse = async (user: User | null) => {
+      await this.bump(failures, 3600);
+      // A wrong code counts against the account the way a wrong password does.
+      if (user) await this.registerFailedLogin(user, ctx);
+      return new UnauthorizedException('That code is not right');
+    };
+
+    // Past the limit, no code for this number is even looked at for the hour.
+    if ((await this.hits(failures)) >= OTP_FAILURES_PER_HOUR) {
       throw new UnauthorizedException('That code is not right');
     }
+
+    const user = await this.singleAccountByMobile(mobile);
+    if (!user || user.role === UserRole.ADMIN) throw await refuse(null);
+
+    let pending: PhoneVerification;
+    try {
+      pending = await this.phones.checkLogin(user.id, code);
+    } catch (err) {
+      if (!(err instanceof HttpException)) throw err;
+      throw await refuse(user);
+    }
+
     if (!user.isActive) throw new ForbiddenException('This account has been deactivated');
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
       const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
@@ -448,20 +493,28 @@ export class AuthService {
       );
     }
 
-    await this.phones.confirmLogin(user.id, code);
-
     if (user.mfaEnabled) {
       if (!mfaCode) {
+        // The code is still unspent, so the client sends it again with the
+        // authenticator code and the sign-in finishes.
         throw new UnauthorizedException({
           message: 'An authentication code is required',
           code: MFA_REQUIRED,
         });
       }
-      if (!this.verifyTotp(user.mfaSecret, mfaCode)) {
+      // A recovery code stands in for the authenticator, as on the password route.
+      const looksLikeRecovery = mfaCode.replace(/[\s-]/g, '').length > 6;
+      const passed = looksLikeRecovery
+        ? await this.consumeRecoveryCode(user.id, mfaCode)
+        : this.verifyTotp(user.mfaSecret, mfaCode);
+      if (!passed) {
         await this.registerFailedLogin(user, ctx);
         throw new UnauthorizedException('That authentication code is not valid');
       }
     }
+
+    await this.phones.spend(pending);
+    await this.redis.raw.del(failures);
 
     /*
      * Signing in with the number proves it. An account taken on by an agent and
@@ -469,8 +522,7 @@ export class AuthService {
      * the same evidence the verification route asks for.
      */
     if (!user.phoneVerifiedAt) {
-      user.phoneVerifiedAt = new Date();
-      await this.users.save(user);
+      await this.users.update(user.id, { phoneVerifiedAt: new Date() });
     }
 
     return this.finishLogin(user, ctx);
@@ -488,9 +540,28 @@ export class AuthService {
   private async singleAccountByMobile(mobile: string): Promise<User | null> {
     const matches = await this.users.find({
       where: { phone: mobile, isActive: true },
+      // The same columns the password route reads. `mfaSecret` is not selected
+      // by default, and without it the second factor could never be verified
+      // here: every attempt failed and counted against the account.
+      select: [
+        'id', 'email', 'role', 'isActive', 'managedByAgentId', 'isVerified',
+        'mfaEnabled', 'mfaSecret', 'failedLoginAttempts', 'lockedUntil',
+        'mustResetPassword', 'onboardingStage', 'tokenVersion', 'phone', 'phoneVerifiedAt',
+      ],
       take: 2,
     });
     return matches.length === 1 ? matches[0] : null;
+  }
+
+  /** Adds one to a rolling counter, starting its window on the first hit. */
+  private async bump(key: string, windowSeconds: number): Promise<number> {
+    const count = await this.redis.raw.incr(key);
+    if (count === 1) await this.redis.raw.expire(key, windowSeconds);
+    return count;
+  }
+
+  private async hits(key: string): Promise<number> {
+    return Number((await this.redis.raw.get(key)) ?? 0);
   }
 
   /** The last few steps of a successful sign-in, shared by both second factors. */

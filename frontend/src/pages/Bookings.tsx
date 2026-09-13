@@ -132,12 +132,14 @@ const TAB_DEFS: { key: string; label: string; statuses: string[] }[] = [
   { key: 'quotation', label: 'Quotation', statuses: ['quotation_sent', 'quotation_accepted'] },
   { key: 'payment', label: 'Payment', statuses: ['payment_pending', 'pending'] },
   { key: 'confirmed', label: 'Confirmed', statuses: ['confirmed'] },
-  { key: 'in_progress', label: 'In Progress', statuses: ['in_progress'] },
+  // Delivered and waiting on the buyer to confirm and pay the balance is still
+  // work in hand, and the step where the buyer has something to do.
   {
-    key: 'completed',
-    label: 'Completed',
-    statuses: ['completed', 'completed_pending_final_payment'],
+    key: 'in_progress',
+    label: 'In Progress',
+    statuses: ['in_progress', 'completed_pending_final_payment'],
   },
+  { key: 'completed', label: 'Completed', statuses: ['completed'] },
   { key: 'cancelled', label: 'Cancelled', statuses: ['cancelled'] },
 ];
 

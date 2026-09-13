@@ -304,6 +304,13 @@ export class InvitationsService {
         const clash = await userRepo.findOne({ where: { email: address } });
         if (clash) throw new ConflictException('An account already exists for that email address');
       }
+      // The same rule registration applies (EZ1-I258): a second account on a
+      // number makes it ambiguous, which quietly ends mobile sign-in for the
+      // account that already had it.
+      if (invitation.phone) {
+        const numberTaken = await userRepo.findOne({ where: { phone: invitation.phone } });
+        if (numberTaken) throw new ConflictException('That mobile number already has an account');
+      }
 
       const passwordHash = await bcrypt.hash(password, this.cfg.auth.bcryptRounds);
       const user = await userRepo.save(

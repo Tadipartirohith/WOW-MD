@@ -68,6 +68,11 @@ export class OfficersService {
   ): Promise<OfficerView & { temporaryPasswordSent: boolean; devPassword?: string }> {
     const exists = await this.users.findOne({ where: { email: dto.email } });
     if (exists) throw new ConflictException('That email already has an account');
+    // One account per number, as registration requires (EZ1-I258).
+    if (dto.phone) {
+      const numberTaken = await this.users.findOne({ where: { phone: dto.phone } });
+      if (numberTaken) throw new ConflictException('That mobile number already has an account');
+    }
 
     const temporaryPassword = generateTemporaryPassword();
     const passwordHash = await bcrypt.hash(temporaryPassword, this.cfg.auth.bcryptRounds);
@@ -251,6 +256,11 @@ export class OfficersService {
       }
       if (dto.leaveFrom < todayIso() && dto.leaveFrom !== row.leaveFrom) {
         throw new BadRequestException('Leave cannot start before today');
+      }
+      // A kept start date may be in the past; a window that has already ended
+      // may not be booked (EZ1-I256).
+      if (dto.leaveTo < todayIso()) {
+        throw new BadRequestException('Leave cannot end before today');
       }
     }
 

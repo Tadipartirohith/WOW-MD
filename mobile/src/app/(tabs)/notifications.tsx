@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { routeFor } from '@/lib/notification-route';
 import { formatDate } from '@/shared/dates';
 import { ACTION_LABEL, TYPE_LABEL, describe, type Notification } from '@/shared/notification-copy';
-import { Permission, canAny } from '@/shared/permissions';
+import { Permission, can, canAny } from '@/shared/permissions';
 import { Body, Caption, Card, EmptyState, Loading, PageSubtitle, PageTitle } from '@/components/ui';
 import { useAuth } from '@/store/auth';
 import { radius, rgb, space, useTheme } from '@/theme';
@@ -33,6 +33,8 @@ export default function Notifications() {
   const qc = useQueryClient();
   const router = useRouter();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
+  // Only a seller has the bookings queue a booking notification opens.
+  const canReadIncoming = can(permissions, Permission.BOOKING_READ_INCOMING);
   // Staff read a case on the Cases queue; everybody else reads their own on
   // Support. The same split the web app makes.
   const canVerify = canAny(permissions, [
@@ -107,7 +109,7 @@ export default function Notifications() {
         </EmptyState>
       }
       renderItem={({ item }) => {
-        const route = routeFor(item, { canVerify });
+        const route = routeFor(item, { canVerify, canReadIncoming });
         return (
         <Pressable
           accessibilityRole="button"

@@ -100,8 +100,10 @@ const TABS: { key: string; label: string; statuses: string[] }[] = [
   // below special-cases it.
   { key: 'request_on_date', label: 'Request on Date', statuses: [] },
   { key: 'confirmed', label: 'Confirmed', statuses: ['payment_pending', 'pending', 'confirmed'] },
-  { key: 'in_progress', label: 'In progress', statuses: ['in_progress'] },
-  { key: 'completed', label: 'Completed', statuses: ['completed', 'completed_pending_final_payment'] },
+  // Delivered and awaiting the customer's confirmation is still work in hand:
+  // the balance is unpaid and the job can still be disputed.
+  { key: 'in_progress', label: 'In progress', statuses: ['in_progress', 'completed_pending_final_payment'] },
+  { key: 'completed', label: 'Completed', statuses: ['completed'] },
   { key: 'cancelled', label: 'Cancelled', statuses: ['cancelled', 'disputed'] },
 ];
 

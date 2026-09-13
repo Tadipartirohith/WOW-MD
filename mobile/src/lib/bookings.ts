@@ -67,13 +67,13 @@ export const ACTIONS: Record<string, { label: string; path: string; primary?: bo
     { label: 'Decline', path: 'cancel' },
   ],
   payment_pending: [{ label: 'Cancel', path: 'cancel' }],
-  pending: [
-    { label: 'Accept the job', path: 'confirm', primary: true },
-    { label: 'Cancel', path: 'cancel' },
-  ],
+  // Historic: nothing enters `pending` any more, and the server moves it only to
+  // confirmed or cancelled, which "Accept the job" never produced.
+  pending: [{ label: 'Cancel', path: 'cancel' }],
+  // From confirmed the server allows starting or cancelling; delivery comes
+  // after the work has started, so "Mark delivered" here always failed.
   confirmed: [
     { label: 'Start work', path: 'start', primary: true },
-    { label: 'Mark delivered', path: 'complete' },
     { label: 'Cancel', path: 'cancel' },
   ],
   in_progress: [{ label: 'Mark delivered', path: 'complete', primary: true }],
@@ -132,12 +132,14 @@ export const BOOKING_TABS: { key: string; label: string; statuses: string[] }[] 
   // special-cases it.
   { key: 'request_on_date', label: 'Request on Date', statuses: [] },
   { key: 'confirmed', label: 'Confirmed', statuses: ['payment_pending', 'pending', 'confirmed'] },
-  { key: 'in_progress', label: 'In progress', statuses: ['in_progress'] },
+  // Delivered and awaiting the customer's confirmation is still work in hand:
+  // the balance is unpaid and the job can still be disputed.
   {
-    key: 'completed',
-    label: 'Completed',
-    statuses: ['completed', 'completed_pending_final_payment'],
+    key: 'in_progress',
+    label: 'In progress',
+    statuses: ['in_progress', 'completed_pending_final_payment'],
   },
+  { key: 'completed', label: 'Completed', statuses: ['completed'] },
   { key: 'cancelled', label: 'Cancelled', statuses: ['cancelled', 'disputed'] },
 ];
 

@@ -51,20 +51,12 @@ export function OtpLogin({ onNeedsPassword }: { onNeedsPassword: () => void }) {
     setNotice('');
     setBusy(true);
     try {
-      const { data } = await api.post('/auth/otp/request', { mobile: digits });
+      await api.post('/auth/otp/request', { mobile: digits });
       setSent(true);
       setCooldown(RESEND_SECONDS);
-      /*
-       * In development the platform logs the message instead of sending it, and
-       * hands the code back so the flow is usable at all. It is the whole
-       * credential, so it is only ever there in that mode — and saying where it
-       * came from is better than a six-digit number appearing unexplained.
-       */
-      setNotice(
-        data?.devCode
-          ? `Development mode: your code is ${data.devCode}.`
-          : 'If that number has an account, a code is on its way.',
-      );
+      // The same words whether or not the number has an account. The code is never
+      // in the answer: in development it is written to the server log.
+      setNotice('If that number has an account, a code is on its way.');
     } catch (err) {
       setError(apiMessage(err, 'That code could not be sent. Try again in a minute.'));
     } finally {

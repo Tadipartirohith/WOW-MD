@@ -10,11 +10,17 @@ export interface CountedPayment {
 /**
  * A payment in one of these states is not money in hand.
  *
- * A failed charge never arrived and a refunded one has gone back. Both leave
- * their row on the booking — the history matters — and neither may be counted
- * as paid, or a refunded advance would go on reading as an advance held.
+ * An initiated payment was begun and never taken, a failed charge never
+ * arrived, and a refunded one has gone back. All three leave their row on the
+ * booking — the history matters — and none may be counted as paid, or a vendor
+ * would read an advance as held and start the work on it. The admin console
+ * leaves out the same states.
  */
-const NOT_COLLECTED: PaymentStatus[] = [PaymentStatus.FAILED, PaymentStatus.REFUNDED];
+const NOT_COLLECTED: PaymentStatus[] = [
+  PaymentStatus.INITIATED,
+  PaymentStatus.FAILED,
+  PaymentStatus.REFUNDED,
+];
 
 export function isCollected(status: PaymentStatus): boolean {
   return !NOT_COLLECTED.includes(status);

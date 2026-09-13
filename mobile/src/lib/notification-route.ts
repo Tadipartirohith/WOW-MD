@@ -18,7 +18,19 @@ import type { Notification } from '@/shared/notification-copy';
  * (EZ1-I254). The three that answer null today — a chat thread, a planner task,
  * a wedding event — are web-only screens.
  */
-export function routeFor(n: Notification, opts: { canVerify?: boolean } = {}): Href | null {
+type RouteOptions = { canVerify?: boolean; canReadIncoming?: boolean };
+
+/**
+ * The booking card lives on the seller's queue. A customer has no bookings
+ * screen in this app yet, and the queue would answer them 403 and show nothing,
+ * so for them the row marks itself read and leads nowhere.
+ */
+function bookingRoute(bookingId: string | null, opts: RouteOptions): Href | null {
+  if (!opts.canReadIncoming) return null;
+  return bookingId ? { pathname: '/bookings', params: { booking: bookingId } } : '/bookings';
+}
+
+export function routeFor(n: Notification, opts: RouteOptions = {}): Href | null {
   const payload = (n.payload ?? {}) as Record<string, unknown>;
   const str = (key: string) => (typeof payload[key] === 'string' ? String(payload[key]) : null);
   const bookingId = n.targetId ?? str('bookingId');
@@ -31,7 +43,7 @@ export function routeFor(n: Notification, opts: { canVerify?: boolean } = {}): H
       case 'bookings':
       case 'quotations':
       case 'disputes':
-        return bookingId ? { pathname: '/bookings', params: { booking: bookingId } } : '/bookings';
+        return bookingRoute(bookingId, opts);
       case 'support':
         // Staff work cases on the Cases tab; the person who raised it reads
         // their own on Support (EZ1-I49).
@@ -40,7 +52,8 @@ export function routeFor(n: Notification, opts: { canVerify?: boolean } = {}): H
         // A decision is for the applicant, who reads it on their own listing.
         // Only the staff notifications — assigned, submitted, requested — go to
         // the queue, and an assigned visit opens the visit itself.
-        if (n.type === 'verification_decided' && !opts.canVerify) return '/business';
+        // Its target is the business, not a visit, so staff go to the queue.
+        if (n.type === 'verification_decided') return opts.canVerify ? '/verification' : '/business';
         if (opts.canVerify && n.targetId) return { pathname: '/visit/[id]', params: { id: n.targetId } };
         return '/verification';
       case 'matches':
@@ -57,9 +70,7 @@ export function routeFor(n: Notification, opts: { canVerify?: boolean } = {}): H
    * Rows written before the server carried the columns. Kept rather than
    * migrated to a guess: this is the derivation those rows were displayed with.
    */
-  if (n.type.startsWith('booking_')) {
-    return bookingId ? { pathname: '/bookings', params: { booking: bookingId } } : '/bookings';
-  }
+  if (n.type.startsWith('booking_')) return bookingRoute(bookingId, opts);
   if (n.type.startsWith('verification_')) return '/verification';
   if (n.type.startsWith('match_')) return '/matches';
 

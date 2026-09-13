@@ -62,7 +62,7 @@ interface Milestones {
 type HistoryEvent = { at: string; label: string; detail: string | null };
 
 /** A payment in one of these states has not actually been collected. */
-const UNPAID = ['failed', 'refunded'];
+const UNPAID = ['initiated', 'failed', 'refunded'];
 
 export function BookingDetail({ booking }: { booking: IncomingBooking }) {
   const [showRecord, setShowRecord] = useState(false);

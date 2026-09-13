@@ -56,11 +56,12 @@ export class PhoneVerificationService {
    * already known: that one refuses a number that has been verified, which is
    * precisely the state a sign-in code is wanted in.
    */
-  async requestLogin(
-    userId: string,
-    phone: string,
-  ): Promise<{ sent: boolean; expiresAt: Date; devCode?: string }> {
-    return this.issue(userId, phone, PhoneCodePurpose.LOGIN);
+  async requestLogin(userId: string, phone: string): Promise<void> {
+    // Nothing comes back. This is reached from a public route, and in `log`
+    // mode the answer below carries the code itself: returned there, it is the
+    // account to anybody who knows the number. Development reads it from the
+    // server log, where the log provider writes the message.
+    await this.issue(userId, phone, PhoneCodePurpose.LOGIN);
   }
 
   /**
@@ -135,8 +136,16 @@ export class PhoneVerificationService {
    * Returns nothing: whether the person may sign in is not this service's
    * decision, and the caller holds the account.
    */
-  async confirmLogin(userId: string, code: string): Promise<void> {
-    await this.check(userId, code, PhoneCodePurpose.LOGIN);
+  async checkLogin(userId: string, code: string): Promise<PhoneVerification> {
+    // Checked, not spent: an account with two-factor on still has a second
+    // step, and a code spent before it would leave nothing to finish with.
+    return this.check(userId, code, PhoneCodePurpose.LOGIN, false);
+  }
+
+  /** Spends a sign-in code once the whole sign-in has succeeded. */
+  async spend(row: PhoneVerification): Promise<void> {
+    row.consumedAt = new Date();
+    await this.codes.save(row);
   }
 
   /**
@@ -150,6 +159,7 @@ export class PhoneVerificationService {
     userId: string,
     code: string,
     purpose: PhoneCodePurpose,
+    consume = true,
   ): Promise<PhoneVerification> {
     const outstanding = await this.codes.findOne({
       where: { userId, purpose, consumedAt: IsNull() },
@@ -173,6 +183,7 @@ export class PhoneVerificationService {
       throw new BadRequestException('That code is not right');
     }
 
+    if (!consume) return outstanding;
     outstanding.consumedAt = new Date();
     return this.codes.save(outstanding);
   }

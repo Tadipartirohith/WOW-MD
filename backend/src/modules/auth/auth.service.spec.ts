@@ -1,5 +1,11 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { authenticator } from 'otplib';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -14,6 +20,7 @@ import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { SmsService } from '../../platform/sms/sms.service';
 import { PhoneVerificationService } from './phone-verification.service';
+import { RedisService } from '../../platform/redis/redis.service';
 import { AuditService } from '../../platform/audit/audit.service';
 import { AccountType, ProfileClaimStatus, UserRole } from '../../common/enums';
 import { RegisterDto, RegisterViaAgentLinkDto } from './dto/auth.dto';
@@ -80,9 +87,24 @@ describe('AuthService', () => {
   // The one-time codes behind signing in by mobile number (EZ1-I258). Nothing
   // in these tests takes that route; it is here because the service holds it.
   const phones = {
-    requestLogin: jest.fn(async () => ({ sent: true, expiresAt: new Date() })),
-    confirmLogin: jest.fn(async () => undefined),
+    requestLogin: jest.fn(async () => undefined),
+    checkLogin: jest.fn(async () => ({ id: 'code-1' })),
+    spend: jest.fn(async () => undefined),
   } as unknown as PhoneVerificationService;
+  // The per-number counters behind the mobile sign-in limits, kept in a map.
+  const counters = new Map<string, number>();
+  const redis = {
+    raw: {
+      get: jest.fn(async (key: string) => (counters.has(key) ? String(counters.get(key)) : null)),
+      incr: jest.fn(async (key: string) => {
+        const next = (counters.get(key) ?? 0) + 1;
+        counters.set(key, next);
+        return next;
+      }),
+      expire: jest.fn(async () => 1),
+      del: jest.fn(async (key: string) => (counters.delete(key) ? 1 : 0)),
+    },
+  } as unknown as RedisService;
   const audit = { record: jest.fn() } as unknown as AuditService;
 
   const cfg = {
@@ -107,6 +129,7 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    counters.clear();
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -121,6 +144,7 @@ describe('AuthService', () => {
         { provide: MailService, useValue: mail },
         { provide: SmsService, useValue: sms },
         { provide: PhoneVerificationService, useValue: phones },
+        { provide: RedisService, useValue: redis },
         { provide: AuditService, useValue: audit },
       ],
     }).compile();
@@ -354,6 +378,7 @@ describe('AuthService', () => {
         lockedUntil: null,
         ...over,
       }) as User;
+    const checkLogin = () => phones.checkLogin as jest.Mock;
 
     it('sends a code to a number that has an account', async () => {
       repo.find.mockResolvedValueOnce([onNumber()]);
@@ -370,6 +395,14 @@ describe('AuthService', () => {
       expect(phones.requestLogin).not.toHaveBeenCalled();
     });
 
+    // In log mode the code used to come back here, which on a public route is
+    // the account itself to anybody who knows the number.
+    it('never puts anything but the generic answer in the response', async () => {
+      repo.find.mockResolvedValueOnce([onNumber()]);
+      const answer = await service.requestMobileOtp('+919876543210');
+      expect(Object.keys(answer).sort()).toEqual(['expiresAt', 'sent']);
+    });
+
     it('sends nothing to an administrator', async () => {
       repo.find.mockResolvedValueOnce([onNumber({ role: UserRole.ADMIN })]);
       const answer = await service.requestMobileOtp('+919876543210');
@@ -377,10 +410,18 @@ describe('AuthService', () => {
       expect(phones.requestLogin).not.toHaveBeenCalled();
     });
 
+    it('stops sending to one number after five an hour, however it is asked', async () => {
+      // Five lookups; the sixth and seventh are refused before the lookup.
+      for (let i = 0; i < 5; i += 1) repo.find.mockResolvedValueOnce([onNumber()]);
+      for (let i = 0; i < 7; i += 1) await service.requestMobileOtp('+919876543210');
+      expect(phones.requestLogin).toHaveBeenCalledTimes(5);
+    });
+
     it('signs in and reaches the same account the password would', async () => {
       repo.find.mockResolvedValueOnce([onNumber()]);
       const result = await service.loginWithMobileOtp('+919876543210', '482910', undefined);
-      expect(phones.confirmLogin).toHaveBeenCalledWith('u1', '482910');
+      expect(phones.checkLogin).toHaveBeenCalledWith('u1', '482910');
+      expect(phones.spend).toHaveBeenCalled();
       expect(result.accessToken).toBeDefined();
       expect(result.user.role).toBe(UserRole.BRIDE);
       expect(result.user.permissions.length).toBeGreaterThan(0);
@@ -390,8 +431,52 @@ describe('AuthService', () => {
       repo.find.mockResolvedValueOnce([onNumber({ role: UserRole.ADMIN })]);
       await expect(
         service.loginWithMobileOtp('+919876543210', '482910', undefined),
+      ).rejects.toMatchObject({ message: 'That code is not right' });
+      expect(phones.checkLogin).not.toHaveBeenCalled();
+    });
+
+    // Any difference between these tells a stranger whether the number is
+    // registered.
+    it('refuses an expired code and an unknown number identically', async () => {
+      repo.find.mockResolvedValueOnce([onNumber()]);
+      checkLogin().mockRejectedValueOnce(
+        new BadRequestException('That code has expired. Ask for a new one.'),
+      );
+      const expired = await service
+        .loginWithMobileOtp('+919876543210', '000000', undefined)
+        .catch((err: unknown) => err);
+      repo.find.mockResolvedValueOnce([]);
+      const unknown = await service
+        .loginWithMobileOtp('+919000000000', '000000', undefined)
+        .catch((err: unknown) => err);
+      expect(expired).toBeInstanceOf(UnauthorizedException);
+      expect(unknown).toBeInstanceOf(UnauthorizedException);
+      expect((expired as Error).message).toBe((unknown as Error).message);
+    });
+
+    it('counts a wrong code against the account, as a wrong password is', async () => {
+      repo.find.mockResolvedValueOnce([onNumber()]);
+      checkLogin().mockRejectedValueOnce(new BadRequestException('That code is not right'));
+      await expect(
+        service.loginWithMobileOtp('+919876543210', '000000', undefined),
       ).rejects.toBeInstanceOf(UnauthorizedException);
-      expect(phones.confirmLogin).not.toHaveBeenCalled();
+      expect(repo.update).toHaveBeenCalledWith(
+        'u1',
+        expect.objectContaining({ failedLoginAttempts: 1 }),
+      );
+      expect(phones.spend).not.toHaveBeenCalled();
+    });
+
+    it('stops looking at codes for a number after ten failures in the hour', async () => {
+      for (let i = 0; i < 10; i += 1) {
+        repo.find.mockResolvedValueOnce([]);
+        await service.loginWithMobileOtp('+919000000001', '000000', undefined).catch(() => undefined);
+      }
+      repo.find.mockClear();
+      await expect(
+        service.loginWithMobileOtp('+919000000001', '000000', undefined),
+      ).rejects.toMatchObject({ message: 'That code is not right' });
+      expect(repo.find).not.toHaveBeenCalled();
     });
 
     // A number that names two accounts names neither. Those accounts still
@@ -403,18 +488,35 @@ describe('AuthService', () => {
       ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
-    it('refuses a deactivated account', async () => {
+    it('refuses a deactivated account once the code is proven', async () => {
       repo.find.mockResolvedValueOnce([onNumber({ isActive: false })]);
       await expect(
         service.loginWithMobileOtp('+919876543210', '482910', undefined),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('still asks for the second factor when the account has one', async () => {
-      repo.find.mockResolvedValueOnce([onNumber({ mfaEnabled: true, mfaSecret: 'JBSWY3DPEHPK3PXP' })]);
+    it('asks for the second factor without spending the code', async () => {
+      repo.find.mockResolvedValueOnce([
+        onNumber({ mfaEnabled: true, mfaSecret: 'JBSWY3DPEHPK3PXP' }),
+      ]);
       await expect(
         service.loginWithMobileOtp('+919876543210', '482910', undefined),
       ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(phones.spend).not.toHaveBeenCalled();
+    });
+
+    // The earlier version spent the code first and never loaded the secret, so
+    // an account with two-factor on could not sign in this way at all.
+    it('finishes with the same code and the authenticator code together', async () => {
+      const secret = 'JBSWY3DPEHPK3PXP';
+      repo.find.mockResolvedValueOnce([onNumber({ mfaEnabled: true, mfaSecret: secret })]);
+      const result = await service.loginWithMobileOtp(
+        '+919876543210',
+        '482910',
+        authenticator.generate(secret),
+      );
+      expect(result.accessToken).toBeDefined();
+      expect(phones.spend).toHaveBeenCalled();
     });
 
     // Signing in with the number is the same evidence the verification route
@@ -422,8 +524,7 @@ describe('AuthService', () => {
     it('marks an unconfirmed number confirmed', async () => {
       repo.find.mockResolvedValueOnce([onNumber({ phoneVerifiedAt: null })]);
       await service.loginWithMobileOtp('+919876543210', '482910', undefined);
-      const saved = repo.save.mock.calls.at(-1)?.[0] as User;
-      expect(saved.phoneVerifiedAt).toBeInstanceOf(Date);
+      expect(repo.update).toHaveBeenCalledWith('u1', { phoneVerifiedAt: expect.any(Date) });
     });
   });
 

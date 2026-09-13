@@ -48,13 +48,13 @@ const ACTIONS: Record<string, { label: string; path: string }[]> = {
     { label: 'Decline', path: 'cancel' },
   ],
   payment_pending: [{ label: 'Cancel', path: 'cancel' }],
-  pending: [
-    { label: 'Accept the job', path: 'confirm' },
-    { label: 'Cancel', path: 'cancel' },
-  ],
+  // Historic: nothing enters `pending` any more, and the server moves it only to
+  // confirmed or cancelled, which "Accept the job" never produced.
+  pending: [{ label: 'Cancel', path: 'cancel' }],
+  // From confirmed the server allows starting or cancelling; delivery comes
+  // after the work has started, so "Mark delivered" here always failed.
   confirmed: [
     { label: 'Start work', path: 'start' },
-    { label: 'Mark delivered', path: 'complete' },
     { label: 'Cancel', path: 'cancel' },
   ],
   in_progress: [{ label: 'Mark delivered', path: 'complete' }],

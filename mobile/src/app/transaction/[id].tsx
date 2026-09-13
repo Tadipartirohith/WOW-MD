@@ -153,7 +153,11 @@ export default function Transaction() {
         to follow when they open a payment, and a page of labelled figures does
         not say which figure came out of which.
       */}
-      <Chain payment={payment} />
+      {/* A refunded or failed payment owes nobody a payout, and a chain ending
+          in "Your payout" beside "nothing is owed on it" contradicts itself. */}
+      {payment.status === 'refunded' || payment.status === 'failed' ? null : (
+        <Chain payment={payment} />
+      )}
 
       <Card>
         <SectionTitle>Transaction</SectionTitle>

@@ -88,12 +88,14 @@ const CARD_TITLE: Record<string, string> = {
 
 /** Which payments each summary card is the total of. */
 const CARD_STATUSES: Record<string, string[]> = {
-  released: ['released'],
+  // Mirrors earnings() on the server, which is where each total is summed. A
+  // payment a case settled in part counts as paid out.
+  released: ['released', 'partially_settled'],
   held_in_escrow: ['held_in_escrow', 'disputed'],
   pending_payout: ['pending_payout'],
-  // Commission is only ever taken out of a payment that has been released, so
-  // the card and the rows behind it are about the same set.
-  commission: ['released'],
+  // Commission is taken from a payment once it is owed or paid out, so the rows
+  // behind the card are those, not only the released ones.
+  commission: ['released', 'pending_payout', 'partially_settled'],
   refunded: ['refunded'],
 };
 

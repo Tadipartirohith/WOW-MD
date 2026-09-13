@@ -156,12 +156,14 @@ describe('todayIso', () => {
    * on yesterday for the first hours of the local day, so leave booked for
    * today was refused as being in the past.
    */
-  it('answers with the local date rather than the UTC one', () => {
-    const earlyLocal = new Date(2026, 8, 16, 0, 30);
-    expect(todayIso(earlyLocal)).toBe('2026-09-16');
+  it('answers with the date in India rather than the UTC one', () => {
+    // 19:00 UTC on the 15th is half past midnight on the 16th in India. Pinned
+    // to an instant, so the answer does not depend on the machine's timezone.
+    const earlyIndia = new Date('2026-09-15T19:00:00Z');
+    expect(todayIso(earlyIndia)).toBe('2026-09-16');
   });
 
   it('pads month and day', () => {
-    expect(todayIso(new Date(2026, 0, 5, 12, 0))).toBe('2026-01-05');
+    expect(todayIso(new Date('2026-01-05T06:30:00Z'))).toBe('2026-01-05');
   });
 });

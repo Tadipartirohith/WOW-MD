@@ -73,7 +73,7 @@ interface Milestones {
 type HistoryEvent = { at: string; label: string; detail: string | null };
 
 /** A payment in one of these states has not actually been collected. */
-const UNPAID = ['failed', 'refunded'];
+const UNPAID = ['initiated', 'failed', 'refunded'];
 
 const PAYMENT_LABEL: Record<string, string> = {
   initiated: 'Payment started',

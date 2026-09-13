@@ -33,7 +33,6 @@ describe('collectedByBooking', () => {
     // Both are collected from the customer; where it sits afterwards is a
     // different question from whether they have paid.
     for (const status of [
-      PaymentStatus.INITIATED,
       PaymentStatus.HELD_IN_ESCROW,
       PaymentStatus.DISPUTED,
       PaymentStatus.PENDING_PAYOUT,
@@ -43,6 +42,8 @@ describe('collectedByBooking', () => {
     }
     expect(isCollected(PaymentStatus.FAILED)).toBe(false);
     expect(isCollected(PaymentStatus.REFUNDED)).toBe(false);
+    // Begun is not taken: an initiated payment must not read as an advance held.
+    expect(isCollected(PaymentStatus.INITIATED)).toBe(false);
   });
 
   it('has nothing to say about a booking with no payments', () => {

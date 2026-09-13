@@ -84,6 +84,20 @@ async function bootstrap() {
     );
   }
 
+  /*
+   * With SMS_PROVIDER=log nothing is delivered: one-time codes and SMS
+   * invitations are written to the server log. Right on a developer's machine;
+   * anywhere people use, it is a sign-in by mobile nobody can complete. Said at
+   * boot for the same reason as APP_BASE_URL above (EZ1-I258).
+   */
+  if (cfg.runtime.env === 'production' && cfg.sms.provider === 'log') {
+    new Logger('Bootstrap').error(
+      'SMS_PROVIDER is log. One-time sign-in codes and SMS invitations are written to the ' +
+        'server log and never delivered. Set SMS_PROVIDER=http and its credentials for any ' +
+        'deployment people actually use.',
+    );
+  }
+
   await app.listen(cfg.runtime.port);
 }
 

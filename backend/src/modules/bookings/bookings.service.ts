@@ -1911,6 +1911,11 @@ export class BookingsService {
     // The escrow position across the whole booking, summed the same way the
     // Accounts cards are: held/refunded count `amount`, the provider's share and
     // commission come off the released rows.
+    // The same buckets as earnings(), so a payment's own screen and the
+    // Accounts card it was opened from cannot disagree about where money sits.
+    const HELD = [PaymentStatus.HELD_IN_ESCROW, PaymentStatus.DISPUTED];
+    const PAID_OUT = [PaymentStatus.RELEASED, PaymentStatus.PARTIALLY_SETTLED];
+    const EARNED = [PaymentStatus.PENDING_PAYOUT, ...PAID_OUT];
     const sum = (predicate: (p: Payment) => boolean, column: keyof Payment) =>
       siblings
         .filter(predicate)
@@ -1960,11 +1965,11 @@ export class BookingsService {
       payments: siblings,
       summary: {
         total: booking.amount,
-        held: sum((p) => p.status === PaymentStatus.HELD_IN_ESCROW, 'amount'),
-        released: sum((p) => p.status === PaymentStatus.RELEASED, 'amount'),
+        held: sum((p) => HELD.includes(p.status), 'amount'),
+        released: sum((p) => PAID_OUT.includes(p.status), 'amount'),
         refunded: sum((p) => p.status === PaymentStatus.REFUNDED, 'amount'),
-        commission: sum((p) => p.status === PaymentStatus.RELEASED, 'commissionAmount'),
-        payout: sum((p) => p.status === PaymentStatus.RELEASED, 'payoutAmount'),
+        commission: sum((p) => EARNED.includes(p.status), 'commissionAmount'),
+        payout: sum((p) => PAID_OUT.includes(p.status), 'payoutAmount'),
       },
     };
   }
