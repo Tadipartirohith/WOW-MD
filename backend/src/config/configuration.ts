@@ -286,7 +286,23 @@ export default () => ({
     maxFileSizeBytes: toNumber(process.env.MAX_FILE_SIZE, 10 * 1024 * 1024),
     // 'mock' returns fake presigned URLs for local/testing; 's3' uses real S3.
     storageProvider: process.env.MEDIA_STORAGE_PROVIDER || 'mock',
-    shareBaseUrl: process.env.MEDIA_SHARE_BASE_URL || 'http://localhost:5173/album',
+    /**
+     * Where a shared album link points.
+     *
+     * Derived from APP_BASE_URL when nothing overrides it, for the reason the
+     * invitation link was changed for (EZ1-I178): a default of
+     * `http://localhost:5173/album` is an address that exists on the machine
+     * running the stack and nowhere else — and 5173 is the dev server's port,
+     * not the one the portal is served on, so it was wrong even there. A
+     * family forwarding an album to a cousin was forwarding a dead link.
+     *
+     * `/album/:token` is the route the portal actually serves it at, so one
+     * setting now governs this the way it governs every other link the
+     * platform hands out.
+     */
+    shareBaseUrl:
+      process.env.MEDIA_SHARE_BASE_URL ||
+      `${(process.env.APP_BASE_URL || 'http://localhost:8080').replace(/\/+$/, '')}/album`,
     s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
     s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
     presignExpirySeconds: toNumber(process.env.S3_PRESIGN_EXPIRY, 900),

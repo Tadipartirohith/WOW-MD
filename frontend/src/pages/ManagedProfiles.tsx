@@ -722,12 +722,23 @@ function ClientSignupLink({ active }: { active: boolean }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
-  const link = token ? `${window.location.origin}/join/${token}` : '';
+  /*
+   * The address comes from the server, whole (EZ1-I178).
+   *
+   * It was assembled here from `window.location.origin`, which is the agent's
+   * own address bar — `localhost:8080` on a dev machine, an internal hostname
+   * behind a proxy — and then sent to a client who could not open it. The
+   * server builds it from APP_BASE_URL, the runtime setting every other link
+   * the platform hands out already uses.
+   */
+  const [link, setLink] = useState('');
 
   const mint = useMutation({
-    mutationFn: async () => (await api.post('/agents/agency/share-link', {})).data as { token: string },
+    mutationFn: async () =>
+      (await api.post('/agents/agency/share-link', {})).data as { token: string; url: string },
     onSuccess: (d) => {
       setToken(d.token);
+      setLink(d.url);
       setError('');
       qc.invalidateQueries({ queryKey: ['agency-status'] });
     },
@@ -738,6 +749,7 @@ function ClientSignupLink({ active }: { active: boolean }) {
     mutationFn: async () => api.delete('/agents/agency/share-link'),
     onSuccess: () => {
       setToken('');
+      setLink('');
       setError('');
       qc.invalidateQueries({ queryKey: ['agency-status'] });
     },

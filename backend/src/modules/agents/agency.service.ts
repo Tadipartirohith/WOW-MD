@@ -10,6 +10,7 @@ import { VerificationService } from '../verification/verification.service';
 import { ApplicantType } from '../../common/enums';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { generateToken } from '../../common/util/tokens';
+import { AppConfigService } from '../../config/app-config.service';
 
 /**
  * The agency registration record that gates an agent's ability to act for
@@ -29,6 +30,9 @@ export class AgencyService {
     private readonly audit: AuditService,
     private readonly mail: MailService,
     private readonly verification: VerificationService,
+    // For the one runtime setting every link the platform hands out is built
+    // from (EZ1-I178).
+    private readonly cfg: AppConfigService,
   ) {}
 
   async upsertOwn(ownerUserId: string, dto: UpsertAgencyDto): Promise<AgentProfile> {
@@ -81,13 +85,24 @@ export class AgencyService {
    * an unapproved agency cannot build profiles or invite, and must not be able
    * to onboard accounts through a link either.
    */
-  async createShareLink(ownerUserId: string): Promise<{ token: string }> {
+  async createShareLink(ownerUserId: string): Promise<{ token: string; url: string }> {
     const agency = await this.assertApprovedAgency(ownerUserId);
     const { token, tokenHash } = generateToken();
     agency.shareTokenHash = tokenHash;
     agency.shareTokenCreatedAt = new Date();
     await this.agencies.save(agency);
-    return { token };
+    /*
+     * The whole address, built here rather than in the browser (EZ1-I178).
+     *
+     * The page pasted the token onto `window.location.origin`, so the agent was
+     * handed a link to whatever address they happened to have the portal open
+     * on — `localhost:8080` on a dev machine, an internal hostname behind a
+     * proxy — and sent it to a client who could not open it. APP_BASE_URL is
+     * the runtime setting every other link on this platform is built from, and
+     * `/join/:token` is the route the portal serves this one at.
+     */
+    const base = this.cfg.mail.appBaseUrl.replace(/\/+$/, '');
+    return { token, url: `${base}/join/${token}` };
   }
 
   /** Stops the link working, without touching the clients who already used it. */
