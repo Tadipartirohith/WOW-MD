@@ -6,6 +6,7 @@ import {
   Check,
   Coins,
   Gear,
+  IdentificationCard,
   Info,
   Lifebuoy,
   Lock,
@@ -65,14 +66,23 @@ export default function More() {
           here rather than in the bar because a conversation is opened from the
           person it is with — a match, an interest — far more often than from a
           list of all of them (EZ1-I261). */}
-      {canAny(permissions, [Permission.CHAT_MATCH]) ? (
+      {canAny(permissions, [Permission.PROFILE_MANAGE_OWN, Permission.CHAT_MATCH]) &&
+      canAny(permissions, [Permission.MATCH_BROWSE, Permission.CHAT_MATCH]) ? (
         <Group title="Matchmaking">
           <Row
-            icon={ChatCircleDots}
-            label="Chat"
-            hint="Conversations with families you have matched with"
-            to="/chat"
+            icon={IdentificationCard}
+            label="Biodata"
+            hint="What families read before they ask about you"
+            to="/biodata"
           />
+          {canAny(permissions, [Permission.CHAT_MATCH]) ? (
+            <Row
+              icon={ChatCircleDots}
+              label="Chat"
+              hint="Conversations with families you have matched with"
+              to="/chat"
+            />
+          ) : null}
         </Group>
       ) : null}
 

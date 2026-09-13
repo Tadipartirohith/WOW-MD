@@ -162,6 +162,7 @@ function Routes() {
         name="transaction/[id]"
         options={{ headerShown: true, title: 'Payment' }}
       />
+      <Stack.Screen name="biodata" options={{ headerShown: true, title: 'Biodata' }} />
       <Stack.Screen name="chat/index" options={{ headerShown: true, title: 'Chat' }} />
       {/* The title becomes the other person's name once the thread knows it. */}
       <Stack.Screen name="chat/[id]" options={{ headerShown: true, title: 'Conversation' }} />
