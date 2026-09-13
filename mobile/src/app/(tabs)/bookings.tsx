@@ -116,9 +116,19 @@ export default function Bookings() {
     onSuccess: () => {
       // Accepting a job spends a window, so the calendar has to be refetched
       // alongside the booking list or the vendor sees a stale capacity.
+      //
+      // The open detail goes with it: an action that moves a booking also moves
+      // its instalments and writes its timeline, and a card whose head says
+      // "In progress" over a history ending at "Confirmed" is the same booking
+      // disagreeing with itself (EZ1-I259).
       for (const key of [
         'incoming-bookings',
         'incoming-counts',
+        'booking-quotations',
+        'booking-milestones',
+        'booking-history',
+        'incoming-addons',
+        'earnings',
         'availability-slots',
         'availability-summary',
         'availability-calendar',

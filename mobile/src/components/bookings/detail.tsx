@@ -3,10 +3,15 @@ import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 
 import { api } from '@/lib/api';
-import { PAYMENT_LABEL, PAYMENT_TONE, type IncomingBooking } from '@/lib/bookings';
+import {
+  PAYMENT_LABEL,
+  PAYMENT_TONE,
+  SELLER_STATUS_LABEL,
+  type IncomingBooking,
+} from '@/lib/bookings';
 import { dateTime, money, shortDate } from '@/lib/format';
 import { formatAnswer, type FieldSpec } from '@/shared/dynamic-form';
-import { BOOKING_STATUS_LABEL, MILESTONE_LABEL } from '@/shared/permissions';
+import { MILESTONE_LABEL } from '@/shared/permissions';
 import { Badge, DetailGrid, DetailRow, Divider } from '@/components/chrome';
 import { VendorAddOns } from '@/components/bookings/addons';
 import { Button, Caption, SectionTitle } from '@/components/ui';
@@ -100,7 +105,7 @@ export function BookingDetail({ booking }: { booking: IncomingBooking }) {
         <DetailGrid>
           <DetailRow label="Booking ID">{booking.id}</DetailRow>
           <DetailRow label="Status">
-            {BOOKING_STATUS_LABEL[booking.status] ?? booking.status.replace(/_/g, ' ')}
+            {SELLER_STATUS_LABEL[booking.status] ?? booking.status.replace(/_/g, ' ')}
           </DetailRow>
           <DetailRow label="Customer">{booking.clientName ?? 'Customer'}</DetailRow>
           <DetailRow label="Event">{booking.eventName ?? '—'}</DetailRow>

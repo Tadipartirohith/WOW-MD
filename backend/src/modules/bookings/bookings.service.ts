@@ -36,6 +36,7 @@ import {
 import { AppConfigService } from '../../config/app-config.service';
 import { OutboxService } from '../../platform/events/outbox.service';
 import { PAYMENT_PROVIDER, PaymentProvider, PayoutDestination } from './payment.provider';
+import { collectedByBooking } from './payment-totals';
 import { SupportCasesService } from '../verification/support-cases.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { AvailabilityService } from '../vendors/availability.service';
@@ -1632,6 +1633,15 @@ export class BookingsService {
       }
     }
 
+    /*
+     * What has actually been collected on each booking (EZ1-I259).
+     *
+     * A confirmed job shows "paid so far" and "remaining" on the row, which
+     * until now needed the instalment endpoint per booking — forty bookings,
+     * forty requests, to answer a question these payments already contain.
+     */
+    const paidByBooking = collectedByBooking(payments);
+
     for (const booking of rows) {
       const user = byUser.get(booking.userId);
       const event = booking.eventId ? byEvent.get(booking.eventId) : undefined;
@@ -1658,6 +1668,7 @@ export class BookingsService {
         ? (offeringNames.get(booking.offeringId) ?? null)
         : null;
       booking.paymentStatus = paymentByBooking.get(booking.id) ?? null;
+      booking.paidAmount = (paidByBooking.get(booking.id) ?? 0).toFixed(2);
       // Who cancelled, for the booking detail (EZ1-I77). Either the customer or
       // the provider; withProviderNames has already put the provider's name on
       // the row when this runs, so both sides resolve without another query.

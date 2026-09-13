@@ -61,7 +61,22 @@ export function VendorAddOns({ bookingId }: { bookingId: string }) {
     setError('');
     try {
       await fn();
-      void qc.invalidateQueries({ queryKey: ['incoming-addons', bookingId] });
+      /*
+       * An accepted add-on is money owed, and the server puts it on the booking
+       * total. Refreshing only the add-on list left the card, the instalments
+       * and the earnings all showing the amount from before it was agreed
+       * (EZ1-I259).
+       */
+      for (const key of [
+        ['incoming-addons', bookingId],
+        ['booking-milestones', bookingId],
+        ['booking-history', bookingId],
+        ['incoming-bookings'],
+        ['incoming-counts'],
+        ['earnings'],
+      ]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
       setRequoting(null);
     } catch (err) {
       setError(apiMessage(err, 'That action was rejected.'));

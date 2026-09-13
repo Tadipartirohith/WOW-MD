@@ -11,12 +11,11 @@ import {
   PAYMENT_LABEL,
   PAYMENT_TONE,
   QUOTABLE,
+  SELLER_STATUS_LABEL,
   isRequestOnDate,
   type IncomingBooking,
 } from '@/lib/bookings';
 import { money, shortDate } from '@/lib/format';
-import { formatAnswer, type FieldSpec } from '@/shared/dynamic-form';
-import { BOOKING_STATUS_LABEL } from '@/shared/permissions';
 import { Badge, DetailGrid, DetailRow, Divider } from '@/components/chrome';
 import { BookingDetail } from '@/components/bookings/detail';
 import { BookingChat } from '@/components/bookings/chat';
@@ -72,6 +71,8 @@ export function BookingCard({
 
   const actions = ACTIONS[booking.status] ?? [];
   const onDate = isRequestOnDate(booking);
+  const paid = Number(booking.paidAmount ?? 0);
+  const remaining = Math.max(0, Number(booking.amount ?? 0) - paid);
 
   return (
     <Card>
@@ -114,7 +115,7 @@ export function BookingCard({
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space(1.5) }}>
-        <Badge>{BOOKING_STATUS_LABEL[booking.status] ?? booking.status.replace(/_/g, ' ')}</Badge>
+        <Badge>{SELLER_STATUS_LABEL[booking.status] ?? booking.status.replace(/_/g, ' ')}</Badge>
         {/* Marked on the row as well as gathered under its own tab, so it reads
             as one wherever the provider comes across it. */}
         {onDate ? <Badge tone="caution">Request on date</Badge> : null}
@@ -151,6 +152,16 @@ export function BookingCard({
             <DetailRow label="Amount">{money(booking.amount, booking.currency)}</DetailRow>
           </View>
           {/*
+            Once the advance has cleared, what is paid and what is left are the
+            two figures a vendor is actually tracking — and both come off the
+            list read rather than a request per row (EZ1-I259).
+          */}
+          {paid > 0 ? (
+            <View style={{ flex: 1 }}>
+              <DetailRow label="Paid">{money(paid, booking.currency)}</DetailRow>
+            </View>
+          ) : null}
+          {/*
             The number the customer actually entered when they asked: the
             booking amount is 0 until a quote is agreed, so without this the
             vendor saw INR 0 and could not tell what the customer had in mind.
@@ -164,6 +175,10 @@ export function BookingCard({
           ) : null}
         </View>
       </DetailGrid>
+
+      {paid > 0 && remaining > 0 ? (
+        <Caption tone="faint">Remaining {money(remaining, booking.currency)}</Caption>
+      ) : null}
 
       {/* The one thing waiting on the provider, so the queue reads as a to-do
           list rather than a wall of statuses. */}

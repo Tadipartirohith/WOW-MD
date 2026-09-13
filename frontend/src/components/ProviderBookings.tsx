@@ -67,6 +67,24 @@ const ACTIONS: Record<string, { label: string; path: string }[]> = {
 const QUOTABLE = ['requested', 'quotation_sent'];
 
 /**
+ * The same statuses, said from the seller's side of the table.
+ *
+ * The shared labels are written for the buyer — "Request sent", "Quotation
+ * received" — and a vendor reading their own queue was being told what they had
+ * been sent by themselves. The status is the same status the customer sees; it
+ * is the sentence that differs (EZ1-I259).
+ */
+const SELLER_STATUS_LABEL: Record<string, string> = {
+  ...BOOKING_STATUS_LABEL,
+  requested: 'New request',
+  quotation_sent: 'Quotation sent',
+  quotation_accepted: 'Accepted by the customer',
+  payment_pending: 'Awaiting the advance',
+  pending: 'Paid, awaiting your confirmation',
+  completed_pending_final_payment: 'Delivered — awaiting the final payment',
+};
+
+/**
  * Everything coming in to a vendor or a planner.
  *
  * Lives here rather than on the business page because a listing and the work
@@ -97,11 +115,26 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
     onSuccess: () => {
       // Accepting a job spends a window, so the calendar has to be refetched
       // alongside the booking list or the vendor sees a stale capacity.
-      qc.invalidateQueries({ queryKey: ['incoming-bookings'] });
-      qc.invalidateQueries({ queryKey: ['availability-slots'] });
-      qc.invalidateQueries({ queryKey: ['availability-summary'] });
-      qc.invalidateQueries({ queryKey: ['availability-calendar'] });
-      qc.invalidateQueries({ queryKey: ['availability-bucket'] });
+      //
+      // The open detail goes with it: an action that moves a booking also moves
+      // its instalments and writes its timeline, and a card whose head says
+      // "In progress" over a history ending at "Confirmed" is the same booking
+      // disagreeing with itself (EZ1-I259).
+      for (const key of [
+        'incoming-bookings',
+        'incoming-counts',
+        'booking-quotations',
+        'booking-milestones',
+        'booking-history',
+        'incoming-addons',
+        'earnings',
+        'availability-slots',
+        'availability-summary',
+        'availability-calendar',
+        'availability-bucket',
+      ]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
       setError('');
     },
     onError: (err) => {
@@ -125,7 +158,7 @@ export default function ProviderBookings({ canQuote }: { canQuote: boolean }) {
         carries what the decision is actually made on.
       */}
       <BookingConsole
-        statusLabels={BOOKING_STATUS_LABEL}
+        statusLabels={SELLER_STATUS_LABEL}
         renderDetail={(b) => (
           <BookingDetail
             booking={b}
@@ -548,7 +581,22 @@ function VendorAddOns({ bookingId }: { bookingId: string }) {
     setError('');
     try {
       await fn();
-      qc.invalidateQueries({ queryKey: ['incoming-addons', bookingId] });
+      /*
+       * An accepted add-on is money owed, and the server puts it on the booking
+       * total. Refreshing only the add-on list left the row, the instalments and
+       * the earnings all showing the amount from before it was agreed
+       * (EZ1-I259).
+       */
+      for (const key of [
+        ['incoming-addons', bookingId],
+        ['booking-milestones', bookingId],
+        ['booking-history', bookingId],
+        ['incoming-bookings'],
+        ['incoming-counts'],
+        ['earnings'],
+      ]) {
+        qc.invalidateQueries({ queryKey: key });
+      }
       setRequoting(null);
       setPrice('');
     } catch (err) {

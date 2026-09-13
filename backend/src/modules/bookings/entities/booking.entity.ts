@@ -218,6 +218,14 @@ export class Booking {
   offeringName?: string | null;
   /** The furthest this booking's money has got, not a list of transactions. */
   paymentStatus?: string | null;
+  /**
+   * What has actually been collected against this booking so far (EZ1-I259).
+   *
+   * Summed from the payments that are neither failed nor refunded, so a
+   * confirmed job can show what is paid and what is left without the row
+   * asking for its own instalment breakdown.
+   */
+  paidAmount?: string | null;
   /** Who cancelled it, resolved for display (EZ1-I77). */
   cancelledByName?: string | null;
   cancelledByRole?: string | null;

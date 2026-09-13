@@ -43,6 +43,8 @@ export interface IncomingBooking {
   /** What the customer said they had in mind, before any quote. */
   expectedBudget?: string | null;
   paymentStatus: string | null;
+  /** What the customer has actually paid so far, summed by the server. */
+  paidAmount?: string | null;
   cancellationReason?: string | null;
   cancelledByName?: string | null;
   cancelledByRole?: string | null;
@@ -82,6 +84,28 @@ export const ACTIONS: Record<string, { label: string; path: string; primary?: bo
 
 /** A provider can quote while the job is still unpriced or being re-priced. */
 export const QUOTABLE = ['requested', 'quotation_sent'];
+
+/**
+ * The same statuses, said from the seller's side of the table.
+ *
+ * The shared labels are written for the buyer — "Request sent", "Quotation
+ * received" — and a vendor reading their own queue was being told what they had
+ * been sent by themselves. The status is the same status the customer sees; it
+ * is the sentence that differs (EZ1-I259).
+ */
+export const SELLER_STATUS_LABEL: Record<string, string> = {
+  requested: 'New request',
+  quotation_sent: 'Quotation sent',
+  quotation_accepted: 'Accepted by the customer',
+  payment_pending: 'Awaiting the advance',
+  pending: 'Paid, awaiting your confirmation',
+  confirmed: 'Confirmed',
+  in_progress: 'In progress',
+  completed_pending_final_payment: 'Delivered — awaiting the final payment',
+  completed: 'Completed',
+  disputed: 'Under investigation',
+  cancelled: 'Cancelled',
+};
 
 /**
  * The one thing this booking is waiting on the provider to do, by status.
@@ -171,5 +195,10 @@ export const LIFECYCLE = [
   'Paid',
   'Confirmed',
   'In progress',
+  // Delivered is its own step, not a synonym for completed: the vendor has
+  // handed the work over and the customer has still to confirm it and pay the
+  // balance. Leaving it out is what made "Awaiting the final payment" look
+  // like a variety of Completed.
+  'Delivered',
   'Completed',
 ];

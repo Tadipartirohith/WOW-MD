@@ -131,6 +131,11 @@ const LIFECYCLE = [
   'Paid',
   'Confirmed',
   'In progress',
+  // Delivered is its own step, not a synonym for completed: the vendor has
+  // handed the work over and the customer has still to confirm it and pay the
+  // balance. Leaving it out is what made "Awaiting the final payment" look like
+  // a variety of Completed (EZ1-I259).
+  'Delivered',
   'Completed',
 ];
 
