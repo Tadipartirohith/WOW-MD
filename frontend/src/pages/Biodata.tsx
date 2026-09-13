@@ -16,6 +16,8 @@ import {
   FAMILY_STATUS_LABEL,
   can,
 } from '../lib/permissions';
+import { FileText } from '@phosphor-icons/react';
+import { isChartImage } from '../lib/horoscope';
 import ProfileSelector from '../components/ProfileSelector';
 import ProfilePhotos from '../components/ProfilePhotos';
 import PhotoUploader from '../components/PhotoUploader';
@@ -1003,8 +1005,17 @@ function HoroscopeForm({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-gray-800">Horoscope document</p>
+            {/*
+              What actually happens to it, which is not what this said.
+              The chart is on the profile card from the start — families compare
+              charts before deciding whether to send interest at all, which is
+              why it is not held back with the rest of the private biodata
+              (EZ1-I231). Telling somebody it is only shared after an accept,
+              while showing it before one, is the worst of both.
+            */}
             <p className="text-xs text-gray-500">
-              Optional. Shared only with families you have accepted an interest from.
+              Optional. A JPG, PNG or PDF. Anyone who can see your profile can open it — families
+              compare charts before deciding whether to send interest.
             </p>
           </div>
           <PhotoUploader
@@ -1015,6 +1026,11 @@ function HoroscopeForm({
         </div>
         {values.horoscopeDocumentUrl ? (
           <div className="flex flex-wrap items-start gap-3 rounded-sm bg-surface-sunken p-3">
+            {/*
+              A PDF is not an image, and was drawn as one: the thumbnail was a
+              broken-image icon, which reads as an upload that failed. Whether
+              the file can be shown is decided by what it is (EZ1-I231).
+            */}
             <a
               href={String(values.horoscopeDocumentUrl)}
               target="_blank"
@@ -1022,14 +1038,25 @@ function HoroscopeForm({
               className="shrink-0"
               title="Open the full chart"
             >
-              <img
-                src={String(values.horoscopeDocumentUrl)}
-                alt="The horoscope chart you attached"
-                className="h-28 w-28 rounded-sm border border-gray-200 bg-surface object-cover"
-              />
+              {isChartImage(String(values.horoscopeDocumentUrl)) ? (
+                <img
+                  src={String(values.horoscopeDocumentUrl)}
+                  alt="The horoscope chart you attached"
+                  className="h-28 w-28 rounded-sm border border-gray-200 bg-surface object-cover"
+                />
+              ) : (
+                <span className="flex h-28 w-28 flex-col items-center justify-center gap-1 rounded-sm border border-gray-200 bg-surface text-xs text-brand-strong">
+                  <FileText size={28} aria-hidden />
+                  Open the chart
+                </span>
+              )}
             </a>
             <div className="min-w-[12rem] flex-1 space-y-1">
-              <p className="text-sm font-medium text-gray-800">Chart attached</p>
+              <p className="text-sm font-medium text-gray-800">
+                {isChartImage(String(values.horoscopeDocumentUrl))
+                  ? 'Chart attached'
+                  : 'Chart attached as a document'}
+              </p>
               <button
                 type="button"
                 className="btn-ghost btn-sm -ml-2 text-critical-fg"

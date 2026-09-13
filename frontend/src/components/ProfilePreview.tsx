@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
+import { isChartImage } from '../lib/horoscope';
 import { api, apiMessage } from '../lib/api';
 import { formatDate } from '../lib/dates';
 import { Loading } from './ui/Feedback';
@@ -473,12 +474,24 @@ function ProfileImage({
  * has to interpret.
  */
 function HoroscopeChart({ url }: { url: string | null | undefined }) {
-  if (!url) return <Row label="Chart">{null}</Row>;
+  /*
+   * Nothing attached is its own answer, and not the same one as a field the
+   * family chose not to share. They keep a horoscope — that is why this section
+   * is here — and have not put the chart on it (EZ1-I231).
+   */
+  if (!url) {
+    return (
+      <div className="flex gap-3 py-1.5">
+        <dt className="w-40 shrink-0 text-gray-500">Chart</dt>
+        <dd className="text-gray-400">Not uploaded</dd>
+      </div>
+    );
+  }
 
   // The stored path decides the treatment. Anything that is not an image we
   // can render is offered as a link, which is the safe fallback for a PDF and
   // for any format we have not thought of.
-  const isImage = /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(url);
+  const isImage = isChartImage(url);
 
   return (
     <div className="flex gap-3 py-1.5">
