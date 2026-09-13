@@ -346,9 +346,11 @@ export default function Bookings() {
           const isOpen = expanded === b.id;
           const isActive =
             b.status !== 'cancelled' && b.status !== 'completed' && b.status !== 'disputed';
-          // A review can only be written once a vendor job is done, and only
-          // once (EZ1-I30, EZ1-I114); a dispute only once escrow is in play.
-          const canReview = b.status === 'completed' && b.providerType === 'vendor' && !b.myReview;
+          // A review can only be written once the job is done, and only once
+          // (EZ1-I30, EZ1-I114); a dispute only once escrow is in play. Both
+          // kinds of provider are reviewable — a planner runs the whole wedding
+          // and was the one provider a couple could not rate (EZ1-I244).
+          const canReview = b.status === 'completed' && !b.myReview;
           const canDispute =
             canRaiseCase &&
             ['confirmed', 'in_progress', 'completed_pending_final_payment', 'completed'].includes(
@@ -611,10 +613,27 @@ const WAITING_ON: Record<MilestoneKey, string> = {
   final: 'Due once they mark it delivered',
 };
 
-/** Rate and review a completed vendor booking, once (EZ1-I30). */
+/**
+ * The parts of the job a couple may rate a planner on, each optional.
+ *
+ * A planner is not one service delivered on one day: they are judged on how the
+ * whole thing was organised, on being reachable, and on turning up when they
+ * said they would. The overall rating is still the only required answer and the
+ * only one the average is computed from (EZ1-I244).
+ */
+const PLANNER_CATEGORIES: { key: string; label: string }[] = [
+  { key: 'planning', label: 'Planning & coordination' },
+  { key: 'communication', label: 'Communication' },
+  { key: 'serviceQuality', label: 'Service quality' },
+  { key: 'professionalism', label: 'Professionalism' },
+  { key: 'timeliness', label: 'Timeliness' },
+];
+
+/** Rate and review a completed booking, once (EZ1-I30, EZ1-I244). */
 function ReviewForm({ booking, onCancel }: { booking: Booking; onCancel: () => void }) {
   const qc = useQueryClient();
   const [rating, setRating] = useState(5);
+  const [categories, setCategories] = useState<Record<string, number>>({});
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -625,9 +644,27 @@ function ReviewForm({ booking, onCancel }: { booking: Booking; onCancel: () => v
     setError('');
     setBusy(true);
     try {
-      await api.post(`/vendors/${booking.providerId}/reviews`, {
+      /*
+       * The same shape to either kind of provider, on its own route. A
+       * planner's reviews are a table of their own (EZ1-I244), so the path is
+       * chosen from what was actually booked rather than assumed.
+       */
+      const path = booking.providerType === 'planner' ? 'wedding-planners' : 'vendors';
+      await api.post(`/${path}/${booking.providerId}/reviews`, {
         rating,
         ...(comment.trim() ? { comment: comment.trim() } : {}),
+        // The parts of the job, each optional. Only a planner is rated on them:
+        // they are the things a planner is judged on, and asking a caterer
+        // about "planning & coordination" would be a form nobody can answer.
+        ...(booking.providerType === 'planner'
+          ? Object.fromEntries(
+              // A cleared category is a zero here and an absence to the server,
+              // which rejects anything below one star.
+              PLANNER_CATEGORIES.map(({ key }) => [key, categories[key]]).filter(
+                ([, value]) => typeof value === 'number' && value > 0,
+              ),
+            )
+          : {}),
       });
       setDone(true);
       qc.invalidateQueries({ queryKey: ['bookings'] });
@@ -666,6 +703,44 @@ function ReviewForm({ booking, onCancel }: { booking: Booking; onCancel: () => v
           ))}
         </div>
       </div>
+      {/* Optional, and only for a planner. Blank stays blank: a couple who
+          wants to say "five stars, they were excellent" should not have to
+          grade five separate things to say it. */}
+      {booking.providerType === 'planner' && (
+        <fieldset className="space-y-1">
+          <legend className="text-sm text-gray-700">
+            The parts of the job <span className="text-gray-400">(optional)</span>
+          </legend>
+          {PLANNER_CATEGORIES.map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between gap-3">
+              <span className="text-sm text-gray-600">{label}</span>
+              <span className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-label={`${label}: ${n} star${n === 1 ? '' : 's'}`}
+                    onClick={() =>
+                      setCategories((current) => ({
+                        ...current,
+                        // Pressing the star already set clears it, which is the
+                        // only way back to "not answered".
+                        ...(current[key] === n ? { [key]: 0 } : { [key]: n }),
+                      }))
+                    }
+                    className={`text-lg leading-none ${
+                      n <= (categories[key] ?? 0) ? 'text-amber-500' : 'text-gray-300'
+                    }`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </span>
+            </div>
+          ))}
+        </fieldset>
+      )}
+
       <label className="block text-sm">
         <span className="text-gray-700">Your review</span>
         <textarea

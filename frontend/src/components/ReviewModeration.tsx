@@ -9,17 +9,64 @@ type ReviewStatus = 'published' | 'under_review' | 'flagged' | 'removed';
 
 interface AdminReview {
   id: string;
-  vendorId: string;
-  vendorName: string | null;
-  reviewerEmail: string | null;
+  vendorId?: string;
+  vendorName?: string | null;
+  reviewerEmail?: string | null;
+  /** The planner variant names the same two things differently (EZ1-I244). */
+  plannerId?: string;
+  plannerName?: string | null;
+  userEmail?: string | null;
+  userName?: string | null;
   bookingId: string | null;
   rating: number;
   comment: string;
+  categories?: Record<string, number>;
   status: ReviewStatus;
   moderationReason: string | null;
   moderatedAt: string | null;
   createdAt: string;
 }
+
+/**
+ * Which kind of provider's reviews this is moderating.
+ *
+ * The two live in different tables and are reached on different routes, and
+ * the planner one carries filters the vendor endpoint does not accept — so the
+ * shape travels with the kind rather than being guessed at per field.
+ */
+interface Variant {
+  base: string;
+  title: string;
+  blurb: string;
+  subjectLabel: string;
+  /** Whether the planner/rating/search filters are offered and sent. */
+  richFilters: boolean;
+  subjectOf: (review: AdminReview) => string | null;
+  reviewerOf: (review: AdminReview) => string | null;
+}
+
+const VARIANTS: Record<'vendor' | 'planner', Variant> = {
+  vendor: {
+    base: '/admin/reviews',
+    title: 'Reviews',
+    blurb:
+      'Anything the automatic screen disliked is held rather than refused, so a complaint about a vendor is never thrown away by a word list. Removing a review moves that vendor’s rating.',
+    subjectLabel: 'Business',
+    richFilters: false,
+    subjectOf: (r) => r.vendorName ?? null,
+    reviewerOf: (r) => r.reviewerEmail ?? null,
+  },
+  planner: {
+    base: '/admin/planner-reviews',
+    title: 'Planner reviews',
+    blurb:
+      'The same rules as vendor reviews, on the providers who run the whole wedding. Removing a review moves that planner’s rating.',
+    subjectLabel: 'Planner',
+    richFilters: true,
+    subjectOf: (r) => r.plannerName ?? null,
+    reviewerOf: (r) => [r.userName, r.userEmail].filter(Boolean).join(' · ') || null,
+  },
+};
 
 const STATUS_LABEL: Record<ReviewStatus, string> = {
   published: 'Published',
@@ -55,23 +102,47 @@ const TABS: { key: ReviewStatus | 'all'; label: string }[] = [
  * A vendor must never reach this. Being able to hide a review about yourself
  * is the single power that would make every rating on the platform meaningless.
  */
-export default function ReviewModeration() {
+export default function ReviewModeration({ kind = 'vendor' }: { kind?: 'vendor' | 'planner' }) {
   const qc = useQueryClient();
+  const variant = VARIANTS[kind];
   const [tab, setTab] = useState<ReviewStatus | 'all'>('under_review');
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
+  // Only sent where the endpoint accepts them: the vendor query takes a status
+  // and a vendor id and nothing else, and the pipe refuses anything it was not
+  // told about.
+  const [subjectId, setSubjectId] = useState('');
+  const [rating, setRating] = useState('');
+  const [search, setSearch] = useState('');
 
   const { data, isPending } = useQuery({
-    queryKey: ['admin-reviews', tab],
+    queryKey: ['admin-reviews', kind, tab, subjectId, rating, search],
     queryFn: async () =>
-      (await api.get('/admin/reviews', { params: tab === 'all' ? {} : { status: tab } }))
-        .data as AdminReview[],
+      (
+        await api.get(variant.base, {
+          params: {
+            ...(tab === 'all' ? {} : { status: tab }),
+            ...(variant.richFilters && subjectId ? { plannerId: subjectId } : {}),
+            ...(variant.richFilters && rating ? { rating } : {}),
+            ...(variant.richFilters && search.trim() ? { q: search.trim() } : {}),
+          },
+        })
+      ).data as AdminReview[],
+    retry: false,
+  });
+
+  /** The planners a review can be filtered by. Only fetched where offered. */
+  const { data: subjects } = useQuery({
+    queryKey: ['admin-review-subjects', kind],
+    enabled: variant.richFilters,
+    queryFn: async () =>
+      (await api.get(`${variant.base}/planners`)).data as { id: string; agencyName: string }[],
     retry: false,
   });
 
   const moderate = useMutation({
     mutationFn: (vars: { id: string; status: ReviewStatus; reason?: string }) =>
-      api.put(`/admin/reviews/${vars.id}/status`, {
+      api.put(`${variant.base}/${vars.id}/status`, {
         status: vars.status,
         ...(vars.reason ? { reason: vars.reason } : {}),
       }),
@@ -87,12 +158,8 @@ export default function ReviewModeration() {
   return (
     <div className="card space-y-4">
       <div>
-        <h2 className="section-title">Reviews</h2>
-        <p className="text-sm text-gray-600">
-          Anything the automatic screen disliked is held rather than refused, so a complaint about
-          a vendor is never thrown away by a word list. Removing a review moves that vendor&rsquo;s
-          rating.
-        </p>
+        <h2 className="section-title">{variant.title}</h2>
+        <p className="text-sm text-gray-600">{variant.blurb}</p>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -111,6 +178,57 @@ export default function ReviewModeration() {
         ))}
       </div>
 
+      {/* Filter by planner and by rating, and search across the planner, the
+          couple and the words of the review — one box, because an administrator
+          looking for "the complaint about Sharma" does not know which field it
+          is in (EZ1-I244). */}
+      {variant.richFilters && (
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="input w-auto py-1.5 text-sm"
+            value={subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+          >
+            <option value="">Every {variant.subjectLabel.toLowerCase()}</option>
+            {(subjects ?? []).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.agencyName}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input w-auto py-1.5 text-sm"
+            value={rating}
+            onChange={(e) => setRating(e.target.value)}
+          >
+            <option value="">Any rating</option>
+            {[5, 4, 3, 2, 1].map((star) => (
+              <option key={star} value={star}>
+                {star} star{star === 1 ? '' : 's'}
+              </option>
+            ))}
+          </select>
+          <input
+            className="input flex-1 py-1.5 text-sm sm:max-w-xs"
+            placeholder="Couple, planner, booking or words"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {(subjectId || rating || search) && (
+            <button
+              className="btn-ghost btn-sm"
+              onClick={() => {
+                setSubjectId('');
+                setRating('');
+                setSearch('');
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {error && <p className="alert-critical">{error}</p>}
 
       {isPending ? (
@@ -128,7 +246,7 @@ export default function ReviewModeration() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">
-                    {review.vendorName ?? 'Unknown business'}
+                    {variant.subjectOf(review) ?? `Unknown ${variant.subjectLabel.toLowerCase()}`}
                   </p>
                   <p className="text-xs text-gray-500">
                     {/*
@@ -137,7 +255,7 @@ export default function ReviewModeration() {
                       something checkable.
                     */}
                     {[
-                      review.reviewerEmail,
+                      variant.reviewerOf(review),
                       formatDate(review.createdAt),
                       review.bookingId ? `booking ${review.bookingId.slice(0, 8)}` : null,
                     ]

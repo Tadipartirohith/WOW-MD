@@ -891,6 +891,10 @@ export function AdminApprovals() {
       </div>
 
       <ReviewModeration />
+      {/* Planner reviews are a table of their own, so they are a queue of their
+          own — with the planner, rating and search filters the vendor endpoint
+          does not take (EZ1-I244). */}
+      <ReviewModeration kind="planner" />
     </div>
   );
 }

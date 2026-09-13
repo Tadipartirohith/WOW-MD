@@ -10,6 +10,7 @@ import { Profile } from '../users/entities/profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
+import { PlannerReview } from '../wedding-planners/entities/planner-review.entity';
 import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { VerificationModule } from '../verification/verification.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
@@ -37,6 +38,9 @@ import {
       BookingAddon,
       Vendor,
       PlannerProfile,
+      // The buyer's own review of a booking, for both kinds of provider
+      // (EZ1-I244). A planner's reviews are their own table.
+      PlannerReview,
       Profile,
       User,
       WeddingEvent,

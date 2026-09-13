@@ -4,10 +4,12 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEmail,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -23,6 +25,7 @@ import {
   MOBILE_PATTERN,
   normaliseMobile,
 } from '../../../common/util/identity-fields';
+import { ReviewStatus } from '../../../common/enums';
 
 export class PlannerPackageDto {
   @ApiProperty({ maxLength: 100 })
@@ -154,4 +157,110 @@ export class PlannerSearchDto extends PaginationDto {
   @Min(0)
   @Max(5)
   minRating?: number;
+}
+
+/**
+ * A couple's review of the planner who ran their wedding (EZ1-I244).
+ *
+ * The overall rating is the only required part and the only one the average is
+ * computed from. The five category scores are optional and stay optional: a
+ * couple who wants to say "five stars, they were excellent" should not have to
+ * grade five separate things to say it.
+ */
+export class CreatePlannerReviewDto {
+  @ApiProperty({ minimum: 1, maximum: 5 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating: number;
+
+  @ApiPropertyOptional({ maxLength: 1500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1500)
+  comment?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5, description: 'Planning & coordination' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  planning?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  communication?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  serviceQuality?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  professionalism?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  timeliness?: number;
+}
+
+export class AdminPlannerReviewQueryDto {
+  @ApiPropertyOptional({ enum: ReviewStatus })
+  @IsOptional()
+  @IsEnum(ReviewStatus)
+  status?: ReviewStatus;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  plannerId?: string;
+
+  /** Name, email or the text of the review — one box, as the admin page has. */
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating?: number;
+}
+
+export class ModeratePlannerReviewDto {
+  @ApiProperty({ enum: ReviewStatus })
+  @IsEnum(ReviewStatus)
+  status: ReviewStatus;
+
+  /**
+   * Required for anything but publishing, enforced in the service rather than
+   * here: whether a reason is needed depends on which status was chosen.
+   */
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }

@@ -9,6 +9,7 @@ import { Booking } from './entities/booking.entity';
 import { Payment } from './entities/payment.entity';
 import { Quotation } from './entities/quotation.entity';
 import { VendorReview } from '../vendors/entities/vendor-review.entity';
+import { PlannerReview } from '../wedding-planners/entities/planner-review.entity';
 import { WeddingPlan } from '../planner/entities/wedding-plan.entity';
 import { Vendor } from '../vendors/entities/vendor.entity';
 import { PlannerProfile } from '../wedding-planners/entities/planner-profile.entity';
@@ -157,6 +158,12 @@ describe('BookingsService', () => {
         // tests stop short of, and the wedding plan is read for context only.
         {
           provide: getRepositoryToken(VendorReview),
+          useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), create: jest.fn() },
+        },
+        // The buyer's own review of a booking now comes from both tables
+        // (EZ1-I244), and the planner one is read on the same paths.
+        {
+          provide: getRepositoryToken(PlannerReview),
           useValue: { find: jest.fn().mockResolvedValue([]), findOne: jest.fn(), save: jest.fn(), create: jest.fn() },
         },
         {

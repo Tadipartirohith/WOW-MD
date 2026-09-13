@@ -118,6 +118,7 @@ import Accounts from './pages/Accounts';
 import AccountsTransaction from './pages/AccountsTransaction';
 import Escrow from './pages/Escrow';
 import MyReviews from './pages/MyReviews';
+import PlannerReviews from './pages/PlannerReviews';
 import Notifications from './pages/Notifications';
 import Biodata from './pages/Biodata';
 import BusinessSwitcher from './components/BusinessSwitcher';
@@ -316,6 +317,9 @@ const NAV: NavEntry[] = [
   // A vendor's own reviews, on their own page rather than inside My Business
   // (EZ1-I103).
   { to: '/my-reviews', label: 'My Reviews', requires: [Permission.VENDOR_LISTING_MANAGE], group: 'business', icon: Star },
+  // The planner's own reviews. A separate entry rather than a shared one: the
+  // two hang off different listings and read from different tables (EZ1-I244).
+  { to: '/planner-reviews', label: 'Reviews & Ratings', requires: [Permission.PLANNER_LISTING_MANAGE], group: 'business', icon: Star },
   {
     to: '/planner',
     label: 'My Wedding Plan',
@@ -1171,6 +1175,14 @@ export default function App() {
         element={
           <Protected requires={[Permission.VENDOR_LISTING_MANAGE]}>
             <MyReviews />
+          </Protected>
+        }
+      />
+      <Route
+        path="/planner-reviews"
+        element={
+          <Protected requires={[Permission.PLANNER_LISTING_MANAGE]}>
+            <PlannerReviews />
           </Protected>
         }
       />
