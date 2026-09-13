@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { CaretRight } from 'phosphor-react-native';
 
 import { api, apiMessage } from '@/lib/api';
 import { rupeesExact, shortDate } from '@/lib/format';
@@ -69,11 +71,39 @@ const STATUS_TONE: Record<string, Tone> = {
  * scroll. That does not survive a phone at any font size worth reading, so each
  * payment is a card instead — the same seven facts, stacked, with the figure
  * that matters set largest.
+ *
+ * Every figure here is a way in rather than an ornament (EZ1-I253). A summary
+ * card filters the ledger to the payments it counts, so "Held in escrow" can be
+ * read as a list of what is held and not only as a total; a payment opens in
+ * full, down to the gateway reference and the instalment it belongs to.
  */
+/** What the ledger heading reads as while a summary card is holding it open. */
+const CARD_TITLE: Record<string, string> = {
+  released: 'Paid out to you',
+  held_in_escrow: 'Held in escrow',
+  pending_payout: 'Owed to you',
+  commission: 'Payments commission was taken from',
+  refunded: 'Refunded',
+};
+
+/** Which payments each summary card is the total of. */
+const CARD_STATUSES: Record<string, string[]> = {
+  released: ['released'],
+  held_in_escrow: ['held_in_escrow', 'disputed'],
+  pending_payout: ['pending_payout'],
+  // Commission is only ever taken out of a payment that has been released, so
+  // the card and the rows behind it are about the same set.
+  commission: ['released'],
+  refunded: ['refunded'],
+};
+
 export default function Accounts() {
+  const router = useRouter();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const isVendor = can(permissions, Permission.VENDOR_LISTING_MANAGE);
   const { activeId } = useBusinesses();
+  // Null is every payment, which is what somebody arriving at the page wants.
+  const [card, setCard] = useState<string | null>(null);
 
   const { data, isPending, isFetching, refetch } = useQuery<Earnings>({
     queryKey: ['earnings'],
@@ -93,6 +123,13 @@ export default function Accounts() {
     },
     retry: false,
   });
+
+  const ledger = useMemo(() => {
+    const wanted = card ? CARD_STATUSES[card] : null;
+    return (data?.ledger ?? []).filter((row) => !wanted || wanted.includes(row.status));
+  }, [data?.ledger, card]);
+
+  const toggle = (key: string) => () => setCard((current) => (current === key ? null : key));
 
   return (
     <ListScreen
@@ -117,12 +154,16 @@ export default function Accounts() {
                 value={rupeesExact(data.released)}
                 hint="Already released from escrow"
                 tone="positive"
+                active={card === 'released'}
+                onPress={toggle('released')}
               />
               <StatTile
                 label="Held in escrow"
                 value={rupeesExact(data.heldInEscrow)}
                 hint="Yours once the work is signed off"
                 tone="caution"
+                active={card === 'held_in_escrow'}
+                onPress={toggle('held_in_escrow')}
               />
               {/*
                 Only shown when there is some. "Owed" is a different fact from
@@ -136,44 +177,76 @@ export default function Accounts() {
                   value={rupeesExact(data.pendingPayout)}
                   hint="Earned. Waiting on a payout account to send it to."
                   tone="caution"
+                  active={card === 'pending_payout'}
+                  onPress={toggle('pending_payout')}
                 />
               )}
               <StatTile
                 label="Platform commission"
                 value={rupeesExact(data.commission)}
                 hint="Deducted from released payments"
+                active={card === 'commission'}
+                onPress={toggle('commission')}
               />
               <StatTile
                 label="Refunded"
                 value={rupeesExact(data.refunded)}
                 hint="Returned to the buyer"
+                active={card === 'refunded'}
+                onPress={toggle('refunded')}
               />
             </TileGrid>
           )}
 
           <View style={{ gap: space(1) }}>
-            <Body style={{ fontWeight: '600' }}>Ledger</Body>
-            <Caption tone="faint">Every instalment, and what your share of it was.</Caption>
+            <Body style={{ fontWeight: '600' }}>
+              {card ? `${CARD_TITLE[card] ?? 'Ledger'} (${ledger.length})` : 'Ledger'}
+            </Body>
+            <Caption tone="faint">
+              {card
+                ? 'The payments behind that figure. Press the card again for all of them.'
+                : 'Every instalment, and what your share of it was. Press one for the whole payment.'}
+            </Caption>
           </View>
         </>
       }
-      data={data?.ledger ?? []}
+      data={ledger}
       keyExtractor={(row) => row.paymentId}
       loading={isPending}
       refreshing={isFetching && !isPending}
       onRefresh={() => void refetch()}
-      emptyTitle="No payments yet"
-      emptyBody="Money appears here once a booking has been paid for."
-      renderItem={(row) => <LedgerCard row={row} />}
+      emptyTitle={card ? 'Nothing in that group' : 'No payments yet'}
+      emptyBody={
+        card ? undefined : 'Money appears here once a booking has been paid for.'
+      }
+      renderItem={(row) => (
+        <LedgerCard
+          row={row}
+          onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: row.paymentId } })}
+        />
+      )}
     />
   );
 }
 
-function LedgerCard({ row }: { row: LedgerRow }) {
+function LedgerCard({ row, onPress }: { row: LedgerRow; onPress: () => void }) {
   const theme = useTheme();
   return (
     <Card>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space(2) }}>
+      {/*
+        The whole head of the card opens the payment. The buttons below it —
+        settling a stuck payout — stay their own targets, which is why this is
+        not a pressable wrapped round the entire card.
+      */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${MILESTONE_LABEL[row.milestone] ?? row.milestone}, open this payment`}
+        onPress={onPress}
+        style={({ pressed }) => [
+          { flexDirection: 'row', alignItems: 'flex-start', gap: space(2) },
+          pressed && { opacity: 0.6 },
+        ]}
+      >
         <View style={{ flex: 1, gap: space(0.5) }}>
           <Body>{MILESTONE_LABEL[row.milestone] ?? row.milestone}</Body>
           <Caption tone="faint">
@@ -183,7 +256,8 @@ function LedgerCard({ row }: { row: LedgerRow }) {
         <Badge tone={STATUS_TONE[row.status] ?? 'neutral'}>
           {STATUS_LABEL[row.status] ?? row.status}
         </Badge>
-      </View>
+        <CaretRight size={14} color={rgb(theme.ink[400])} />
+      </Pressable>
 
       <Divider />
 
