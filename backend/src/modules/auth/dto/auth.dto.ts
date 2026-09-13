@@ -293,6 +293,44 @@ export class VerifyPhoneDto {
   code: string;
 }
 
+/**
+ * A mobile number asking for a sign-in code (EZ1-I258).
+ *
+ * Normalised to the stored E.164 form on the way in, so "+91 98765 43210",
+ * "09876543210" and "9876543210" are the same number and not three.
+ */
+export class RequestMobileOtpDto {
+  @ApiProperty({ example: '9876543210' })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
+  mobile: string;
+}
+
+/** A mobile number and the code that was sent to it. */
+export class MobileOtpLoginDto {
+  @ApiProperty({ example: '9876543210' })
+  @Transform(normaliseMobile)
+  @Matches(MOBILE_PATTERN, { message: MOBILE_MESSAGE })
+  mobile: string;
+
+  @ApiProperty({ example: '482910' })
+  @IsString()
+  @Matches(/^[0-9]{6}$/, { message: 'The code is 6 digits' })
+  code: string;
+
+  /**
+   * The authenticator code, for an account that has two-factor on.
+   *
+   * A phone is not a second factor for an account whose owner asked for one:
+   * signing in with the handset alone would be a downgrade they did not choose.
+   */
+  @ApiPropertyOptional({ example: '123456' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  mfaCode?: string;
+}
+
 export class AcceptInvitationDto {
   @ApiProperty({ description: 'Token from the invitation email or SMS' })
   @IsString()

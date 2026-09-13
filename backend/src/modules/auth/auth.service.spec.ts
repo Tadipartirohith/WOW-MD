@@ -13,6 +13,7 @@ import { AgentProfile } from '../agents/entities/agent-profile.entity';
 import { AppConfigService } from '../../config/app-config.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { SmsService } from '../../platform/sms/sms.service';
+import { PhoneVerificationService } from './phone-verification.service';
 import { AuditService } from '../../platform/audit/audit.service';
 import { AccountType, ProfileClaimStatus, UserRole } from '../../common/enums';
 import { RegisterDto, RegisterViaAgentLinkDto } from './dto/auth.dto';
@@ -22,6 +23,9 @@ describe('AuthService', () => {
 
   const repo = {
     findOne: jest.fn(),
+    // Signing in by mobile number reads every account on that number, because
+    // one number naming two accounts names neither (EZ1-I258).
+    find: jest.fn(async () => [] as unknown[]),
     create: jest.fn((x) => x),
     save: jest.fn(async (x) => ({ id: 'user-1', ...x })),
     update: jest.fn(),
@@ -73,6 +77,12 @@ describe('AuthService', () => {
   } as unknown as MailService;
   // The channel for an account taken on by mobile alone (EZ1-I233).
   const sms = { sendPasswordReset: jest.fn() } as unknown as SmsService;
+  // The one-time codes behind signing in by mobile number (EZ1-I258). Nothing
+  // in these tests takes that route; it is here because the service holds it.
+  const phones = {
+    requestLogin: jest.fn(async () => ({ sent: true, expiresAt: new Date() })),
+    confirmLogin: jest.fn(async () => undefined),
+  } as unknown as PhoneVerificationService;
   const audit = { record: jest.fn() } as unknown as AuditService;
 
   const cfg = {
@@ -90,6 +100,9 @@ describe('AuthService', () => {
       mfaRequiredForAdmin: true,
     },
     features: { individualUserEnabled: true },
+    // How long a one-time code lives (EZ1-I258). Read even on the path that
+    // sends nothing, because the answer must look the same either way.
+    sms: { verificationTtlMinutes: 10, provider: 'log' },
   } as unknown as AppConfigService;
 
   beforeEach(async () => {
@@ -107,6 +120,7 @@ describe('AuthService', () => {
         { provide: SessionsService, useValue: sessions },
         { provide: MailService, useValue: mail },
         { provide: SmsService, useValue: sms },
+        { provide: PhoneVerificationService, useValue: phones },
         { provide: AuditService, useValue: audit },
       ],
     }).compile();
@@ -119,12 +133,17 @@ describe('AuthService', () => {
       password: 'Password123',
       accountType: AccountType.INDIVIDUAL,
       role: UserRole.BRIDE,
+      // Every portal but Admin signs in by number now, so a registration
+      // without one would be creating an account with a sign-in route it can
+      // never use (EZ1-I258).
+      phone: '+919876543210',
       ...over,
     }) as RegisterDto;
 
   describe('self-service registration (the solo-user path)', () => {
     it('registers a new individual and returns tokens', async () => {
-      repo.findOne.mockResolvedValueOnce(null);
+      // Twice: the address, then the number.
+      repo.findOne.mockResolvedValue(null);
       const result = await service.register(individual());
       expect(result.accessToken).toBeDefined();
       expect(result.refreshToken).toBeDefined();
@@ -135,13 +154,13 @@ describe('AuthService', () => {
     });
 
     it('opens a session so the new account is signed in immediately', async () => {
-      repo.findOne.mockResolvedValueOnce(null);
+      repo.findOne.mockResolvedValue(null);
       await service.register(individual());
       expect(sessions.create).toHaveBeenCalled();
     });
 
     it('sends a verification email', async () => {
-      repo.findOne.mockResolvedValueOnce(null);
+      repo.findOne.mockResolvedValue(null);
       await service.register(individual({ displayName: 'Solo User' }));
       expect(mail.sendEmailVerification).toHaveBeenCalled();
     });
@@ -309,6 +328,102 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'nobody@b.com', password: 'whatever' }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  /**
+   * Signing in with a mobile number and a one-time code (EZ1-I258).
+   *
+   * The rules worth pinning down are the ones that keep it as strong as the
+   * password route: an administrator cannot take it, an ambiguous number signs
+   * nobody in, the answer to "is this number registered" is the same either
+   * way, and an account with two-factor on still needs its second factor.
+   */
+  describe('signing in by mobile number', () => {
+    const onNumber = (over: Partial<User> = {}) =>
+      ({
+        id: 'u1',
+        email: 'a.tester@gmail.com',
+        phone: '+919876543210',
+        role: UserRole.BRIDE,
+        isActive: true,
+        mfaEnabled: false,
+        mfaSecret: null,
+        phoneVerifiedAt: new Date(),
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        ...over,
+      }) as User;
+
+    it('sends a code to a number that has an account', async () => {
+      repo.find.mockResolvedValueOnce([onNumber()]);
+      await service.requestMobileOtp('+919876543210');
+      expect(phones.requestLogin).toHaveBeenCalledWith('u1', '+919876543210');
+    });
+
+    // The number is not a secret, so a different answer here would turn this
+    // route into a way of asking whether somebody has an account.
+    it('answers the same for a number with no account, and sends nothing', async () => {
+      repo.find.mockResolvedValueOnce([]);
+      const answer = await service.requestMobileOtp('+919000000000');
+      expect(answer.sent).toBe(true);
+      expect(phones.requestLogin).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing to an administrator', async () => {
+      repo.find.mockResolvedValueOnce([onNumber({ role: UserRole.ADMIN })]);
+      const answer = await service.requestMobileOtp('+919876543210');
+      expect(answer.sent).toBe(true);
+      expect(phones.requestLogin).not.toHaveBeenCalled();
+    });
+
+    it('signs in and reaches the same account the password would', async () => {
+      repo.find.mockResolvedValueOnce([onNumber()]);
+      const result = await service.loginWithMobileOtp('+919876543210', '482910', undefined);
+      expect(phones.confirmLogin).toHaveBeenCalledWith('u1', '482910');
+      expect(result.accessToken).toBeDefined();
+      expect(result.user.role).toBe(UserRole.BRIDE);
+      expect(result.user.permissions.length).toBeGreaterThan(0);
+    });
+
+    it('refuses an administrator, in the same words as a wrong code', async () => {
+      repo.find.mockResolvedValueOnce([onNumber({ role: UserRole.ADMIN })]);
+      await expect(
+        service.loginWithMobileOtp('+919876543210', '482910', undefined),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(phones.confirmLogin).not.toHaveBeenCalled();
+    });
+
+    // A number that names two accounts names neither. Those accounts still
+    // have their addresses and passwords.
+    it('signs nobody in on a number shared by two accounts', async () => {
+      repo.find.mockResolvedValueOnce([onNumber(), onNumber({ id: 'u2' })]);
+      await expect(
+        service.loginWithMobileOtp('+919876543210', '482910', undefined),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('refuses a deactivated account', async () => {
+      repo.find.mockResolvedValueOnce([onNumber({ isActive: false })]);
+      await expect(
+        service.loginWithMobileOtp('+919876543210', '482910', undefined),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('still asks for the second factor when the account has one', async () => {
+      repo.find.mockResolvedValueOnce([onNumber({ mfaEnabled: true, mfaSecret: 'JBSWY3DPEHPK3PXP' })]);
+      await expect(
+        service.loginWithMobileOtp('+919876543210', '482910', undefined),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    // Signing in with the number is the same evidence the verification route
+    // asks for, so an unconfirmed number is confirmed by using it.
+    it('marks an unconfirmed number confirmed', async () => {
+      repo.find.mockResolvedValueOnce([onNumber({ phoneVerifiedAt: null })]);
+      await service.loginWithMobileOtp('+919876543210', '482910', undefined);
+      const saved = repo.save.mock.calls.at(-1)?.[0] as User;
+      expect(saved.phoneVerifiedAt).toBeInstanceOf(Date);
     });
   });
 

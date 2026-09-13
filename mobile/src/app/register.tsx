@@ -79,9 +79,6 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
 
   const selected = ACCOUNT_TYPES.find((a) => a.type === accountType)!;
-  // A business is reached on its number, so it is required; an individual can
-  // sign up on an email alone and add one later.
-  const phoneRequired = accountType !== 'individual';
 
   /**
    * The same rules the server applies, checked before the round trip.
@@ -106,7 +103,15 @@ export default function Register() {
       errors.email = 'Registration requires a @gmail.com email address';
     }
 
-    if (phoneRequired && !digits) errors.phone = 'A business account needs a contact number';
+    /*
+     * Every account needs a number now (EZ1-I258).
+     *
+     * It is not only a way of being reached: it is a way of signing in. An
+     * account created without one has a route into it that can never be used,
+     * and the number is what most of this platform's people were taken on with
+     * in the first place. The server refuses a registration without one.
+     */
+    if (!digits) errors.phone = 'Enter the mobile number this account will sign in with';
     else if (digits && !MOBILE_10_PATTERN.test(digits)) {
       errors.phone = 'Enter a 10-digit Indian mobile number, starting 6 to 9';
     }
@@ -251,8 +256,12 @@ export default function Register() {
         {fieldErrors.email ? <Caption tone="critical">{fieldErrors.email}</Caption> : null}
 
         <Field
-          label={phoneRequired ? 'Mobile number' : 'Mobile number (optional)'}
-          hint={fieldErrors.phone ? undefined : 'Ten digits, starting 6 to 9. The +91 is added for you.'}
+          label="Mobile number"
+          hint={
+            fieldErrors.phone
+              ? undefined
+              : 'Ten digits, starting 6 to 9. You can sign in with this number and a code.'
+          }
           value={phone}
           onChangeText={setPhone}
           keyboardType="number-pad"
@@ -299,7 +308,9 @@ export default function Register() {
           label={`Create ${selected.label.toLowerCase()} account`}
           onPress={submit}
           busy={busy}
-          disabled={!email.trim() || !password || !confirmPassword || !displayName.trim()}
+          disabled={
+            !email.trim() || !password || !confirmPassword || !displayName.trim() || !phone.trim()
+          }
         />
 
         <View

@@ -39,6 +39,7 @@ import { permissionsFor } from '../../common/authz/permissions';
 import { SessionContext, SessionsService } from './sessions.service';
 import { MailService } from '../../platform/mail/mail.service';
 import { SmsService } from '../../platform/sms/sms.service';
+import { PhoneVerificationService } from './phone-verification.service';
 import { AuditAction, AuditService } from '../../platform/audit/audit.service';
 import { expiresIn, generateToken, hashToken } from '../../common/util/tokens';
 import { MOBILE_PATTERN } from '../../common/util/identity-fields';
@@ -114,6 +115,9 @@ export class AuthService {
     private readonly sessions: SessionsService,
     private readonly mail: MailService,
     private readonly sms: SmsService,
+    // Signing in by mobile number rests on the same one-time codes that prove
+    // a number is real (EZ1-I258).
+    private readonly phones: PhoneVerificationService,
     private readonly audit: AuditService,
   ) {}
 
@@ -174,11 +178,31 @@ export class AuthService {
     const exists = await this.users.findOne({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email already registered');
 
+    /*
+     * A mobile number, and one account per number (EZ1-I258).
+     *
+     * Every portal but Admin signs in with it now, so a new account without one
+     * has a sign-in route it can never use, and two accounts sharing one has a
+     * number that names neither. Enforced here rather than with a unique
+     * constraint: numbers really are shared across some accounts taken on
+     * before this rule — a household on one handset — and a constraint would
+     * refuse to build on that data and lock those accounts out of their own
+     * password sign-in. Existing accounts are untouched; this is about what may
+     * be created from now on.
+     */
+    if (!dto.phone) {
+      throw new BadRequestException('A mobile number is required');
+    }
+    const numberTaken = await this.users.findOne({ where: { phone: dto.phone } });
+    if (numberTaken) {
+      throw new ConflictException('That mobile number already has an account');
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, this.cfg.auth.bcryptRounds);
     const user = await this.users.save(
       this.users.create({
         email: dto.email,
-        phone: dto.phone ?? null,
+        phone: dto.phone,
         passwordHash,
         role,
         // Bound to the agency's book when the account was created through an
@@ -364,6 +388,109 @@ export class AuthService {
     }
 
     return this.finishLogin(user, ctx);
+  }
+
+  // ---------------------------------------------- signing in by mobile (OTP)
+
+  /**
+   * Sends a sign-in code to a mobile number (EZ1-I258).
+   *
+   * The answer is the same whether or not the number is on an account. A
+   * different one would turn this route into a way of asking "does this person
+   * have an account here", which on a matrimony platform is a question about
+   * somebody's private life — and the number is not a secret, so anybody could
+   * ask it about anybody.
+   *
+   * Administrators are deliberately outside this. Their sign-in is a password
+   * and a second factor, and adding a route that needs only a handset would be
+   * a way around the one that is hardest to get past.
+   */
+  async requestMobileOtp(mobile: string): Promise<{ sent: boolean; expiresAt: Date; devCode?: string }> {
+    const generic = {
+      sent: true,
+      expiresAt: new Date(Date.now() + this.cfg.sms.verificationTtlMinutes * 60_000),
+    };
+
+    const user = await this.singleAccountByMobile(mobile);
+    if (!user || user.role === UserRole.ADMIN || !user.isActive) return generic;
+
+    const issued = await this.phones.requestLogin(user.id, mobile);
+    return issued;
+  }
+
+  /**
+   * Signs in with a mobile number and the code sent to it.
+   *
+   * The code is the credential and is checked the same way a password is —
+   * expiry, three guesses, one use — and it reaches the same account, with the
+   * same role and the same permissions, as the password route. An account with
+   * two-factor on still needs its second factor: turning a phone into a single
+   * credential for an account that asked for two would be a downgrade its owner
+   * did not choose.
+   */
+  async loginWithMobileOtp(
+    mobile: string,
+    code: string,
+    mfaCode: string | undefined,
+    ctx: SessionContext = {},
+  ): Promise<AuthResult> {
+    const user = await this.singleAccountByMobile(mobile);
+    // Deliberately the same refusal as a wrong code: which of the two it was is
+    // exactly what an attacker is asking.
+    if (!user || user.role === UserRole.ADMIN) {
+      throw new UnauthorizedException('That code is not right');
+    }
+    if (!user.isActive) throw new ForbiddenException('This account has been deactivated');
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+      throw new ForbiddenException(
+        `Too many failed attempts. Try again in ${minutes} minute(s), or reset your password.`,
+      );
+    }
+
+    await this.phones.confirmLogin(user.id, code);
+
+    if (user.mfaEnabled) {
+      if (!mfaCode) {
+        throw new UnauthorizedException({
+          message: 'An authentication code is required',
+          code: MFA_REQUIRED,
+        });
+      }
+      if (!this.verifyTotp(user.mfaSecret, mfaCode)) {
+        await this.registerFailedLogin(user, ctx);
+        throw new UnauthorizedException('That authentication code is not valid');
+      }
+    }
+
+    /*
+     * Signing in with the number proves it. An account taken on by an agent and
+     * never confirmed is confirmed by the first sign-in that used it, which is
+     * the same evidence the verification route asks for.
+     */
+    if (!user.phoneVerifiedAt) {
+      user.phoneVerifiedAt = new Date();
+      await this.users.save(user);
+    }
+
+    return this.finishLogin(user, ctx);
+  }
+
+  /**
+   * The one active account on a mobile number, or nothing.
+   *
+   * `phone` carries no unique constraint and never has, so a number really can
+   * name more than one account — a household that shared one handset across two
+   * profiles. Signing "whichever row came back first" in would be the wrong
+   * person, so an ambiguous number signs nobody in; those accounts still have
+   * their addresses and passwords (EZ1-I233).
+   */
+  private async singleAccountByMobile(mobile: string): Promise<User | null> {
+    const matches = await this.users.find({
+      where: { phone: mobile, isActive: true },
+      take: 2,
+    });
+    return matches.length === 1 ? matches[0] : null;
   }
 
   /** The last few steps of a successful sign-in, shared by both second factors. */

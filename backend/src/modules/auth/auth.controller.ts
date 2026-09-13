@@ -24,9 +24,11 @@ import {
   ConfirmMfaDto,
   DisableMfaDto,
   LoginDto,
+  MobileOtpLoginDto,
   RefreshDto,
   RegisterDto,
   RegisterViaAgentLinkDto,
+  RequestMobileOtpDto,
   RequestPasswordResetDto,
   ResetPasswordDto,
   RegenerateRecoveryCodesDto,
@@ -294,6 +296,49 @@ export class AuthController {
     @Body() dto: RegenerateRecoveryCodesDto,
   ) {
     return this.auth.regenerateRecoveryCodes(userId, dto.password);
+  }
+
+  // ------------------------------------------- signing in by mobile (EZ1-I258)
+
+  /**
+   * Sends a sign-in code to a mobile number.
+   *
+   * Public: nobody is signed in when they ask for it — that is the point.
+   * Rate-limited harder than most routes, because each request costs real money
+   * to send and a loop here is somebody else's phone ringing all night. The
+   * answer does not say whether the number is on an account.
+   */
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 300000 } })
+  @ApiOperation({ summary: 'Send a sign-in code to a mobile number' })
+  @HttpCode(200)
+  @Post('otp/request')
+  requestOtp(@Body() dto: RequestMobileOtpDto) {
+    return this.auth.requestMobileOtp(dto.mobile);
+  }
+
+  /**
+   * The code, exchanged for the same session a password would have given.
+   *
+   * Ten tries in five minutes at this route, and three guesses per code inside
+   * it: the first is what stops somebody working through numbers, the second is
+   * what makes six digits a credential.
+   */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 300000 } })
+  @ApiOperation({ summary: 'Sign in with a mobile number and its code' })
+  @HttpCode(200)
+  @Post('otp/login')
+  async otpLogin(
+    @Body() dto: MobileOtpLoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.respond(
+      req,
+      res,
+      await this.auth.loginWithMobileOtp(dto.mobile, dto.code, dto.mfaCode, this.ctx(req)),
+    );
   }
 
   // ------------------------------------------------------ phone verification
