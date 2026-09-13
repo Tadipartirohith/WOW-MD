@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SectionTitle } from '@/components/ui';
@@ -50,7 +50,16 @@ export function Sheet({
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={onClose}
-          style={{ ...StyleSheet.absoluteFillObject, backgroundColor: rgba(theme.scrim, 0.45) }}
+          // The four edges written out rather than `StyleSheet.absoluteFillObject`,
+          // which React Native 0.86 no longer exports (EZ1-I251).
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: rgba(theme.scrim, 0.45),
+          }}
         />
         <View
           style={{
