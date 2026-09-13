@@ -744,6 +744,11 @@ export class MatchmakingService {
     add('padam', q.padam);
     add('goth', q.gothram);
     add('kuja', q.kujaDosham);
+    // Written as a word rather than left to `add`, which drops an empty value:
+    // `nri=false` is a filter and has to be part of the key, or turning it on
+    // would answer from the unfiltered page already in the cache.
+    if (q.nri !== undefined) parts.push(`nri=${q.nri === true ? 'yes' : 'no'}`);
+    add('nriCountry', q.nriCountry);
     add('q', q.q);
     add('short', q.shortlistedOnly === true);
     return parts.length ? parts.join('|') : 'none';
@@ -821,7 +826,11 @@ export class MatchmakingService {
       Boolean(q.star) ||
       Boolean(q.padam) ||
       Boolean(q.gothram) ||
-      Boolean(q.kujaDosham);
+      Boolean(q.kujaDosham) ||
+      // A boolean filter, so its presence is what counts and not its truth:
+      // `nri=false` is a filter for profiles living in India, not an absent one.
+      q.nri !== undefined ||
+      Boolean(q.nriCountry);
 
     if (!wantsBiodata || pool.length === 0) return pool;
 
@@ -860,6 +869,20 @@ export class MatchmakingService {
       // The chart is a JSON block gated by horoscopeAvailable (EZ1-I163): a
       // profile that keeps no horoscope has an empty chart, so any horoscope
       // filter drops it, exactly as the biodata filters drop a missing row.
+      /*
+       * Living abroad, and where (EZ1-I247).
+       *
+       * The pipeline converts implicitly, so `nri` is compared against `true`
+       * rather than trusted for its truthiness — `'false'` is a string and every
+       * non-empty string is truthy. A profile that has not answered the question
+       * is dropped, the same way a missing biodata row is.
+       */
+      if (q.nri !== undefined) {
+        if (typeof d.isNri !== 'boolean') return false;
+        if (d.isNri !== (q.nri === true)) return false;
+      }
+      if (q.nriCountry && !same(d.nriCountry, q.nriCountry)) return false;
+
       if (q.rashi || q.star || q.padam || q.gothram || q.kujaDosham) {
         const chart = (d.horoscopeAvailable ? (d.horoscope ?? {}) : {}) as Record<string, unknown>;
         const chartText = (value: unknown): string | null =>

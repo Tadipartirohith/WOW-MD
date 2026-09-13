@@ -627,6 +627,38 @@ export class PartnerPreferencesDto {
   preferredGothram?: string;
 
   /**
+   * Whether the family is looking for an NRI partner (EZ1-I246, EZ1-I247).
+   *
+   * Three answers, and the third is the point: "no preference" is a position of
+   * its own and not the same as "no". A family happy either way is not asking
+   * to be shown only people living in India.
+   *
+   * Phrased about the partner rather than about a gender. The form asked "Is he
+   * NRI?", which is wrong on half the profiles on the platform.
+   */
+  @ApiPropertyOptional({
+    enum: ['no_preference', 'yes', 'no'],
+    description: 'Whether an NRI partner is wanted, not wanted, or does not matter.',
+  })
+  @IsOptional()
+  @IsIn(['no_preference', 'yes', 'no'])
+  nriPreference?: 'no_preference' | 'yes' | 'no';
+
+  /**
+   * Where, when an NRI partner is what is wanted.
+   *
+   * Free text with suggestions rather than a closed list: families say "USA",
+   * "the Gulf", "Australia or New Zealand", and a dropdown of countries would
+   * force the last of those into something it is not. Meaningless unless
+   * `nriPreference` is yes, and cleared when it is not.
+   */
+  @ApiPropertyOptional({ maxLength: 120, example: 'USA' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  preferredNriCountry?: string;
+
+  /**
    * The chart itself, attached from this screen.
    *
    * The same document as on the horoscope section, and deliberately the same

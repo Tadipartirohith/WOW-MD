@@ -26,8 +26,10 @@ import DependentLocation from '../components/DependentLocation';
 import {
   CASTES_BY_RELIGION,
   CITIES,
+  COUNTRIES,
   MOTHER_TONGUES,
   NAKSHATRAS,
+  OTHER,
   PADAMS,
   PROFESSIONS,
   QUALIFICATIONS,
@@ -1932,6 +1934,8 @@ function PreferencesForm({
       preferredRashi: prefs.preferredRashi ?? '',
       preferredPadam: prefs.preferredPadam ?? '',
       preferredGothram: prefs.preferredGothram ?? '',
+      nriPreference: prefs.nriPreference ?? '',
+      preferredNriCountry: prefs.preferredNriCountry ?? '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(initial), storageKey]);
@@ -1968,6 +1972,12 @@ function PreferencesForm({
           preferredRashi: values.preferredRashi || undefined,
           preferredPadam: values.preferredPadam || undefined,
           preferredGothram: values.preferredGothram || undefined,
+          nriPreference: values.nriPreference || undefined,
+          // Only ever sent alongside a yes. The server clears it otherwise, and
+          // sending it anyway would be asking for a country to be kept against
+          // a preference that no longer wants one.
+          preferredNriCountry:
+            values.nriPreference === 'yes' ? values.preferredNriCountry || undefined : undefined,
         });
       }}
       className="space-y-3"
@@ -2030,6 +2040,55 @@ function PreferencesForm({
           options={CITIES}
           placeholder="No preference"
         />
+        {/*
+          Whether the partner lives abroad (EZ1-I246, EZ1-I247).
+
+          Three answers, and "does not matter" is a position rather than a
+          blank. Asked about the partner rather than about a gender: the
+          original wording was "Is he NRI?", which is wrong on half the
+          profiles on this platform.
+        */}
+        <Field label="Is the partner an NRI?">
+          <select
+            className="input mt-1"
+            value={String(values.nriPreference ?? '')}
+            onChange={set('nriPreference')}
+          >
+            <option value="">No preference</option>
+            <option value="no_preference">Doesn&apos;t matter</option>
+            <option value="yes">Yes, prefer NRI</option>
+            <option value="no">No, prefer non-NRI</option>
+          </select>
+        </Field>
+        {/*
+          Only when an NRI is what is wanted. A country against "no" or "does
+          not matter" is a field nobody can answer meaningfully, and the server
+          drops it anyway.
+        */}
+        {values.nriPreference === 'yes' && (
+          <Field label="Preferred NRI country">
+            <input
+              className="input mt-1"
+              list="nri-countries"
+              placeholder="USA, UK, Canada, Australia…"
+              maxLength={120}
+              value={String(values.preferredNriCountry ?? '')}
+              onChange={set('preferredNriCountry')}
+            />
+            {/* Suggestions, not a closed list: families say "the Gulf" and
+                "Australia or New Zealand", and a dropdown would refuse both. */}
+            <datalist id="nri-countries">
+              {/* The countries the residence section already offers, less India
+                  — which is not somewhere an NRI lives — and less the "Other"
+                  escape, which is what typing into this box already is. */}
+              {COUNTRIES.filter((country) => country !== 'India' && country !== OTHER).map(
+                (country) => (
+                  <option key={country} value={country} />
+                ),
+              )}
+            </datalist>
+          </Field>
+        )}
       </div>
 
       {/*

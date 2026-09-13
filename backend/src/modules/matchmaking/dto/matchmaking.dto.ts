@@ -140,6 +140,25 @@ export class SuggestionsQueryDto extends PaginationDto {
   kujaDosham?: string;
 
   /**
+   * Only profiles living abroad, or only profiles that are not (EZ1-I247).
+   *
+   * `boolean | string` because that union is what StrictBoolean needs: without
+   * it the implicit conversion runs first and `?nri=false` arrives as true,
+   * which would turn "not an NRI" into its opposite.
+   *
+   * Like every other biodata filter, a profile that has not answered the
+   * question is dropped once this is set. An unknown in a filtered list is how
+   * a filter loses its meaning.
+   */
+  @ApiPropertyOptional({ description: 'true: only NRI profiles. false: only profiles in India.' })
+  @IsOptional() @StrictBoolean()
+  nri?: boolean | string;
+
+  @ApiPropertyOptional({ maxLength: 120, description: 'Country of residence, for NRI profiles' })
+  @IsOptional() @IsString() @MaxLength(120)
+  nriCountry?: string;
+
+  /**
    * Name, profile code, or a word from the biodata.
    *
    * One box rather than three, because the person typing does not think of

@@ -18,6 +18,7 @@ import ChoiceField from '../components/ChoiceField';
 import {
   CASTES_BY_RELIGION,
   CITIES,
+  COUNTRIES,
   KUJA_DOSHAM,
   MOTHER_TONGUES,
   NAKSHATRAS,
@@ -85,6 +86,9 @@ interface Filters {
   padam: string;
   gothram: string;
   kujaDosham: string;
+  /** '' any, 'true' only NRI profiles, 'false' only profiles in India. */
+  nri: string;
+  nriCountry: string;
   sort: string;
   addedWithinDays: string;
 }
@@ -109,6 +113,8 @@ const NO_FILTERS: Filters = {
   padam: '',
   gothram: '',
   kujaDosham: '',
+  nri: '',
+  nriCountry: '',
   /*
    * Newest first by default, because the middle panel is "recently added" and
    * the filters beside it are what shape it. Somebody who wants it scored
@@ -153,6 +159,8 @@ const FILTER_LABEL: Partial<Record<keyof Filters, string>> = {
   padam: 'Padam',
   gothram: 'Gothram',
   kujaDosham: 'Kuja dosham',
+  nri: 'NRI',
+  nriCountry: 'Country',
   addedWithinDays: 'Added within',
 };
 
@@ -690,6 +698,34 @@ export default function Matches() {
                     allowOther={false}
                     placeholder="Any"
                   />
+
+                  {/*
+                    Living abroad (EZ1-I247). The partner preference on the
+                    biodata is what the engine scores against; this is the same
+                    question asked of the list in front of you, for a family who
+                    wants to look at nothing else today.
+                  */}
+                  <label className="text-sm">
+                    <span className="text-gray-600">NRI</span>
+                    <select
+                      className="input mt-1"
+                      value={filters.nri}
+                      onChange={(e) => setField('nri')(e.target.value)}
+                    >
+                      <option value="">Any</option>
+                      <option value="true">Only NRI</option>
+                      <option value="false">Only in India</option>
+                    </select>
+                  </label>
+                  {filters.nri === 'true' && (
+                    <ChoiceField
+                      label="Country"
+                      value={filters.nriCountry}
+                      onChange={setField('nriCountry')}
+                      options={COUNTRIES.filter((country) => country !== 'India')}
+                      placeholder="Any"
+                    />
+                  )}
                 </div>
               )}
             </div>

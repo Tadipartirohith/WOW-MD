@@ -336,6 +336,19 @@ export class ProfileDetailsService {
         ...(dto.preferredRashi ? { preferredRashi: dto.preferredRashi } : {}),
         ...(dto.preferredPadam ? { preferredPadam: dto.preferredPadam } : {}),
         ...(dto.preferredGothram ? { preferredGothram: dto.preferredGothram } : {}),
+        /*
+         * The NRI preference, and where (EZ1-I246, EZ1-I247).
+         *
+         * Written whenever it is sent, including "no" — that is an answer, not
+         * an absence, and dropping it would leave a family who has said no
+         * reading as one who has not said anything. The country only means
+         * something alongside a yes, so anything else clears it rather than
+         * leaving "Canada" attached to a preference for somebody living here.
+         */
+        ...(dto.nriPreference ? { nriPreference: dto.nriPreference } : {}),
+        ...(dto.nriPreference === 'yes' && dto.preferredNriCountry
+          ? { preferredNriCountry: dto.preferredNriCountry.trim() }
+          : {}),
       },
       ...(dto.horoscopeDocumentUrl ? { horoscopeDocumentUrl: dto.horoscopeDocumentUrl } : {}),
     });

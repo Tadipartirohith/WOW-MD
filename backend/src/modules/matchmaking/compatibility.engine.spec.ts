@@ -231,6 +231,70 @@ describe('scoreProfiles (compatibility engine)', () => {
       expect(scoreProfiles(a, b, weights).score).toBe(scoreProfiles(b, a, weights).score);
     });
 
+    /*
+     * The NRI preference (EZ1-I246, EZ1-I247).
+     *
+     * Three answers, and each behaves differently: a yes and a no are scored
+     * against the other side's own answer, and "no preference" must leave the
+     * number exactly where it was.
+     */
+    describe('the NRI preference', () => {
+      const seeker = (preferences: Record<string, unknown>): ScoringSubject => ({
+        profile: bare(30, 'Hyderabad'),
+        details: makeDetails({ partnerPreferences: preferences }),
+      });
+      const abroad = (country: string | null): ScoringSubject => ({
+        profile: bare(28, 'Hyderabad'),
+        details: makeDetails({ isNri: true, nriCountry: country }),
+      });
+      const atHome: ScoringSubject = {
+        profile: bare(28, 'Hyderabad'),
+        details: makeDetails({ isNri: false, nriCountry: null }),
+      };
+      const unanswered: ScoringSubject = {
+        profile: bare(28, 'Hyderabad'),
+        details: makeDetails({ isNri: null }),
+      };
+
+      it('rates an NRI above somebody at home when an NRI is wanted', () => {
+        const wants = seeker({ nriPreference: 'yes' });
+        expect(scoreProfiles(wants, abroad('USA'), weights).breakdown.preferences).toBeGreaterThan(
+          scoreProfiles(wants, atHome, weights).breakdown.preferences,
+        );
+      });
+
+      it('rates somebody at home above an NRI when an NRI is not wanted', () => {
+        const wants = seeker({ nriPreference: 'no' });
+        expect(scoreProfiles(wants, atHome, weights).breakdown.preferences).toBeGreaterThan(
+          scoreProfiles(wants, abroad('USA'), weights).breakdown.preferences,
+        );
+      });
+
+      it('prefers the country the family named over another one', () => {
+        const wants = seeker({ nriPreference: 'yes', preferredNriCountry: 'Canada' });
+        expect(
+          scoreProfiles(wants, abroad('Canada'), weights).breakdown.preferences,
+        ).toBeGreaterThan(scoreProfiles(wants, abroad('Australia'), weights).breakdown.preferences);
+      });
+
+      // The point of the third answer: it is a position, and the position is
+      // that this should not move the number either way.
+      it('leaves the score alone when the family has no preference', () => {
+        const indifferent = seeker({ nriPreference: 'no_preference' });
+        expect(scoreProfiles(indifferent, abroad('USA'), weights).score).toBe(
+          scoreProfiles(indifferent, atHome, weights).score,
+        );
+      });
+
+      it('says nothing about a profile that never answered the question', () => {
+        const wants = seeker({ nriPreference: 'yes' });
+        const silent = seeker({});
+        expect(scoreProfiles(wants, unanswered, weights).score).toBe(
+          scoreProfiles(silent, unanswered, weights).score,
+        );
+      });
+    });
+
     it('still scores a profile that has no biodata row at all', () => {
       const withNone: ScoringSubject = { profile: bare(28, 'Hyderabad'), details: null };
       const { score } = scoreProfiles(withNone, withNone, weights);

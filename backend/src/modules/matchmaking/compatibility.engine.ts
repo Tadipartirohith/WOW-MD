@@ -186,6 +186,31 @@ export function scoreProfiles(
       const wantText = text(want);
       if (wantText && have) satisfied.push(wantText === have);
     }
+
+    /*
+     * Whether the other side lives abroad, when the family has said it matters
+     * (EZ1-I246, EZ1-I247).
+     *
+     * Only a stated yes or no is scored: "no preference" is an answer, and the
+     * answer is that this should not move the number either way. A yes is met
+     * by an NRI profile, a no by one that is not — and where a country is named
+     * alongside the yes, living abroad in the wrong one does not satisfy the
+     * preference somebody actually stated.
+     *
+     * The other side's `isNri` is only read when it has been answered. A
+     * profile that never filled in that question is not evidence of either.
+     */
+    const nriWanted = text(wanted.nriPreference);
+    const otherIsNri = other.details?.isNri;
+    if ((nriWanted === 'yes' || nriWanted === 'no') && typeof otherIsNri === 'boolean') {
+      const wantsNri = nriWanted === 'yes';
+      satisfied.push(otherIsNri === wantsNri);
+
+      const country = text(wanted.preferredNriCountry);
+      if (wantsNri && country && otherIsNri) {
+        satisfied.push(text(other.details?.nriCountry) === country);
+      }
+    }
   };
   checkWindow(left, right);
   checkWindow(right, left);
