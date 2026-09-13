@@ -1162,6 +1162,99 @@ export class MatchmakingService {
    * working that out is a second copy of the rule, in the place least able to
    * enforce it.
    */
+  /**
+   * Every interest on an agency's whole book, in one read (EZ1-I243).
+   *
+   * The per-profile board answers "what is happening to this client". An agent
+   * running forty clients has a different question first — what is happening at
+   * all — and could only get at it by picking a client, reading their board,
+   * going back, and picking the next one. So the dashboard card led to a page
+   * that showed nothing until a choice was made.
+   *
+   * Both sides of every row are returned with their own profile details,
+   * because the agent is not one of the two parties here: "sent by" and "sent
+   * to" are the fact, and direction is only a way of filtering them. Where the
+   * agent manages both ends — one of their clients asking about another — the
+   * row says so rather than arbitrarily picking a side to be theirs.
+   *
+   * Privacy is the same rule as everywhere else: an agent sees their own
+   * client's profile in full, because they steward it, and the counterpart only
+   * as far as that interest has got. A pending interest does not open the other
+   * family's photographs.
+   */
+  async agencyInterests(actor: AuthUser) {
+    const clients = await this.profiles.find({
+      where: { managedByUserId: actor.userId },
+      order: { displayName: 'ASC' },
+    });
+    if (clients.length === 0) return { data: [], counts: {}, clients: [] };
+
+    const clientIds = new Set(clients.map((c) => c.id));
+    const rows = await this.interests.find({
+      where: [
+        { fromProfileId: In([...clientIds]) },
+        { toProfileId: In([...clientIds]) },
+      ],
+      order: { updatedAt: 'DESC' },
+    });
+
+    // Everybody on the other end, in one read rather than one per row.
+    const otherIds = [
+      ...new Set(
+        rows.flatMap((r) =>
+          [r.fromProfileId, r.toProfileId].filter((id) => !clientIds.has(id)),
+        ),
+      ),
+    ];
+    const others = otherIds.length
+      ? await this.profiles.find({ where: { id: In(otherIds) } })
+      : [];
+    const byId = new Map<string, Profile>([
+      ...clients.map((c) => [c.id, c] as [string, Profile]),
+      ...others.map((o) => [o.id, o] as [string, Profile]),
+    ]);
+
+    const counts: Record<string, number> = { all: 0, sent: 0, received: 0 };
+    const data = rows.flatMap((row) => {
+      const from = byId.get(row.fromProfileId);
+      const to = byId.get(row.toProfileId);
+      if (!from || !to) return [];
+
+      const sentByClient = clientIds.has(row.fromProfileId);
+      const bothClients = sentByClient && clientIds.has(row.toProfileId);
+      // The client whose board this row would appear on. With both ends on the
+      // books it is the sender's, which is the side that acted.
+      const client = sentByClient ? from : to;
+      const matched = row.status === InterestStatus.ACCEPTED;
+      const view = (profile: Profile) =>
+        toPublicProfile(profile, { matched: clientIds.has(profile.id) || matched });
+
+      counts.all += 1;
+      counts[sentByClient ? 'sent' : 'received'] += 1;
+      counts[row.status] = (counts[row.status] ?? 0) + 1;
+
+      return [
+        {
+          id: row.id,
+          status: row.status,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          direction: sentByClient ? ('sent' as const) : ('received' as const),
+          bothClients,
+          clientProfileId: client.id,
+          from: view(from),
+          to: view(to),
+        },
+      ];
+    });
+
+    return {
+      data,
+      counts,
+      clients: clients.map((c) => ({ id: c.id, displayName: c.displayName })),
+    };
+  }
+
   async interestBoard(actor: AuthUser, profileId?: string) {
     const me = await this.resolveSubject(actor, profileId);
 

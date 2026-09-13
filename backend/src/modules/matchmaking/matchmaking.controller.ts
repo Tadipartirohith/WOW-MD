@@ -65,6 +65,19 @@ export class MatchmakingController {
     return this.matchmaking.interestBoard(actor, q.profileId);
   }
 
+  @RequirePermissions(Permission.AGENCY_MANAGE)
+  @ApiOperation({
+    summary: "Every interest across an agency's clients",
+    description:
+      'One flat list rather than a board per client, with both sides of each row and their ' +
+      'profile details. An agent manages many profiles and asks what is happening at all before ' +
+      'they ask what is happening to one of them (EZ1-I243).',
+  })
+  @Get('interests/agency')
+  agencyInterests(@CurrentUser() actor: AuthUser) {
+    return this.matchmaking.agencyInterests(actor);
+  }
+
   @Get('incoming')
   incoming(@CurrentUser() actor: AuthUser, @Query() q: SubjectQueryDto) {
     return this.matchmaking.incoming(actor, q.profileId);

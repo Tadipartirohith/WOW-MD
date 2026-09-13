@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api, apiMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { Permission, can } from '../lib/permissions';
+import AgencyInterests from '../components/AgencyInterests';
 import ProfileSelector from '../components/ProfileSelector';
 import ProposalThread from '../components/ProposalThread';
 import ProfilePreview from '../components/ProfilePreview';
@@ -121,6 +122,16 @@ export default function Interests() {
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const emailVerified = useAuth((s) => s.user?.isVerified);
   const isSteward = can(permissions, Permission.ACT_ON_BEHALF);
+  /*
+   * An agency sees its whole book first (EZ1-I243).
+   *
+   * A family steward manages one profile, or two, and the selector is the
+   * quickest way to the one they mean. An agent manages dozens, and the page
+   * they were sent to by the dashboard card showed nothing until they had
+   * picked one — so for them the flat list is the page, and picking a client
+   * narrows it to that client's board.
+   */
+  const isAgency = can(permissions, Permission.AGENCY_MANAGE);
 
   const [profileId, setProfileId] = useState('');
   const [tab, setTab] = useState<TabKey>('received');
@@ -262,7 +273,9 @@ export default function Interests() {
       <div>
         <h1 className="page-title">Interests</h1>
         <p className="page-subtitle">
-          Who has asked about this profile, who it has asked, and what came of each one.
+          {isAgency
+            ? 'Every interest across your clients — who asked, who was asked, and what came of it. Pick a client to answer one.'
+            : 'Who has asked about this profile, who it has asked, and what came of each one.'}
         </p>
       </div>
 
@@ -294,13 +307,20 @@ export default function Interests() {
         <ProfileSelector value={profileId} onChange={setProfileId} label="For which client" />
       )}
 
+      {isAgency && !profileId && (
+        <AgencyInterests
+          onViewProfile={setPreviewId}
+          onViewInterest={(clientProfileId) => setProfileId(clientProfileId)}
+        />
+      )}
+
       {error && (
         <p className="alert-critical" role="alert">
           {error}
         </p>
       )}
 
-      {!ready && (
+      {!ready && !isAgency && (
         <div className="card">
           <EmptyState icon={UsersThree} title="Pick a client">
             Interests belong to a profile, not to your account. Choose whose you want to see.
