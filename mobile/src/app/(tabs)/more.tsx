@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
+  CalendarBlank,
   CaretRight,
   ChatCircleDots,
   Check,
@@ -81,6 +82,14 @@ export default function More() {
               label="Chat"
               hint="Conversations with families you have matched with"
               to="/chat"
+            />
+          ) : null}
+          {canAny(permissions, [Permission.EVENT_MANAGE_OWN]) ? (
+            <Row
+              icon={CalendarBlank}
+              label="Events"
+              hint="The days of the wedding, and the invitations to them"
+              to="/events"
             />
           ) : null}
         </Group>

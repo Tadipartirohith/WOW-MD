@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
 import { Permission, canAny } from '@/shared/permissions';
+import { IndividualHome } from '@/components/home/individual-home';
 import { NotificationBell } from '@/components/home/notification-bell';
 import { OfficerHome } from '@/components/home/officer-home';
 import { ProviderHome } from '@/components/home/provider-home';
@@ -51,6 +52,11 @@ export default function Home() {
     Permission.PLANNER_LISTING_MANAGE,
   ]);
   const isBuyer = canAny(permissions, [Permission.BOOKING_READ_OWN]);
+  // Somebody who is in the matches themselves, as opposed to an agent running
+  // other people's (EZ1-I261).
+  const isIndividual =
+    canAny(permissions, [Permission.MATCH_BROWSE]) &&
+    !canAny(permissions, [Permission.AGENCY_MANAGE]);
   const isAgent = canAny(permissions, [Permission.AGENCY_MANAGE]);
 
   const { data: profile, isPending } = useQuery({
@@ -125,10 +131,11 @@ export default function Home() {
         <View style={{ gap: space(4) }}>
           {isProvider ? <ProviderHome /> : null}
           {isOfficer ? <OfficerHome canFieldwork={canFieldwork} /> : null}
+          {isIndividual ? <IndividualHome profileId={profile?.id ?? null} /> : null}
 
           {/* The counters this screen has always carried, for the accounts that
               are neither selling nor verifying. */}
-          {!isProvider && !isOfficer ? (
+          {!isProvider && !isOfficer && !isIndividual ? (
             <View style={{ gap: space(3) }}>
               <Counter label="Unread notifications" value={unread?.unread} />
               {isBuyer ? (
