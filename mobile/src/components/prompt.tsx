@@ -27,6 +27,7 @@ export function PromptSheet({
   initialValue = '',
   multiline = true,
   keyboardNumeric = false,
+  input = true,
   onCancel,
   onConfirm,
 }: {
@@ -39,6 +40,14 @@ export function PromptSheet({
   initialValue?: string;
   multiline?: boolean;
   keyboardNumeric?: boolean;
+  /**
+   * Whether there is anything to type.
+   *
+   * False makes this a confirmation: a decision that is hard to undo — taking
+   * an interest back, blocking somebody — is worth asking about, and asking is
+   * the whole of the question. It answers with an empty string.
+   */
+  input?: boolean;
   onCancel: () => void;
   onConfirm: (value: string) => void;
 }) {
@@ -56,6 +65,7 @@ export function PromptSheet({
   return (
     <Sheet visible={visible} title={title} onClose={onCancel}>
       {message ? <Caption>{message}</Caption> : null}
+      {input ? (
       <TextInput
         value={text}
         onChangeText={setText}
@@ -76,11 +86,12 @@ export function PromptSheet({
           textAlignVertical: multiline ? 'top' : 'center',
         }}
       />
+      ) : null}
       <View style={{ flexDirection: 'row', gap: space(2) }}>
         <Button label="Cancel" variant="outline" onPress={onCancel} style={{ flex: 1 }} />
         <Button
           label={confirmLabel}
-          disabled={!ready}
+          disabled={input && !ready}
           onPress={() => onConfirm(text.trim())}
           style={{ flex: 1 }}
         />

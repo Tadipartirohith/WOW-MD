@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FlatList, Image, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle } from 'phosphor-react-native';
 
@@ -68,6 +69,7 @@ interface Suggestion {
  * that has decided browsing is a form-filling exercise.
  */
 export default function Matches() {
+  const router = useRouter();
   const permissions = useAuth((s) => s.user?.permissions ?? []);
   const isAgent = can(permissions, Permission.AGENCY_MANAGE);
   const [error, setError] = useState('');
@@ -139,6 +141,9 @@ export default function Matches() {
         <MatchCard
           suggestion={item}
           onSendInterest={() => sendInterest.mutate(item.profile.id)}
+          onOpenProfile={() =>
+            router.push({ pathname: '/match/[id]', params: { id: item.profile.id } })
+          }
           busy={sendInterest.isPending && sendInterest.variables === item.profile.id}
         />
       )}
@@ -167,10 +172,12 @@ const INTERACTION_LABEL: Partial<Record<InteractionState, string>> = {
 function MatchCard({
   suggestion,
   onSendInterest,
+  onOpenProfile,
   busy,
 }: {
   suggestion: Suggestion;
   onSendInterest: () => void;
+  onOpenProfile: () => void;
   busy: boolean;
 }) {
   const theme = useTheme();
@@ -286,6 +293,10 @@ function MatchCard({
             <Caption>Sent over by your family</Caption>
           </View>
         ) : null}
+
+        {/* The whole profile, including the horoscope chart families actually
+            compare on before deciding (EZ1-I231, EZ1-I261). */}
+        <Button label="View profile" variant="outline" small onPress={onOpenProfile} />
 
         {settled ? (
           <Body tone="muted">{INTERACTION_LABEL[interaction] ?? 'Already actioned'}</Body>

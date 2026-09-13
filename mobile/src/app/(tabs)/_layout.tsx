@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import {
   Bell,
   Briefcase,
+  HandHeart,
   CalendarBlank,
   ClipboardText,
   DotsThreeCircle,
@@ -30,7 +31,7 @@ import { rgb, useTheme } from '@/theme';
  * with a tab that only ever answers 403 is worse than a shorter bar. That gives
  * each persona its own five:
  *
- *   individual/agent   Home · Matches · Alerts · More
+ *   individual/agent   Home · Matches · Interests · Alerts · More
  *   vendor / planner   Home · Business · Bookings · Availability · More
  *   officer            Home · Verification · Cases · Alerts · More
  *
@@ -100,6 +101,16 @@ export default function TabsLayout() {
           // `href: null` is how a tab is withheld rather than disabled: the
           // route still exists for a deep link, it simply has no button.
           href: can(permissions, Permission.MATCH_BROWSE) ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
+        name="interests"
+        options={{
+          title: 'Interests',
+          tabBarIcon: icon(HandHeart),
+          // The other half of matchmaking: who has asked about you, and what
+          // came of it. Same capability the web sidebar gates it on.
+          href: can(permissions, Permission.MATCH_RESPOND_INTEREST) ? undefined : null,
         }}
       />
       <Tabs.Screen

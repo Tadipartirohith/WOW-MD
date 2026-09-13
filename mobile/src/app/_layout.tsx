@@ -162,6 +162,7 @@ function Routes() {
         name="transaction/[id]"
         options={{ headerShown: true, title: 'Payment' }}
       />
+      <Stack.Screen name="match/[id]" options={{ headerShown: true, title: 'Profile' }} />
       <Stack.Screen name="visit/[id]" options={{ headerShown: true, title: 'Visit' }} />
       <Stack.Screen name="case/[id]" options={{ headerShown: true, title: 'Case' }} />
     </Stack>
