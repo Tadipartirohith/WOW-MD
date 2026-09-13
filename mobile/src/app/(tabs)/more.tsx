@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   CaretRight,
+  ChatCircleDots,
   Check,
   Coins,
   Gear,
@@ -59,6 +60,21 @@ export default function More() {
   return (
     <Screen>
       <AccountHeader />
+
+      {/* Matchmaking's other screens, for the personas that have them. Chat is
+          here rather than in the bar because a conversation is opened from the
+          person it is with — a match, an interest — far more often than from a
+          list of all of them (EZ1-I261). */}
+      {canAny(permissions, [Permission.CHAT_MATCH]) ? (
+        <Group title="Matchmaking">
+          <Row
+            icon={ChatCircleDots}
+            label="Chat"
+            hint="Conversations with families you have matched with"
+            to="/chat"
+          />
+        </Group>
+      ) : null}
 
       <Group title="My account">
         <Row
